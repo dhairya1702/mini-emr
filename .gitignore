@@ -1,0 +1,12 @@
+.DS_Store
+.idea/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+backend/.env
+backend/.venv/
+
+web/.env.local
+web/node_modules/
+web/.next/
