@@ -57,7 +57,9 @@ export function PatientDetailsDrawer({
     return null;
   }
 
-  const createdAt = new Date(patient.created_at).toLocaleString([], {
+  const currentPatient = patient;
+
+  const createdAt = new Date(currentPatient.created_at).toLocaleString([], {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -113,7 +115,7 @@ export function PatientDetailsDrawer({
     setIsSaving(true);
     setError("");
     try {
-      await onSave(patient.id, {
+      await onSave(currentPatient.id, {
         name: form.name.trim(),
         phone: form.phone.trim(),
         reason: form.reason.trim(),
@@ -136,8 +138,8 @@ export function PatientDetailsDrawer({
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Patient Details</p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-800">{patient.name}</h2>
-            <p className="mt-2 text-sm text-slate-500">Current status: {patient.status}</p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-800">{currentPatient.name}</h2>
+            <p className="mt-2 text-sm text-slate-500">Current status: {currentPatient.status}</p>
           </div>
           <button
             type="button"

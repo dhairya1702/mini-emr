@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 PatientStatus = Literal["waiting", "consultation", "done"]
+UserRole = Literal["admin", "staff"]
 
 
 class PatientCreate(BaseModel):
@@ -66,8 +67,27 @@ class GenerateNoteResponse(BaseModel):
     content: str
 
 
+class GenerateLetterRequest(BaseModel):
+    to: str = Field(min_length=1, max_length=200)
+    subject: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1)
+
+
+class GenerateLetterResponse(BaseModel):
+    content: str
+
+
 class GeneratePdfRequest(BaseModel):
     patient_id: UUID
+    content: str = Field(min_length=1)
+
+
+class GenerateLetterPdfRequest(BaseModel):
+    content: str = Field(min_length=1)
+
+
+class SendLetterRequest(BaseModel):
+    recipient: str = Field(min_length=5, max_length=120)
     content: str = Field(min_length=1)
 
 
@@ -80,3 +100,55 @@ class SendNoteRequest(BaseModel):
 class SendNoteResponse(BaseModel):
     success: bool
     message: str
+
+
+class ClinicSettingsBase(BaseModel):
+    clinic_name: str = "ClinicOS"
+    clinic_address: str = ""
+    clinic_phone: str = ""
+    doctor_name: str = ""
+    custom_header: str = ""
+    custom_footer: str = ""
+
+
+class ClinicSettingsUpdate(ClinicSettingsBase):
+    pass
+
+
+class ClinicSettingsOut(ClinicSettingsBase):
+    id: UUID
+    org_id: UUID
+    updated_at: datetime | None = None
+
+
+class UserBase(BaseModel):
+    identifier: str = Field(min_length=5, max_length=120)
+
+
+class UserCreate(UserBase):
+    password: str = Field(min_length=8, max_length=128)
+    clinic_name: str = Field(min_length=1, max_length=120)
+    clinic_address: str = Field(min_length=1, max_length=300)
+    clinic_phone: str = Field(default="", max_length=40)
+    doctor_name: str = Field(default="", max_length=120)
+
+
+class StaffUserCreate(UserBase):
+    password: str = Field(min_length=8, max_length=128)
+
+
+class LoginRequest(UserBase):
+    password: str = Field(min_length=8, max_length=128)
+
+
+class UserOut(UserBase):
+    id: UUID
+    org_id: UUID
+    name: str
+    role: UserRole
+    created_at: datetime
+
+
+class AuthResponse(BaseModel):
+    token: str
+    user: UserOut

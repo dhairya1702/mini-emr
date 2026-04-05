@@ -1,13 +1,25 @@
-import { GenerateNotePayload, Patient, PatientStatus } from "@/lib/types";
+import { authStorage } from "@/lib/auth";
+import {
+  AuthResponse,
+  AuthUser,
+  ClinicSettings,
+  GenerateLetterPayload,
+  GenerateNotePayload,
+  Patient,
+  PatientStatus,
+  RegisterPayload,
+} from "@/lib/types";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = authStorage.getToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
     cache: "no-store",
@@ -41,10 +53,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
+  const token = authStorage.getToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
     cache: "no-store",
@@ -59,6 +73,23 @@ async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
 }
 
 export const api = {
+  login: (payload: { identifier: string; password: string }) =>
+    request<AuthResponse>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  register: (payload: RegisterPayload) =>
+    request<AuthResponse>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  getCurrentUser: () => request<AuthUser>("/auth/me"),
+  listUsers: () => request<AuthUser[]>("/users"),
+  createStaffUser: (payload: { identifier: string; password: string }) =>
+    request<AuthUser>("/users/staff", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   listPatients: () => request<Patient[]>("/patients"),
   createPatient: (
     payload: Pick<
@@ -91,9 +122,32 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  generateLetter: (payload: GenerateLetterPayload) =>
+    request<{ content: string }>("/generate-letter", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   generateNotePdf: (payload: { patient_id: string; content: string }) =>
     requestBlob("/generate-note-pdf", {
       method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  generateLetterPdf: (payload: { content: string }) =>
+    requestBlob("/generate-letter-pdf", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  sendLetter: (payload: { recipient: string; content: string }) =>
+    request<{ success: boolean; message: string }>("/send-letter", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  getClinicSettings: () => request<ClinicSettings>("/settings/clinic"),
+  updateClinicSettings: (
+    payload: Omit<ClinicSettings, "id" | "org_id" | "updated_at">,
+  ) =>
+    request<ClinicSettings>("/settings/clinic", {
+      method: "PUT",
       body: JSON.stringify(payload),
     }),
   sendNote: (payload: { patient_id: string; phone: string; content: string }) =>

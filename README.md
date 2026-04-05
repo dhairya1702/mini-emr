@@ -47,6 +47,7 @@ Backend:
 
 - `SUPABASE_URL=...`
 - `SUPABASE_SERVICE_ROLE_KEY=...`
+- `AUTH_SECRET=...` (recommended, otherwise the service role key is used to sign app tokens)
 - `ANTHROPIC_API_KEY=...`
 - `ANTHROPIC_MODEL=claude-3-5-sonnet-20241022`
 - `APP_ORIGIN=http://127.0.0.1:3000`
@@ -61,9 +62,13 @@ Backend:
 
 Run the SQL in `supabase/schema.sql` in your Supabase project.
 
+If your database is already live, also add the `clinic_settings` and `clinic_users` tables from the updated schema.
+
 ## Notes
 
 - `POST /generate-note` uses Claude when `ANTHROPIC_API_KEY` is set.
 - `POST /generate-note-pdf` renders the final note into an in-memory PDF for preview/download.
+- `GET /settings/clinic` and `PUT /settings/clinic` manage clinic branding, doctor details, and PDF header/footer text.
+- `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, and `POST /users/staff` handle app authentication and admin-created staff accounts.
 - If no Anthropic key is configured, the backend returns a deterministic SOAP note fallback so the flow still works during setup.
 - `POST /send-note` is a mock endpoint prepared for later WhatsApp integration.

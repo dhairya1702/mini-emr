@@ -23,12 +23,39 @@ def build_fallback_note(
     )
 
 
+def build_fallback_letter(
+    to: str,
+    subject: str,
+    content: str,
+    clinic_context: str = "",
+) -> str:
+    clinic_bits = [line.strip() for line in clinic_context.splitlines() if line.strip()]
+    doctor_name = ""
+    for line in clinic_bits:
+      if line.startswith("Doctor Name:"):
+          doctor_name = line.split(":", 1)[1].strip()
+          break
+
+    signature_name = doctor_name or "Clinic Team"
+    body = content.strip()
+    return (
+        f"To: {to.strip()}\n"
+        f"Subject: {subject.strip()}\n\n"
+        f"Dear Sir/Madam,\n\n"
+        f"{body}\n\n"
+        "Please feel free to contact the clinic if any further clarification is required.\n\n"
+        "Sincerely,\n"
+        f"{signature_name}"
+    )
+
+
 async def generate_soap_note(
     symptoms: str,
     diagnosis: str,
     medications: str,
     notes: str,
     patient_context: str = "",
+    clinic_context: str = "",
 ) -> str:
     settings = get_settings()
 
@@ -63,6 +90,9 @@ Keep the output plain text only.
 
 Patient context:
 {patient_context or 'Not provided'}
+
+Clinic context:
+{clinic_context or 'Not provided'}
 
 Symptoms:
 {symptoms or 'Not provided'}
@@ -102,3 +132,59 @@ Additional notes:
         notes,
         patient_context,
     )
+
+
+async def generate_clinic_letter(
+    to: str,
+    subject: str,
+    content: str,
+    clinic_context: str = "",
+) -> str:
+    settings = get_settings()
+
+    if not settings.anthropic_api_key:
+        return build_fallback_letter(to, subject, content, clinic_context)
+
+    client = Anthropic(api_key=settings.anthropic_api_key)
+    prompt = f"""
+Write a polished clinic letter in plain text.
+Use this exact top structure:
+To: ...
+Subject: ...
+
+Then write a professional letter body with a greeting, concise clinical/administrative wording, and a courteous closing.
+Do not invent medical facts beyond what the user provided.
+Keep it ready to place on clinic letterhead.
+Return plain text only.
+
+Clinic context:
+{clinic_context or 'Not provided'}
+
+To:
+{to}
+
+Subject:
+{subject}
+
+Content instructions:
+{content}
+""".strip()
+
+    try:
+        response = await asyncio.to_thread(
+            lambda: client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=500,
+                temperature=0.35,
+                system=(
+                    "You write clear professional clinic letters. "
+                    "Return only the final letter text."
+                ),
+                messages=[{"role": "user", "content": prompt}],
+            )
+        )
+    except Exception:
+        return build_fallback_letter(to, subject, content, clinic_context)
+
+    blocks = [block.text for block in response.content if getattr(block, "type", "") == "text"]
+    return "\n".join(blocks).strip() or build_fallback_letter(to, subject, content, clinic_context)

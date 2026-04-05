@@ -52,13 +52,15 @@ export function ConsultationDrawer({
     return null;
   }
 
+  const currentPatient = patient;
+
   async function handleGenerate(event?: FormEvent) {
     event?.preventDefault();
     setIsGenerating(true);
     setStatusMessage("");
     try {
       const content = await onGenerate({
-        patient_id: patient.id,
+        patient_id: currentPatient.id,
         symptoms: form.symptoms,
         diagnosis: form.diagnosis,
         medications: form.medications,
@@ -80,8 +82,8 @@ export function ConsultationDrawer({
     setIsSending(true);
     try {
       const message = await onSend({
-        patient_id: patient.id,
-        phone: patient.phone,
+        patient_id: currentPatient.id,
+        phone: currentPatient.phone,
         content: form.generatedNote,
       });
       setStatusMessage(message);
@@ -99,7 +101,7 @@ export function ConsultationDrawer({
     setIsGeneratingPdf(true);
     try {
       const blob = await onGeneratePdf({
-        patient_id: patient.id,
+        patient_id: currentPatient.id,
         content: form.generatedNote,
       });
       const url = URL.createObjectURL(blob);
@@ -109,7 +111,7 @@ export function ConsultationDrawer({
       } else {
         const link = document.createElement("a");
         link.href = url;
-        link.download = `${patient.name.replace(/\s+/g, "_")}_note.pdf`;
+        link.download = `${currentPatient.name.replace(/\s+/g, "_")}_note.pdf`;
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -125,7 +127,7 @@ export function ConsultationDrawer({
   async function handleDone() {
     setIsCompleting(true);
     try {
-      await onDone(patient);
+      await onDone(currentPatient);
       onClose();
     } finally {
       setIsCompleting(false);
@@ -138,15 +140,15 @@ export function ConsultationDrawer({
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <p className="text-sm uppercase tracking-[0.24em] text-slate-600">Consultation</p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-900">{patient.name}</h2>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-900">{currentPatient.name}</h2>
             <p className="mt-2 text-sm text-slate-700">
-              {patient.phone} · {patient.reason}
+              {currentPatient.phone} · {currentPatient.reason}
             </p>
             <p className="mt-2 text-sm font-medium text-slate-700">
-              Age {patient.age ?? "-"} · Temp{" "}
-              {patient.temperature !== null ? `${patient.temperature} F` : "-"} · Weight{" "}
-              {patient.weight !== null ? `${patient.weight} kg` : "-"} · Height{" "}
-              {patient.height !== null ? `${patient.height} cm` : "-"}
+              Age {currentPatient.age ?? "-"} · Temp{" "}
+              {currentPatient.temperature !== null ? `${currentPatient.temperature} F` : "-"} · Weight{" "}
+              {currentPatient.weight !== null ? `${currentPatient.weight} kg` : "-"} · Height{" "}
+              {currentPatient.height !== null ? `${currentPatient.height} cm` : "-"}
             </p>
           </div>
           <button
