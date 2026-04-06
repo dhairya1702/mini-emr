@@ -2,28 +2,53 @@ import { authStorage } from "@/lib/auth";
 import {
   AuthResponse,
   AuthUser,
+  CatalogItem,
   ClinicSettings,
   GenerateLetterPayload,
+  Invoice,
   GenerateNotePayload,
   Patient,
+  PatientTimelineEvent,
   PatientStatus,
   RegisterPayload,
 } from "@/lib/types";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
+const REQUEST_TIMEOUT_MS = 15000;
+
+function createTimeoutSignal() {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  return {
+    signal: controller.signal,
+    cleanup: () => window.clearTimeout(timeoutId),
+  };
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = authStorage.getToken();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers || {}),
-    },
-    cache: "no-store",
-  });
+  const timeout = typeof window !== "undefined" ? createTimeoutSignal() : null;
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      ...(timeout ? { signal: timeout.signal } : {}),
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...((init?.headers as Record<string, string> | undefined) || {}),
+      },
+      cache: "no-store",
+    });
+  } catch (error) {
+    timeout?.cleanup();
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Request timed out. Check the backend and refresh.");
+    }
+    throw error;
+  }
+  timeout?.cleanup();
 
   if (!response.ok) {
     const raw = await response.text();
@@ -49,20 +74,36 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(message);
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json();
 }
 
 async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
   const token = authStorage.getToken();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers || {}),
-    },
-    cache: "no-store",
-  });
+  const timeout = typeof window !== "undefined" ? createTimeoutSignal() : null;
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      ...(timeout ? { signal: timeout.signal } : {}),
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...((init?.headers as Record<string, string> | undefined) || {}),
+      },
+      cache: "no-store",
+    });
+  } catch (error) {
+    timeout?.cleanup();
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Request timed out. Check the backend and refresh.");
+    }
+    throw error;
+  }
+  timeout?.cleanup();
 
   if (!response.ok) {
     const raw = await response.text();
@@ -87,6 +128,52 @@ export const api = {
   listUsers: () => request<AuthUser[]>("/users"),
   createStaffUser: (payload: { identifier: string; password: string }) =>
     request<AuthUser>("/users/staff", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  listCatalogItems: () => request<CatalogItem[]>("/catalog"),
+  createCatalogItem: (payload: {
+    name: string;
+    item_type: "service" | "medicine";
+    default_price: number;
+    track_inventory: boolean;
+    stock_quantity: number;
+    low_stock_threshold: number;
+    unit: string;
+  }) =>
+    request<CatalogItem>("/catalog", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateCatalogStock: (itemId: string, payload: { delta: number }) =>
+    request<CatalogItem>(`/catalog/${itemId}/stock`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteCatalogItem: (itemId: string) =>
+    request<void>(`/catalog/${itemId}`, {
+      method: "DELETE",
+    }),
+  listInvoices: () => request<Invoice[]>("/invoices"),
+  createInvoice: (payload: {
+    patient_id: string;
+    items: Array<{
+      catalog_item_id?: string | null;
+      item_type: "service" | "medicine";
+      label: string;
+      quantity: number;
+      unit_price: number;
+    }>;
+    payment_status: "paid";
+  }) =>
+    request<Invoice>("/invoices", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  generateInvoicePdf: (invoiceId: string) =>
+    requestBlob(`/invoices/${invoiceId}/pdf`),
+  sendInvoice: (payload: { invoice_id: string; recipient: string }) =>
+    request<{ success: boolean; message: string }>("/send-invoice", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -117,6 +204,8 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  getPatientTimeline: (patientId: string) =>
+    request<PatientTimelineEvent[]>(`/patients/${patientId}/timeline`),
   generateNote: (payload: GenerateNotePayload) =>
     request<{ content: string }>("/generate-note", {
       method: "POST",

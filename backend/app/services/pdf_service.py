@@ -308,3 +308,103 @@ def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: 
     pdf.save()
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def build_invoice_pdf(
+    clinic: dict[str, Any],
+    patient: dict[str, Any],
+    invoice: dict[str, Any],
+    generated_on: str,
+) -> bytes:
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    margin_x = 0.75 * inch
+    top_y = height - 0.75 * inch
+    max_width = width - (margin_x * 2)
+
+    clinic_name = clinic.get("clinic_name", "ClinicOS") or "ClinicOS"
+    custom_header = clinic.get("custom_header", "")
+    custom_footer = clinic.get("custom_footer", "")
+    pdf.setTitle("Clinic Invoice")
+
+    pdf.setFillColor(HexColor("#0f172a"))
+    pdf.setFont("Helvetica-Bold", 18)
+    pdf.drawString(margin_x, top_y, clinic_name)
+
+    pdf.setFillColor(HexColor("#475569"))
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(margin_x, top_y - 18, "Clinic Invoice")
+    if custom_header.strip():
+        pdf.drawString(margin_x, top_y - 32, custom_header.strip())
+
+    pdf.setFont("Helvetica-Bold", 10)
+    generated_label = "Date:"
+    label_width = stringWidth(generated_label + " ", "Helvetica-Bold", 10)
+    value_width = stringWidth(generated_on, "Helvetica", 10)
+    right_x = width - margin_x - label_width - value_width
+    pdf.setFillColor(HexColor("#1e293b"))
+    pdf.drawString(right_x, top_y, generated_label)
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(right_x + label_width, top_y, generated_on)
+
+    y = top_y - (58 if custom_header.strip() else 42)
+    details = [
+        ("Patient", patient.get("name", "Not recorded")),
+        ("Phone", patient.get("phone", "Not recorded")),
+        ("Visit Reason", patient.get("reason", "Not recorded")),
+        ("Payment Status", "Paid"),
+        ("Paid On", str(invoice.get("paid_at") or generated_on)),
+    ]
+    for index in range(0, len(details), 2):
+        left = details[index]
+        right = details[index + 1] if index + 1 < len(details) else None
+        y = _draw_detail_pair_row(pdf, margin_x, y, left, right, max_width)
+
+    y -= 8
+    pdf.setFillColor(HexColor("#e0f2fe"))
+    pdf.roundRect(margin_x, y - 24, max_width, 24, 8, fill=1, stroke=0)
+    pdf.setFillColor(HexColor("#0f172a"))
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(margin_x + 10, y - 16, "Item")
+    pdf.drawString(margin_x + max_width - 170, y - 16, "Qty")
+    pdf.drawString(margin_x + max_width - 110, y - 16, "Price")
+    pdf.drawString(margin_x + max_width - 50, y - 16, "Total")
+    y -= 34
+
+    pdf.setFont("Helvetica", 10)
+    for item in invoice.get("items", []):
+        if y < 1.25 * inch:
+            pdf.showPage()
+            y = height - 0.9 * inch
+            pdf.setFont("Helvetica", 10)
+            pdf.setFillColor(HexColor("#1e293b"))
+        pdf.drawString(margin_x + 10, y, str(item.get("label", "")))
+        pdf.drawRightString(margin_x + max_width - 145, y, str(item.get("quantity", "")))
+        pdf.drawRightString(margin_x + max_width - 80, y, f"{float(item.get('unit_price', 0)):.2f}")
+        pdf.drawRightString(margin_x + max_width - 10, y, f"{float(item.get('line_total', 0)):.2f}")
+        y -= 18
+
+    y -= 8
+    pdf.setFont("Helvetica-Bold", 11)
+    pdf.drawRightString(margin_x + max_width - 80, y, "Subtotal")
+    pdf.drawRightString(margin_x + max_width - 10, y, f"{float(invoice.get('subtotal', 0)):.2f}")
+    y -= 18
+    pdf.drawRightString(margin_x + max_width - 80, y, "Total")
+    pdf.drawRightString(margin_x + max_width - 10, y, f"{float(invoice.get('total', 0)):.2f}")
+
+    if custom_footer.strip():
+        footer_y = 0.55 * inch
+        pdf.setStrokeColor(HexColor("#cbd5e1"))
+        pdf.line(margin_x, footer_y + 12, width - margin_x, footer_y + 12)
+        pdf.setFont("Helvetica", 9)
+        pdf.setFillColor(HexColor("#64748b"))
+        footer_lines = _wrap_text(custom_footer.strip(), "Helvetica", 9, max_width)
+        current_y = footer_y
+        for footer_line in footer_lines[:2]:
+            pdf.drawString(margin_x, current_y, footer_line)
+            current_y -= 11
+
+    pdf.save()
+    buffer.seek(0)
+    return buffer.getvalue()

@@ -2,16 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Menu, Plus, Stethoscope } from "lucide-react";
 
 import { AddPatientModal } from "@/components/add-patient-modal";
+import { AppHeader } from "@/components/app-header";
 import { ConsultationDrawer } from "@/components/consultation-drawer";
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
 import { PatientColumn } from "@/components/patient-column";
 import { SettingsDrawer } from "@/components/settings-drawer";
 import { authStorage } from "@/lib/auth";
 import { api } from "@/lib/api";
-import { AuthUser, ClinicSettings, Patient, PatientStatus } from "@/lib/types";
+import { AuthUser, CatalogItem, ClinicSettings, Invoice, Patient, PatientStatus, PatientTimelineEvent } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
 
@@ -20,6 +20,7 @@ export default function HomePage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [users, setUsers] = useState<AuthUser[]>([]);
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [drawerMode, setDrawerMode] = useState<"details" | "consultation" | null>(null);
@@ -27,6 +28,7 @@ export default function HomePage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [error, setError] = useState("");
+  const [isRedirectingToLogin, setIsRedirectingToLogin] = useState(false);
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
 
   useEffect(() => {
@@ -35,20 +37,26 @@ export default function HomePage() {
     async function loadApp() {
       const token = authStorage.getToken();
       if (!token) {
+        if (active) {
+          setIsRedirectingToLogin(true);
+          setIsAuthReady(true);
+        }
         router.replace("/login");
         return;
       }
 
       try {
-        const [user, userList, data, settings] = await Promise.all([
+        const [user, userList, catalog, data, settings] = await Promise.all([
           api.getCurrentUser(),
           api.listUsers(),
+          api.listCatalogItems(),
           api.listPatients(),
           api.getClinicSettings(),
         ]);
         if (active) {
           setCurrentUser(user);
           setUsers(userList);
+          setCatalogItems(catalog);
           setPatients(data);
           setClinicSettings(settings);
           setIsAuthReady(true);
@@ -57,6 +65,7 @@ export default function HomePage() {
         if (active) {
           authStorage.clear();
           setError(loadError instanceof Error ? loadError.message : "Session expired.");
+          setIsRedirectingToLogin(true);
           setIsAuthReady(true);
           router.replace("/login");
         }
@@ -72,7 +81,9 @@ export default function HomePage() {
   const groupedPatients = useMemo(() => {
     return statusOrder.reduce<Record<PatientStatus, Patient[]>>(
       (accumulator, status) => {
-        accumulator[status] = patients.filter((patient) => patient.status === status);
+        accumulator[status] = patients.filter(
+          (patient) => patient.status === status && !(status === "done" && patient.billed),
+        );
         return accumulator;
       },
       {
@@ -96,6 +107,7 @@ export default function HomePage() {
       id: crypto.randomUUID(),
       created_at: new Date().toISOString(),
       status: "waiting",
+      billed: false,
       ...payload,
     };
 
@@ -201,9 +213,65 @@ export default function HomePage() {
     setUsers((current) => [...current, created]);
   }
 
+  async function handleCreateCatalogItem(payload: {
+    name: string;
+    item_type: "service" | "medicine";
+    default_price: number;
+    track_inventory: boolean;
+    stock_quantity: number;
+    low_stock_threshold: number;
+    unit: string;
+  }) {
+    const created = await api.createCatalogItem(payload);
+    setCatalogItems((current) =>
+      [...current, created].sort((left, right) => left.name.localeCompare(right.name)),
+    );
+  }
+
+  async function handleAdjustCatalogStock(itemId: string, delta: number) {
+    const updated = await api.updateCatalogStock(itemId, { delta });
+    setCatalogItems((current) =>
+      current.map((item) => (item.id === itemId ? updated : item)),
+    );
+  }
+
+  async function handleDeleteCatalogItem(itemId: string) {
+    await api.deleteCatalogItem(itemId);
+    setCatalogItems((current) => current.filter((item) => item.id !== itemId));
+  }
+
+  async function handleCreateInvoice(payload: {
+    patient_id: string;
+    items: Array<{
+      catalog_item_id?: string | null;
+      item_type: "service" | "medicine";
+      label: string;
+      quantity: number;
+      unit_price: number;
+    }>;
+    payment_status: "paid";
+  }): Promise<Invoice> {
+    return api.createInvoice(payload);
+  }
+
+  async function handleLoadPatientTimeline(patientId: string): Promise<PatientTimelineEvent[]> {
+    return api.getPatientTimeline(patientId);
+  }
+
   function handleLogout() {
     authStorage.clear();
+    setIsRedirectingToLogin(true);
     router.replace("/login");
+  }
+
+  if (isRedirectingToLogin) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">
+          Redirecting to login...
+        </div>
+      </main>
+    );
   }
 
   if (!isAuthReady) {
@@ -219,52 +287,14 @@ export default function HomePage() {
   return (
     <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1600px]">
-        <div className="mb-6 flex flex-col gap-4 rounded-[32px] border border-sky-100 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.22)] sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-200 bg-white px-5 py-3 text-sm font-medium text-slate-800 transition hover:bg-sky-50"
-            >
-              <Menu className="h-4 w-4" />
-              Menu
-            </button>
-
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-3 py-1 text-xs tracking-[0.22em] text-sky-700">
-                <Stethoscope className="h-3.5 w-3.5" />
-                ClinicOS
-              </div>
-              <h1 className="mt-4 text-3xl font-semibold text-slate-800 sm:text-4xl">
-                {clinicName}
-              </h1>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            {currentUser ? (
-              <div className="rounded-full border border-sky-200 bg-sky-50/80 px-4 py-2 text-sm font-medium text-sky-700">
-                {currentUser.role === "admin" ? "Admin" : "Staff"}
-              </div>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-sky-500 px-5 py-3 text-sm font-medium text-white transition hover:bg-sky-600"
-            >
-              <Plus className="h-4 w-4" />
-              Add Patient
-            </button>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-sky-50"
-            >
-              <LogOut className="h-4 w-4" />
-              Logout
-            </button>
-          </div>
-        </div>
+        <AppHeader
+          clinicName={clinicName}
+          currentUser={currentUser}
+          active="queue"
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onAddPatient={() => setIsModalOpen(true)}
+          onLogout={handleLogout}
+        />
 
         {error ? (
           <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -288,7 +318,7 @@ export default function HomePage() {
             onAdvance={handleAdvancePatient}
           />
           <PatientColumn
-            title="Done"
+            title="Billing"
             status="done"
             patients={groupedPatients.done}
             onOpen={handleOpenPatient}
@@ -308,9 +338,14 @@ export default function HomePage() {
         settings={clinicSettings}
         currentUser={currentUser}
         users={users}
+        patients={groupedPatients.done}
+        catalogItems={catalogItems}
         onClose={() => setIsSettingsOpen(false)}
         onSaveClinic={handleSaveClinicSettings}
         onAddUser={handleAddStaffUser}
+        onCreateCatalogItem={handleCreateCatalogItem}
+        onAdjustCatalogStock={handleAdjustCatalogStock}
+        onDeleteCatalogItem={handleDeleteCatalogItem}
         onGenerateLetter={async (payload) => {
           const response = await api.generateLetter(payload);
           return response.content;
@@ -320,10 +355,25 @@ export default function HomePage() {
           const response = await api.sendLetter(payload);
           return response.message;
         }}
+        onCreateInvoice={handleCreateInvoice}
+        onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
+        onSendInvoice={async (payload) => {
+          const response = await api.sendInvoice(payload);
+          return response.message;
+        }}
+        onBillingComplete={(patientId) => {
+          setPatients((current) =>
+            current.map((patient) =>
+              patient.id === patientId ? { ...patient, billed: true } : patient,
+            ),
+          );
+          setIsSettingsOpen(false);
+        }}
       />
 
       <PatientDetailsDrawer
         patient={drawerMode === "details" ? selectedPatient : null}
+        onLoadTimeline={handleLoadPatientTimeline}
         onSave={handleUpdatePatient}
         onClose={() => {
           setSelectedPatient(null);

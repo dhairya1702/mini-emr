@@ -11,13 +11,17 @@ def build_fallback_note(
     medications: str,
     notes: str,
     patient_context: str = "",
+    measurements_context: str = "",
 ) -> str:
     header = f"{patient_context}\n\n" if patient_context else ""
+    clinical_notes = notes or "No additional findings were documented during this consultation."
+    if measurements_context:
+        clinical_notes = f"{measurements_context}\n{clinical_notes}".strip()
     return (
         f"{header}"
         f"Presenting Complaint:\n{symptoms or 'Symptoms not fully documented.'}\n\n"
         f"Diagnosis:\n{diagnosis or 'Clinical impression is still under evaluation.'}\n\n"
-        f"Clinical Notes:\n{notes or 'No additional findings were documented during this consultation.'}\n\n"
+        f"Clinical Notes:\n{clinical_notes}\n\n"
         f"Treatment:\n{medications or 'Medication plan was not documented.'}\n\n"
         "Follow-up Advice:\nReturn for reassessment if symptoms worsen or fail to improve."
     )
@@ -56,11 +60,12 @@ async def generate_soap_note(
     notes: str,
     patient_context: str = "",
     clinic_context: str = "",
+    measurements_context: str = "",
 ) -> str:
     settings = get_settings()
 
     if not settings.anthropic_api_key:
-        return build_fallback_note(symptoms, diagnosis, medications, notes, patient_context)
+        return build_fallback_note(symptoms, diagnosis, medications, notes, patient_context, measurements_context)
 
     client = Anthropic(api_key=settings.anthropic_api_key)
     prompt = f"""
@@ -105,6 +110,9 @@ Medications:
 
 Additional notes:
 {notes or 'Not provided'}
+
+Structured measurements:
+{measurements_context or 'Not provided'}
 """.strip()
 
     try:
@@ -131,6 +139,7 @@ Additional notes:
         medications,
         notes,
         patient_context,
+        measurements_context,
     )
 
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { Fragment, FormEvent, useEffect, useState } from "react";
 import { Download, Eye, FileText, Send, Sparkles, X } from "lucide-react";
 
-import { Patient } from "@/lib/types";
+import { EyeExamEntry, Patient, TestScoreEntry } from "@/lib/types";
 
 interface ConsultationDrawerProps {
   patient: Patient | null;
@@ -15,18 +15,37 @@ interface ConsultationDrawerProps {
     diagnosis: string;
     medications: string;
     notes: string;
+    blood_pressure_systolic?: number | null;
+    blood_pressure_diastolic?: number | null;
+    pulse?: number | null;
+    spo2?: number | null;
+    blood_sugar?: number | null;
+    test_scores?: TestScoreEntry[];
+    eye_exam?: EyeExamEntry[];
   }) => Promise<string>;
   onGeneratePdf: (payload: { patient_id: string; content: string }) => Promise<Blob>;
   onSend: (payload: { patient_id: string; phone: string; content: string }) => Promise<string>;
 }
 
-const emptyForm = {
-  symptoms: "",
-  diagnosis: "",
-  medications: "",
-  notes: "",
-  generatedNote: "",
-};
+function createEmptyForm() {
+  return {
+    symptoms: "",
+    diagnosis: "",
+    medications: "",
+    notes: "",
+    bloodPressureSystolic: "",
+    bloodPressureDiastolic: "",
+    pulse: "",
+    spo2: "",
+    bloodSugar: "",
+    testScores: [{ id: crypto.randomUUID(), label: "", value: "" }],
+    eyeExam: [
+      { eye: "right", sphere: "", cylinder: "", axis: "", vision: "" },
+      { eye: "left", sphere: "", cylinder: "", axis: "", vision: "" },
+    ] as EyeExamEntry[],
+    generatedNote: "",
+  };
+}
 
 export function ConsultationDrawer({
   patient,
@@ -36,7 +55,12 @@ export function ConsultationDrawer({
   onGeneratePdf,
   onSend,
 }: ConsultationDrawerProps) {
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(createEmptyForm);
+  const [openSections, setOpenSections] = useState({
+    vitals: false,
+    testScores: false,
+    eyeExam: false,
+  });
   const [statusMessage, setStatusMessage] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -44,7 +68,12 @@ export function ConsultationDrawer({
   const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
-    setForm(emptyForm);
+    setForm(createEmptyForm());
+    setOpenSections({
+      vitals: false,
+      testScores: false,
+      eyeExam: false,
+    });
     setStatusMessage("");
   }, [patient?.id]);
 
@@ -65,9 +94,22 @@ export function ConsultationDrawer({
         diagnosis: form.diagnosis,
         medications: form.medications,
         notes: form.notes,
+        blood_pressure_systolic: form.bloodPressureSystolic ? Number(form.bloodPressureSystolic) : null,
+        blood_pressure_diastolic: form.bloodPressureDiastolic ? Number(form.bloodPressureDiastolic) : null,
+        pulse: form.pulse ? Number(form.pulse) : null,
+        spo2: form.spo2 ? Number(form.spo2) : null,
+        blood_sugar: form.bloodSugar ? Number(form.bloodSugar) : null,
+        test_scores: form.testScores
+          .filter((entry) => entry.label.trim() && entry.value.trim())
+          .map((entry) => ({ label: entry.label.trim(), value: entry.value.trim() })),
+        eye_exam: form.eyeExam.filter((entry) =>
+          entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim(),
+        ),
       });
       setForm((current) => ({ ...current, generatedNote: content }));
       setStatusMessage("SOAP note generated.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Failed to generate SOAP note.");
     } finally {
       setIsGenerating(false);
     }
@@ -87,6 +129,8 @@ export function ConsultationDrawer({
         content: form.generatedNote,
       });
       setStatusMessage(message);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Failed to send note.");
     } finally {
       setIsSending(false);
     }
@@ -119,6 +163,8 @@ export function ConsultationDrawer({
 
       setStatusMessage("PDF ready.");
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Failed to prepare PDF.");
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -133,6 +179,71 @@ export function ConsultationDrawer({
       setIsCompleting(false);
     }
   }
+
+  function updateTestScore(id: string, patch: Partial<TestScoreEntry>) {
+    setForm((current) => ({
+      ...current,
+      testScores: current.testScores.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
+    }));
+  }
+
+  function addTestScore() {
+    setForm((current) => ({
+      ...current,
+      testScores: [...current.testScores, { id: crypto.randomUUID(), label: "", value: "" }],
+    }));
+  }
+
+  function removeTestScore(id: string) {
+    setForm((current) => ({
+      ...current,
+      testScores: current.testScores.length > 1
+        ? current.testScores.filter((entry) => entry.id !== id)
+        : [{ id: crypto.randomUUID(), label: "", value: "" }],
+    }));
+  }
+
+  function updateEyeExam(eye: "right" | "left", patch: Partial<EyeExamEntry>) {
+    setForm((current) => ({
+      ...current,
+      eyeExam: current.eyeExam.map((entry) => (entry.eye === eye ? { ...entry, ...patch } : entry)),
+    }));
+  }
+
+  function toggleSection(section: keyof typeof openSections) {
+    setOpenSections((current) => ({ ...current, [section]: !current[section] }));
+  }
+
+  const hasVitals =
+    Boolean(form.bloodPressureSystolic.trim()) ||
+    Boolean(form.bloodPressureDiastolic.trim()) ||
+    Boolean(form.pulse.trim()) ||
+    Boolean(form.spo2.trim()) ||
+    Boolean(form.bloodSugar.trim());
+  const filledTestScores = form.testScores.filter((entry) => entry.label.trim() || entry.value.trim());
+  const hasTestScores = filledTestScores.length > 0;
+  const filledEyeExam = form.eyeExam.filter(
+    (entry) => entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim(),
+  );
+  const hasEyeExam = filledEyeExam.length > 0;
+
+  const sectionSuggestions = [
+    {
+      key: "vitals" as const,
+      label: "Vitals",
+      active: openSections.vitals || hasVitals,
+    },
+    {
+      key: "testScores" as const,
+      label: "Test Scores",
+      active: openSections.testScores || hasTestScores,
+    },
+    {
+      key: "eyeExam" as const,
+      label: "Eye Exam",
+      active: openSections.eyeExam || hasEyeExam,
+    },
+  ];
 
   return (
     <aside className="fixed inset-y-0 right-0 z-30 w-full max-w-2xl border-l-2 border-sky-300 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.2)] sm:p-6">
@@ -209,6 +320,207 @@ export function ConsultationDrawer({
               placeholder="Exam findings, vitals, advice, follow-up"
             />
           </label>
+
+          <div className="flex flex-wrap gap-2">
+            {sectionSuggestions.map((section) => (
+              <button
+                key={section.key}
+                type="button"
+                onClick={() => toggleSection(section.key)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                  section.active
+                    ? "border-sky-300 bg-sky-100 text-sky-800"
+                    : "border-sky-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
+                }`}
+              >
+                {section.active ? `${section.label} Added` : `+ ${section.label}`}
+              </button>
+            ))}
+          </div>
+
+          {openSections.vitals ? (
+            <div className="rounded-[28px] border border-sky-200 bg-white p-4">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Vitals & Measurements</p>
+                  <p className="mt-1 text-xs text-slate-500">Structured findings will be included in the generated note.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleSection("vitals")}
+                  className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50"
+                >
+                  Hide
+                </button>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">BP</span>
+                  <div className="flex gap-2">
+                    <input
+                      value={form.bloodPressureSystolic}
+                      inputMode="numeric"
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, bloodPressureSystolic: event.target.value }))
+                      }
+                      placeholder="120"
+                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                    <input
+                      value={form.bloodPressureDiastolic}
+                      inputMode="numeric"
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, bloodPressureDiastolic: event.target.value }))
+                      }
+                      placeholder="80"
+                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </div>
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Pulse</span>
+                  <input
+                    value={form.pulse}
+                    inputMode="numeric"
+                    onChange={(event) => setForm((current) => ({ ...current, pulse: event.target.value }))}
+                    placeholder="72 bpm"
+                    className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">SpO2</span>
+                  <input
+                    value={form.spo2}
+                    inputMode="numeric"
+                    onChange={(event) => setForm((current) => ({ ...current, spo2: event.target.value }))}
+                    placeholder="98"
+                    className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Blood Sugar</span>
+                  <input
+                    value={form.bloodSugar}
+                    inputMode="decimal"
+                    onChange={(event) => setForm((current) => ({ ...current, bloodSugar: event.target.value }))}
+                    placeholder="110"
+                    className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  />
+                </label>
+              </div>
+            </div>
+          ) : null}
+
+          {openSections.testScores ? (
+            <div className="rounded-[28px] border border-sky-200 bg-white p-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Test Scores</p>
+                  <p className="mt-1 text-xs text-slate-500">Add exam values like visual acuity, pain score, or other structured results.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={addTestScore}
+                    className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 transition hover:bg-sky-100"
+                  >
+                    Add Score
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleSection("testScores")}
+                    className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50"
+                  >
+                    Hide
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {form.testScores.map((entry) => (
+                  <div key={entry.id} className="grid gap-3 md:grid-cols-[1fr_1fr_44px]">
+                    <input
+                      value={entry.label}
+                      onChange={(event) => updateTestScore(entry.id!, { label: event.target.value })}
+                      placeholder="Test name"
+                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                    <input
+                      value={entry.value}
+                      onChange={(event) => updateTestScore(entry.id!, { value: event.target.value })}
+                      placeholder="Result"
+                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeTestScore(entry.id!)}
+                      className="rounded-full border border-sky-200 bg-white p-2 text-slate-600 transition hover:bg-sky-50"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {openSections.eyeExam ? (
+            <div className="rounded-[28px] border border-sky-200 bg-white p-4">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Eye Exam</p>
+                  <p className="mt-1 text-xs text-slate-500">Optional refraction or vision entries for right and left eye.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleSection("eyeExam")}
+                  className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50"
+                >
+                  Hide
+                </button>
+              </div>
+              <div className="grid gap-3 md:grid-cols-[110px_repeat(4,minmax(0,1fr))]">
+                <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Eye</div>
+                <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Sphere</div>
+                <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Cylinder</div>
+                <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Axis</div>
+                <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Vision</div>
+                {form.eyeExam.map((entry) => (
+                  <Fragment key={entry.eye}>
+                    <div className="rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm font-medium capitalize text-slate-700">
+                      {entry.eye}
+                    </div>
+                    <input
+                      value={entry.sphere}
+                      onChange={(event) => updateEyeExam(entry.eye, { sphere: event.target.value })}
+                      placeholder="-1.25"
+                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                    <input
+                      value={entry.cylinder}
+                      onChange={(event) => updateEyeExam(entry.eye, { cylinder: event.target.value })}
+                      placeholder="-0.50"
+                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                    <input
+                      value={entry.axis}
+                      onChange={(event) => updateEyeExam(entry.eye, { axis: event.target.value })}
+                      placeholder="90"
+                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                    <input
+                      value={entry.vision}
+                      onChange={(event) => updateEyeExam(entry.eye, { vision: event.target.value })}
+                      placeholder="6/6"
+                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </Fragment>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="rounded-[28px] border border-sky-200 bg-sky-50/50 p-4">
             <div className="mb-3 flex items-center justify-between">

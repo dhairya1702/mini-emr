@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 
 PatientStatus = Literal["waiting", "consultation", "done"]
 UserRole = Literal["admin", "staff"]
+CatalogItemType = Literal["service", "medicine"]
+PaymentStatus = Literal["unpaid", "paid", "partial"]
 
 
 class PatientCreate(BaseModel):
@@ -21,6 +23,7 @@ class PatientCreate(BaseModel):
 
 class PatientUpdate(BaseModel):
     status: PatientStatus | None = None
+    billed: bool | None = None
     name: str | None = Field(default=None, min_length=1, max_length=120)
     phone: str | None = Field(default=None, min_length=5, max_length=30)
     reason: str | None = Field(default=None, min_length=1, max_length=200)
@@ -40,6 +43,7 @@ class PatientOut(BaseModel):
     temperature: float | None = None
     height: float | None = None
     status: PatientStatus
+    billed: bool = False
     created_at: datetime
 
 
@@ -55,12 +59,43 @@ class NoteOut(BaseModel):
     created_at: datetime
 
 
+TimelineEventType = Literal["patient_created", "consultation_note", "invoice_created", "bill_sent"]
+
+
+class PatientTimelineEvent(BaseModel):
+    id: str
+    type: TimelineEventType
+    title: str
+    timestamp: datetime
+    description: str
+
+
+class TestScoreEntry(BaseModel):
+    label: str = Field(min_length=1, max_length=80)
+    value: str = Field(min_length=1, max_length=120)
+
+
+class EyeExamEntry(BaseModel):
+    eye: Literal["right", "left"]
+    sphere: str = Field(default="", max_length=40)
+    cylinder: str = Field(default="", max_length=40)
+    axis: str = Field(default="", max_length=40)
+    vision: str = Field(default="", max_length=40)
+
+
 class GenerateNoteRequest(BaseModel):
     patient_id: UUID | None = None
     symptoms: str = ""
     diagnosis: str = ""
     medications: str = ""
     notes: str = ""
+    blood_pressure_systolic: int | None = Field(default=None, ge=40, le=300)
+    blood_pressure_diastolic: int | None = Field(default=None, ge=20, le=200)
+    pulse: int | None = Field(default=None, ge=20, le=250)
+    spo2: int | None = Field(default=None, ge=40, le=100)
+    blood_sugar: float | None = Field(default=None, ge=20, le=1000)
+    test_scores: list[TestScoreEntry] = Field(default_factory=list)
+    eye_exam: list[EyeExamEntry] = Field(default_factory=list)
 
 
 class GenerateNoteResponse(BaseModel):
@@ -89,6 +124,67 @@ class GenerateLetterPdfRequest(BaseModel):
 class SendLetterRequest(BaseModel):
     recipient: str = Field(min_length=5, max_length=120)
     content: str = Field(min_length=1)
+
+
+class CatalogItemBase(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    item_type: CatalogItemType
+    default_price: float = Field(ge=0, le=100000)
+    track_inventory: bool = False
+    stock_quantity: float = Field(default=0, ge=0, le=1000000)
+    low_stock_threshold: float = Field(default=0, ge=0, le=1000000)
+    unit: str = Field(default="", max_length=40)
+
+
+class CatalogItemCreate(CatalogItemBase):
+    pass
+
+
+class CatalogItemOut(CatalogItemBase):
+    id: UUID
+    org_id: UUID
+    created_at: datetime
+
+
+class CatalogStockUpdate(BaseModel):
+    delta: float = Field(ge=-1000000, le=1000000)
+
+
+class InvoiceItemInput(BaseModel):
+    catalog_item_id: UUID | None = None
+    item_type: CatalogItemType
+    label: str = Field(min_length=1, max_length=120)
+    quantity: float = Field(gt=0, le=10000)
+    unit_price: float = Field(ge=0, le=100000)
+
+
+class InvoiceItemOut(InvoiceItemInput):
+    id: UUID
+    line_total: float
+
+
+class InvoiceCreate(BaseModel):
+    patient_id: UUID
+    items: list[InvoiceItemInput] = Field(min_length=1)
+    payment_status: PaymentStatus = "paid"
+
+
+class InvoiceOut(BaseModel):
+    id: UUID
+    org_id: UUID
+    patient_id: UUID
+    subtotal: float
+    total: float
+    payment_status: PaymentStatus
+    paid_at: datetime | None = None
+    sent_at: datetime | None = None
+    created_at: datetime
+    items: list[InvoiceItemOut]
+
+
+class SendInvoiceRequest(BaseModel):
+    invoice_id: UUID
+    recipient: str = Field(min_length=5, max_length=120)
 
 
 class SendNoteRequest(BaseModel):

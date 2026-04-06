@@ -12,12 +12,18 @@ from app.config import get_settings
 from app.db import SupabaseRepository, get_repository
 from app.schemas import (
     AuthResponse,
+    CatalogItemCreate,
+    CatalogItemOut,
+    CatalogStockUpdate,
     ClinicSettingsOut,
     ClinicSettingsUpdate,
+    InvoiceCreate,
+    InvoiceOut,
     GenerateLetterPdfRequest,
     GenerateLetterRequest,
     GenerateLetterResponse,
     LoginRequest,
+    PatientTimelineEvent,
     GeneratePdfRequest,
     GenerateNoteRequest,
     GenerateNoteResponse,
@@ -25,6 +31,7 @@ from app.schemas import (
     PatientCreate,
     PatientOut,
     PatientUpdate,
+    SendInvoiceRequest,
     SendLetterRequest,
     SendNoteRequest,
     SendNoteResponse,
@@ -33,7 +40,7 @@ from app.schemas import (
     UserOut,
 )
 from app.services.anthropic_service import generate_clinic_letter, generate_soap_note
-from app.services.pdf_service import build_letter_pdf, build_note_pdf
+from app.services.pdf_service import build_invoice_pdf, build_letter_pdf, build_note_pdf
 
 
 @asynccontextmanager
@@ -155,6 +162,70 @@ async def list_users(
     return [UserOut(**row) for row in users]
 
 
+@app.get("/catalog", response_model=list[CatalogItemOut])
+async def list_catalog(
+    current_user: UserOut = Depends(get_current_user),
+    repo: SupabaseRepository = Depends(get_repository),
+) -> list[CatalogItemOut]:
+    items = await repo.list_catalog_items(str(current_user.org_id))
+    return [CatalogItemOut(**item) for item in items]
+
+
+@app.post("/catalog", response_model=CatalogItemOut, status_code=201)
+async def create_catalog_item(
+    payload: CatalogItemCreate,
+    current_user: UserOut = Depends(require_admin),
+    repo: SupabaseRepository = Depends(get_repository),
+) -> CatalogItemOut:
+    created = await repo.create_catalog_item(str(current_user.org_id), payload)
+    return CatalogItemOut(**created)
+
+
+@app.patch("/catalog/{item_id}/stock", response_model=CatalogItemOut)
+async def update_catalog_stock(
+    item_id: str,
+    payload: CatalogStockUpdate,
+    current_user: UserOut = Depends(require_admin),
+    repo: SupabaseRepository = Depends(get_repository),
+) -> CatalogItemOut:
+    try:
+        updated = await repo.update_catalog_stock(str(current_user.org_id), item_id, payload)
+        return CatalogItemOut(**updated)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/catalog/{item_id}", status_code=204)
+async def delete_catalog_item(
+    item_id: str,
+    current_user: UserOut = Depends(require_admin),
+    repo: SupabaseRepository = Depends(get_repository),
+) -> None:
+    await repo.delete_catalog_item(str(current_user.org_id), item_id)
+
+
+@app.post("/invoices", response_model=InvoiceOut, status_code=201)
+async def create_invoice(
+    payload: InvoiceCreate,
+    current_user: UserOut = Depends(get_current_user),
+    repo: SupabaseRepository = Depends(get_repository),
+) -> InvoiceOut:
+    try:
+        created = await repo.create_invoice(str(current_user.org_id), payload)
+        return InvoiceOut(**created)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/invoices", response_model=list[InvoiceOut])
+async def list_invoices(
+    current_user: UserOut = Depends(get_current_user),
+    repo: SupabaseRepository = Depends(get_repository),
+) -> list[InvoiceOut]:
+    invoices = await repo.list_invoices(str(current_user.org_id))
+    return [InvoiceOut(**invoice) for invoice in invoices]
+
+
 @app.get("/patients", response_model=list[PatientOut])
 async def get_patients(
     repo: SupabaseRepository = Depends(get_repository),
@@ -198,6 +269,70 @@ async def update_patient(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.get("/patients/{patient_id}/timeline", response_model=list[PatientTimelineEvent])
+async def get_patient_timeline(
+    patient_id: str,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> list[PatientTimelineEvent]:
+    try:
+        patient = await repo.get_patient(str(current_user.org_id), patient_id)
+        notes = await repo.list_notes_for_patient(str(current_user.org_id), patient_id)
+        invoices = await repo.list_invoices_for_patient(str(current_user.org_id), patient_id)
+
+        events: list[PatientTimelineEvent] = [
+            PatientTimelineEvent(
+                id=f"patient-created-{patient['id']}",
+                type="patient_created",
+                title="Patient added to queue",
+                timestamp=patient["created_at"],
+                description=f"{patient['name']} was added with status {patient['status']}.",
+            )
+        ]
+
+        for note in notes:
+            excerpt = str(note.get("content", "")).strip().replace("\n", " ")
+            if len(excerpt) > 160:
+                excerpt = f"{excerpt[:157]}..."
+            events.append(
+                PatientTimelineEvent(
+                    id=f"note-{note['id']}",
+                    type="consultation_note",
+                    title="Consultation note generated",
+                    timestamp=note["created_at"],
+                    description=excerpt or "SOAP note saved.",
+                )
+            )
+
+        for invoice in invoices:
+            item_count = len(invoice.get("items", []))
+            events.append(
+                PatientTimelineEvent(
+                    id=f"invoice-created-{invoice['id']}",
+                    type="invoice_created",
+                    title="Invoice created",
+                    timestamp=invoice["created_at"],
+                    description=f"{item_count} item{'s' if item_count != 1 else ''} · total {float(invoice.get('total', 0)):.2f}",
+                )
+            )
+            if invoice.get("sent_at"):
+                events.append(
+                    PatientTimelineEvent(
+                        id=f"invoice-sent-{invoice['id']}",
+                        type="bill_sent",
+                        title="Bill sent",
+                        timestamp=invoice["sent_at"],
+                        description=f"Bill sent to patient and marked paid on {invoice.get('paid_at') or invoice['created_at']}.",
+                    )
+                )
+
+        return sorted(events, key=lambda event: event.timestamp, reverse=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/generate-note", response_model=GenerateNoteResponse)
 async def create_generated_note(
     payload: GenerateNoteRequest,
@@ -232,6 +367,40 @@ async def create_generated_note(
             ]
             patient_context = "\n".join(bit for bit in context_bits if bit)
 
+        measurement_bits: list[str] = []
+        if payload.blood_pressure_systolic is not None and payload.blood_pressure_diastolic is not None:
+            measurement_bits.append(
+                f"Blood Pressure: {payload.blood_pressure_systolic}/{payload.blood_pressure_diastolic} mmHg"
+            )
+        elif payload.blood_pressure_systolic is not None or payload.blood_pressure_diastolic is not None:
+            bp_parts = [
+                str(payload.blood_pressure_systolic) if payload.blood_pressure_systolic is not None else "?",
+                str(payload.blood_pressure_diastolic) if payload.blood_pressure_diastolic is not None else "?",
+            ]
+            measurement_bits.append(f"Blood Pressure: {'/'.join(bp_parts)} mmHg")
+        if payload.pulse is not None:
+            measurement_bits.append(f"Pulse: {payload.pulse} bpm")
+        if payload.spo2 is not None:
+            measurement_bits.append(f"SpO2: {payload.spo2}%")
+        if payload.blood_sugar is not None:
+            measurement_bits.append(f"Blood Sugar: {payload.blood_sugar}")
+        for score in payload.test_scores:
+            measurement_bits.append(f"{score.label}: {score.value}")
+        if payload.eye_exam:
+            eye_exam_lines = ["Eye Exam:"]
+            for entry in payload.eye_exam:
+                row_bits = [
+                    f"Sphere {entry.sphere}" if entry.sphere else "",
+                    f"Cylinder {entry.cylinder}" if entry.cylinder else "",
+                    f"Axis {entry.axis}" if entry.axis else "",
+                    f"Vision {entry.vision}" if entry.vision else "",
+                ]
+                eye_exam_lines.append(
+                    f"- {entry.eye.title()} Eye: " + ", ".join(bit for bit in row_bits if bit)
+                )
+            measurement_bits.append("\n".join(line for line in eye_exam_lines if line.strip()))
+        measurements_context = "\n".join(bit for bit in measurement_bits if bit)
+
         content = await generate_soap_note(
             symptoms=payload.symptoms,
             diagnosis=payload.diagnosis,
@@ -239,6 +408,7 @@ async def create_generated_note(
             notes=payload.notes,
             patient_context=patient_context,
             clinic_context=clinic_context,
+            measurements_context=measurements_context,
         )
         if payload.patient_id:
             await repo.create_note(
@@ -300,6 +470,22 @@ async def send_letter(
     )
 
 
+@app.post("/send-invoice", response_model=SendNoteResponse)
+async def send_invoice(
+    payload: SendInvoiceRequest,
+    current_user: UserOut = Depends(get_current_user),
+    repo: SupabaseRepository = Depends(get_repository),
+) -> SendNoteResponse:
+    try:
+        await repo.finalize_invoice(str(current_user.org_id), str(payload.invoice_id))
+        return SendNoteResponse(
+            success=True,
+            message=f"Mock invoice send queued for {payload.recipient}.",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/generate-note-pdf")
 async def generate_note_pdf(
     payload: GeneratePdfRequest,
@@ -343,6 +529,33 @@ async def generate_letter_pdf(
             BytesIO(pdf_bytes),
             media_type="application/pdf",
             headers={"Content-Disposition": 'inline; filename="clinic_letter.pdf"'},
+        )
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/invoices/{invoice_id}/pdf")
+async def generate_invoice_pdf(
+    invoice_id: str,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> StreamingResponse:
+    try:
+        invoice = await repo.get_invoice(str(current_user.org_id), invoice_id)
+        patient = await repo.get_patient(str(current_user.org_id), str(invoice["patient_id"]))
+        clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+        generated_on = datetime.now().strftime("%b %d, %Y")
+        pdf_bytes = build_invoice_pdf(
+            clinic=clinic_settings,
+            patient=patient,
+            invoice=invoice,
+            generated_on=generated_on,
+        )
+        filename = f"{patient['name'].strip().replace(' ', '_') or 'patient'}_invoice.pdf"
+        return StreamingResponse(
+            BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc

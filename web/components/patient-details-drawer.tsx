@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Clock3, Phone, UserRound, X } from "lucide-react";
+import { Clock3, FileText, Phone, Receipt, UserRound, X } from "lucide-react";
 
-import { Patient } from "@/lib/types";
+import { Patient, PatientTimelineEvent } from "@/lib/types";
 
 interface PatientDetailsDrawerProps {
   patient: Patient | null;
   onClose: () => void;
+  onLoadTimeline: (patientId: string) => Promise<PatientTimelineEvent[]>;
   onSave: (patientId: string, payload: {
     name: string;
     phone: string;
@@ -22,6 +23,7 @@ interface PatientDetailsDrawerProps {
 export function PatientDetailsDrawer({
   patient,
   onClose,
+  onLoadTimeline,
   onSave,
 }: PatientDetailsDrawerProps) {
   const [form, setForm] = useState({
@@ -35,6 +37,9 @@ export function PatientDetailsDrawer({
   });
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [timeline, setTimeline] = useState<PatientTimelineEvent[]>([]);
+  const [isTimelineLoading, setIsTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState("");
 
   useEffect(() => {
     if (!patient) {
@@ -53,6 +58,37 @@ export function PatientDetailsDrawer({
     setError("");
   }, [patient]);
 
+  useEffect(() => {
+    let active = true;
+    async function loadTimeline() {
+      if (!patient) {
+        return;
+      }
+      setIsTimelineLoading(true);
+      setTimelineError("");
+      try {
+        const events = await onLoadTimeline(patient.id);
+        if (active) {
+          setTimeline(events);
+        }
+      } catch (loadError) {
+        if (active) {
+          setTimeline([]);
+          setTimelineError(loadError instanceof Error ? loadError.message : "Failed to load timeline.");
+        }
+      } finally {
+        if (active) {
+          setIsTimelineLoading(false);
+        }
+      }
+    }
+
+    loadTimeline();
+    return () => {
+      active = false;
+    };
+  }, [onLoadTimeline, patient]);
+
   if (!patient) {
     return null;
   }
@@ -65,6 +101,12 @@ export function PatientDetailsDrawer({
     hour: "numeric",
     minute: "2-digit",
   });
+
+  function getTimelineIcon(type: PatientTimelineEvent["type"]) {
+    if (type === "consultation_note") return <FileText className="h-4 w-4 text-sky-600" />;
+    if (type === "invoice_created" || type === "bill_sent") return <Receipt className="h-4 w-4 text-emerald-600" />;
+    return <Clock3 className="h-4 w-4 text-sky-600" />;
+  }
 
   function getPhoneDigits(value: string) {
     return value.replace(/\D/g, "");
@@ -257,6 +299,48 @@ export function PatientDetailsDrawer({
               }}
               className="mt-2 w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 text-base leading-7 text-slate-800 outline-none transition focus:border-sky-400"
             />
+          </div>
+
+          <div className="rounded-[24px] border border-sky-100 bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-800">Patient Timeline</p>
+                <p className="mt-1 text-xs text-slate-500">Queue, notes, and billing events for this patient.</p>
+              </div>
+              {isTimelineLoading ? <span className="text-xs text-slate-500">Loading...</span> : null}
+            </div>
+
+            {timelineError ? <p className="mt-3 text-sm text-rose-600">{timelineError}</p> : null}
+
+            <div className="mt-4 space-y-3">
+              {timeline.length ? timeline.map((event) => (
+                <div key={event.id} className="rounded-2xl border border-sky-100 bg-sky-50/30 p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-full bg-white p-2">
+                      {getTimelineIcon(event.type)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-slate-900">{event.title}</p>
+                        <p className="text-xs text-slate-500">
+                          {new Date(event.timestamp).toLocaleString([], {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                      <p className="mt-1 text-sm leading-6 text-slate-600">{event.description}</p>
+                    </div>
+                  </div>
+                </div>
+              )) : !isTimelineLoading ? (
+                <div className="rounded-2xl border border-dashed border-sky-200 bg-sky-50/20 px-4 py-6 text-center text-sm text-slate-500">
+                  No patient history yet.
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
 
