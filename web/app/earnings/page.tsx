@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ReceiptIndianRupee, Wallet } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
-import { authStorage } from "@/lib/auth";
+import { SettingsDrawer } from "@/components/settings-drawer";
 import { api } from "@/lib/api";
-import { AuthUser, ClinicSettings, Invoice, Patient } from "@/lib/types";
+import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
+import { Invoice, Patient } from "@/lib/types";
 
 type GroupMode = "day" | "week" | "month";
 
@@ -30,61 +31,54 @@ function formatCurrency(value: number) {
 
 export default function EarningsPage() {
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const [clinicSettings, setClinicSettings] = useState<ClinicSettings | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [mode, setMode] = useState<GroupMode>("day");
-  const [error, setError] = useState("");
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [isRedirectingToLogin, setIsRedirectingToLogin] = useState(false);
-
+  const loadPageData = useCallback(async () => {
+    const [dataInvoices, historyPatients] = await Promise.all([
+      api.listInvoices(),
+      api.listPatients(),
+    ]);
+    return {
+      invoices: dataInvoices,
+      patients: historyPatients,
+    };
+  }, []);
+  const onPageData = useCallback((data: { invoices: Invoice[]; patients: Patient[] }) => {
+    setInvoices(data.invoices);
+    setPatients(data.patients);
+  }, []);
+  const {
+    currentUser,
+    users,
+    catalogItems,
+    followUps,
+    clinicSettings,
+    error,
+    isAuthReady,
+    isRedirectingToLogin,
+    handleLogout,
+    handleSaveClinicSettings,
+    handleAddStaffUser,
+    handleCreateCatalogItem,
+    handleAdjustCatalogStock,
+    handleDeleteCatalogItem,
+    handleGenerateLetter,
+    handleSendLetter,
+    handleSendInvoice,
+  } = useClinicShellPage({
+    canLoadPageData: (user) => user.role === "admin",
+    loadPageData,
+    onPageData,
+  });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
 
   useEffect(() => {
-    let active = true;
-
-    async function loadPage() {
-      const token = authStorage.getToken();
-      if (!token) {
-        if (active) {
-          setIsRedirectingToLogin(true);
-          setIsAuthReady(true);
-        }
-        router.replace("/login");
-        return;
-      }
-
-      try {
-        const [user, settings, dataInvoices, historyPatients] = await Promise.all([
-          api.getCurrentUser(),
-          api.getClinicSettings(),
-          api.listInvoices(),
-          api.listPatients(),
-        ]);
-        if (active) {
-          setCurrentUser(user);
-          setClinicSettings(settings);
-          setInvoices(dataInvoices);
-          setPatients(historyPatients);
-          setIsAuthReady(true);
-        }
-      } catch (loadError) {
-        if (active) {
-          authStorage.clear();
-          setError(loadError instanceof Error ? loadError.message : "Session expired.");
-          setIsRedirectingToLogin(true);
-          setIsAuthReady(true);
-          router.replace("/login");
-        }
-      }
+    if (isAuthReady && currentUser?.role === "staff") {
+      router.replace("/");
     }
-
-    loadPage();
-    return () => {
-      active = false;
-    };
-  }, [router]);
+  }, [currentUser, isAuthReady, router]);
 
   const patientNames = useMemo(
     () => Object.fromEntries(patients.map((patient) => [patient.id, patient.name])),
@@ -154,10 +148,20 @@ export default function EarningsPage() {
     return { today, week, month, total };
   }, [paidInvoices]);
 
-  function handleLogout() {
-    authStorage.clear();
-    setIsRedirectingToLogin(true);
-    router.replace("/login");
+  async function handleCreateInvoice(payload: {
+    patient_id: string;
+    items: Array<{
+      catalog_item_id?: string | null;
+      item_type: "service" | "medicine";
+      label: string;
+      quantity: number;
+      unit_price: number;
+    }>;
+    payment_status: "paid";
+  }): Promise<Invoice> {
+    const invoice = await api.createInvoice(payload);
+    setInvoices((current) => [invoice, ...current]);
+    return invoice;
   }
 
   if (isRedirectingToLogin) {
@@ -180,6 +184,16 @@ export default function EarningsPage() {
     );
   }
 
+  if (currentUser?.role === "staff") {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">
+          Redirecting to queue...
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1600px]">
@@ -187,6 +201,7 @@ export default function EarningsPage() {
           clinicName={clinicName}
           currentUser={currentUser}
           active="earnings"
+          onOpenSettings={() => setIsSettingsOpen(true)}
           onLogout={handleLogout}
         />
 
@@ -315,6 +330,46 @@ export default function EarningsPage() {
           </div>
         </section>
       </div>
+
+      <SettingsDrawer
+        open={isSettingsOpen}
+        settings={clinicSettings}
+        currentUser={currentUser}
+        users={users}
+        patients={patients.filter((patient) => patient.status === "done" && !patient.billed)}
+        catalogItems={catalogItems}
+        followUps={followUps}
+        onClose={() => setIsSettingsOpen(false)}
+        onSaveClinic={handleSaveClinicSettings}
+        onAddUser={handleAddStaffUser}
+        onCreateCatalogItem={handleCreateCatalogItem}
+        onAdjustCatalogStock={handleAdjustCatalogStock}
+        onDeleteCatalogItem={handleDeleteCatalogItem}
+        onGenerateLetter={handleGenerateLetter}
+        onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
+        onSendLetter={handleSendLetter}
+        onCreateInvoice={handleCreateInvoice}
+        onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
+        onSendInvoice={async (payload) => {
+          const message = await handleSendInvoice(payload);
+          setInvoices((current) =>
+            current.map((invoice) =>
+              invoice.id === payload.invoice_id
+                ? { ...invoice, sent_at: new Date().toISOString() }
+                : invoice,
+            ),
+          );
+          return message;
+        }}
+        onBillingComplete={(patientId) => {
+          setPatients((current) =>
+            current.map((patient) =>
+              patient.id === patientId ? { ...patient, billed: true } : patient,
+            ),
+          );
+          setIsSettingsOpen(false);
+        }}
+      />
     </main>
   );
 }

@@ -4,6 +4,7 @@ import {
   AuthUser,
   CatalogItem,
   ClinicSettings,
+  FollowUp,
   GenerateLetterPayload,
   Invoice,
   GenerateNotePayload,
@@ -175,6 +176,20 @@ export const api = {
   sendInvoice: (payload: { invoice_id: string; recipient: string }) =>
     request<{ success: boolean; message: string }>("/send-invoice", {
       method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  listFollowUps: () => request<FollowUp[]>("/follow-ups"),
+  createFollowUp: (
+    patientId: string,
+    payload: { scheduled_for: string; notes: string },
+  ) =>
+    request<FollowUp>(`/patients/${patientId}/follow-ups`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateFollowUp: (followUpId: string, payload: { status: "scheduled" | "completed" | "cancelled" }) =>
+    request<FollowUp>(`/follow-ups/${followUpId}`, {
+      method: "PATCH",
       body: JSON.stringify(payload),
     }),
   listPatients: () => request<Patient[]>("/patients"),

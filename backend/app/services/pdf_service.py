@@ -1,3 +1,4 @@
+from datetime import datetime
 from io import BytesIO
 from typing import Any
 
@@ -6,6 +7,25 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
+
+
+def _format_display_datetime(value: Any) -> str:
+    if not value:
+        return ""
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        raw = str(value).strip()
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return raw
+    local_value = parsed.astimezone() if parsed.tzinfo else parsed
+    month = local_value.strftime("%b")
+    day = local_value.day
+    hour = local_value.strftime("%I").lstrip("0") or "0"
+    minute_period = local_value.strftime("%M %p")
+    return f"{month} {day}, {hour}:{minute_period}"
 
 
 def _wrap_text(text: str, font_name: str, font_size: int, max_width: float) -> list[str]:
@@ -354,7 +374,7 @@ def build_invoice_pdf(
         ("Phone", patient.get("phone", "Not recorded")),
         ("Visit Reason", patient.get("reason", "Not recorded")),
         ("Payment Status", "Paid"),
-        ("Paid On", str(invoice.get("paid_at") or generated_on)),
+        ("Paid On", _format_display_datetime(invoice.get("paid_at") or generated_on)),
     ]
     for index in range(0, len(details), 2):
         left = details[index]

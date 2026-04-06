@@ -6,7 +6,17 @@ from typing import Any
 from supabase import Client, create_client
 
 from app.config import get_settings
-from app.schemas import CatalogItemCreate, CatalogStockUpdate, ClinicSettingsUpdate, InvoiceCreate, NoteCreate, PatientCreate, UserRole
+from app.schemas import (
+    CatalogItemCreate,
+    CatalogStockUpdate,
+    ClinicSettingsUpdate,
+    FollowUpCreate,
+    FollowUpUpdate,
+    InvoiceCreate,
+    NoteCreate,
+    PatientCreate,
+    UserRole,
+)
 
 
 def _display_name(row: dict[str, Any]) -> str:
@@ -105,6 +115,93 @@ class SupabaseRepository:
             .execute()
             .data
         )
+
+    async def create_follow_up(
+        self,
+        org_id: str,
+        patient_id: str,
+        created_by: str,
+        payload: FollowUpCreate,
+    ) -> dict[str, Any]:
+        def _create() -> dict[str, Any]:
+            patient = (
+                self.client.table("patients")
+                .select("id")
+                .eq("org_id", org_id)
+                .eq("id", patient_id)
+                .single()
+                .execute()
+                .data
+            )
+            if not patient:
+                raise ValueError("Patient not found for this organization.")
+            return (
+                self.client.table("follow_ups")
+                .insert(
+                    {
+                        "org_id": org_id,
+                        "patient_id": patient_id,
+                        "created_by": created_by,
+                        "scheduled_for": payload.scheduled_for.isoformat(),
+                        "notes": payload.notes.strip(),
+                        "status": "scheduled",
+                    }
+                )
+                .execute()
+                .data[0]
+            )
+
+        return await asyncio.to_thread(_create)
+
+    async def list_follow_ups(self, org_id: str) -> list[dict[str, Any]]:
+        return await asyncio.to_thread(
+            lambda: self.client.table("follow_ups")
+            .select("*")
+            .eq("org_id", org_id)
+            .order("scheduled_for", desc=False)
+            .execute()
+            .data
+        )
+
+    async def list_follow_ups_for_patient(self, org_id: str, patient_id: str) -> list[dict[str, Any]]:
+        return await asyncio.to_thread(
+            lambda: self.client.table("follow_ups")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("patient_id", patient_id)
+            .order("scheduled_for", desc=True)
+            .execute()
+            .data
+        )
+
+    async def update_follow_up(self, org_id: str, follow_up_id: str, payload: FollowUpUpdate) -> dict[str, Any]:
+        def _update() -> dict[str, Any]:
+            existing = (
+                self.client.table("follow_ups")
+                .select("*")
+                .eq("org_id", org_id)
+                .eq("id", follow_up_id)
+                .single()
+                .execute()
+                .data
+            )
+            if not existing:
+                raise ValueError("Follow-up not found for this organization.")
+            update_payload: dict[str, Any] = {"status": payload.status}
+            if payload.status == "completed":
+                update_payload["completed_at"] = datetime.now(UTC).isoformat()
+            elif payload.status == "cancelled":
+                update_payload["completed_at"] = None
+            return (
+                self.client.table("follow_ups")
+                .update(update_payload)
+                .eq("org_id", org_id)
+                .eq("id", follow_up_id)
+                .execute()
+                .data[0]
+            )
+
+        return await asyncio.to_thread(_update)
 
     async def get_clinic_settings(self, org_id: str) -> dict[str, Any]:
         def _get() -> dict[str, Any]:

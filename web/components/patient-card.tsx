@@ -20,9 +20,10 @@ interface PatientCardProps {
   patient: Patient;
   onOpen: (patient: Patient) => void;
   onAdvance: (patient: Patient, next: PatientStatus) => void;
+  canAdvance?: boolean;
 }
 
-export function PatientCard({ patient, onOpen, onAdvance }: PatientCardProps) {
+export function PatientCard({ patient, onOpen, onAdvance, canAdvance = true }: PatientCardProps) {
   const target = nextStatus[patient.status];
   const createdAt = new Date(patient.created_at).toLocaleTimeString([], {
     hour: "numeric",
@@ -60,7 +61,7 @@ export function PatientCard({ patient, onOpen, onAdvance }: PatientCardProps) {
       </div>
 
       <div className="mt-2.5 flex justify-end">
-        {target ? (
+        {target && canAdvance ? (
           <button
             type="button"
             className="inline-flex items-center gap-1.5 rounded-full bg-sky-500 px-2.5 py-1 text-[12px] font-medium text-white transition hover:bg-sky-600"
@@ -75,7 +76,7 @@ export function PatientCard({ patient, onOpen, onAdvance }: PatientCardProps) {
         ) : (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-100 px-2.5 py-1 text-[12px] text-sky-700">
             <Check className="h-3.5 w-3.5" />
-            {buttonLabel[patient.status]}
+            {target ? "View" : buttonLabel[patient.status]}
           </span>
         )}
       </div>

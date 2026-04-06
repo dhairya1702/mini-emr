@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Clock3, FileText, Phone, Receipt, UserRound, X } from "lucide-react";
+import { CalendarClock, Clock3, FileText, Phone, Receipt, UserRound, X } from "lucide-react";
 
 import { Patient, PatientTimelineEvent } from "@/lib/types";
 
@@ -105,6 +105,7 @@ export function PatientDetailsDrawer({
   function getTimelineIcon(type: PatientTimelineEvent["type"]) {
     if (type === "consultation_note") return <FileText className="h-4 w-4 text-sky-600" />;
     if (type === "invoice_created" || type === "bill_sent") return <Receipt className="h-4 w-4 text-emerald-600" />;
+    if (type === "follow_up_scheduled") return <CalendarClock className="h-4 w-4 text-amber-600" />;
     return <Clock3 className="h-4 w-4 text-sky-600" />;
   }
 

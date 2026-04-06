@@ -18,7 +18,8 @@ export type PatientTimelineEventType =
   | "patient_created"
   | "consultation_note"
   | "invoice_created"
-  | "bill_sent";
+  | "bill_sent"
+  | "follow_up_scheduled";
 
 export interface PatientTimelineEvent {
   id: string;
@@ -61,6 +62,20 @@ export interface GenerateLetterPayload {
   to: string;
   subject: string;
   content: string;
+}
+
+export type FollowUpStatus = "scheduled" | "completed" | "cancelled";
+
+export interface FollowUp {
+  id: string;
+  org_id: string;
+  patient_id: string;
+  created_by: string | null;
+  scheduled_for: string;
+  notes: string;
+  status: FollowUpStatus;
+  completed_at: string | null;
+  created_at: string;
 }
 
 export type CatalogItemType = "service" | "medicine";

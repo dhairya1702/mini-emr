@@ -91,6 +91,7 @@ class FakeRepo:
         self.catalog_items: dict[str, dict] = {}
         self.invoices: dict[str, dict] = {}
         self.invoice_items: dict[str, dict] = {}
+        self.follow_ups: dict[str, dict] = {}
 
     async def create_organization(self, clinic_name: str) -> dict:
         org_id = str(uuid4())
@@ -327,6 +328,45 @@ class FakeRepo:
         invoice["sent_at"] = _now()
         return invoice["patient_id"]
 
+    async def create_follow_up(self, org_id: str, patient_id: str, created_by: str, payload) -> dict:
+        patient = self.patients.get(patient_id)
+        if not patient or patient["org_id"] != org_id:
+            raise ValueError("Patient not found for this organization.")
+        follow_up_id = str(uuid4())
+        row = {
+            "id": follow_up_id,
+            "org_id": org_id,
+            "patient_id": patient_id,
+            "created_by": created_by,
+            "scheduled_for": payload.scheduled_for,
+            "notes": payload.notes,
+            "status": "scheduled",
+            "completed_at": None,
+            "created_at": _now(),
+        }
+        self.follow_ups[follow_up_id] = row
+        return row
+
+    async def list_follow_ups(self, org_id: str) -> list[dict]:
+        return [
+            follow_up for follow_up in self.follow_ups.values()
+            if follow_up["org_id"] == org_id
+        ]
+
+    async def list_follow_ups_for_patient(self, org_id: str, patient_id: str) -> list[dict]:
+        return [
+            follow_up for follow_up in self.follow_ups.values()
+            if follow_up["org_id"] == org_id and follow_up["patient_id"] == patient_id
+        ]
+
+    async def update_follow_up(self, org_id: str, follow_up_id: str, payload) -> dict:
+        follow_up = self.follow_ups[follow_up_id]
+        if follow_up["org_id"] != org_id:
+            raise ValueError("Follow-up not found for this organization.")
+        follow_up["status"] = payload.status
+        follow_up["completed_at"] = _now() if payload.status == "completed" else None
+        return follow_up
+
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch):
@@ -546,6 +586,51 @@ def test_cross_org_invoice_and_negative_stock_adjustment_are_rejected(client):
     assert "Stock cannot go below zero" in negative_adjustment.text
 
 
+def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="owner-perms@clinic.com", clinic_name="Perms Clinic")
+
+    create_staff = test_client.post(
+        "/users/staff",
+        json={"identifier": "staff-perms@clinic.com", "password": "password123"},
+        headers=auth_headers(session["token"]),
+    )
+    assert create_staff.status_code == 201
+
+    staff_login = test_client.post(
+        "/auth/login",
+        json={"identifier": "staff-perms@clinic.com", "password": "password123"},
+    )
+    assert staff_login.status_code == 200
+    staff_headers = auth_headers(staff_login.json()["token"])
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Permissions Patient",
+            "phone": "5550105050",
+            "reason": "Fever",
+            "age": 32,
+            "weight": 67,
+            "height": 168,
+            "temperature": 99.1,
+        },
+        headers=auth_headers(session["token"]),
+    ).json()
+
+    invoices = test_client.get("/invoices", headers=staff_headers)
+    assert invoices.status_code == 403
+    assert "Admin access required" in invoices.text
+
+    start_consultation = test_client.patch(
+        f"/patients/{patient['id']}",
+        json={"status": "consultation"},
+        headers=staff_headers,
+    )
+    assert start_consultation.status_code == 403
+    assert "Admin access required to start consultation" in start_consultation.text
+
+
 def test_patient_timeline_includes_notes_and_billing_events(client):
     test_client, repo = client
     session = register(test_client, identifier="timeline@clinic.com", clinic_name="Timeline Clinic")
@@ -604,3 +689,50 @@ def test_patient_timeline_includes_notes_and_billing_events(client):
     assert "consultation_note" in event_types
     assert "invoice_created" in event_types
     assert "bill_sent" in event_types
+
+
+def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="followup@clinic.com", clinic_name="Follow Up Clinic")
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Follow Up Patient",
+            "phone": "5550106060",
+            "reason": "Review",
+            "age": 29,
+            "weight": 61,
+            "height": 166,
+            "temperature": 98.5,
+        },
+        headers=auth_headers(session["token"]),
+    ).json()
+
+    create_follow_up = test_client.post(
+        f"/patients/{patient['id']}/follow-ups",
+        json={
+            "scheduled_for": "2026-04-10T10:30:00+00:00",
+            "notes": "Review symptoms and blood pressure",
+        },
+        headers=auth_headers(session["token"]),
+    )
+    assert create_follow_up.status_code == 201
+    follow_up = create_follow_up.json()
+    assert follow_up["status"] == "scheduled"
+    assert follow_up["notes"] == "Review symptoms and blood pressure"
+
+    list_follow_ups = test_client.get(
+        "/follow-ups",
+        headers=auth_headers(session["token"]),
+    )
+    assert list_follow_ups.status_code == 200
+    assert len(list_follow_ups.json()) == 1
+
+    timeline = test_client.get(
+        f"/patients/{patient['id']}/timeline",
+        headers=auth_headers(session["token"]),
+    )
+    assert timeline.status_code == 200
+    event_types = [event["type"] for event in timeline.json()]
+    assert "follow_up_scheduled" in event_types

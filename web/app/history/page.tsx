@@ -1,73 +1,67 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 import { Clock3, Search } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
-import { authStorage } from "@/lib/auth";
+import { SettingsDrawer } from "@/components/settings-drawer";
 import { api } from "@/lib/api";
-import { AuthUser, ClinicSettings, Patient } from "@/lib/types";
+import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
+import { Invoice, Patient } from "@/lib/types";
 
 type HistoryFilter = "all" | "waiting" | "consultation" | "done" | "billed";
 
+function formatHistoryStatus(patient: Patient) {
+  if (patient.billed) {
+    return "Billed";
+  }
+  if (patient.status === "consultation") {
+    return "Consultation";
+  }
+  if (patient.status === "done") {
+    return "Billing";
+  }
+  return "Waiting";
+}
+
 export default function HistoryPage() {
-  const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const [clinicSettings, setClinicSettings] = useState<ClinicSettings | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [filter, setFilter] = useState<HistoryFilter>("all");
   const [query, setQuery] = useState("");
-  const [error, setError] = useState("");
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [isRedirectingToLogin, setIsRedirectingToLogin] = useState(false);
-
+  const loadPageData = useCallback(async () => {
+    const historyPatients = await api.listPatients();
+    return historyPatients.sort((left, right) => right.created_at.localeCompare(left.created_at));
+  }, []);
+  const onPageData = useCallback((data: Patient[]) => {
+    setPatients(data);
+  }, []);
+  const {
+    currentUser,
+    users,
+    catalogItems,
+    followUps,
+    clinicSettings,
+    error,
+    isAuthReady,
+    isRedirectingToLogin,
+    handleLogout,
+    handleSaveClinicSettings,
+    handleAddStaffUser,
+    handleCreateCatalogItem,
+    handleAdjustCatalogStock,
+    handleDeleteCatalogItem,
+    handleCreateInvoice,
+    handleGenerateLetter,
+    handleSendLetter,
+    handleSendInvoice,
+  } = useClinicShellPage({
+    loadPageData,
+    onPageData,
+  });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadPage() {
-      const token = authStorage.getToken();
-      if (!token) {
-        if (active) {
-          setIsRedirectingToLogin(true);
-          setIsAuthReady(true);
-        }
-        router.replace("/login");
-        return;
-      }
-
-      try {
-        const [user, settings, historyPatients] = await Promise.all([
-          api.getCurrentUser(),
-          api.getClinicSettings(),
-          api.listPatients(),
-        ]);
-        if (active) {
-          setCurrentUser(user);
-          setClinicSettings(settings);
-          setPatients(historyPatients.sort((left, right) => right.created_at.localeCompare(left.created_at)));
-          setIsAuthReady(true);
-        }
-      } catch (loadError) {
-        if (active) {
-          authStorage.clear();
-          setError(loadError instanceof Error ? loadError.message : "Session expired.");
-          setIsRedirectingToLogin(true);
-          setIsAuthReady(true);
-          router.replace("/login");
-        }
-      }
-    }
-
-    loadPage();
-    return () => {
-      active = false;
-    };
-  }, [router]);
 
   const visiblePatients = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -108,12 +102,6 @@ export default function HistoryPage() {
     return api.getPatientTimeline(patientId);
   }
 
-  function handleLogout() {
-    authStorage.clear();
-    setIsRedirectingToLogin(true);
-    router.replace("/login");
-  }
-
   if (isRedirectingToLogin) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
@@ -141,6 +129,7 @@ export default function HistoryPage() {
           clinicName={clinicName}
           currentUser={currentUser}
           active="history"
+          onOpenSettings={() => setIsSettingsOpen(true)}
           onLogout={handleLogout}
         />
 
@@ -184,38 +173,75 @@ export default function HistoryPage() {
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {visiblePatients.length ? visiblePatients.map((patient) => (
-              <button
-                key={patient.id}
-                type="button"
-                onClick={() => setSelectedPatient(patient)}
-                className="rounded-[28px] border border-sky-200 bg-sky-50/30 p-5 text-left transition hover:border-sky-300 hover:bg-white"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-lg font-semibold text-slate-900">{patient.name}</p>
-                    <p className="mt-1 text-sm text-slate-500">{patient.phone}</p>
-                  </div>
-                  <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-600">
-                    {patient.billed ? "billed" : patient.status}
-                  </span>
+            <div className="col-span-full overflow-hidden rounded-[28px] border border-sky-200 bg-white">
+              {visiblePatients.length ? (
+                <div className="max-h-[65vh] overflow-auto">
+                  <table className="min-w-full border-separate border-spacing-0">
+                    <thead className="sticky top-0 z-10 bg-sky-50/95 backdrop-blur">
+                      <tr className="text-left">
+                        <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Patient
+                        </th>
+                        <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Phone
+                        </th>
+                        <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Reason
+                        </th>
+                        <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Status
+                        </th>
+                        <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Visit Time
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visiblePatients.map((patient) => (
+                        <tr
+                          key={patient.id}
+                          onClick={() => setSelectedPatient(patient)}
+                          className="cursor-pointer transition hover:bg-sky-50/70"
+                        >
+                          <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-800">
+                            <div className="font-semibold text-slate-900">{patient.name}</div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              ID {patient.id.slice(0, 8).toUpperCase()}
+                            </div>
+                          </td>
+                          <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-600">
+                            {patient.phone}
+                          </td>
+                          <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-600">
+                            <div className="max-w-sm truncate">{patient.reason}</div>
+                          </td>
+                          <td className="border-b border-sky-100 px-5 py-4 text-sm">
+                            <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-slate-600">
+                              {formatHistoryStatus(patient)}
+                            </span>
+                          </td>
+                          <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-500">
+                            <div className="inline-flex items-center gap-2">
+                              <Clock3 className="h-3.5 w-3.5" />
+                              {new Date(patient.created_at).toLocaleString([], {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: 'numeric',
+                                minute: '2-digit',
+                              })}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <p className="mt-4 text-sm leading-7 text-slate-600">{patient.reason}</p>
-                <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
-                  <Clock3 className="h-3.5 w-3.5" />
-                  {new Date(patient.created_at).toLocaleString([], {
-                    month: "short",
-                    day: "numeric",
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
+              ) : (
+                <div className="px-6 py-16 text-center text-sm text-slate-500">
+                  No patients matched this history view.
                 </div>
-              </button>
-            )) : (
-              <div className="col-span-full rounded-[28px] border border-dashed border-sky-300 bg-sky-50/30 px-6 py-16 text-center text-sm text-slate-500">
-                No patients matched this history view.
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </section>
       </div>
@@ -225,6 +251,36 @@ export default function HistoryPage() {
         onLoadTimeline={handleLoadPatientTimeline}
         onSave={handleUpdatePatient}
         onClose={() => setSelectedPatient(null)}
+      />
+
+      <SettingsDrawer
+        open={isSettingsOpen}
+        settings={clinicSettings}
+        currentUser={currentUser}
+        users={users}
+        patients={patients.filter((patient) => patient.status === "done" && !patient.billed)}
+        catalogItems={catalogItems}
+        followUps={followUps}
+        onClose={() => setIsSettingsOpen(false)}
+        onSaveClinic={handleSaveClinicSettings}
+        onAddUser={handleAddStaffUser}
+        onCreateCatalogItem={handleCreateCatalogItem}
+        onAdjustCatalogStock={handleAdjustCatalogStock}
+        onDeleteCatalogItem={handleDeleteCatalogItem}
+        onGenerateLetter={handleGenerateLetter}
+        onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
+        onSendLetter={handleSendLetter}
+        onCreateInvoice={handleCreateInvoice}
+        onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
+        onSendInvoice={handleSendInvoice}
+        onBillingComplete={(patientId) => {
+          setPatients((current) =>
+            current.map((patient) =>
+              patient.id === patientId ? { ...patient, billed: true } : patient,
+            ),
+          );
+          setIsSettingsOpen(false);
+        }}
       />
     </main>
   );

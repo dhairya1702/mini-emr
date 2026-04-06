@@ -9,6 +9,7 @@ PatientStatus = Literal["waiting", "consultation", "done"]
 UserRole = Literal["admin", "staff"]
 CatalogItemType = Literal["service", "medicine"]
 PaymentStatus = Literal["unpaid", "paid", "partial"]
+FollowUpStatus = Literal["scheduled", "completed", "cancelled"]
 
 
 class PatientCreate(BaseModel):
@@ -59,7 +60,13 @@ class NoteOut(BaseModel):
     created_at: datetime
 
 
-TimelineEventType = Literal["patient_created", "consultation_note", "invoice_created", "bill_sent"]
+TimelineEventType = Literal[
+    "patient_created",
+    "consultation_note",
+    "invoice_created",
+    "bill_sent",
+    "follow_up_scheduled",
+]
 
 
 class PatientTimelineEvent(BaseModel):
@@ -68,6 +75,27 @@ class PatientTimelineEvent(BaseModel):
     title: str
     timestamp: datetime
     description: str
+
+
+class FollowUpCreate(BaseModel):
+    scheduled_for: datetime
+    notes: str = Field(default="", max_length=500)
+
+
+class FollowUpUpdate(BaseModel):
+    status: FollowUpStatus
+
+
+class FollowUpOut(BaseModel):
+    id: UUID
+    org_id: UUID
+    patient_id: UUID
+    created_by: UUID | None = None
+    scheduled_for: datetime
+    notes: str
+    status: FollowUpStatus
+    completed_at: datetime | None = None
+    created_at: datetime
 
 
 class TestScoreEntry(BaseModel):

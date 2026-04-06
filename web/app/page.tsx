@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 
 import { AddPatientModal } from "@/components/add-patient-modal";
 import { AppHeader } from "@/components/app-header";
@@ -9,74 +8,48 @@ import { ConsultationDrawer } from "@/components/consultation-drawer";
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
 import { PatientColumn } from "@/components/patient-column";
 import { SettingsDrawer } from "@/components/settings-drawer";
-import { authStorage } from "@/lib/auth";
 import { api } from "@/lib/api";
-import { AuthUser, CatalogItem, ClinicSettings, Invoice, Patient, PatientStatus, PatientTimelineEvent } from "@/lib/types";
+import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
+import { Invoice, Patient, PatientStatus, PatientTimelineEvent } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
 
 export default function HomePage() {
-  const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const [users, setUsers] = useState<AuthUser[]>([]);
-  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
-  const [isAuthReady, setIsAuthReady] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [drawerMode, setDrawerMode] = useState<"details" | "consultation" | null>(null);
-  const [clinicSettings, setClinicSettings] = useState<ClinicSettings | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [error, setError] = useState("");
-  const [isRedirectingToLogin, setIsRedirectingToLogin] = useState(false);
+  const loadPageData = useCallback(() => api.listPatients(), []);
+  const onPageData = useCallback((data: Patient[]) => {
+    setPatients(data);
+  }, []);
+  const {
+    currentUser,
+    users,
+    catalogItems,
+    followUps,
+    setFollowUps,
+    clinicSettings,
+    error,
+    setError,
+    isAuthReady,
+    isRedirectingToLogin,
+    handleLogout,
+    handleSaveClinicSettings,
+    handleAddStaffUser,
+    handleCreateCatalogItem,
+    handleAdjustCatalogStock,
+    handleDeleteCatalogItem,
+    handleCreateInvoice,
+    handleGenerateLetter,
+    handleSendLetter,
+    handleSendInvoice,
+  } = useClinicShellPage({
+    loadPageData,
+    onPageData,
+  });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadApp() {
-      const token = authStorage.getToken();
-      if (!token) {
-        if (active) {
-          setIsRedirectingToLogin(true);
-          setIsAuthReady(true);
-        }
-        router.replace("/login");
-        return;
-      }
-
-      try {
-        const [user, userList, catalog, data, settings] = await Promise.all([
-          api.getCurrentUser(),
-          api.listUsers(),
-          api.listCatalogItems(),
-          api.listPatients(),
-          api.getClinicSettings(),
-        ]);
-        if (active) {
-          setCurrentUser(user);
-          setUsers(userList);
-          setCatalogItems(catalog);
-          setPatients(data);
-          setClinicSettings(settings);
-          setIsAuthReady(true);
-        }
-      } catch (loadError) {
-        if (active) {
-          authStorage.clear();
-          setError(loadError instanceof Error ? loadError.message : "Session expired.");
-          setIsRedirectingToLogin(true);
-          setIsAuthReady(true);
-          router.replace("/login");
-        }
-      }
-    }
-
-    loadApp();
-    return () => {
-      active = false;
-    };
-  }, [router]);
 
   const groupedPatients = useMemo(() => {
     return statusOrder.reduce<Record<PatientStatus, Patient[]>>(
@@ -126,6 +99,10 @@ export default function HomePage() {
   }
 
   async function handleAdvancePatient(patient: Patient, nextStatus: PatientStatus) {
+    if (currentUser?.role !== "admin" && nextStatus === "consultation") {
+      setError("Only admins can start or continue consultation.");
+      return;
+    }
     const previousStatus = patient.status;
     setPatients((current) =>
       current.map((entry) =>
@@ -198,70 +175,15 @@ export default function HomePage() {
 
   function handleOpenPatient(patient: Patient) {
     setSelectedPatient(patient);
-    setDrawerMode(patient.status === "consultation" ? "consultation" : "details");
-  }
-
-  async function handleSaveClinicSettings(
-    payload: Omit<ClinicSettings, "id" | "org_id" | "updated_at">,
-  ) {
-    const saved = await api.updateClinicSettings(payload);
-    setClinicSettings(saved);
-  }
-
-  async function handleAddStaffUser(payload: { identifier: string; password: string }) {
-    const created = await api.createStaffUser(payload);
-    setUsers((current) => [...current, created]);
-  }
-
-  async function handleCreateCatalogItem(payload: {
-    name: string;
-    item_type: "service" | "medicine";
-    default_price: number;
-    track_inventory: boolean;
-    stock_quantity: number;
-    low_stock_threshold: number;
-    unit: string;
-  }) {
-    const created = await api.createCatalogItem(payload);
-    setCatalogItems((current) =>
-      [...current, created].sort((left, right) => left.name.localeCompare(right.name)),
+    setDrawerMode(
+      patient.status === "consultation" && currentUser?.role === "admin"
+        ? "consultation"
+        : "details",
     );
-  }
-
-  async function handleAdjustCatalogStock(itemId: string, delta: number) {
-    const updated = await api.updateCatalogStock(itemId, { delta });
-    setCatalogItems((current) =>
-      current.map((item) => (item.id === itemId ? updated : item)),
-    );
-  }
-
-  async function handleDeleteCatalogItem(itemId: string) {
-    await api.deleteCatalogItem(itemId);
-    setCatalogItems((current) => current.filter((item) => item.id !== itemId));
-  }
-
-  async function handleCreateInvoice(payload: {
-    patient_id: string;
-    items: Array<{
-      catalog_item_id?: string | null;
-      item_type: "service" | "medicine";
-      label: string;
-      quantity: number;
-      unit_price: number;
-    }>;
-    payment_status: "paid";
-  }): Promise<Invoice> {
-    return api.createInvoice(payload);
   }
 
   async function handleLoadPatientTimeline(patientId: string): Promise<PatientTimelineEvent[]> {
     return api.getPatientTimeline(patientId);
-  }
-
-  function handleLogout() {
-    authStorage.clear();
-    setIsRedirectingToLogin(true);
-    router.replace("/login");
   }
 
   if (isRedirectingToLogin) {
@@ -309,6 +231,7 @@ export default function HomePage() {
             patients={groupedPatients.waiting}
             onOpen={handleOpenPatient}
             onAdvance={handleAdvancePatient}
+            canAdvance={() => currentUser?.role === "admin"}
           />
           <PatientColumn
             title="In Consultation"
@@ -316,6 +239,7 @@ export default function HomePage() {
             patients={groupedPatients.consultation}
             onOpen={handleOpenPatient}
             onAdvance={handleAdvancePatient}
+            canAdvance={() => currentUser?.role === "admin"}
           />
           <PatientColumn
             title="Billing"
@@ -340,27 +264,19 @@ export default function HomePage() {
         users={users}
         patients={groupedPatients.done}
         catalogItems={catalogItems}
+        followUps={followUps}
         onClose={() => setIsSettingsOpen(false)}
         onSaveClinic={handleSaveClinicSettings}
         onAddUser={handleAddStaffUser}
         onCreateCatalogItem={handleCreateCatalogItem}
         onAdjustCatalogStock={handleAdjustCatalogStock}
         onDeleteCatalogItem={handleDeleteCatalogItem}
-        onGenerateLetter={async (payload) => {
-          const response = await api.generateLetter(payload);
-          return response.content;
-        }}
+        onGenerateLetter={handleGenerateLetter}
         onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
-        onSendLetter={async (payload) => {
-          const response = await api.sendLetter(payload);
-          return response.message;
-        }}
+        onSendLetter={handleSendLetter}
         onCreateInvoice={handleCreateInvoice}
         onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
-        onSendInvoice={async (payload) => {
-          const response = await api.sendInvoice(payload);
-          return response.message;
-        }}
+        onSendInvoice={handleSendInvoice}
         onBillingComplete={(patientId) => {
           setPatients((current) =>
             current.map((patient) =>
@@ -387,7 +303,15 @@ export default function HomePage() {
           setSelectedPatient(null);
           setDrawerMode(null);
         }}
-        onDone={async (patient) => {
+        onDone={async (patient, followUp) => {
+          if (followUp) {
+            const createdFollowUp = await api.createFollowUp(patient.id, followUp);
+            setFollowUps((current) =>
+              [...current, createdFollowUp].sort((left, right) =>
+                left.scheduled_for.localeCompare(right.scheduled_for),
+              ),
+            );
+          }
           await handleAdvancePatient(patient, "done");
         }}
         onGenerate={async (payload) => {

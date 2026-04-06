@@ -8,7 +8,10 @@ import { EyeExamEntry, Patient, TestScoreEntry } from "@/lib/types";
 interface ConsultationDrawerProps {
   patient: Patient | null;
   onClose: () => void;
-  onDone: (patient: Patient) => Promise<void>;
+  onDone: (
+    patient: Patient,
+    followUp?: { scheduled_for: string; notes: string },
+  ) => Promise<void>;
   onGenerate: (payload: {
     patient_id: string;
     symptoms: string;
@@ -43,6 +46,8 @@ function createEmptyForm() {
       { eye: "right", sphere: "", cylinder: "", axis: "", vision: "" },
       { eye: "left", sphere: "", cylinder: "", axis: "", vision: "" },
     ] as EyeExamEntry[],
+    followUpDate: "",
+    followUpNotes: "",
     generatedNote: "",
   };
 }
@@ -173,7 +178,14 @@ export function ConsultationDrawer({
   async function handleDone() {
     setIsCompleting(true);
     try {
-      await onDone(currentPatient);
+      const followUp =
+        form.followUpDate.trim()
+          ? {
+              scheduled_for: new Date(`${form.followUpDate}T09:00:00`).toISOString(),
+              notes: form.followUpNotes.trim(),
+            }
+          : undefined;
+      await onDone(currentPatient, followUp);
       onClose();
     } finally {
       setIsCompleting(false);
@@ -550,7 +562,39 @@ export function ConsultationDrawer({
         </form>
 
         <div className="mt-5 border-t border-sky-200 pt-4">
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
+            <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
+              <div className="mb-3">
+                <p className="text-sm font-medium text-slate-900">Optional Follow-up</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Add a follow-up date before marking this consultation done.
+                </p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-[220px_1fr]">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Date</span>
+                  <input
+                    type="date"
+                    value={form.followUpDate}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, followUpDate: event.target.value }))
+                    }
+                    className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Notes</span>
+                  <input
+                    value={form.followUpNotes}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, followUpNotes: event.target.value }))
+                    }
+                    placeholder="Review symptoms, BP check, lab result review"
+                    className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  />
+                </label>
+              </div>
+            </div>
             <p className="text-sm text-slate-700">{statusMessage || "Ready to generate and send."}</p>
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
               <button
