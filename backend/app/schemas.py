@@ -10,6 +10,7 @@ UserRole = Literal["admin", "staff"]
 CatalogItemType = Literal["service", "medicine"]
 PaymentStatus = Literal["unpaid", "paid", "partial"]
 FollowUpStatus = Literal["scheduled", "completed", "cancelled"]
+AppointmentStatus = Literal["scheduled", "checked_in", "cancelled"]
 
 
 class PatientCreate(BaseModel):
@@ -48,6 +49,39 @@ class PatientOut(BaseModel):
     created_at: datetime
 
 
+class AppointmentCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    phone: str = Field(min_length=5, max_length=30)
+    reason: str = Field(min_length=1, max_length=200)
+    age: int | None = Field(default=None, ge=0, le=130)
+    weight: float | None = Field(default=None, gt=0, le=500)
+    temperature: float | None = Field(default=None, ge=90, le=110)
+    height: float | None = Field(default=None, gt=0, le=300)
+    scheduled_for: datetime
+
+
+class AppointmentOut(BaseModel):
+    id: UUID
+    org_id: UUID
+    name: str
+    phone: str
+    reason: str
+    age: int | None = None
+    weight: float | None = None
+    temperature: float | None = None
+    height: float | None = None
+    scheduled_for: datetime
+    status: AppointmentStatus
+    checked_in_patient_id: UUID | None = None
+    checked_in_at: datetime | None = None
+    created_at: datetime
+
+
+class AppointmentUpdate(BaseModel):
+    scheduled_for: datetime | None = None
+    status: AppointmentStatus | None = None
+
+
 class NoteCreate(BaseModel):
     patient_id: UUID
     content: str = Field(min_length=1)
@@ -62,10 +96,13 @@ class NoteOut(BaseModel):
 
 TimelineEventType = Literal[
     "patient_created",
+    "appointment_booked",
+    "appointment_checked_in",
     "consultation_note",
     "invoice_created",
     "bill_sent",
     "follow_up_scheduled",
+    "follow_up_completed",
 ]
 
 
@@ -83,7 +120,9 @@ class FollowUpCreate(BaseModel):
 
 
 class FollowUpUpdate(BaseModel):
-    status: FollowUpStatus
+    status: FollowUpStatus | None = None
+    scheduled_for: datetime | None = None
+    notes: str | None = Field(default=None, max_length=500)
 
 
 class FollowUpOut(BaseModel):

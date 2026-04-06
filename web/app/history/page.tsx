@@ -43,6 +43,9 @@ export default function HistoryPage() {
     users,
     catalogItems,
     followUps,
+    setFollowUps,
+    appointments,
+    setAppointments,
     clinicSettings,
     error,
     isAuthReady,
@@ -261,6 +264,7 @@ export default function HistoryPage() {
         patients={patients.filter((patient) => patient.status === "done" && !patient.billed)}
         catalogItems={catalogItems}
         followUps={followUps}
+        appointments={appointments}
         onClose={() => setIsSettingsOpen(false)}
         onSaveClinic={handleSaveClinicSettings}
         onAddUser={handleAddStaffUser}
@@ -273,6 +277,40 @@ export default function HistoryPage() {
         onCreateInvoice={handleCreateInvoice}
         onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
         onSendInvoice={handleSendInvoice}
+        onCheckInAppointment={async (appointmentId) => {
+          const checkedInPatient = await api.checkInAppointment(appointmentId);
+          setAppointments((current) =>
+            current.map((appointment) =>
+              appointment.id === appointmentId
+                ? {
+                    ...appointment,
+                    status: "checked_in",
+                    checked_in_patient_id: checkedInPatient.id,
+                    checked_in_at: new Date().toISOString(),
+                  }
+                : appointment,
+            ),
+          );
+          setPatients((current) => [checkedInPatient, ...current]);
+        }}
+        onUpdateAppointment={async (appointmentId, payload) => {
+          const updatedAppointment = await api.updateAppointment(appointmentId, payload);
+          setAppointments((current) =>
+            current
+              .map((appointment) =>
+                appointment.id === appointmentId ? updatedAppointment : appointment,
+              )
+              .sort((left, right) => left.scheduled_for.localeCompare(right.scheduled_for)),
+          );
+        }}
+        onUpdateFollowUp={async (followUpId, payload) => {
+          const updatedFollowUp = await api.updateFollowUp(followUpId, payload);
+          setFollowUps((current) =>
+            current
+              .map((followUp) => (followUp.id === followUpId ? updatedFollowUp : followUp))
+              .sort((left, right) => left.scheduled_for.localeCompare(right.scheduled_for)),
+          );
+        }}
         onBillingComplete={(patientId) => {
           setPatients((current) =>
             current.map((patient) =>

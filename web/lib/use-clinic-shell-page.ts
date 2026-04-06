@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { authStorage } from "@/lib/auth";
-import { AuthUser, CatalogItem, ClinicSettings, FollowUp, Invoice } from "@/lib/types";
+import { Appointment, AuthUser, CatalogItem, ClinicSettings, FollowUp, Invoice } from "@/lib/types";
 
 export type ClinicCatalogItemPayload = {
   name: string;
@@ -45,6 +45,7 @@ export function useClinicShellPage<T>({
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clinicSettings, setClinicSettings] = useState<ClinicSettings | null>(null);
   const [error, setError] = useState("");
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -65,12 +66,13 @@ export function useClinicShellPage<T>({
       }
 
       try {
-        const [user, settings, userList, catalog, followUpList] = await Promise.all([
+        const [user, settings, userList, catalog, followUpList, appointmentList] = await Promise.all([
           api.getCurrentUser(),
           api.getClinicSettings(),
           api.listUsers(),
           api.listCatalogItems(),
           api.listFollowUps(),
+          api.listAppointments(),
         ]);
         if (active) {
           setCurrentUser(user);
@@ -78,6 +80,7 @@ export function useClinicShellPage<T>({
           setUsers(userList);
           setCatalogItems(catalog);
           setFollowUps(followUpList);
+          setAppointments(appointmentList);
         }
 
         if (canLoadPageData && !canLoadPageData(user)) {
@@ -186,6 +189,8 @@ export function useClinicShellPage<T>({
     catalogItems,
     followUps,
     setFollowUps,
+    appointments,
+    setAppointments,
     clinicSettings,
     error,
     setError,

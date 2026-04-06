@@ -105,7 +105,12 @@ export function PatientDetailsDrawer({
   function getTimelineIcon(type: PatientTimelineEvent["type"]) {
     if (type === "consultation_note") return <FileText className="h-4 w-4 text-sky-600" />;
     if (type === "invoice_created" || type === "bill_sent") return <Receipt className="h-4 w-4 text-emerald-600" />;
-    if (type === "follow_up_scheduled") return <CalendarClock className="h-4 w-4 text-amber-600" />;
+    if (type === "follow_up_scheduled" || type === "follow_up_completed") {
+      return <CalendarClock className="h-4 w-4 text-amber-600" />;
+    }
+    if (type === "appointment_booked" || type === "appointment_checked_in") {
+      return <CalendarClock className="h-4 w-4 text-sky-600" />;
+    }
     return <Clock3 className="h-4 w-4 text-sky-600" />;
   }
 

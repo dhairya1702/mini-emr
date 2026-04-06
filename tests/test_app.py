@@ -92,6 +92,7 @@ class FakeRepo:
         self.invoices: dict[str, dict] = {}
         self.invoice_items: dict[str, dict] = {}
         self.follow_ups: dict[str, dict] = {}
+        self.appointments: dict[str, dict] = {}
 
     async def create_organization(self, clinic_name: str) -> dict:
         org_id = str(uuid4())
@@ -181,6 +182,82 @@ class FakeRepo:
         }
         self.patients[patient_id] = patient
         return patient
+
+    async def create_appointment(self, org_id: str, payload) -> dict:
+        appointment_id = str(uuid4())
+        appointment = {
+            "id": appointment_id,
+            "org_id": org_id,
+            **payload.model_dump(),
+            "status": "scheduled",
+            "checked_in_patient_id": None,
+            "checked_in_at": None,
+            "created_at": _now(),
+        }
+        self.appointments[appointment_id] = appointment
+        return appointment
+
+    async def list_appointments(self, org_id: str) -> list[dict]:
+        return [
+            appointment for appointment in self.appointments.values()
+            if appointment["org_id"] == org_id
+        ]
+
+    async def list_appointments_for_patient(self, org_id: str, patient_id: str) -> list[dict]:
+        return [
+            appointment for appointment in self.appointments.values()
+            if appointment["org_id"] == org_id and appointment["checked_in_patient_id"] == patient_id
+        ]
+
+    async def check_in_appointment(self, org_id: str, appointment_id: str) -> tuple[dict, dict]:
+        appointment = self.appointments[appointment_id]
+        if appointment["org_id"] != org_id:
+            raise ValueError("Appointment not found for this organization.")
+        if appointment["status"] != "scheduled":
+            raise ValueError("Only scheduled appointments can be added to the waiting queue.")
+
+        patient_id = str(uuid4())
+        patient = {
+            "id": patient_id,
+            "org_id": org_id,
+            "name": appointment["name"],
+            "phone": appointment["phone"],
+            "reason": appointment["reason"],
+            "age": appointment["age"],
+            "weight": appointment["weight"],
+            "height": appointment["height"],
+            "temperature": appointment["temperature"],
+            "status": "waiting",
+            "billed": False,
+            "created_at": _now(),
+        }
+        self.patients[patient_id] = patient
+        appointment["status"] = "checked_in"
+        appointment["checked_in_patient_id"] = patient_id
+        appointment["checked_in_at"] = _now()
+        return appointment, patient
+
+    async def update_appointment(self, org_id: str, appointment_id: str, payload) -> dict:
+        appointment = self.appointments[appointment_id]
+        if appointment["org_id"] != org_id:
+            raise ValueError("Appointment not found for this organization.")
+        if appointment["status"] == "checked_in":
+            raise ValueError("Checked-in appointments cannot be edited.")
+
+        updates = payload.model_dump(exclude_none=True)
+        if not updates:
+            raise ValueError("No appointment updates provided.")
+        if "scheduled_for" in updates:
+            if appointment["status"] != "scheduled":
+                raise ValueError("Only scheduled appointments can be rescheduled.")
+            appointment["scheduled_for"] = updates["scheduled_for"]
+        if "status" in updates:
+            if updates["status"] == "checked_in":
+                raise ValueError("Use check-in to move appointments into the queue.")
+            if updates["status"] == "cancelled" and appointment["status"] != "scheduled":
+                raise ValueError("Only scheduled appointments can be cancelled.")
+            appointment["status"] = updates["status"]
+        return appointment
 
     async def list_patients(self, org_id: str) -> list[dict]:
         return [patient for patient in self.patients.values() if patient["org_id"] == org_id]
@@ -363,8 +440,16 @@ class FakeRepo:
         follow_up = self.follow_ups[follow_up_id]
         if follow_up["org_id"] != org_id:
             raise ValueError("Follow-up not found for this organization.")
-        follow_up["status"] = payload.status
-        follow_up["completed_at"] = _now() if payload.status == "completed" else None
+        updates = payload.model_dump(exclude_none=True)
+        if not updates:
+            raise ValueError("No follow-up updates provided.")
+        if "status" in updates:
+            follow_up["status"] = updates["status"]
+            follow_up["completed_at"] = _now() if updates["status"] == "completed" else None
+        if "scheduled_for" in updates:
+            follow_up["scheduled_for"] = updates["scheduled_for"]
+        if "notes" in updates:
+            follow_up["notes"] = updates["notes"]
         return follow_up
 
 
@@ -736,3 +821,188 @@ def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
     assert timeline.status_code == 200
     event_types = [event["type"] for event in timeline.json()]
     assert "follow_up_scheduled" in event_types
+
+
+def test_appointment_can_be_created_listed_and_checked_into_queue(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="appointments@clinic.com", clinic_name="Appointments Clinic")
+    headers = auth_headers(session["token"])
+
+    create_appointment = test_client.post(
+        "/appointments",
+        json={
+            "name": "Booked Patient",
+            "phone": "5550107070",
+            "reason": "Vision review",
+            "scheduled_for": "2026-04-12T09:15:00+00:00",
+        },
+        headers=headers,
+    )
+    assert create_appointment.status_code == 201
+    appointment = create_appointment.json()
+    assert appointment["status"] == "scheduled"
+
+    list_appointments = test_client.get("/appointments", headers=headers)
+    assert list_appointments.status_code == 200
+    assert len(list_appointments.json()) == 1
+
+    check_in = test_client.post(
+        f"/appointments/{appointment['id']}/check-in",
+        headers=headers,
+    )
+    assert check_in.status_code == 200
+    patient = check_in.json()
+    assert patient["status"] == "waiting"
+    assert patient["name"] == "Booked Patient"
+
+    updated_appointments = test_client.get("/appointments", headers=headers)
+    assert updated_appointments.status_code == 200
+    assert updated_appointments.json()[0]["status"] == "checked_in"
+
+    patients = test_client.get("/patients", headers=headers)
+    assert patients.status_code == 200
+    assert patients.json()[0]["name"] == "Booked Patient"
+
+    timeline = test_client.get(
+        f"/patients/{patient['id']}/timeline",
+        headers=headers,
+    )
+    assert timeline.status_code == 200
+    event_types = [event["type"] for event in timeline.json()]
+    assert "appointment_booked" in event_types
+    assert "appointment_checked_in" in event_types
+
+
+def test_appointment_can_be_rescheduled_and_cancelled(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="appointments-manage@clinic.com", clinic_name="Appointments Manage Clinic")
+    headers = auth_headers(session["token"])
+
+    appointment = test_client.post(
+        "/appointments",
+        json={
+            "name": "Booked Patient",
+            "phone": "5550108080",
+            "reason": "Review",
+            "scheduled_for": "2026-04-12T09:15:00+00:00",
+        },
+        headers=headers,
+    ).json()
+
+    rescheduled = test_client.patch(
+        f"/appointments/{appointment['id']}",
+        json={"scheduled_for": "2026-04-12T11:45:00+00:00"},
+        headers=headers,
+    )
+    assert rescheduled.status_code == 200
+    assert rescheduled.json()["scheduled_for"].startswith("2026-04-12T11:45:00")
+
+    cancelled = test_client.patch(
+        f"/appointments/{appointment['id']}",
+        json={"status": "cancelled"},
+        headers=headers,
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+
+def test_follow_up_can_be_rescheduled_completed_and_cancelled(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="followup-manage@clinic.com", clinic_name="Follow Up Manage Clinic")
+    headers = auth_headers(session["token"])
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Follow Up Patient",
+            "phone": "5550109090",
+            "reason": "Review",
+            "age": 33,
+            "weight": 70,
+            "height": 170,
+            "temperature": 98.6,
+        },
+        headers=headers,
+    ).json()
+
+    follow_up = test_client.post(
+        f"/patients/{patient['id']}/follow-ups",
+        json={
+            "scheduled_for": "2026-04-15T09:00:00+00:00",
+            "notes": "Initial review",
+        },
+        headers=headers,
+    ).json()
+
+    rescheduled = test_client.patch(
+        f"/follow-ups/{follow_up['id']}",
+        json={
+            "scheduled_for": "2026-04-16T10:15:00+00:00",
+            "notes": "Updated review",
+        },
+        headers=headers,
+    )
+    assert rescheduled.status_code == 200
+    assert rescheduled.json()["notes"] == "Updated review"
+
+    completed = test_client.patch(
+        f"/follow-ups/{follow_up['id']}",
+        json={"status": "completed"},
+        headers=headers,
+    )
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"
+    assert completed.json()["completed_at"] is not None
+
+    cancelled = test_client.patch(
+        f"/follow-ups/{follow_up['id']}",
+        json={"status": "cancelled"},
+        headers=headers,
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+
+def test_patient_timeline_includes_follow_up_completion_event(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="followup-timeline@clinic.com", clinic_name="Follow Up Timeline Clinic")
+    headers = auth_headers(session["token"])
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Follow Up Timeline Patient",
+            "phone": "5550109191",
+            "reason": "Review",
+            "age": 34,
+            "weight": 68,
+            "height": 171,
+            "temperature": 98.4,
+        },
+        headers=headers,
+    ).json()
+
+    follow_up = test_client.post(
+        f"/patients/{patient['id']}/follow-ups",
+        json={
+            "scheduled_for": "2026-04-18T09:30:00+00:00",
+            "notes": "Review progress",
+        },
+        headers=headers,
+    ).json()
+
+    complete_follow_up = test_client.patch(
+        f"/follow-ups/{follow_up['id']}",
+        json={"status": "completed"},
+        headers=headers,
+    )
+    assert complete_follow_up.status_code == 200
+
+    timeline = test_client.get(
+        f"/patients/{patient['id']}/timeline",
+        headers=headers,
+    )
+    assert timeline.status_code == 200
+    event_types = [event["type"] for event in timeline.json()]
+    assert "follow_up_scheduled" in event_types
+    assert "follow_up_completed" in event_types

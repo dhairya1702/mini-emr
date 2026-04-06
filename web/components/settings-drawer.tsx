@@ -23,9 +23,12 @@ import { SettingsDrawerAppointmentsPanel } from "@/components/settings-drawer-ap
 import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/settings-drawer-inventory-panel";
 import { SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-panel";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
-import { AuthUser, CatalogItem, ClinicSettings, FollowUp, Invoice, Patient } from "@/lib/types";
+import { Appointment, AuthUser, CatalogItem, ClinicSettings, FollowUp, Invoice, Patient } from "@/lib/types";
 
 type SettingsTab = "settings" | "about" | "contact" | "billing" | "clinic" | "users" | "letter" | "catalog" | "appointments";
+type DrawerMenuItem =
+  | { href: string; label: string; icon: typeof Settings2 }
+  | { tab: SettingsTab; label: string; icon: typeof Settings2 };
 
 interface SettingsDrawerProps {
   open: boolean;
@@ -35,6 +38,7 @@ interface SettingsDrawerProps {
   patients: Patient[];
   catalogItems: CatalogItem[];
   followUps: FollowUp[];
+  appointments: Appointment[];
   onClose: () => void;
   onSaveClinic: (
     payload: Omit<ClinicSettings, "id" | "org_id" | "updated_at">,
@@ -67,17 +71,26 @@ interface SettingsDrawerProps {
   }) => Promise<Invoice>;
   onGenerateInvoicePdf: (invoiceId: string) => Promise<Blob>;
   onSendInvoice: (payload: { invoice_id: string; recipient: string }) => Promise<string>;
+  onCheckInAppointment: (appointmentId: string) => Promise<void>;
+  onUpdateAppointment: (
+    appointmentId: string,
+    payload: { scheduled_for?: string; status?: "scheduled" | "checked_in" | "cancelled" },
+  ) => Promise<void>;
+  onUpdateFollowUp: (
+    followUpId: string,
+    payload: { status?: "scheduled" | "completed" | "cancelled"; scheduled_for?: string; notes?: string },
+  ) => Promise<void>;
   onBillingComplete: (patientId: string) => void;
 }
 
 const tabs: Array<{ id: SettingsTab; label: string; icon: typeof Settings2 }> = [
   { id: "settings", label: "Settings", icon: Settings2 },
-  { id: "clinic", label: "Clinic", icon: Building2 },
+  { id: "appointments", label: "Appointments", icon: CalendarClock },
+  { id: "billing", label: "Billing", icon: CreditCard },
   { id: "catalog", label: "Inventory", icon: Stethoscope },
   { id: "users", label: "Users", icon: UserPlus },
-  { id: "appointments", label: "Appointments", icon: CalendarClock },
+  { id: "clinic", label: "Clinic", icon: Building2 },
   { id: "letter", label: "Generate Letter", icon: FilePenLine },
-  { id: "billing", label: "Billing", icon: CreditCard },
   { id: "about", label: "About", icon: Info },
   { id: "contact", label: "Contact Us", icon: Mail },
 ];
@@ -98,6 +111,7 @@ export function SettingsDrawer({
   patients,
   catalogItems,
   followUps,
+  appointments,
   onClose,
   onSaveClinic,
   onAddUser,
@@ -110,6 +124,9 @@ export function SettingsDrawer({
   onCreateInvoice,
   onGenerateInvoicePdf,
   onSendInvoice,
+  onCheckInAppointment,
+  onUpdateAppointment,
+  onUpdateFollowUp,
   onBillingComplete,
 }: SettingsDrawerProps) {
   const router = useRouter();
@@ -178,11 +195,22 @@ export function SettingsDrawer({
     (sum, item) => sum + item.quantity * item.unit_price,
     0,
   );
-  const navigationItems = [
+  const menuItems: DrawerMenuItem[] = [
     { href: "/", label: "Queue", icon: LayoutDashboard },
+    { tab: "appointments" as SettingsTab, label: "Appointments", icon: CalendarClock },
+    { tab: "billing" as SettingsTab, label: "Billing", icon: CreditCard },
     { href: "/history", label: "History", icon: History },
-    { href: "/earnings", label: "Earnings", icon: BarChart3 },
-  ].filter((item) => item.href !== "/earnings" || currentUser?.role === "admin");
+    { tab: "catalog" as SettingsTab, label: "Inventory", icon: Stethoscope },
+    { tab: "users" as SettingsTab, label: "Users", icon: UserPlus },
+    { tab: "clinic" as SettingsTab, label: "Clinic", icon: Building2 },
+    { tab: "letter" as SettingsTab, label: "Generate Letter", icon: FilePenLine },
+    { tab: "about" as SettingsTab, label: "About", icon: Info },
+    { tab: "contact" as SettingsTab, label: "Contact Us", icon: Mail },
+  ];
+
+  if (currentUser?.role === "admin") {
+    menuItems.splice(3, 0, { href: "/earnings", label: "Earnings", icon: BarChart3 });
+  }
 
   useEffect(() => {
     if (!settings) {
@@ -743,7 +771,16 @@ export function SettingsDrawer({
   }
 
   function renderAppointmentsTab() {
-    return <SettingsDrawerAppointmentsPanel followUps={followUps} patients={patients} />;
+    return (
+      <SettingsDrawerAppointmentsPanel
+        appointments={appointments}
+        followUps={followUps}
+        patients={patients}
+        onCheckInAppointment={onCheckInAppointment}
+        onUpdateAppointment={onUpdateAppointment}
+        onUpdateFollowUp={onUpdateFollowUp}
+      />
+    );
   }
 
   function renderBillingTab() {
@@ -840,47 +877,28 @@ export function SettingsDrawer({
               </button>
             </div>
 
-            <div className="mb-5">
-              <p className="mb-2 px-2 text-xs uppercase tracking-[0.2em] text-slate-400">Navigate</p>
-              <div className="space-y-2">
-                {navigationItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = pathname === item.href;
-                  return (
-                    <button
-                      key={item.href}
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        if (pathname !== item.href) {
-                          startTransition(() => {
-                            router.push(item.href);
-                          });
-                        }
-                      }}
-                      className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition ${
-                        isActive
-                          ? "bg-white text-sky-700 shadow-[0_8px_24px_rgba(125,211,252,0.14)]"
-                          : "text-slate-700 hover:bg-white/70"
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             <nav className="space-y-2">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
+              {menuItems.map((item) => {
+                const Icon = item.icon;
+                const isRouteItem = "href" in item;
+                const isActive = isRouteItem ? pathname === item.href : activeTab === item.tab;
                 return (
                   <button
-                    key={tab.id}
+                    key={isRouteItem ? item.href : item.tab}
                     type="button"
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => {
+                      if (isRouteItem) {
+                        const href = item.href;
+                        onClose();
+                        if (pathname !== href) {
+                          startTransition(() => {
+                            router.push(href);
+                          });
+                        }
+                        return;
+                      }
+                      setActiveTab(item.tab);
+                    }}
                     className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
                       isActive
                         ? "bg-white text-sky-700 shadow-[0_8px_24px_rgba(125,211,252,0.14)]"
@@ -888,7 +906,7 @@ export function SettingsDrawer({
                     }`}
                   >
                     <Icon className="h-4 w-4" />
-                    {tab.label}
+                    {item.label}
                   </button>
                 );
               })}

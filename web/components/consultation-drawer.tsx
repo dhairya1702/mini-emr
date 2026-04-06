@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, FormEvent, useEffect, useState } from "react";
-import { Download, Eye, FileText, Send, Sparkles, X } from "lucide-react";
+import { CalendarPlus2, Eye, FileText, Send, Sparkles, X } from "lucide-react";
 
 import { EyeExamEntry, Patient, TestScoreEntry } from "@/lib/types";
 
@@ -71,6 +71,8 @@ export function ConsultationDrawer({
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
+  const [hasGeneratedNote, setHasGeneratedNote] = useState(false);
 
   useEffect(() => {
     setForm(createEmptyForm());
@@ -80,6 +82,8 @@ export function ConsultationDrawer({
       eyeExam: false,
     });
     setStatusMessage("");
+    setIsFollowUpOpen(false);
+    setHasGeneratedNote(false);
   }, [patient?.id]);
 
   if (!patient) {
@@ -112,6 +116,7 @@ export function ConsultationDrawer({
         ),
       });
       setForm((current) => ({ ...current, generatedNote: content }));
+      setHasGeneratedNote(true);
       setStatusMessage("SOAP note generated.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to generate SOAP note.");
@@ -176,6 +181,11 @@ export function ConsultationDrawer({
   }
 
   async function handleDone() {
+    if (!hasGeneratedNote || !form.generatedNote.trim()) {
+      setStatusMessage("Generate the consultation note before marking this patient done.");
+      return;
+    }
+
     setIsCompleting(true);
     try {
       const followUp =
@@ -563,40 +573,37 @@ export function ConsultationDrawer({
 
         <div className="mt-5 border-t border-sky-200 pt-4">
           <div className="flex flex-col gap-4">
-            <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
-              <div className="mb-3">
-                <p className="text-sm font-medium text-slate-900">Optional Follow-up</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Add a follow-up date before marking this consultation done.
-                </p>
-              </div>
-              <div className="grid gap-3 md:grid-cols-[220px_1fr]">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Date</span>
-                  <input
-                    type="date"
-                    value={form.followUpDate}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, followUpDate: event.target.value }))
-                    }
-                    className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Notes</span>
-                  <input
-                    value={form.followUpNotes}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, followUpNotes: event.target.value }))
-                    }
-                    placeholder="Review symptoms, BP check, lab result review"
-                    className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                  />
-                </label>
-              </div>
-            </div>
             <p className="text-sm text-slate-700">{statusMessage || "Ready to generate and send."}</p>
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
+            <div className="flex flex-col gap-3">
+              {isFollowUpOpen ? (
+                <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
+                  <div className="grid gap-3 md:grid-cols-[220px_1fr]">
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Date</span>
+                      <input
+                        type="date"
+                        value={form.followUpDate}
+                        onChange={(event) =>
+                          setForm((current) => ({ ...current, followUpDate: event.target.value }))
+                        }
+                        className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Notes</span>
+                      <input
+                        value={form.followUpNotes}
+                        onChange={(event) =>
+                          setForm((current) => ({ ...current, followUpNotes: event.target.value }))
+                        }
+                        placeholder="Review symptoms, BP check, lab result review"
+                        className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                      />
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
               <button
                 type="button"
                 disabled={isCompleting}
@@ -616,12 +623,11 @@ export function ConsultationDrawer({
               </button>
               <button
                 type="button"
-                disabled={isGeneratingPdf}
-                onClick={() => handlePdf("download")}
+                onClick={() => setIsFollowUpOpen((current) => !current)}
                 className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
               >
-                <Download className="h-4 w-4" />
-                {isGeneratingPdf ? "Preparing..." : "Download"}
+                <CalendarPlus2 className="h-4 w-4" />
+                {isFollowUpOpen ? "Hide Follow-up" : "Follow-up"}
               </button>
               <button
                 type="button"
@@ -632,6 +638,7 @@ export function ConsultationDrawer({
                 <Send className="h-4 w-4" />
                 {isSending ? "Sending..." : "Send to WhatsApp"}
               </button>
+            </div>
             </div>
           </div>
         </div>

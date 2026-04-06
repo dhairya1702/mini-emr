@@ -100,6 +100,23 @@ create table if not exists public.follow_ups (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.appointments (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  name text not null,
+  phone text not null,
+  reason text not null,
+  age integer,
+  weight double precision,
+  height double precision,
+  temperature double precision,
+  scheduled_for timestamptz not null,
+  status text not null default 'scheduled' check (status in ('scheduled', 'checked_in', 'cancelled')),
+  checked_in_patient_id uuid references public.patients(id) on delete set null,
+  checked_in_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
 alter table public.patients
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;
 
@@ -148,6 +165,12 @@ add column if not exists status text not null default 'scheduled';
 alter table public.follow_ups
 add column if not exists completed_at timestamptz;
 
+alter table public.appointments
+add column if not exists checked_in_patient_id uuid references public.patients(id) on delete set null;
+
+alter table public.appointments
+add column if not exists checked_in_at timestamptz;
+
 create unique index if not exists clinic_settings_org_id_key on public.clinic_settings (org_id);
 create index if not exists patients_org_status_idx on public.patients (org_id, status, created_at desc);
 create index if not exists notes_org_patient_id_idx on public.notes (org_id, patient_id, created_at desc);
@@ -157,6 +180,7 @@ create index if not exists invoices_org_patient_idx on public.invoices (org_id, 
 create index if not exists invoice_items_invoice_idx on public.invoice_items (invoice_id, created_at asc);
 create index if not exists follow_ups_org_status_scheduled_idx on public.follow_ups (org_id, status, scheduled_for asc);
 create index if not exists follow_ups_patient_idx on public.follow_ups (patient_id, created_at desc);
+create index if not exists appointments_org_status_scheduled_idx on public.appointments (org_id, status, scheduled_for asc);
 
 create or replace function public.create_invoice_atomic(
   p_org_id uuid,

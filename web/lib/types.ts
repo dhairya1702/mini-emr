@@ -14,12 +14,34 @@ export interface Patient {
   created_at: string;
 }
 
+export type AppointmentStatus = "scheduled" | "checked_in" | "cancelled";
+
+export interface Appointment {
+  id: string;
+  org_id: string;
+  name: string;
+  phone: string;
+  reason: string;
+  age: number | null;
+  weight: number | null;
+  height: number | null;
+  temperature: number | null;
+  scheduled_for: string;
+  status: AppointmentStatus;
+  checked_in_patient_id: string | null;
+  checked_in_at: string | null;
+  created_at: string;
+}
+
 export type PatientTimelineEventType =
   | "patient_created"
+  | "appointment_booked"
+  | "appointment_checked_in"
   | "consultation_note"
   | "invoice_created"
   | "bill_sent"
-  | "follow_up_scheduled";
+  | "follow_up_scheduled"
+  | "follow_up_completed";
 
 export interface PatientTimelineEvent {
   id: string;

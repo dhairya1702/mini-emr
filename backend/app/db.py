@@ -7,6 +7,8 @@ from supabase import Client, create_client
 
 from app.config import get_settings
 from app.schemas import (
+    AppointmentCreate,
+    AppointmentUpdate,
     CatalogItemCreate,
     CatalogStockUpdate,
     ClinicSettingsUpdate,
@@ -69,6 +71,147 @@ class SupabaseRepository:
             .execute()
             .data[0]
         )
+
+    async def create_appointment(self, org_id: str, payload: AppointmentCreate) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            lambda: self.client.table("appointments")
+            .insert(
+                {
+                    "org_id": org_id,
+                    **payload.model_dump(),
+                    "scheduled_for": payload.scheduled_for.isoformat(),
+                    "status": "scheduled",
+                }
+            )
+            .execute()
+            .data[0]
+        )
+
+    async def list_appointments(self, org_id: str) -> list[dict[str, Any]]:
+        return await asyncio.to_thread(
+            lambda: self.client.table("appointments")
+            .select("*")
+            .eq("org_id", org_id)
+            .order("scheduled_for", desc=False)
+            .execute()
+            .data
+        )
+
+    async def list_appointments_for_patient(self, org_id: str, patient_id: str) -> list[dict[str, Any]]:
+        return await asyncio.to_thread(
+            lambda: self.client.table("appointments")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("checked_in_patient_id", patient_id)
+            .order("created_at", desc=True)
+            .execute()
+            .data
+        )
+
+    async def check_in_appointment(self, org_id: str, appointment_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        def _check_in() -> tuple[dict[str, Any], dict[str, Any]]:
+            appointment = (
+                self.client.table("appointments")
+                .select("*")
+                .eq("org_id", org_id)
+                .eq("id", appointment_id)
+                .single()
+                .execute()
+                .data
+            )
+            if not appointment:
+                raise ValueError("Appointment not found for this organization.")
+            if appointment.get("status") != "scheduled":
+                raise ValueError("Only scheduled appointments can be added to the waiting queue.")
+
+            patient = (
+                self.client.table("patients")
+                .insert(
+                    {
+                        "org_id": org_id,
+                        "name": appointment["name"],
+                        "phone": appointment["phone"],
+                        "reason": appointment["reason"],
+                        "age": appointment.get("age"),
+                        "weight": appointment.get("weight"),
+                        "height": appointment.get("height"),
+                        "temperature": appointment.get("temperature"),
+                        "status": "waiting",
+                        "billed": False,
+                    }
+                )
+                .execute()
+                .data[0]
+            )
+            checked_in_at = datetime.now(UTC).isoformat()
+            updated_appointment = (
+                self.client.table("appointments")
+                .update(
+                    {
+                        "status": "checked_in",
+                        "checked_in_patient_id": patient["id"],
+                        "checked_in_at": checked_in_at,
+                    }
+                )
+                .eq("org_id", org_id)
+                .eq("id", appointment_id)
+                .execute()
+                .data[0]
+            )
+            return updated_appointment, patient
+
+        return await asyncio.to_thread(_check_in)
+
+    async def update_appointment(self, org_id: str, appointment_id: str, payload: AppointmentUpdate) -> dict[str, Any]:
+        def _update() -> dict[str, Any]:
+            appointment = (
+                self.client.table("appointments")
+                .select("*")
+                .eq("org_id", org_id)
+                .eq("id", appointment_id)
+                .single()
+                .execute()
+                .data
+            )
+            if not appointment:
+                raise ValueError("Appointment not found for this organization.")
+
+            current_status = str(appointment.get("status") or "")
+            if current_status == "checked_in":
+                raise ValueError("Checked-in appointments cannot be edited.")
+
+            update_payload: dict[str, Any] = {}
+            if payload.scheduled_for is not None:
+                if current_status != "scheduled":
+                    raise ValueError("Only scheduled appointments can be rescheduled.")
+                update_payload["scheduled_for"] = payload.scheduled_for.isoformat()
+
+            if payload.status is not None:
+                if payload.status == "checked_in":
+                    raise ValueError("Use check-in to move appointments into the queue.")
+                if payload.status == "cancelled":
+                    if current_status != "scheduled":
+                        raise ValueError("Only scheduled appointments can be cancelled.")
+                    update_payload["status"] = "cancelled"
+                elif payload.status == "scheduled":
+                    if current_status == "cancelled":
+                        update_payload["status"] = "scheduled"
+                    else:
+                        update_payload["status"] = "scheduled"
+
+            if not update_payload:
+                raise ValueError("No appointment updates provided.")
+
+            return (
+                self.client.table("appointments")
+                .update(update_payload)
+                .eq("org_id", org_id)
+                .eq("id", appointment_id)
+                .execute()
+                .data[0]
+            )
+
+        return await asyncio.to_thread(_update)
 
     async def update_patient(self, org_id: str, patient_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return await asyncio.to_thread(
@@ -187,11 +330,19 @@ class SupabaseRepository:
             )
             if not existing:
                 raise ValueError("Follow-up not found for this organization.")
-            update_payload: dict[str, Any] = {"status": payload.status}
-            if payload.status == "completed":
-                update_payload["completed_at"] = datetime.now(UTC).isoformat()
-            elif payload.status == "cancelled":
-                update_payload["completed_at"] = None
+            update_payload: dict[str, Any] = {}
+            if payload.scheduled_for is not None:
+                update_payload["scheduled_for"] = payload.scheduled_for.isoformat()
+            if payload.notes is not None:
+                update_payload["notes"] = payload.notes.strip()
+            if payload.status is not None:
+                update_payload["status"] = payload.status
+                if payload.status == "completed":
+                    update_payload["completed_at"] = datetime.now(UTC).isoformat()
+                elif payload.status in {"scheduled", "cancelled"}:
+                    update_payload["completed_at"] = None
+            if not update_payload:
+                raise ValueError("No follow-up updates provided.")
             return (
                 self.client.table("follow_ups")
                 .update(update_payload)

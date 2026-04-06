@@ -7,13 +7,15 @@ interface AddPatientModalProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (payload: {
+    entryType: "queue" | "appointment";
     name: string;
     phone: string;
     reason: string;
-    age: number;
-    weight: number;
+    age: number | null;
+    weight: number | null;
     height: number | null;
-    temperature: number;
+    temperature: number | null;
+    scheduled_for?: string;
   }) => Promise<void>;
 }
 
@@ -32,6 +34,9 @@ export function AddPatientModal({
     temperature: "",
     heightUnit: "cm",
     temperatureUnit: "F",
+    entryType: "queue" as "queue" | "appointment",
+    appointmentDate: "",
+    appointmentTime: "",
   });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -55,9 +60,10 @@ export function AddPatientModal({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const digits = getPhoneDigits(form.phone);
-    const age = Number(form.age);
-    const weight = Number(form.weight);
-    const rawTemperature = Number(form.temperature);
+    const isAppointment = form.entryType === "appointment";
+    const age = form.age.trim() ? Number(form.age) : null;
+    const weight = form.weight.trim() ? Number(form.weight) : null;
+    const rawTemperature = form.temperature.trim() ? Number(form.temperature) : null;
     const rawHeight = form.height.trim() ? Number(form.height) : null;
 
     if (digits.length !== 10) {
@@ -65,30 +71,41 @@ export function AddPatientModal({
       return;
     }
 
-    if (!Number.isFinite(age) || age <= 0) {
+    if (!form.name.trim()) {
+      setError("Name is required.");
+      return;
+    }
+
+    if (!form.reason.trim()) {
+      setError("Reason for visit is required.");
+      return;
+    }
+
+    if (!isAppointment && (age === null || !Number.isFinite(age) || age <= 0)) {
       setError("Enter a valid age.");
       return;
     }
 
-    if (!Number.isFinite(weight) || weight <= 0) {
+    if (!isAppointment && (weight === null || !Number.isFinite(weight) || weight <= 0)) {
       setError("Enter a valid weight.");
       return;
     }
 
-    if (!Number.isFinite(rawTemperature)) {
+    if (!isAppointment && (rawTemperature === null || !Number.isFinite(rawTemperature))) {
       setError("Enter a valid temperature.");
       return;
     }
 
-    if (rawHeight !== null && (!Number.isFinite(rawHeight) || rawHeight <= 0)) {
+    if (!isAppointment && rawHeight !== null && (!Number.isFinite(rawHeight) || rawHeight <= 0)) {
       setError("Enter a valid height.");
       return;
     }
 
-    const temperature = toFahrenheit(rawTemperature, form.temperatureUnit);
+    const temperature =
+      rawTemperature !== null ? toFahrenheit(rawTemperature, form.temperatureUnit) : null;
     const height = rawHeight !== null ? toCentimeters(rawHeight, form.heightUnit) : null;
 
-    if (temperature < 90 || temperature > 110) {
+    if (!isAppointment && temperature !== null && (temperature < 90 || temperature > 110)) {
       setError(
         form.temperatureUnit === "C"
           ? "Enter a valid temperature in C."
@@ -97,10 +114,21 @@ export function AddPatientModal({
       return;
     }
 
+    if (isAppointment && !form.appointmentDate) {
+      setError("Choose an appointment date.");
+      return;
+    }
+
+    if (isAppointment && !form.appointmentTime) {
+      setError("Choose an appointment time.");
+      return;
+    }
+
     setIsSaving(true);
     setError("");
     try {
       await onSubmit({
+        entryType: form.entryType,
         name: form.name,
         phone: form.phone,
         reason: form.reason,
@@ -108,6 +136,9 @@ export function AddPatientModal({
         weight,
         height,
         temperature,
+        scheduled_for: isAppointment
+          ? new Date(`${form.appointmentDate}T${form.appointmentTime}:00`).toISOString()
+          : undefined,
       });
       setForm({
         name: "",
@@ -119,6 +150,9 @@ export function AddPatientModal({
         temperature: "",
         heightUnit: "cm",
         temperatureUnit: "F",
+        entryType: "queue",
+        appointmentDate: "",
+        appointmentTime: "",
       });
       setError("");
       onClose();
@@ -137,7 +171,7 @@ export function AddPatientModal({
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Add Patient</h2>
-            <p className="mt-1 text-sm text-slate-700">Quick intake for the live queue.</p>
+            <p className="mt-1 text-sm text-slate-700">Quick intake for the live queue or a future booking.</p>
           </div>
           <button
             type="button"
@@ -152,6 +186,24 @@ export function AddPatientModal({
         </div>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-800">Add As</span>
+            <select
+              value={form.entryType}
+              onChange={(event) => {
+                setError("");
+                setForm((current) => ({
+                  ...current,
+                  entryType: event.target.value as "queue" | "appointment",
+                }));
+              }}
+              className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+            >
+              <option value="queue">Queue Patient</option>
+              <option value="appointment">Appointment</option>
+            </select>
+          </label>
+
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-800">Name</span>
             <input
@@ -180,103 +232,137 @@ export function AddPatientModal({
             />
           </label>
 
-          <div className="grid grid-cols-2 gap-4">
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-800">Age</span>
-              <input
-                required
-                inputMode="numeric"
-                value={form.age}
-                onChange={(event) => {
-                  setError("");
-                  setForm((current) => ({ ...current, age: event.target.value }));
-                }}
-                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
-                placeholder="Years"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-800">Temperature</span>
-              <div className="flex gap-2">
+          {form.entryType === "appointment" ? (
+            <div className="grid grid-cols-2 gap-4">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-800">Appointment Date</span>
                 <input
-                  required
-                  inputMode="decimal"
-                  value={form.temperature}
+                  type="date"
+                  value={form.appointmentDate}
                   onChange={(event) => {
                     setError("");
-                    setForm((current) => ({ ...current, temperature: event.target.value }));
+                    setForm((current) => ({ ...current, appointmentDate: event.target.value }));
                   }}
-                  className="min-w-0 flex-1 rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
-                  placeholder={form.temperatureUnit === "C" ? "37" : "98.6"}
+                  className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
                 />
-                <select
-                  value={form.temperatureUnit}
-                  onChange={(event) => {
-                    setError("");
-                    setForm((current) => ({
-                      ...current,
-                      temperatureUnit: event.target.value as "C" | "F",
-                    }));
-                  }}
-                  className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                >
-                  <option value="F">F</option>
-                  <option value="C">C</option>
-                </select>
-              </div>
-            </label>
-          </div>
+              </label>
 
-          <div className="grid grid-cols-2 gap-4">
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-800">Weight</span>
-              <input
-                required
-                inputMode="decimal"
-                value={form.weight}
-                onChange={(event) => {
-                  setError("");
-                  setForm((current) => ({ ...current, weight: event.target.value }));
-                }}
-                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
-                placeholder="kg"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-800">Height</span>
-              <div className="flex gap-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-800">Appointment Time</span>
                 <input
-                  inputMode="decimal"
-                  value={form.height}
+                  type="time"
+                  value={form.appointmentTime}
                   onChange={(event) => {
                     setError("");
-                    setForm((current) => ({ ...current, height: event.target.value }));
+                    setForm((current) => ({ ...current, appointmentTime: event.target.value }));
                   }}
-                  className="min-w-0 flex-1 rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
-                  placeholder={form.heightUnit === "m" ? "1.72" : "172"}
+                  className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
                 />
-                <select
-                  value={form.heightUnit}
-                  onChange={(event) => {
-                    setError("");
-                    setForm((current) => ({
-                      ...current,
-                      heightUnit: event.target.value as "m" | "cm",
-                    }));
-                  }}
-                  className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                >
-                  <option value="cm">cm</option>
-                  <option value="m">m</option>
-                </select>
+              </label>
+            </div>
+          ) : null}
+
+          {form.entryType === "queue" ? (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-800">Age</span>
+                  <input
+                    required
+                    inputMode="numeric"
+                    value={form.age}
+                    onChange={(event) => {
+                      setError("");
+                      setForm((current) => ({ ...current, age: event.target.value }));
+                    }}
+                    className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                    placeholder="Years"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-800">Temperature</span>
+                  <div className="flex gap-2">
+                    <input
+                      required
+                      inputMode="decimal"
+                      value={form.temperature}
+                      onChange={(event) => {
+                        setError("");
+                        setForm((current) => ({ ...current, temperature: event.target.value }));
+                      }}
+                      className="min-w-0 flex-1 rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                      placeholder={form.temperatureUnit === "C" ? "37" : "98.6"}
+                    />
+                    <select
+                      value={form.temperatureUnit}
+                      onChange={(event) => {
+                        setError("");
+                        setForm((current) => ({
+                          ...current,
+                          temperatureUnit: event.target.value as "C" | "F",
+                        }));
+                      }}
+                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    >
+                      <option value="F">F</option>
+                      <option value="C">C</option>
+                    </select>
+                  </div>
+                </label>
               </div>
-            </label>
-          </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-800">Weight</span>
+                  <input
+                    required
+                    inputMode="decimal"
+                    value={form.weight}
+                    onChange={(event) => {
+                      setError("");
+                      setForm((current) => ({ ...current, weight: event.target.value }));
+                    }}
+                    className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                    placeholder="kg"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-800">Height</span>
+                  <div className="flex gap-2">
+                    <input
+                      inputMode="decimal"
+                      value={form.height}
+                      onChange={(event) => {
+                        setError("");
+                        setForm((current) => ({ ...current, height: event.target.value }));
+                      }}
+                      className="min-w-0 flex-1 rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                      placeholder={form.heightUnit === "m" ? "1.72" : "172"}
+                    />
+                    <select
+                      value={form.heightUnit}
+                      onChange={(event) => {
+                        setError("");
+                        setForm((current) => ({
+                          ...current,
+                          heightUnit: event.target.value as "m" | "cm",
+                        }));
+                      }}
+                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    >
+                      <option value="cm">cm</option>
+                      <option value="m">m</option>
+                    </select>
+                  </div>
+                </label>
+              </div>
+            </>
+          ) : null}
 
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-800">Reason for Visit</span>
+              <span className="mb-2 block text-sm font-medium text-slate-800">Reason for Visit</span>
             <textarea
               required
               rows={4}
@@ -310,7 +396,7 @@ export function AddPatientModal({
               disabled={isSaving}
               className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
             >
-              {isSaving ? "Saving..." : "Add to Queue"}
+              {isSaving ? "Saving..." : form.entryType === "appointment" ? "Create Appointment" : "Add to Queue"}
             </button>
           </div>
         </form>

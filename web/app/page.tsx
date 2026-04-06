@@ -30,6 +30,8 @@ export default function HomePage() {
     catalogItems,
     followUps,
     setFollowUps,
+    appointments,
+    setAppointments,
     clinicSettings,
     error,
     setError,
@@ -68,25 +70,66 @@ export default function HomePage() {
   }, [patients]);
 
   async function handleCreatePatient(payload: {
+    entryType: "queue" | "appointment";
     name: string;
     phone: string;
     reason: string;
-    age: number;
-    weight: number;
+    age: number | null;
+    weight: number | null;
     height: number | null;
-    temperature: number;
+    temperature: number | null;
+    scheduled_for?: string;
   }) {
+    if (payload.entryType === "appointment") {
+      try {
+        const createdAppointment = await api.createAppointment({
+          name: payload.name,
+          phone: payload.phone,
+          reason: payload.reason,
+          age: payload.age,
+          weight: payload.weight,
+          height: payload.height,
+          temperature: payload.temperature,
+          scheduled_for: payload.scheduled_for ?? new Date().toISOString(),
+        });
+        setAppointments((current) =>
+          [...current, createdAppointment].sort((left, right) =>
+            left.scheduled_for.localeCompare(right.scheduled_for),
+          ),
+        );
+        setError("");
+      } catch (createError) {
+        setError(createError instanceof Error ? createError.message : "Failed to create appointment.");
+        throw createError;
+      }
+      return;
+    }
+
     const optimisticPatient: Patient = {
       id: crypto.randomUUID(),
       created_at: new Date().toISOString(),
       status: "waiting",
       billed: false,
-      ...payload,
+      name: payload.name,
+      phone: payload.phone,
+      reason: payload.reason,
+      age: payload.age,
+      weight: payload.weight,
+      height: payload.height,
+      temperature: payload.temperature,
     };
 
     setPatients((current) => [optimisticPatient, ...current]);
     try {
-      const created = await api.createPatient(payload);
+      const created = await api.createPatient({
+        name: payload.name,
+        phone: payload.phone,
+        reason: payload.reason,
+        age: payload.age ?? 0,
+        weight: payload.weight ?? 0,
+        height: payload.height,
+        temperature: payload.temperature ?? 0,
+      });
       setPatients((current) =>
         current.map((patient) => (patient.id === optimisticPatient.id ? created : patient)),
       );
@@ -265,6 +308,7 @@ export default function HomePage() {
         patients={groupedPatients.done}
         catalogItems={catalogItems}
         followUps={followUps}
+        appointments={appointments}
         onClose={() => setIsSettingsOpen(false)}
         onSaveClinic={handleSaveClinicSettings}
         onAddUser={handleAddStaffUser}
@@ -277,6 +321,40 @@ export default function HomePage() {
         onCreateInvoice={handleCreateInvoice}
         onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
         onSendInvoice={handleSendInvoice}
+        onCheckInAppointment={async (appointmentId) => {
+          const checkedInPatient = await api.checkInAppointment(appointmentId);
+          setAppointments((current) =>
+            current.map((appointment) =>
+              appointment.id === appointmentId
+                ? {
+                    ...appointment,
+                    status: "checked_in",
+                    checked_in_patient_id: checkedInPatient.id,
+                    checked_in_at: new Date().toISOString(),
+                  }
+                : appointment,
+            ),
+          );
+          setPatients((current) => [checkedInPatient, ...current]);
+        }}
+        onUpdateAppointment={async (appointmentId, payload) => {
+          const updatedAppointment = await api.updateAppointment(appointmentId, payload);
+          setAppointments((current) =>
+            current
+              .map((appointment) =>
+                appointment.id === appointmentId ? updatedAppointment : appointment,
+              )
+              .sort((left, right) => left.scheduled_for.localeCompare(right.scheduled_for)),
+          );
+        }}
+        onUpdateFollowUp={async (followUpId, payload) => {
+          const updatedFollowUp = await api.updateFollowUp(followUpId, payload);
+          setFollowUps((current) =>
+            current
+              .map((followUp) => (followUp.id === followUpId ? updatedFollowUp : followUp))
+              .sort((left, right) => left.scheduled_for.localeCompare(right.scheduled_for)),
+          );
+        }}
         onBillingComplete={(patientId) => {
           setPatients((current) =>
             current.map((patient) =>

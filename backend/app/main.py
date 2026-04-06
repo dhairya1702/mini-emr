@@ -11,6 +11,9 @@ from app.auth import create_access_token, get_current_user, hash_password, requi
 from app.config import get_settings
 from app.db import SupabaseRepository, get_repository
 from app.schemas import (
+    AppointmentCreate,
+    AppointmentOut,
+    AppointmentUpdate,
     AuthResponse,
     CatalogItemCreate,
     CatalogItemOut,
@@ -81,11 +84,21 @@ def normalize_identifier(identifier: str) -> str:
     )
 
 
-def format_display_datetime(value: datetime) -> str:
-    month = value.strftime("%b")
-    day = value.day
-    hour = value.strftime("%I").lstrip("0") or "0"
-    minute_period = value.strftime("%M %p")
+def format_display_datetime(value: datetime | str) -> str:
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        raw = str(value).strip()
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return raw
+
+    local_value = parsed.astimezone() if parsed.tzinfo else parsed
+    month = local_value.strftime("%b")
+    day = local_value.day
+    hour = local_value.strftime("%I").lstrip("0") or "0"
+    minute_period = local_value.strftime("%M %p")
     return f"{month} {day}, {hour}:{minute_period}"
 
 
@@ -262,6 +275,59 @@ async def create_patient(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/appointments", response_model=AppointmentOut, status_code=201)
+async def create_appointment(
+    payload: AppointmentCreate,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> AppointmentOut:
+    try:
+        created = await repo.create_appointment(str(current_user.org_id), payload)
+        return AppointmentOut(**created)
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/appointments", response_model=list[AppointmentOut])
+async def list_appointments(
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> list[AppointmentOut]:
+    appointments = await repo.list_appointments(str(current_user.org_id))
+    return [AppointmentOut(**appointment) for appointment in appointments]
+
+
+@app.post("/appointments/{appointment_id}/check-in", response_model=PatientOut)
+async def check_in_appointment(
+    appointment_id: str,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> PatientOut:
+    try:
+        _appointment, patient = await repo.check_in_appointment(str(current_user.org_id), appointment_id)
+        return PatientOut(**patient)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.patch("/appointments/{appointment_id}", response_model=AppointmentOut)
+async def update_appointment(
+    appointment_id: str,
+    payload: AppointmentUpdate,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> AppointmentOut:
+    try:
+        updated = await repo.update_appointment(str(current_user.org_id), appointment_id, payload)
+        return AppointmentOut(**updated)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.patch("/patients/{patient_id}", response_model=PatientOut)
 async def update_patient(
     patient_id: str,
@@ -293,6 +359,7 @@ async def get_patient_timeline(
         notes = await repo.list_notes_for_patient(str(current_user.org_id), patient_id)
         invoices = await repo.list_invoices_for_patient(str(current_user.org_id), patient_id)
         follow_ups = await repo.list_follow_ups_for_patient(str(current_user.org_id), patient_id)
+        appointments = await repo.list_appointments_for_patient(str(current_user.org_id), patient_id)
 
         events: list[PatientTimelineEvent] = [
             PatientTimelineEvent(
@@ -317,6 +384,28 @@ async def get_patient_timeline(
                     description=excerpt or "SOAP note saved.",
                 )
             )
+
+        for appointment in appointments:
+            display_date = format_display_datetime(appointment["scheduled_for"])
+            events.append(
+                PatientTimelineEvent(
+                    id=f"appointment-booked-{appointment['id']}",
+                    type="appointment_booked",
+                    title="Appointment booked",
+                    timestamp=appointment["created_at"],
+                    description=f"Appointment booked for {display_date}.",
+                )
+            )
+            if appointment.get("checked_in_at"):
+                events.append(
+                    PatientTimelineEvent(
+                        id=f"appointment-checked-in-{appointment['id']}",
+                        type="appointment_checked_in",
+                        title="Appointment checked in",
+                        timestamp=appointment["checked_in_at"],
+                        description="Patient was moved into the waiting queue from a scheduled appointment.",
+                    )
+                )
 
         for invoice in invoices:
             item_count = len(invoice.get("items", []))
@@ -357,6 +446,18 @@ async def get_patient_timeline(
                     description=description,
                 )
             )
+            if follow_up.get("completed_at"):
+                completed_at = follow_up["completed_at"]
+                completed_display_date = format_display_datetime(completed_at)
+                events.append(
+                    PatientTimelineEvent(
+                        id=f"follow-up-completed-{follow_up['id']}",
+                        type="follow_up_completed",
+                        title="Follow-up completed",
+                        timestamp=completed_at,
+                        description=f"Follow-up completed on {completed_display_date}.",
+                    )
+                )
 
         return sorted(events, key=lambda event: event.timestamp, reverse=True)
     except ValueError as exc:

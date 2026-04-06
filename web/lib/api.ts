@@ -1,5 +1,6 @@
 import { authStorage } from "@/lib/auth";
 import {
+  Appointment,
   AuthResponse,
   AuthUser,
   CatalogItem,
@@ -179,6 +180,33 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   listFollowUps: () => request<FollowUp[]>("/follow-ups"),
+  listAppointments: () => request<Appointment[]>("/appointments"),
+  createAppointment: (payload: {
+    name: string;
+    phone: string;
+    reason: string;
+    age: number | null;
+    weight: number | null;
+    height: number | null;
+    temperature: number | null;
+    scheduled_for: string;
+  }) =>
+    request<Appointment>("/appointments", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateAppointment: (appointmentId: string, payload: {
+    scheduled_for?: string;
+    status?: "scheduled" | "checked_in" | "cancelled";
+  }) =>
+    request<Appointment>(`/appointments/${appointmentId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  checkInAppointment: (appointmentId: string) =>
+    request<Patient>(`/appointments/${appointmentId}/check-in`, {
+      method: "POST",
+    }),
   createFollowUp: (
     patientId: string,
     payload: { scheduled_for: string; notes: string },
@@ -187,7 +215,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  updateFollowUp: (followUpId: string, payload: { status: "scheduled" | "completed" | "cancelled" }) =>
+  updateFollowUp: (followUpId: string, payload: {
+    status?: "scheduled" | "completed" | "cancelled";
+    scheduled_for?: string;
+    notes?: string;
+  }) =>
     request<FollowUp>(`/follow-ups/${followUpId}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
