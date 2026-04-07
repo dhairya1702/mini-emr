@@ -82,6 +82,25 @@ class AppointmentUpdate(BaseModel):
     status: AppointmentStatus | None = None
 
 
+class AppointmentCheckInRequest(BaseModel):
+    existing_patient_id: UUID | None = None
+    force_new: bool = False
+
+
+class PatientMatchOut(BaseModel):
+    id: UUID
+    name: str
+    phone: str
+    reason: str
+    age: int | None = None
+    weight: float | None = None
+    height: float | None = None
+    temperature: float | None = None
+    status: PatientStatus
+    billed: bool = False
+    created_at: datetime
+
+
 class NoteCreate(BaseModel):
     patient_id: UUID
     content: str = Field(min_length=1)
@@ -129,6 +148,7 @@ class FollowUpOut(BaseModel):
     id: UUID
     org_id: UUID
     patient_id: UUID
+    patient_name: str | None = None
     created_by: UUID | None = None
     scheduled_for: datetime
     notes: str

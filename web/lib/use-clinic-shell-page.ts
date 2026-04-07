@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { authStorage } from "@/lib/auth";
-import { Appointment, AuthUser, CatalogItem, ClinicSettings, FollowUp, Invoice } from "@/lib/types";
+import { AuthUser, CatalogItem, ClinicSettings, Invoice } from "@/lib/types";
 
 export type ClinicCatalogItemPayload = {
   name: string;
@@ -44,8 +44,6 @@ export function useClinicShellPage<T>({
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
-  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clinicSettings, setClinicSettings] = useState<ClinicSettings | null>(null);
   const [error, setError] = useState("");
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -66,21 +64,13 @@ export function useClinicShellPage<T>({
       }
 
       try {
-        const [user, settings, userList, catalog, followUpList, appointmentList] = await Promise.all([
+        const [user, settings] = await Promise.all([
           api.getCurrentUser(),
           api.getClinicSettings(),
-          api.listUsers(),
-          api.listCatalogItems(),
-          api.listFollowUps(),
-          api.listAppointments(),
         ]);
         if (active) {
           setCurrentUser(user);
           setClinicSettings(settings);
-          setUsers(userList);
-          setCatalogItems(catalog);
-          setFollowUps(followUpList);
-          setAppointments(appointmentList);
         }
 
         if (canLoadPageData && !canLoadPageData(user)) {
@@ -121,7 +111,7 @@ export function useClinicShellPage<T>({
     return () => {
       active = false;
     };
-  }, [loadPageData, onPageData, router]);
+  }, [canLoadPageData, loadPageData, onPageData, router]);
 
   async function handleSaveClinicSettings(
     payload: Omit<ClinicSettings, "id" | "org_id" | "updated_at">,
@@ -130,9 +120,21 @@ export function useClinicShellPage<T>({
     setClinicSettings(saved);
   }
 
+  async function loadUsers() {
+    const loadedUsers = await api.listUsers();
+    setUsers(loadedUsers);
+    return loadedUsers;
+  }
+
   async function handleAddStaffUser(payload: { identifier: string; password: string }) {
     const created = await api.createStaffUser(payload);
     setUsers((current) => [...current, created]);
+  }
+
+  async function loadCatalogItems() {
+    const loadedCatalogItems = await api.listCatalogItems();
+    setCatalogItems(loadedCatalogItems);
+    return loadedCatalogItems;
   }
 
   async function handleCreateCatalogItem(payload: ClinicCatalogItemPayload) {
@@ -186,11 +188,9 @@ export function useClinicShellPage<T>({
   return {
     currentUser,
     users,
+    loadUsers,
     catalogItems,
-    followUps,
-    setFollowUps,
-    appointments,
-    setAppointments,
+    loadCatalogItems,
     clinicSettings,
     error,
     setError,

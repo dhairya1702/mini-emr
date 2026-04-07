@@ -182,6 +182,90 @@ create index if not exists follow_ups_org_status_scheduled_idx on public.follow_
 create index if not exists follow_ups_patient_idx on public.follow_ups (patient_id, created_at desc);
 create index if not exists appointments_org_status_scheduled_idx on public.appointments (org_id, status, scheduled_for asc);
 
+create or replace function public.check_in_appointment_atomic(
+  p_org_id uuid,
+  p_appointment_id uuid,
+  p_existing_patient_id uuid default null
+) returns jsonb
+language plpgsql
+as $$
+declare
+  v_appointment public.appointments%rowtype;
+  v_patient public.patients%rowtype;
+begin
+  select *
+  into v_appointment
+  from public.appointments
+  where id = p_appointment_id
+    and org_id = p_org_id
+  for update;
+
+  if not found then
+    raise exception 'Appointment not found for this organization.';
+  end if;
+
+  if v_appointment.status <> 'scheduled' then
+    raise exception 'Only scheduled appointments can be added to the waiting queue.';
+  end if;
+
+  if p_existing_patient_id is not null then
+    select *
+    into v_patient
+    from public.patients
+    where id = p_existing_patient_id
+      and org_id = p_org_id
+    for update;
+
+    if not found then
+      raise exception 'Selected patient not found for this organization.';
+    end if;
+
+    if v_patient.billed then
+      raise exception 'Only active queue patients can be linked to this appointment.';
+    end if;
+  else
+    insert into public.patients (
+      org_id,
+      name,
+      phone,
+      reason,
+      age,
+      weight,
+      height,
+      temperature,
+      status,
+      billed
+    )
+    values (
+      p_org_id,
+      v_appointment.name,
+      v_appointment.phone,
+      v_appointment.reason,
+      v_appointment.age,
+      v_appointment.weight,
+      v_appointment.height,
+      v_appointment.temperature,
+      'waiting',
+      false
+    )
+    returning * into v_patient;
+  end if;
+
+  update public.appointments
+  set
+    status = 'checked_in',
+    checked_in_patient_id = v_patient.id,
+    checked_in_at = now()
+  where id = v_appointment.id
+  returning * into v_appointment;
+
+  return jsonb_build_object(
+    'appointment', to_jsonb(v_appointment),
+    'patient', to_jsonb(v_patient)
+  );
+end;
+$$;
+
 create or replace function public.create_invoice_atomic(
   p_org_id uuid,
   p_patient_id uuid,

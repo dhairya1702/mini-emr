@@ -81,6 +81,11 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _normalize_phone(phone: str) -> str:
+    digits = "".join(char for char in phone if char.isdigit())
+    return f"+{digits}" if phone.startswith("+") and digits else digits
+
+
 class FakeRepo:
     def __init__(self) -> None:
         self.organizations: dict[str, dict] = {}
@@ -176,6 +181,7 @@ class FakeRepo:
             "id": patient_id,
             "org_id": org_id,
             **payload.model_dump(),
+            "phone": _normalize_phone(payload.phone),
             "status": "waiting",
             "billed": False,
             "created_at": _now(),
@@ -183,12 +189,22 @@ class FakeRepo:
         self.patients[patient_id] = patient
         return patient
 
+    async def list_patient_matches_by_phone(self, org_id: str, phone: str, limit: int = 10) -> list[dict]:
+        rows = [
+            patient
+            for patient in self.patients.values()
+            if patient["org_id"] == org_id and patient["phone"] == _normalize_phone(phone)
+        ]
+        rows.sort(key=lambda patient: patient["created_at"], reverse=True)
+        return rows[:limit]
+
     async def create_appointment(self, org_id: str, payload) -> dict:
         appointment_id = str(uuid4())
         appointment = {
             "id": appointment_id,
             "org_id": org_id,
             **payload.model_dump(),
+            "phone": _normalize_phone(payload.phone),
             "status": "scheduled",
             "checked_in_patient_id": None,
             "checked_in_at": None,
@@ -197,11 +213,20 @@ class FakeRepo:
         self.appointments[appointment_id] = appointment
         return appointment
 
-    async def list_appointments(self, org_id: str) -> list[dict]:
-        return [
+    async def list_appointments(self, org_id: str, status: str | None = None, query: str | None = None, limit: int = 200) -> list[dict]:
+        rows = [
             appointment for appointment in self.appointments.values()
-            if appointment["org_id"] == org_id
+            if appointment["org_id"] == org_id and (status is None or appointment["status"] == status)
         ]
+        normalized_query = (query or "").strip().lower()
+        if normalized_query:
+            rows = [
+                appointment for appointment in rows
+                if normalized_query in appointment["name"].lower()
+                or normalized_query in appointment["phone"].lower()
+                or normalized_query in appointment["reason"].lower()
+            ]
+        return rows[:limit]
 
     async def list_appointments_for_patient(self, org_id: str, patient_id: str) -> list[dict]:
         return [
@@ -209,31 +234,42 @@ class FakeRepo:
             if appointment["org_id"] == org_id and appointment["checked_in_patient_id"] == patient_id
         ]
 
-    async def check_in_appointment(self, org_id: str, appointment_id: str) -> tuple[dict, dict]:
+    async def list_potential_check_in_matches(self, org_id: str, appointment_id: str) -> list[dict]:
+        appointment = self.appointments[appointment_id]
+        return [
+            patient
+            for patient in self.patients.values()
+            if patient["org_id"] == org_id and not patient["billed"] and patient["phone"] == appointment["phone"]
+        ]
+
+    async def check_in_appointment(self, org_id: str, appointment_id: str, payload) -> tuple[dict, dict]:
         appointment = self.appointments[appointment_id]
         if appointment["org_id"] != org_id:
             raise ValueError("Appointment not found for this organization.")
         if appointment["status"] != "scheduled":
             raise ValueError("Only scheduled appointments can be added to the waiting queue.")
 
-        patient_id = str(uuid4())
-        patient = {
-            "id": patient_id,
-            "org_id": org_id,
-            "name": appointment["name"],
-            "phone": appointment["phone"],
-            "reason": appointment["reason"],
-            "age": appointment["age"],
-            "weight": appointment["weight"],
-            "height": appointment["height"],
-            "temperature": appointment["temperature"],
-            "status": "waiting",
-            "billed": False,
-            "created_at": _now(),
-        }
-        self.patients[patient_id] = patient
+        if payload.existing_patient_id is not None:
+            patient = self.patients[str(payload.existing_patient_id)]
+        else:
+            patient_id = str(uuid4())
+            patient = {
+                "id": patient_id,
+                "org_id": org_id,
+                "name": appointment["name"],
+                "phone": appointment["phone"],
+                "reason": appointment["reason"],
+                "age": appointment["age"],
+                "weight": appointment["weight"],
+                "height": appointment["height"],
+                "temperature": appointment["temperature"],
+                "status": "waiting",
+                "billed": False,
+                "created_at": _now(),
+            }
+            self.patients[patient_id] = patient
         appointment["status"] = "checked_in"
-        appointment["checked_in_patient_id"] = patient_id
+        appointment["checked_in_patient_id"] = patient["id"]
         appointment["checked_in_at"] = _now()
         return appointment, patient
 
@@ -266,7 +302,10 @@ class FakeRepo:
         patient = self.patients[patient_id]
         if patient["org_id"] != org_id:
             raise ValueError("Patient not found for this organization.")
-        patient.update(payload)
+        updates = dict(payload)
+        if "phone" in updates and updates["phone"] is not None:
+            updates["phone"] = _normalize_phone(updates["phone"])
+        patient.update(updates)
         return patient
 
     async def get_patient(self, org_id: str, patient_id: str) -> dict:
@@ -424,11 +463,20 @@ class FakeRepo:
         self.follow_ups[follow_up_id] = row
         return row
 
-    async def list_follow_ups(self, org_id: str) -> list[dict]:
-        return [
-            follow_up for follow_up in self.follow_ups.values()
-            if follow_up["org_id"] == org_id
-        ]
+    async def list_follow_ups(self, org_id: str, status: str | None = None, query: str | None = None, limit: int = 200) -> list[dict]:
+        rows = []
+        normalized_query = (query or "").strip().lower()
+        for follow_up in self.follow_ups.values():
+            if follow_up["org_id"] != org_id:
+                continue
+            if status is not None and follow_up["status"] != status:
+                continue
+            patient = self.patients.get(follow_up["patient_id"])
+            patient_name = patient["name"] if patient else ""
+            if normalized_query and normalized_query not in patient_name.lower() and normalized_query not in follow_up["notes"].lower():
+                continue
+            rows.append({**follow_up, "patient_name": patient_name})
+        return rows[:limit]
 
     async def list_follow_ups_for_patient(self, org_id: str, patient_id: str) -> list[dict]:
         return [
@@ -871,6 +919,166 @@ def test_appointment_can_be_created_listed_and_checked_into_queue(client):
     event_types = [event["type"] for event in timeline.json()]
     assert "appointment_booked" in event_types
     assert "appointment_checked_in" in event_types
+
+
+def test_appointment_check_in_preview_returns_active_phone_matches(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="appointments-preview@clinic.com", clinic_name="Appointments Preview Clinic")
+    headers = auth_headers(session["token"])
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Existing Queue Patient",
+            "phone": "5550109090",
+            "reason": "Already waiting",
+            "age": 33,
+            "weight": 72,
+            "temperature": 98.6,
+        },
+        headers=headers,
+    ).json()
+
+    appointment = test_client.post(
+        "/appointments",
+        json={
+            "name": "Booked Patient",
+            "phone": "5550109090",
+            "reason": "Repeat visit",
+            "scheduled_for": "2026-04-12T11:30:00+00:00",
+        },
+        headers=headers,
+    ).json()
+
+    preview = test_client.get(
+        f"/appointments/{appointment['id']}/check-in-preview",
+        headers=headers,
+    )
+    assert preview.status_code == 200
+    matches = preview.json()
+    assert len(matches) == 1
+    assert matches[0]["id"] == patient["id"]
+
+
+def test_patient_lookup_returns_multiple_matches_for_same_phone(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="patients-lookup@clinic.com", clinic_name="Patient Lookup Clinic")
+    headers = auth_headers(session["token"])
+
+    first = test_client.post(
+        "/patients",
+        json={
+            "name": "Parent Patient",
+            "phone": "5550111111",
+            "reason": "Consultation",
+            "age": 41,
+            "weight": 68,
+            "temperature": 98.5,
+        },
+        headers=headers,
+    )
+    assert first.status_code == 201
+
+    second = test_client.post(
+        "/patients",
+        json={
+            "name": "Child Patient",
+            "phone": "5550111111",
+            "reason": "Follow-up",
+            "age": 12,
+            "weight": 35,
+            "temperature": 98.4,
+        },
+        headers=headers,
+    )
+    assert second.status_code == 201
+
+    lookup = test_client.get(
+        "/patients/lookup",
+        params={"phone": "5550111111"},
+        headers=headers,
+    )
+    assert lookup.status_code == 200
+    matches = lookup.json()
+    assert len(matches) == 2
+    assert {match["name"] for match in matches} == {"Parent Patient", "Child Patient"}
+
+
+def test_patient_phone_is_normalized_for_lookup_and_storage(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="patients-normalize@clinic.com", clinic_name="Patient Normalize Clinic")
+    headers = auth_headers(session["token"])
+
+    created = test_client.post(
+        "/patients",
+        json={
+            "name": "Formatted Patient",
+            "phone": "(555) 012-3456",
+            "reason": "Consultation",
+            "age": 30,
+            "weight": 70,
+            "temperature": 98.6,
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201
+    assert created.json()["phone"] == "5550123456"
+
+    lookup = test_client.get(
+        "/patients/lookup",
+        params={"phone": "555-012-3456"},
+        headers=headers,
+    )
+    assert lookup.status_code == 200
+    matches = lookup.json()
+    assert len(matches) == 1
+    assert matches[0]["phone"] == "5550123456"
+
+
+def test_appointment_check_in_can_link_existing_active_patient(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="appointments-link@clinic.com", clinic_name="Appointments Link Clinic")
+    headers = auth_headers(session["token"])
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Existing Queue Patient",
+            "phone": "5550109999",
+            "reason": "Already waiting",
+            "age": 29,
+            "weight": 65,
+            "temperature": 98.4,
+        },
+        headers=headers,
+    ).json()
+
+    appointment = test_client.post(
+        "/appointments",
+        json={
+            "name": "Booked Patient",
+            "phone": "5550109999",
+            "reason": "Same visit duplicate",
+            "scheduled_for": "2026-04-12T12:00:00+00:00",
+        },
+        headers=headers,
+    ).json()
+
+    check_in = test_client.post(
+        f"/appointments/{appointment['id']}/check-in",
+        json={"existing_patient_id": patient["id"]},
+        headers=headers,
+    )
+    assert check_in.status_code == 200
+    assert check_in.json()["id"] == patient["id"]
+
+    patients = test_client.get("/patients", headers=headers)
+    assert patients.status_code == 200
+    assert len(patients.json()) == 1
+
+    updated_appointments = test_client.get("/appointments", headers=headers)
+    assert updated_appointments.status_code == 200
+    assert updated_appointments.json()[0]["checked_in_patient_id"] == patient["id"]
 
 
 def test_appointment_can_be_rescheduled_and_cancelled(client):

@@ -14,6 +14,20 @@ export interface Patient {
   created_at: string;
 }
 
+export interface PatientMatch {
+  id: string;
+  name: string;
+  phone: string;
+  reason: string;
+  age: number | null;
+  weight: number | null;
+  height: number | null;
+  temperature: number | null;
+  status: PatientStatus;
+  billed: boolean;
+  created_at: string;
+}
+
 export type AppointmentStatus = "scheduled" | "checked_in" | "cancelled";
 
 export interface Appointment {
@@ -92,6 +106,7 @@ export interface FollowUp {
   id: string;
   org_id: string;
   patient_id: string;
+  patient_name?: string | null;
   created_by: string | null;
   scheduled_for: string;
   notes: string;

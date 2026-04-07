@@ -35,10 +35,10 @@ interface SettingsDrawerProps {
   settings: ClinicSettings | null;
   currentUser: AuthUser | null;
   users: AuthUser[];
+  onLoadUsers: () => Promise<AuthUser[]>;
   patients: Patient[];
   catalogItems: CatalogItem[];
-  followUps: FollowUp[];
-  appointments: Appointment[];
+  onLoadCatalogItems: () => Promise<CatalogItem[]>;
   onClose: () => void;
   onSaveClinic: (
     payload: Omit<ClinicSettings, "id" | "org_id" | "updated_at">,
@@ -71,15 +71,18 @@ interface SettingsDrawerProps {
   }) => Promise<Invoice>;
   onGenerateInvoicePdf: (invoiceId: string) => Promise<Blob>;
   onSendInvoice: (payload: { invoice_id: string; recipient: string }) => Promise<string>;
-  onCheckInAppointment: (appointmentId: string) => Promise<void>;
+  onCheckInAppointment: (
+    appointmentId: string,
+    options?: { existingPatientId?: string; forceNew?: boolean },
+  ) => Promise<{ id: string; checked_in_at: string | null; checked_in_patient_id: string | null }>;
   onUpdateAppointment: (
     appointmentId: string,
     payload: { scheduled_for?: string; status?: "scheduled" | "checked_in" | "cancelled" },
-  ) => Promise<void>;
+  ) => Promise<Appointment>;
   onUpdateFollowUp: (
     followUpId: string,
     payload: { status?: "scheduled" | "completed" | "cancelled"; scheduled_for?: string; notes?: string },
-  ) => Promise<void>;
+  ) => Promise<FollowUp>;
   onBillingComplete: (patientId: string) => void;
 }
 
@@ -108,10 +111,10 @@ export function SettingsDrawer({
   settings,
   currentUser,
   users,
+  onLoadUsers,
   patients,
   catalogItems,
-  followUps,
-  appointments,
+  onLoadCatalogItems,
   onClose,
   onSaveClinic,
   onAddUser,
@@ -148,6 +151,8 @@ export function SettingsDrawer({
   const [userError, setUserError] = useState("");
   const [userSuccess, setUserSuccess] = useState("");
   const [isAddingUser, setIsAddingUser] = useState(false);
+  const [isUsersLoading, setIsUsersLoading] = useState(false);
+  const [hasLoadedUsers, setHasLoadedUsers] = useState(false);
 
   const [catalogForm, setCatalogForm] = useState<CatalogFormState>({
     name: "",
@@ -161,6 +166,8 @@ export function SettingsDrawer({
   const [catalogError, setCatalogError] = useState("");
   const [catalogStatus, setCatalogStatus] = useState("");
   const [isSavingCatalog, setIsSavingCatalog] = useState(false);
+  const [isCatalogLoading, setIsCatalogLoading] = useState(false);
+  const [hasLoadedCatalog, setHasLoadedCatalog] = useState(false);
   const [deletingCatalogId, setDeletingCatalogId] = useState("");
   const [stockAdjustments, setStockAdjustments] = useState<Record<string, string>>({});
   const [adjustingStockId, setAdjustingStockId] = useState("");
@@ -241,6 +248,69 @@ export function SettingsDrawer({
     setLetterError("");
     setLetterStatus("");
   }, [open]);
+
+  useEffect(() => {
+    if (!open || activeTab !== "users" || hasLoadedUsers || isUsersLoading) {
+      return;
+    }
+
+    let active = true;
+    setIsUsersLoading(true);
+    setUserError("");
+    void onLoadUsers()
+      .then(() => {
+        if (active) {
+          setHasLoadedUsers(true);
+        }
+      })
+      .catch((loadError) => {
+        if (active) {
+          setHasLoadedUsers(true);
+          setUserError(loadError instanceof Error ? loadError.message : "Failed to load users.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsUsersLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeTab, hasLoadedUsers, isUsersLoading, onLoadUsers, open]);
+
+  useEffect(() => {
+    const needsCatalog = activeTab === "catalog" || activeTab === "billing";
+    if (!open || !needsCatalog || hasLoadedCatalog || isCatalogLoading) {
+      return;
+    }
+
+    let active = true;
+    setIsCatalogLoading(true);
+    setCatalogError("");
+    void onLoadCatalogItems()
+      .then(() => {
+        if (active) {
+          setHasLoadedCatalog(true);
+        }
+      })
+      .catch((loadError) => {
+        if (active) {
+          setHasLoadedCatalog(true);
+          setCatalogError(loadError instanceof Error ? loadError.message : "Failed to load inventory.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsCatalogLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeTab, hasLoadedCatalog, isCatalogLoading, onLoadCatalogItems, open]);
 
   if (!open) {
     return null;
@@ -709,6 +779,10 @@ export function SettingsDrawer({
   }
 
   function renderCatalogTab() {
+    if (isCatalogLoading) {
+      return renderSimplePanel("Inventory", "Loading inventory...");
+    }
+
     return (
       <SettingsDrawerInventoryPanel
         currentUser={currentUser}
@@ -733,6 +807,10 @@ export function SettingsDrawer({
   }
 
   function renderUsersTab() {
+    if (isUsersLoading) {
+      return renderSimplePanel("Users", "Loading clinic users...");
+    }
+
     return (
       <SettingsDrawerUsersPanel
         currentUser={currentUser}
@@ -773,9 +851,6 @@ export function SettingsDrawer({
   function renderAppointmentsTab() {
     return (
       <SettingsDrawerAppointmentsPanel
-        appointments={appointments}
-        followUps={followUps}
-        patients={patients}
         onCheckInAppointment={onCheckInAppointment}
         onUpdateAppointment={onUpdateAppointment}
         onUpdateFollowUp={onUpdateFollowUp}

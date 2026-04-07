@@ -8,6 +8,7 @@ from supabase import Client, create_client
 from app.config import get_settings
 from app.schemas import (
     AppointmentCreate,
+    AppointmentCheckInRequest,
     AppointmentUpdate,
     CatalogItemCreate,
     CatalogStockUpdate,
@@ -19,6 +20,12 @@ from app.schemas import (
     PatientCreate,
     UserRole,
 )
+
+
+class DuplicateCheckInCandidateError(ValueError):
+    def __init__(self, matches: list[dict[str, Any]]) -> None:
+        super().__init__("Possible duplicate active patients found.")
+        self.matches = matches
 
 
 def _display_name(row: dict[str, Any]) -> str:
@@ -37,6 +44,54 @@ def _rpc_single(result: Any) -> dict[str, Any]:
     if isinstance(result, list):
         return result[0] if result else {}
     return result or {}
+
+
+def _escape_ilike(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_").replace(",", "\\,")
+
+
+def _normalize_phone_number(value: str | None) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    digits = "".join(char for char in raw if char.isdigit())
+    if raw.startswith("+") and digits:
+        return f"+{digits}"
+    return digits
+
+
+def _find_check_in_matches(client: Client, org_id: str, appointment_id: str) -> list[dict[str, Any]]:
+    appointment = (
+        client.table("appointments")
+        .select("*")
+        .eq("org_id", org_id)
+        .eq("id", appointment_id)
+        .single()
+        .execute()
+        .data
+    )
+    if not appointment:
+        raise ValueError("Appointment not found for this organization.")
+
+    normalized_phone = _normalize_phone_number(appointment.get("phone"))
+    if not normalized_phone:
+        return []
+
+    candidates = (
+        client.table("patients")
+        .select("*")
+        .eq("org_id", org_id)
+        .eq("billed", False)
+        .order("created_at", desc=True)
+        .limit(50)
+        .execute()
+        .data
+    )
+    return [
+        candidate
+        for candidate in candidates
+        if _normalize_phone_number(candidate.get("phone")) == normalized_phone
+    ]
 
 
 class SupabaseRepository:
@@ -67,7 +122,13 @@ class SupabaseRepository:
     async def create_patient(self, org_id: str, payload: PatientCreate) -> dict[str, Any]:
         return await asyncio.to_thread(
             lambda: self.client.table("patients")
-            .insert({"org_id": org_id, **payload.model_dump()})
+            .insert(
+                {
+                    "org_id": org_id,
+                    **payload.model_dump(),
+                    "phone": _normalize_phone_number(payload.phone),
+                }
+            )
             .execute()
             .data[0]
         )
@@ -79,6 +140,7 @@ class SupabaseRepository:
                 {
                     "org_id": org_id,
                     **payload.model_dump(),
+                    "phone": _normalize_phone_number(payload.phone),
                     "scheduled_for": payload.scheduled_for.isoformat(),
                     "status": "scheduled",
                 }
@@ -87,15 +149,36 @@ class SupabaseRepository:
             .data[0]
         )
 
-    async def list_appointments(self, org_id: str) -> list[dict[str, Any]]:
-        return await asyncio.to_thread(
-            lambda: self.client.table("appointments")
-            .select("*")
-            .eq("org_id", org_id)
-            .order("scheduled_for", desc=False)
-            .execute()
-            .data
-        )
+    async def list_appointments(
+        self,
+        org_id: str,
+        status: str | None = None,
+        query: str | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        def _list() -> list[dict[str, Any]]:
+            db_query = (
+                self.client.table("appointments")
+                .select("*")
+                .eq("org_id", org_id)
+            )
+            if status:
+                db_query = db_query.eq("status", status)
+            normalized_query = (query or "").strip()
+            if normalized_query:
+                escaped_query = _escape_ilike(normalized_query)
+                db_query = db_query.or_(
+                    f"name.ilike.%{escaped_query}%,phone.ilike.%{escaped_query}%,reason.ilike.%{escaped_query}%"
+                )
+            return (
+                db_query
+                .order("scheduled_for", desc=False)
+                .limit(limit)
+                .execute()
+                .data
+            )
+
+        return await asyncio.to_thread(_list)
 
     async def list_appointments_for_patient(self, org_id: str, patient_id: str) -> list[dict[str, Any]]:
         return await asyncio.to_thread(
@@ -108,57 +191,39 @@ class SupabaseRepository:
             .data
         )
 
-    async def check_in_appointment(self, org_id: str, appointment_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    async def list_potential_check_in_matches(self, org_id: str, appointment_id: str) -> list[dict[str, Any]]:
+        return await asyncio.to_thread(lambda: _find_check_in_matches(self.client, org_id, appointment_id))
+
+    async def check_in_appointment(
+        self,
+        org_id: str,
+        appointment_id: str,
+        payload: AppointmentCheckInRequest,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         def _check_in() -> tuple[dict[str, Any], dict[str, Any]]:
-            appointment = (
-                self.client.table("appointments")
-                .select("*")
-                .eq("org_id", org_id)
-                .eq("id", appointment_id)
-                .single()
+            if payload.existing_patient_id is None and not payload.force_new:
+                matches = _find_check_in_matches(self.client, org_id, appointment_id)
+                if matches:
+                    raise DuplicateCheckInCandidateError(matches)
+
+            result = (
+                self.client.rpc(
+                    "check_in_appointment_atomic",
+                    {
+                        "p_org_id": org_id,
+                        "p_appointment_id": appointment_id,
+                        "p_existing_patient_id": str(payload.existing_patient_id) if payload.existing_patient_id else None,
+                    },
+                )
                 .execute()
                 .data
             )
-            if not appointment:
-                raise ValueError("Appointment not found for this organization.")
-            if appointment.get("status") != "scheduled":
-                raise ValueError("Only scheduled appointments can be added to the waiting queue.")
-
-            patient = (
-                self.client.table("patients")
-                .insert(
-                    {
-                        "org_id": org_id,
-                        "name": appointment["name"],
-                        "phone": appointment["phone"],
-                        "reason": appointment["reason"],
-                        "age": appointment.get("age"),
-                        "weight": appointment.get("weight"),
-                        "height": appointment.get("height"),
-                        "temperature": appointment.get("temperature"),
-                        "status": "waiting",
-                        "billed": False,
-                    }
-                )
-                .execute()
-                .data[0]
-            )
-            checked_in_at = datetime.now(UTC).isoformat()
-            updated_appointment = (
-                self.client.table("appointments")
-                .update(
-                    {
-                        "status": "checked_in",
-                        "checked_in_patient_id": patient["id"],
-                        "checked_in_at": checked_in_at,
-                    }
-                )
-                .eq("org_id", org_id)
-                .eq("id", appointment_id)
-                .execute()
-                .data[0]
-            )
-            return updated_appointment, patient
+            payload = _rpc_single(result)
+            appointment = payload.get("appointment")
+            patient = payload.get("patient")
+            if not appointment or not patient:
+                raise ValueError("Failed to check in appointment.")
+            return appointment, patient
 
         return await asyncio.to_thread(_check_in)
 
@@ -214,14 +279,40 @@ class SupabaseRepository:
         return await asyncio.to_thread(_update)
 
     async def update_patient(self, org_id: str, patient_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        update_payload = dict(payload)
+        if "phone" in update_payload and update_payload["phone"] is not None:
+            update_payload["phone"] = _normalize_phone_number(update_payload["phone"])
         return await asyncio.to_thread(
             lambda: self.client.table("patients")
-            .update(payload)
+            .update(update_payload)
             .eq("org_id", org_id)
             .eq("id", patient_id)
             .execute()
             .data[0]
         )
+
+    async def list_patient_matches_by_phone(self, org_id: str, phone: str, limit: int = 10) -> list[dict[str, Any]]:
+        normalized_phone = _normalize_phone_number(phone)
+        if not normalized_phone:
+            return []
+
+        def _list() -> list[dict[str, Any]]:
+            patients = (
+                self.client.table("patients")
+                .select("*")
+                .eq("org_id", org_id)
+                .order("created_at", desc=True)
+                .limit(100)
+                .execute()
+                .data
+            )
+            return [
+                patient
+                for patient in patients
+                if _normalize_phone_number(patient.get("phone")) == normalized_phone
+            ][:limit]
+
+        return await asyncio.to_thread(_list)
 
     async def get_patient(self, org_id: str, patient_id: str) -> dict[str, Any]:
         return await asyncio.to_thread(
@@ -296,15 +387,57 @@ class SupabaseRepository:
 
         return await asyncio.to_thread(_create)
 
-    async def list_follow_ups(self, org_id: str) -> list[dict[str, Any]]:
-        return await asyncio.to_thread(
-            lambda: self.client.table("follow_ups")
-            .select("*")
-            .eq("org_id", org_id)
-            .order("scheduled_for", desc=False)
-            .execute()
-            .data
-        )
+    async def list_follow_ups(
+        self,
+        org_id: str,
+        status: str | None = None,
+        query: str | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        def _list() -> list[dict[str, Any]]:
+            follow_ups_query = (
+                self.client.table("follow_ups")
+                .select("*")
+                .eq("org_id", org_id)
+            )
+            if status:
+                follow_ups_query = follow_ups_query.eq("status", status)
+            follow_ups = (
+                follow_ups_query
+                .order("scheduled_for", desc=False)
+                .limit(limit)
+                .execute()
+                .data
+            )
+            if not follow_ups:
+                return []
+
+            patient_ids = sorted({str(follow_up["patient_id"]) for follow_up in follow_ups})
+            patients = (
+                self.client.table("patients")
+                .select("id, name")
+                .eq("org_id", org_id)
+                .in_("id", patient_ids)
+                .execute()
+                .data
+            )
+            patient_names = {str(patient["id"]): str(patient.get("name") or "").strip() for patient in patients}
+            normalized_query = (query or "").strip().lower()
+
+            rows = [
+                {**follow_up, "patient_name": patient_names.get(str(follow_up["patient_id"]), "")}
+                for follow_up in follow_ups
+            ]
+            if normalized_query:
+                rows = [
+                    row
+                    for row in rows
+                    if normalized_query in row["patient_name"].lower()
+                    or normalized_query in str(row.get("notes") or "").lower()
+                ]
+            return rows
+
+        return await asyncio.to_thread(_list)
 
     async def list_follow_ups_for_patient(self, org_id: str, patient_id: str) -> list[dict[str, Any]]:
         return await asyncio.to_thread(

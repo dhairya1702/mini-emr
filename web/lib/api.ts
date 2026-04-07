@@ -10,6 +10,7 @@ import {
   Invoice,
   GenerateNotePayload,
   Patient,
+  PatientMatch,
   PatientTimelineEvent,
   PatientStatus,
   RegisterPayload,
@@ -18,6 +19,18 @@ import {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
 const REQUEST_TIMEOUT_MS = 15000;
+
+function withQuery(path: string, params: Record<string, string | number | undefined>) {
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === "") {
+      continue;
+    }
+    searchParams.set(key, String(value));
+  }
+  const query = searchParams.toString();
+  return query ? `${path}?${query}` : path;
+}
 
 function createTimeoutSignal() {
   const controller = new AbortController();
@@ -58,10 +71,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
     try {
       const parsed = JSON.parse(raw) as {
-        detail?: string | Array<{ msg?: string }>;
+        detail?: string | Array<{ msg?: string }> | { message?: string };
       };
       if (typeof parsed.detail === "string") {
         message = parsed.detail;
+      } else if (parsed.detail && typeof parsed.detail === "object" && "message" in parsed.detail) {
+        message = parsed.detail.message || message;
       } else if (Array.isArray(parsed.detail) && parsed.detail[0]?.msg) {
         message = parsed.detail[0].msg as string;
       } else if (raw) {
@@ -179,8 +194,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  listFollowUps: () => request<FollowUp[]>("/follow-ups"),
-  listAppointments: () => request<Appointment[]>("/appointments"),
+  listFollowUps: (params?: {
+    status?: "scheduled" | "completed" | "cancelled";
+    q?: string;
+    limit?: number;
+  }) => request<FollowUp[]>(withQuery("/follow-ups", params ?? {})),
+  listAppointments: (params?: {
+    status?: "scheduled" | "checked_in" | "cancelled";
+    q?: string;
+    limit?: number;
+  }) => request<Appointment[]>(withQuery("/appointments", params ?? {})),
   createAppointment: (payload: {
     name: string;
     phone: string;
@@ -203,9 +226,17 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  checkInAppointment: (appointmentId: string) =>
+  checkInAppointment: (appointmentId: string, options?: { force_new?: boolean }) =>
     request<Patient>(`/appointments/${appointmentId}/check-in`, {
       method: "POST",
+      body: JSON.stringify({ force_new: options?.force_new ?? false }),
+    }),
+  previewAppointmentCheckIn: (appointmentId: string) =>
+    request<PatientMatch[]>(`/appointments/${appointmentId}/check-in-preview`),
+  checkInAppointmentWithPatient: (appointmentId: string, existingPatientId: string) =>
+    request<Patient>(`/appointments/${appointmentId}/check-in`, {
+      method: "POST",
+      body: JSON.stringify({ existing_patient_id: existingPatientId }),
     }),
   createFollowUp: (
     patientId: string,
@@ -235,6 +266,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  lookupPatientsByPhone: (phone: string, limit = 10) =>
+    request<PatientMatch[]>(withQuery("/patients/lookup", { phone, limit })),
   updatePatientStatus: (patientId: string, status: PatientStatus) =>
     request<Patient>(`/patients/${patientId}`, {
       method: "PATCH",

@@ -41,11 +41,9 @@ export default function HistoryPage() {
   const {
     currentUser,
     users,
+    loadUsers,
     catalogItems,
-    followUps,
-    setFollowUps,
-    appointments,
-    setAppointments,
+    loadCatalogItems,
     clinicSettings,
     error,
     isAuthReady,
@@ -261,10 +259,10 @@ export default function HistoryPage() {
         settings={clinicSettings}
         currentUser={currentUser}
         users={users}
+        onLoadUsers={loadUsers}
         patients={patients.filter((patient) => patient.status === "done" && !patient.billed)}
         catalogItems={catalogItems}
-        followUps={followUps}
-        appointments={appointments}
+        onLoadCatalogItems={loadCatalogItems}
         onClose={() => setIsSettingsOpen(false)}
         onSaveClinic={handleSaveClinicSettings}
         onAddUser={handleAddStaffUser}
@@ -277,40 +275,19 @@ export default function HistoryPage() {
         onCreateInvoice={handleCreateInvoice}
         onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
         onSendInvoice={handleSendInvoice}
-        onCheckInAppointment={async (appointmentId) => {
-          const checkedInPatient = await api.checkInAppointment(appointmentId);
-          setAppointments((current) =>
-            current.map((appointment) =>
-              appointment.id === appointmentId
-                ? {
-                    ...appointment,
-                    status: "checked_in",
-                    checked_in_patient_id: checkedInPatient.id,
-                    checked_in_at: new Date().toISOString(),
-                  }
-                : appointment,
-            ),
-          );
+        onCheckInAppointment={async (appointmentId, options) => {
+          const checkedInPatient = options?.existingPatientId
+            ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId)
+            : await api.checkInAppointment(appointmentId, { force_new: options?.forceNew });
           setPatients((current) => [checkedInPatient, ...current]);
+          return {
+            id: appointmentId,
+            checked_in_at: new Date().toISOString(),
+            checked_in_patient_id: checkedInPatient.id,
+          };
         }}
-        onUpdateAppointment={async (appointmentId, payload) => {
-          const updatedAppointment = await api.updateAppointment(appointmentId, payload);
-          setAppointments((current) =>
-            current
-              .map((appointment) =>
-                appointment.id === appointmentId ? updatedAppointment : appointment,
-              )
-              .sort((left, right) => left.scheduled_for.localeCompare(right.scheduled_for)),
-          );
-        }}
-        onUpdateFollowUp={async (followUpId, payload) => {
-          const updatedFollowUp = await api.updateFollowUp(followUpId, payload);
-          setFollowUps((current) =>
-            current
-              .map((followUp) => (followUp.id === followUpId ? updatedFollowUp : followUp))
-              .sort((left, right) => left.scheduled_for.localeCompare(right.scheduled_for)),
-          );
-        }}
+        onUpdateAppointment={(appointmentId, payload) => api.updateAppointment(appointmentId, payload)}
+        onUpdateFollowUp={(followUpId, payload) => api.updateFollowUp(followUpId, payload)}
         onBillingComplete={(patientId) => {
           setPatients((current) =>
             current.map((patient) =>

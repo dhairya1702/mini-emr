@@ -3,16 +3,19 @@ from datetime import datetime
 from io import BytesIO
 import re
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from app.auth import create_access_token, get_current_user, hash_password, require_admin, verify_password
 from app.config import get_settings
 from app.db import SupabaseRepository, get_repository
+from app.db import DuplicateCheckInCandidateError
 from app.schemas import (
     AppointmentCreate,
+    AppointmentCheckInRequest,
     AppointmentOut,
+    AppointmentStatus,
     AppointmentUpdate,
     AuthResponse,
     CatalogItemCreate,
@@ -22,6 +25,7 @@ from app.schemas import (
     ClinicSettingsUpdate,
     FollowUpCreate,
     FollowUpOut,
+    FollowUpStatus,
     FollowUpUpdate,
     InvoiceCreate,
     InvoiceOut,
@@ -35,6 +39,7 @@ from app.schemas import (
     GenerateNoteResponse,
     NoteCreate,
     PatientCreate,
+    PatientMatchOut,
     PatientOut,
     PatientUpdate,
     SendInvoiceRequest,
@@ -262,6 +267,20 @@ async def get_patients(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.get("/patients/lookup", response_model=list[PatientMatchOut])
+async def lookup_patients_by_phone(
+    phone: str = Query(min_length=6, max_length=30),
+    limit: int = Query(default=10, ge=1, le=25),
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> list[PatientMatchOut]:
+    try:
+        matches = await repo.list_patient_matches_by_phone(str(current_user.org_id), phone, limit=limit)
+        return [PatientMatchOut(**match) for match in matches]
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/patients", response_model=PatientOut, status_code=201)
 async def create_patient(
     payload: PatientCreate,
@@ -290,22 +309,53 @@ async def create_appointment(
 
 @app.get("/appointments", response_model=list[AppointmentOut])
 async def list_appointments(
+    status: AppointmentStatus | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=200, ge=1, le=500),
     repo: SupabaseRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[AppointmentOut]:
-    appointments = await repo.list_appointments(str(current_user.org_id))
+    appointments = await repo.list_appointments(str(current_user.org_id), status=status, query=q, limit=limit)
     return [AppointmentOut(**appointment) for appointment in appointments]
 
 
 @app.post("/appointments/{appointment_id}/check-in", response_model=PatientOut)
 async def check_in_appointment(
     appointment_id: str,
+    payload: AppointmentCheckInRequest | None = None,
     repo: SupabaseRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> PatientOut:
     try:
-        _appointment, patient = await repo.check_in_appointment(str(current_user.org_id), appointment_id)
+        _appointment, patient = await repo.check_in_appointment(
+            str(current_user.org_id),
+            appointment_id,
+            payload or AppointmentCheckInRequest(),
+        )
         return PatientOut(**patient)
+    except DuplicateCheckInCandidateError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Possible duplicate active patients found.",
+                "matches": [PatientMatchOut(**match).model_dump(mode="json") for match in exc.matches],
+            },
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/appointments/{appointment_id}/check-in-preview", response_model=list[PatientMatchOut])
+async def preview_check_in_appointment(
+    appointment_id: str,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> list[PatientMatchOut]:
+    try:
+        matches = await repo.list_potential_check_in_matches(str(current_user.org_id), appointment_id)
+        return [PatientMatchOut(**match) for match in matches]
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover
@@ -489,10 +539,13 @@ async def create_follow_up(
 
 @app.get("/follow-ups", response_model=list[FollowUpOut])
 async def list_follow_ups(
+    status: FollowUpStatus | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=200, ge=1, le=500),
     repo: SupabaseRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[FollowUpOut]:
-    follow_ups = await repo.list_follow_ups(str(current_user.org_id))
+    follow_ups = await repo.list_follow_ups(str(current_user.org_id), status=status, query=q, limit=limit)
     return [FollowUpOut(**follow_up) for follow_up in follow_ups]
 
 

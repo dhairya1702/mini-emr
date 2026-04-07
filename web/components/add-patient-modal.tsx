@@ -3,6 +3,9 @@
 import { FormEvent, useState } from "react";
 import { X } from "lucide-react";
 
+import { api } from "@/lib/api";
+import { PatientMatch } from "@/lib/types";
+
 interface AddPatientModalProps {
   open: boolean;
   onClose: () => void;
@@ -40,6 +43,8 @@ export function AddPatientModal({
   });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [existingMatches, setExistingMatches] = useState<PatientMatch[]>([]);
+  const [selectedExistingMatchId, setSelectedExistingMatchId] = useState("");
 
   if (!open) {
     return null;
@@ -57,8 +62,43 @@ export function AddPatientModal({
     return unit === "m" ? value * 100 : value;
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function resetForm() {
+    setForm({
+      name: "",
+      phone: "",
+      reason: "",
+      age: "",
+      weight: "",
+      height: "",
+      temperature: "",
+      heightUnit: "cm",
+      temperatureUnit: "F",
+      entryType: "queue",
+      appointmentDate: "",
+      appointmentTime: "",
+    });
+    setSelectedExistingMatchId("");
+  }
+
+  function loadExistingRecord(match: PatientMatch) {
+    setForm((current) => ({
+      ...current,
+      name: match.name,
+      phone: match.phone,
+      reason: match.reason,
+      age: match.age !== null ? String(match.age) : "",
+      weight: match.weight !== null ? String(match.weight) : "",
+      height: match.height !== null ? String(match.height) : "",
+      temperature: match.temperature !== null ? String(match.temperature) : "",
+      heightUnit: "cm",
+      temperatureUnit: "F",
+    }));
+    setExistingMatches([]);
+    setSelectedExistingMatchId(match.id);
+    setError("");
+  }
+
+  async function submitPatient(skipExistingCheck = false) {
     const digits = getPhoneDigits(form.phone);
     const isAppointment = form.entryType === "appointment";
     const age = form.age.trim() ? Number(form.age) : null;
@@ -127,6 +167,15 @@ export function AddPatientModal({
     setIsSaving(true);
     setError("");
     try {
+      if (!skipExistingCheck && !selectedExistingMatchId) {
+        const matches = await api.lookupPatientsByPhone(form.phone);
+        if (matches.length) {
+          setExistingMatches(matches);
+          setError("Existing records found for this phone number. Select one or create a new entry.");
+          return;
+        }
+      }
+
       await onSubmit({
         entryType: form.entryType,
         name: form.name,
@@ -140,20 +189,8 @@ export function AddPatientModal({
           ? new Date(`${form.appointmentDate}T${form.appointmentTime}:00`).toISOString()
           : undefined,
       });
-      setForm({
-        name: "",
-        phone: "",
-        reason: "",
-        age: "",
-        weight: "",
-        height: "",
-        temperature: "",
-        heightUnit: "cm",
-        temperatureUnit: "F",
-        entryType: "queue",
-        appointmentDate: "",
-        appointmentTime: "",
-      });
+      resetForm();
+      setExistingMatches([]);
       setError("");
       onClose();
     } catch (submitError) {
@@ -165,10 +202,15 @@ export function AddPatientModal({
     }
   }
 
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await submitPatient(false);
+  }
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-sky-100/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-[32px] border-2 border-sky-300 bg-white p-6 shadow-[0_20px_60px_rgba(125,211,252,0.22)]">
-        <div className="mb-6 flex items-center justify-between">
+      <div className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-[32px] border-2 border-sky-300 bg-white shadow-[0_20px_60px_rgba(125,211,252,0.22)]">
+        <div className="flex items-center justify-between border-b border-sky-100 px-6 py-5">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Add Patient</h2>
             <p className="mt-1 text-sm text-slate-700">Quick intake for the live queue or a future booking.</p>
@@ -177,6 +219,7 @@ export function AddPatientModal({
             type="button"
             onClick={() => {
               setError("");
+              setExistingMatches([]);
               onClose();
             }}
             className="rounded-full border border-sky-200 p-2 text-slate-700 transition hover:text-slate-900"
@@ -185,13 +228,15 @@ export function AddPatientModal({
           </button>
         </div>
 
-        <form className="space-y-4" onSubmit={handleSubmit}>
+        <form className="space-y-4 overflow-y-auto px-6 py-5" onSubmit={handleSubmit}>
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-800">Add As</span>
             <select
               value={form.entryType}
               onChange={(event) => {
                 setError("");
+                setExistingMatches([]);
+                setSelectedExistingMatchId("");
                 setForm((current) => ({
                   ...current,
                   entryType: event.target.value as "queue" | "appointment",
@@ -211,6 +256,8 @@ export function AddPatientModal({
               value={form.name}
               onChange={(event) => {
                 setError("");
+                setExistingMatches([]);
+                setSelectedExistingMatchId("");
                 setForm((current) => ({ ...current, name: event.target.value }));
               }}
               className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
@@ -225,12 +272,70 @@ export function AddPatientModal({
               value={form.phone}
               onChange={(event) => {
                 setError("");
-                setForm((current) => ({ ...current, phone: event.target.value }));
+                setExistingMatches([]);
+                setSelectedExistingMatchId("");
+                setForm((current) => ({ ...current, phone: getPhoneDigits(event.target.value).slice(0, 10) }));
               }}
               className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
               placeholder="10-digit phone number"
             />
           </label>
+
+          {existingMatches.length ? (
+            <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4">
+              <p className="text-sm font-semibold text-amber-900">Existing records found for this phone number</p>
+              <p className="mt-1 text-sm text-amber-800">
+                These are existing accounts under the same number. Select one or create a new entry.
+              </p>
+              <div className="mt-4 max-h-64 space-y-3 overflow-y-auto pr-1">
+                {existingMatches.map((match) => (
+                  <div key={match.id} className="rounded-[20px] border border-amber-200 bg-white px-4 py-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900">{match.name}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {match.phone} · {match.status} · {new Date(match.created_at).toLocaleString([], {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                        <p className="mt-1 truncate text-sm text-slate-600">{match.reason}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => loadExistingRecord(match)}
+                        className="shrink-0 rounded-full bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600"
+                      >
+                        Select Existing
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void submitPatient(true)}
+                  disabled={isSaving}
+                  className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-60"
+                >
+                  Create New Entry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExistingMatches([]);
+                    setError("");
+                  }}
+                  className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {form.entryType === "appointment" ? (
             <div className="grid grid-cols-2 gap-4">
@@ -241,6 +346,8 @@ export function AddPatientModal({
                   value={form.appointmentDate}
                   onChange={(event) => {
                     setError("");
+                    setExistingMatches([]);
+                    setSelectedExistingMatchId("");
                     setForm((current) => ({ ...current, appointmentDate: event.target.value }));
                   }}
                   className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
@@ -254,6 +361,8 @@ export function AddPatientModal({
                   value={form.appointmentTime}
                   onChange={(event) => {
                     setError("");
+                    setExistingMatches([]);
+                    setSelectedExistingMatchId("");
                     setForm((current) => ({ ...current, appointmentTime: event.target.value }));
                   }}
                   className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
