@@ -133,6 +133,19 @@ class PatientTimelineEvent(BaseModel):
     description: str
 
 
+class AuditEventOut(BaseModel):
+    id: UUID
+    org_id: UUID
+    actor_user_id: UUID | None = None
+    actor_name: str
+    entity_type: str
+    entity_id: str
+    action: str
+    summary: str
+    metadata: dict = Field(default_factory=dict)
+    created_at: datetime
+
+
 class FollowUpCreate(BaseModel):
     scheduled_for: datetime
     notes: str = Field(default="", max_length=500)

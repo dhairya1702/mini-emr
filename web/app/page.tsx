@@ -27,7 +27,9 @@ export default function HomePage() {
   const {
     currentUser,
     users,
+    auditEvents,
     loadUsers,
+    loadAuditEvents,
     catalogItems,
     loadCatalogItems,
     clinicSettings,
@@ -299,6 +301,8 @@ export default function HomePage() {
         currentUser={currentUser}
         users={users}
         onLoadUsers={loadUsers}
+        auditEvents={auditEvents}
+        onLoadAuditEvents={loadAuditEvents}
         patients={groupedPatients.done}
         catalogItems={catalogItems}
         onLoadCatalogItems={loadCatalogItems}

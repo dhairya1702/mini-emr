@@ -86,15 +86,14 @@ export function SettingsDrawerAppointmentsPanel({
           }
         })
         .finally(() => {
-          if (active) {
-            setIsLoading(false);
-          }
+          setIsLoading(false);
         });
     }, 250);
 
     return () => {
       active = false;
       window.clearTimeout(timeoutId);
+      setIsLoading(false);
     };
   }, [activeView, appointmentFilter, appointmentQuery, followUpFilter, followUpQuery]);
 

@@ -98,12 +98,48 @@ class FakeRepo:
         self.invoice_items: dict[str, dict] = {}
         self.follow_ups: dict[str, dict] = {}
         self.appointments: dict[str, dict] = {}
+        self.audit_events: dict[str, dict] = {}
 
     async def create_organization(self, clinic_name: str) -> dict:
         org_id = str(uuid4())
         organization = {"id": org_id, "name": clinic_name.strip(), "created_at": _now()}
         self.organizations[org_id] = organization
         return organization
+
+    async def create_audit_event(
+        self,
+        org_id: str,
+        actor_user_id: str | None,
+        actor_name: str,
+        entity_type: str,
+        entity_id: str,
+        action: str,
+        summary: str,
+        metadata: dict | None = None,
+    ) -> dict:
+        audit_id = str(uuid4())
+        row = {
+            "id": audit_id,
+            "org_id": org_id,
+            "actor_user_id": actor_user_id,
+            "actor_name": actor_name,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "action": action,
+            "summary": summary,
+            "metadata": metadata or {},
+            "created_at": _now(),
+        }
+        self.audit_events[audit_id] = row
+        return row
+
+    async def list_audit_events(self, org_id: str, limit: int = 100) -> list[dict]:
+        rows = [
+            row for row in self.audit_events.values()
+            if row["org_id"] == org_id
+        ]
+        rows.sort(key=lambda row: row["created_at"], reverse=True)
+        return rows[:limit]
 
     async def create_clinic_settings(self, org_id: str, payload) -> dict:
         settings_id = str(uuid4())
@@ -869,6 +905,47 @@ def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
     assert timeline.status_code == 200
     event_types = [event["type"] for event in timeline.json()]
     assert "follow_up_scheduled" in event_types
+
+
+def test_audit_events_list_tracks_core_changes(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="audit@clinic.com", clinic_name="Audit Clinic")
+    headers = auth_headers(session["token"])
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Audit Patient",
+            "phone": "5550107777",
+            "reason": "Review",
+            "age": 30,
+            "weight": 64,
+            "height": 170,
+            "temperature": 98.9,
+        },
+        headers=headers,
+    ).json()
+
+    update_patient = test_client.patch(
+        f"/patients/{patient['id']}",
+        json={"reason": "Updated review"},
+        headers=headers,
+    )
+    assert update_patient.status_code == 200
+
+    create_follow_up = test_client.post(
+        f"/patients/{patient['id']}/follow-ups",
+        json={"scheduled_for": "2026-04-10T10:30:00+00:00", "notes": "Audit trail check"},
+        headers=headers,
+    )
+    assert create_follow_up.status_code == 201
+
+    audit_events = test_client.get("/audit-events", headers=headers)
+    assert audit_events.status_code == 200
+    actions = [event["action"] for event in audit_events.json()]
+    assert "patient_created" in actions
+    assert "patient_updated" in actions
+    assert "follow_up_created" in actions
 
 
 def test_appointment_can_be_created_listed_and_checked_into_queue(client):

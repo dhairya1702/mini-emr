@@ -53,7 +53,9 @@ export default function EarningsPage() {
   const {
     currentUser,
     users,
+    auditEvents,
     loadUsers,
+    loadAuditEvents,
     catalogItems,
     loadCatalogItems,
     clinicSettings,
@@ -339,6 +341,8 @@ export default function EarningsPage() {
         currentUser={currentUser}
         users={users}
         onLoadUsers={loadUsers}
+        auditEvents={auditEvents}
+        onLoadAuditEvents={loadAuditEvents}
         patients={patients.filter((patient) => patient.status === "done" && !patient.billed)}
         catalogItems={catalogItems}
         onLoadCatalogItems={loadCatalogItems}

@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.db import SupabaseRepository, get_repository
 from app.db import DuplicateCheckInCandidateError
 from app.schemas import (
+    AuditEventOut,
     AppointmentCreate,
     AppointmentCheckInRequest,
     AppointmentOut,
@@ -105,6 +106,32 @@ def format_display_datetime(value: datetime | str) -> str:
     hour = local_value.strftime("%I").lstrip("0") or "0"
     minute_period = local_value.strftime("%M %p")
     return f"{month} {day}, {hour}:{minute_period}"
+
+
+def get_actor_name(current_user: UserOut) -> str:
+    return current_user.name.strip() or current_user.identifier.strip() or "Clinic User"
+
+
+async def write_audit_event(
+    repo: SupabaseRepository,
+    current_user: UserOut,
+    *,
+    entity_type: str,
+    entity_id: str,
+    action: str,
+    summary: str,
+    metadata: dict | None = None,
+) -> None:
+    await repo.create_audit_event(
+        org_id=str(current_user.org_id),
+        actor_user_id=str(current_user.id),
+        actor_name=get_actor_name(current_user),
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action=action,
+        summary=summary,
+        metadata=metadata,
+    )
 
 
 @app.get("/health")
@@ -241,6 +268,15 @@ async def create_invoice(
 ) -> InvoiceOut:
     try:
         created = await repo.create_invoice(str(current_user.org_id), payload)
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="invoice",
+            entity_id=str(created["id"]),
+            action="invoice_created",
+            summary=f"Created invoice for patient {created['patient_id']} totaling {float(created.get('total', 0)):.2f}.",
+            metadata={"patient_id": str(created["patient_id"]), "item_count": len(created.get("items", []))},
+        )
         return InvoiceOut(**created)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -253,6 +289,16 @@ async def list_invoices(
 ) -> list[InvoiceOut]:
     invoices = await repo.list_invoices(str(current_user.org_id))
     return [InvoiceOut(**invoice) for invoice in invoices]
+
+
+@app.get("/audit-events", response_model=list[AuditEventOut])
+async def list_audit_events(
+    limit: int = Query(default=100, ge=1, le=250),
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> list[AuditEventOut]:
+    rows = await repo.list_audit_events(str(current_user.org_id), limit=limit)
+    return [AuditEventOut(**row) for row in rows]
 
 
 @app.get("/patients", response_model=list[PatientOut])
@@ -289,6 +335,15 @@ async def create_patient(
 ) -> PatientOut:
     try:
         created = await repo.create_patient(str(current_user.org_id), payload)
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="patient",
+            entity_id=str(created["id"]),
+            action="patient_created",
+            summary=f"Added patient {created['name']} to the queue.",
+            metadata={"status": created.get("status"), "phone": created.get("phone")},
+        )
         return PatientOut(**created)
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -302,6 +357,15 @@ async def create_appointment(
 ) -> AppointmentOut:
     try:
         created = await repo.create_appointment(str(current_user.org_id), payload)
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="appointment",
+            entity_id=str(created["id"]),
+            action="appointment_created",
+            summary=f"Booked appointment for {created['name']} on {format_display_datetime(created['scheduled_for'])}.",
+            metadata={"patient_name": created.get("name"), "status": created.get("status")},
+        )
         return AppointmentOut(**created)
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -331,6 +395,15 @@ async def check_in_appointment(
             str(current_user.org_id),
             appointment_id,
             payload or AppointmentCheckInRequest(),
+        )
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="appointment",
+            entity_id=appointment_id,
+            action="appointment_checked_in",
+            summary=f"Checked in appointment into patient record {patient['name']}.",
+            metadata={"checked_in_patient_id": str(patient["id"])},
         )
         return PatientOut(**patient)
     except DuplicateCheckInCandidateError as exc:
@@ -371,6 +444,16 @@ async def update_appointment(
 ) -> AppointmentOut:
     try:
         updated = await repo.update_appointment(str(current_user.org_id), appointment_id, payload)
+        changed_fields = sorted(payload.model_dump(exclude_none=True).keys())
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="appointment",
+            entity_id=str(updated["id"]),
+            action="appointment_updated",
+            summary=f"Updated appointment fields: {', '.join(changed_fields)}.",
+            metadata={"changed_fields": changed_fields, "status": updated.get("status")},
+        )
         return AppointmentOut(**updated)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -393,6 +476,16 @@ async def update_patient(
 
     try:
         updated = await repo.update_patient(str(current_user.org_id), patient_id, updates)
+        changed_fields = sorted(updates.keys())
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="patient",
+            entity_id=str(updated["id"]),
+            action="patient_updated",
+            summary=f"Updated patient {updated['name']}: {', '.join(changed_fields)}.",
+            metadata={"changed_fields": changed_fields},
+        )
         return PatientOut(**updated)
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -530,6 +623,15 @@ async def create_follow_up(
             str(current_user.id),
             payload,
         )
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="follow_up",
+            entity_id=str(created["id"]),
+            action="follow_up_created",
+            summary=f"Scheduled follow-up for patient {created['patient_id']} on {format_display_datetime(created['scheduled_for'])}.",
+            metadata={"patient_id": str(created["patient_id"]), "status": created.get("status")},
+        )
         return FollowUpOut(**created)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -558,6 +660,17 @@ async def update_follow_up(
 ) -> FollowUpOut:
     try:
         updated = await repo.update_follow_up(str(current_user.org_id), follow_up_id, payload)
+        changed_fields = sorted(payload.model_dump(exclude_none=True).keys())
+        action = "follow_up_completed" if updated.get("status") == "completed" else "follow_up_updated"
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="follow_up",
+            entity_id=str(updated["id"]),
+            action=action,
+            summary=f"Updated follow-up fields: {', '.join(changed_fields)}.",
+            metadata={"changed_fields": changed_fields, "status": updated.get("status")},
+        )
         return FollowUpOut(**updated)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -643,9 +756,18 @@ async def create_generated_note(
             measurements_context=measurements_context,
         )
         if payload.patient_id:
-            await repo.create_note(
+            note = await repo.create_note(
                 str(current_user.org_id),
                 NoteCreate(patient_id=payload.patient_id, content=content),
+            )
+            await write_audit_event(
+                repo,
+                current_user,
+                entity_type="note",
+                entity_id=str(note["id"]),
+                action="consultation_note_created",
+                summary=f"Generated consultation note for patient {payload.patient_id}.",
+                metadata={"patient_id": str(payload.patient_id)},
             )
         return GenerateNoteResponse(content=content)
     except Exception as exc:  # pragma: no cover
@@ -709,7 +831,16 @@ async def send_invoice(
     repo: SupabaseRepository = Depends(get_repository),
 ) -> SendNoteResponse:
     try:
-        await repo.finalize_invoice(str(current_user.org_id), str(payload.invoice_id))
+        patient_id = await repo.finalize_invoice(str(current_user.org_id), str(payload.invoice_id))
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="invoice",
+            entity_id=str(payload.invoice_id),
+            action="invoice_sent",
+            summary=f"Sent invoice {payload.invoice_id} to {payload.recipient}.",
+            metadata={"patient_id": patient_id, "recipient": payload.recipient},
+        )
         return SendNoteResponse(
             success=True,
             message=f"Mock invoice send queued for {payload.recipient}.",

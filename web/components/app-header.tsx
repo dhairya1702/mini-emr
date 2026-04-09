@@ -7,7 +7,7 @@ import { AuthUser } from "@/lib/types";
 interface AppHeaderProps {
   clinicName: string;
   currentUser: AuthUser | null;
-  active: "queue" | "history" | "earnings";
+  active: "queue" | "patients" | "history" | "earnings";
   onLogout: () => void;
   onAddPatient?: () => void;
   onOpenSettings?: () => void;

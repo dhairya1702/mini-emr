@@ -88,6 +88,19 @@ create table if not exists public.invoice_items (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.audit_events (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  actor_user_id uuid references public.clinic_users(id) on delete set null,
+  actor_name text not null default '',
+  entity_type text not null,
+  entity_id text not null,
+  action text not null,
+  summary text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.follow_ups (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
@@ -178,6 +191,7 @@ create index if not exists clinic_users_org_role_idx on public.clinic_users (org
 create index if not exists catalog_items_org_type_idx on public.catalog_items (org_id, item_type, name);
 create index if not exists invoices_org_patient_idx on public.invoices (org_id, patient_id, created_at desc);
 create index if not exists invoice_items_invoice_idx on public.invoice_items (invoice_id, created_at asc);
+create index if not exists audit_events_org_created_idx on public.audit_events (org_id, created_at desc);
 create index if not exists follow_ups_org_status_scheduled_idx on public.follow_ups (org_id, status, scheduled_for asc);
 create index if not exists follow_ups_patient_idx on public.follow_ups (patient_id, created_at desc);
 create index if not exists appointments_org_status_scheduled_idx on public.appointments (org_id, status, scheduled_for asc);

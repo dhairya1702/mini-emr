@@ -1,5 +1,6 @@
 import { authStorage } from "@/lib/auth";
 import {
+  AuditEvent,
   Appointment,
   AuthResponse,
   AuthUser,
@@ -143,6 +144,8 @@ export const api = {
     }),
   getCurrentUser: () => request<AuthUser>("/auth/me"),
   listUsers: () => request<AuthUser[]>("/users"),
+  listAuditEvents: (params?: { limit?: number }) =>
+    request<AuditEvent[]>(withQuery("/audit-events", params ?? {})),
   createStaffUser: (payload: { identifier: string; password: string }) =>
     request<AuthUser>("/users/staff", {
       method: "POST",

@@ -59,15 +59,20 @@ export function PatientDetailsDrawer({
   }, [patient]);
 
   useEffect(() => {
+    if (!patient) {
+      setTimeline([]);
+      setTimelineError("");
+      setIsTimelineLoading(false);
+      return;
+    }
+
+    const currentPatient = patient;
     let active = true;
     async function loadTimeline() {
-      if (!patient) {
-        return;
-      }
       setIsTimelineLoading(true);
       setTimelineError("");
       try {
-        const events = await onLoadTimeline(patient.id);
+        const events = await onLoadTimeline(currentPatient.id);
         if (active) {
           setTimeline(events);
         }
@@ -77,15 +82,14 @@ export function PatientDetailsDrawer({
           setTimelineError(loadError instanceof Error ? loadError.message : "Failed to load timeline.");
         }
       } finally {
-        if (active) {
-          setIsTimelineLoading(false);
-        }
+        setIsTimelineLoading(false);
       }
     }
 
     loadTimeline();
     return () => {
       active = false;
+      setIsTimelineLoading(false);
     };
   }, [onLoadTimeline, patient]);
 

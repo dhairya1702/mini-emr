@@ -12,6 +12,7 @@ import {
   Info,
   LayoutDashboard,
   Mail,
+  Search,
   Settings2,
   Stethoscope,
   UserPlus,
@@ -23,9 +24,9 @@ import { SettingsDrawerAppointmentsPanel } from "@/components/settings-drawer-ap
 import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/settings-drawer-inventory-panel";
 import { SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-panel";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
-import { Appointment, AuthUser, CatalogItem, ClinicSettings, FollowUp, Invoice, Patient } from "@/lib/types";
+import { Appointment, AuditEvent, AuthUser, CatalogItem, ClinicSettings, FollowUp, Invoice, Patient } from "@/lib/types";
 
-type SettingsTab = "settings" | "about" | "contact" | "billing" | "clinic" | "users" | "letter" | "catalog" | "appointments";
+type SettingsTab = "settings" | "about" | "contact" | "billing" | "clinic" | "users" | "letter" | "catalog" | "appointments" | "audit";
 type DrawerMenuItem =
   | { href: string; label: string; icon: typeof Settings2 }
   | { tab: SettingsTab; label: string; icon: typeof Settings2 };
@@ -36,6 +37,8 @@ interface SettingsDrawerProps {
   currentUser: AuthUser | null;
   users: AuthUser[];
   onLoadUsers: () => Promise<AuthUser[]>;
+  auditEvents: AuditEvent[];
+  onLoadAuditEvents: () => Promise<AuditEvent[]>;
   patients: Patient[];
   catalogItems: CatalogItem[];
   onLoadCatalogItems: () => Promise<CatalogItem[]>;
@@ -92,6 +95,7 @@ const tabs: Array<{ id: SettingsTab; label: string; icon: typeof Settings2 }> = 
   { id: "billing", label: "Billing", icon: CreditCard },
   { id: "catalog", label: "Inventory", icon: Stethoscope },
   { id: "users", label: "Users", icon: UserPlus },
+  { id: "audit", label: "Audit", icon: Settings2 },
   { id: "clinic", label: "Clinic", icon: Building2 },
   { id: "letter", label: "Generate Letter", icon: FilePenLine },
   { id: "about", label: "About", icon: Info },
@@ -112,6 +116,8 @@ export function SettingsDrawer({
   currentUser,
   users,
   onLoadUsers,
+  auditEvents,
+  onLoadAuditEvents,
   patients,
   catalogItems,
   onLoadCatalogItems,
@@ -168,6 +174,9 @@ export function SettingsDrawer({
   const [isSavingCatalog, setIsSavingCatalog] = useState(false);
   const [isCatalogLoading, setIsCatalogLoading] = useState(false);
   const [hasLoadedCatalog, setHasLoadedCatalog] = useState(false);
+  const [auditError, setAuditError] = useState("");
+  const [isAuditLoading, setIsAuditLoading] = useState(false);
+  const [hasLoadedAudit, setHasLoadedAudit] = useState(false);
   const [deletingCatalogId, setDeletingCatalogId] = useState("");
   const [stockAdjustments, setStockAdjustments] = useState<Record<string, string>>({});
   const [adjustingStockId, setAdjustingStockId] = useState("");
@@ -204,11 +213,13 @@ export function SettingsDrawer({
   );
   const menuItems: DrawerMenuItem[] = [
     { href: "/", label: "Queue", icon: LayoutDashboard },
+    { href: "/patients", label: "Patients", icon: Search },
     { tab: "appointments" as SettingsTab, label: "Appointments", icon: CalendarClock },
     { tab: "billing" as SettingsTab, label: "Billing", icon: CreditCard },
     { href: "/history", label: "History", icon: History },
     { tab: "catalog" as SettingsTab, label: "Inventory", icon: Stethoscope },
     { tab: "users" as SettingsTab, label: "Users", icon: UserPlus },
+    { tab: "audit" as SettingsTab, label: "Audit", icon: Settings2 },
     { tab: "clinic" as SettingsTab, label: "Clinic", icon: Building2 },
     { tab: "letter" as SettingsTab, label: "Generate Letter", icon: FilePenLine },
     { tab: "about" as SettingsTab, label: "About", icon: Info },
@@ -250,7 +261,12 @@ export function SettingsDrawer({
   }, [open]);
 
   useEffect(() => {
-    if (!open || activeTab !== "users" || hasLoadedUsers || isUsersLoading) {
+    if (!open || activeTab !== "users") {
+      setIsUsersLoading(false);
+      return;
+    }
+
+    if (hasLoadedUsers || isUsersLoading) {
       return;
     }
 
@@ -270,9 +286,7 @@ export function SettingsDrawer({
         }
       })
       .finally(() => {
-        if (active) {
-          setIsUsersLoading(false);
-        }
+        setIsUsersLoading(false);
       });
 
     return () => {
@@ -281,8 +295,13 @@ export function SettingsDrawer({
   }, [activeTab, hasLoadedUsers, isUsersLoading, onLoadUsers, open]);
 
   useEffect(() => {
-    const needsCatalog = activeTab === "catalog" || activeTab === "billing";
-    if (!open || !needsCatalog || hasLoadedCatalog || isCatalogLoading) {
+    const needsCatalog = open && (activeTab === "catalog" || activeTab === "billing");
+    if (!needsCatalog) {
+      setIsCatalogLoading(false);
+      return;
+    }
+
+    if (hasLoadedCatalog || isCatalogLoading) {
       return;
     }
 
@@ -302,15 +321,47 @@ export function SettingsDrawer({
         }
       })
       .finally(() => {
-        if (active) {
-          setIsCatalogLoading(false);
-        }
+        setIsCatalogLoading(false);
       });
 
     return () => {
       active = false;
     };
   }, [activeTab, hasLoadedCatalog, isCatalogLoading, onLoadCatalogItems, open]);
+
+  useEffect(() => {
+    if (!open || activeTab !== "audit") {
+      setIsAuditLoading(false);
+      return;
+    }
+
+    if (hasLoadedAudit || isAuditLoading) {
+      return;
+    }
+
+    let active = true;
+    setIsAuditLoading(true);
+    setAuditError("");
+    void onLoadAuditEvents()
+      .then(() => {
+        if (active) {
+          setHasLoadedAudit(true);
+        }
+      })
+      .catch((loadError) => {
+        if (active) {
+          setHasLoadedAudit(true);
+          setAuditError(loadError instanceof Error ? loadError.message : "Failed to load audit events.");
+        }
+      })
+      .finally(() => {
+        setIsAuditLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeTab, hasLoadedAudit, isAuditLoading, onLoadAuditEvents, open]);
 
   if (!open) {
     return null;
@@ -891,6 +942,61 @@ export function SettingsDrawer({
     );
   }
 
+  function renderAuditTab() {
+    if (isAuditLoading) {
+      return renderSimplePanel("Audit", "Loading recent clinic activity...");
+    }
+
+    return (
+      <div className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Audit</p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-900">Recent system activity</h3>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              This feed tracks who changed what across patients, appointments, follow-ups, notes, and billing.
+            </p>
+          </div>
+          <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
+            {auditEvents.length} event{auditEvents.length === 1 ? "" : "s"}
+          </div>
+        </div>
+
+        {auditError ? <p className="mt-4 text-sm font-medium text-rose-600">{auditError}</p> : null}
+
+        <div className="mt-6 space-y-3">
+          {auditEvents.length ? auditEvents.map((event) => (
+            <div key={event.id} className="rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{event.summary}</p>
+                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">
+                    {event.actor_name} · {event.action.replaceAll("_", " ")}
+                  </p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {event.entity_type.replaceAll("_", " ")} · ID {event.entity_id.slice(0, 8).toUpperCase()}
+                  </p>
+                </div>
+                <p className="text-right text-xs text-slate-500">
+                  {new Date(event.created_at).toLocaleString([], {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </p>
+              </div>
+            </div>
+          )) : (
+            <div className="rounded-[24px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-12 text-center text-sm text-slate-500">
+              No audit events yet.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   function renderSimplePanel(title: string, text: string) {
     return (
       <div className="rounded-[28px] border border-sky-200 bg-sky-50/40 p-5">
@@ -904,11 +1010,12 @@ export function SettingsDrawer({
     if (activeTab === "clinic") return renderClinicTab();
     if (activeTab === "catalog") return renderCatalogTab();
     if (activeTab === "users") return renderUsersTab();
+    if (activeTab === "audit") return renderAuditTab();
     if (activeTab === "appointments") return renderAppointmentsTab();
     if (activeTab === "letter") return renderLetterTab();
     if (activeTab === "billing") return renderBillingTab();
 
-    const copy: Record<Exclude<SettingsTab, "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments">, { title: string; text: string }> = {
+    const copy: Record<Exclude<SettingsTab, "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments" | "audit">, { title: string; text: string }> = {
       settings: {
         title: "Settings",
         text: "Core clinic configuration, inventory management, users, letters, and billing all live in this drawer.",
@@ -923,7 +1030,7 @@ export function SettingsDrawer({
       },
     };
 
-    const item = copy[activeTab as Exclude<SettingsTab, "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments">];
+    const item = copy[activeTab as Exclude<SettingsTab, "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments" | "audit">];
     return renderSimplePanel(item.title, item.text);
   }
 

@@ -65,6 +65,19 @@ export interface PatientTimelineEvent {
   description: string;
 }
 
+export interface AuditEvent {
+  id: string;
+  org_id: string;
+  actor_user_id: string | null;
+  actor_name: string;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  summary: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface TestScoreEntry {
   id?: string;
   label: string;

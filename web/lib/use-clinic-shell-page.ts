@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { authStorage } from "@/lib/auth";
-import { AuthUser, CatalogItem, ClinicSettings, Invoice } from "@/lib/types";
+import { AuditEvent, AuthUser, CatalogItem, ClinicSettings, Invoice } from "@/lib/types";
 
 export type ClinicCatalogItemPayload = {
   name: string;
@@ -41,13 +41,23 @@ export function useClinicShellPage<T>({
   onPageData,
 }: UseClinicShellPageOptions<T>) {
   const router = useRouter();
+  const canLoadPageDataRef = useRef(canLoadPageData);
+  const loadPageDataRef = useRef(loadPageData);
+  const onPageDataRef = useRef(onPageData);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [users, setUsers] = useState<AuthUser[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [clinicSettings, setClinicSettings] = useState<ClinicSettings | null>(null);
   const [error, setError] = useState("");
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isRedirectingToLogin, setIsRedirectingToLogin] = useState(false);
+
+  useEffect(() => {
+    canLoadPageDataRef.current = canLoadPageData;
+    loadPageDataRef.current = loadPageData;
+    onPageDataRef.current = onPageData;
+  }, [canLoadPageData, loadPageData, onPageData]);
 
   useEffect(() => {
     let active = true;
@@ -73,16 +83,16 @@ export function useClinicShellPage<T>({
           setClinicSettings(settings);
         }
 
-        if (canLoadPageData && !canLoadPageData(user)) {
+        if (canLoadPageDataRef.current && !canLoadPageDataRef.current(user)) {
           if (active) {
             setIsAuthReady(true);
           }
           return;
         }
 
-        const pageData = await loadPageData();
+        const pageData = await loadPageDataRef.current();
         if (active) {
-          onPageData(pageData);
+          onPageDataRef.current(pageData);
           setIsAuthReady(true);
         }
       } catch (loadError) {
@@ -111,84 +121,92 @@ export function useClinicShellPage<T>({
     return () => {
       active = false;
     };
-  }, [canLoadPageData, loadPageData, onPageData, router]);
+  }, [router]);
 
-  async function handleSaveClinicSettings(
+  const handleSaveClinicSettings = useCallback(async (
     payload: Omit<ClinicSettings, "id" | "org_id" | "updated_at">,
-  ) {
+  ) => {
     const saved = await api.updateClinicSettings(payload);
     setClinicSettings(saved);
-  }
+  }, []);
 
-  async function loadUsers() {
+  const loadUsers = useCallback(async () => {
     const loadedUsers = await api.listUsers();
     setUsers(loadedUsers);
     return loadedUsers;
-  }
+  }, []);
 
-  async function handleAddStaffUser(payload: { identifier: string; password: string }) {
+  const loadAuditEvents = useCallback(async () => {
+    const loadedAuditEvents = await api.listAuditEvents();
+    setAuditEvents(loadedAuditEvents);
+    return loadedAuditEvents;
+  }, []);
+
+  const handleAddStaffUser = useCallback(async (payload: { identifier: string; password: string }) => {
     const created = await api.createStaffUser(payload);
     setUsers((current) => [...current, created]);
-  }
+  }, []);
 
-  async function loadCatalogItems() {
+  const loadCatalogItems = useCallback(async () => {
     const loadedCatalogItems = await api.listCatalogItems();
     setCatalogItems(loadedCatalogItems);
     return loadedCatalogItems;
-  }
+  }, []);
 
-  async function handleCreateCatalogItem(payload: ClinicCatalogItemPayload) {
+  const handleCreateCatalogItem = useCallback(async (payload: ClinicCatalogItemPayload) => {
     const created = await api.createCatalogItem(payload);
     setCatalogItems((current) =>
       [...current, created].sort((left, right) => left.name.localeCompare(right.name)),
     );
-  }
+  }, []);
 
-  async function handleAdjustCatalogStock(itemId: string, delta: number) {
+  const handleAdjustCatalogStock = useCallback(async (itemId: string, delta: number) => {
     const updated = await api.updateCatalogStock(itemId, { delta });
     setCatalogItems((current) =>
       current.map((item) => (item.id === itemId ? updated : item)),
     );
-  }
+  }, []);
 
-  async function handleDeleteCatalogItem(itemId: string) {
+  const handleDeleteCatalogItem = useCallback(async (itemId: string) => {
     await api.deleteCatalogItem(itemId);
     setCatalogItems((current) => current.filter((item) => item.id !== itemId));
-  }
+  }, []);
 
-  async function handleCreateInvoice(payload: ClinicInvoicePayload): Promise<Invoice> {
+  const handleCreateInvoice = useCallback(async (payload: ClinicInvoicePayload): Promise<Invoice> => {
     return api.createInvoice(payload);
-  }
+  }, []);
 
-  async function handleGenerateLetter(payload: {
+  const handleGenerateLetter = useCallback(async (payload: {
     to: string;
     subject: string;
     content: string;
-  }) {
+  }) => {
     const response = await api.generateLetter(payload);
     return response.content;
-  }
+  }, []);
 
-  async function handleSendLetter(payload: { recipient: string; content: string }) {
+  const handleSendLetter = useCallback(async (payload: { recipient: string; content: string }) => {
     const response = await api.sendLetter(payload);
     return response.message;
-  }
+  }, []);
 
-  async function handleSendInvoice(payload: { invoice_id: string; recipient: string }) {
+  const handleSendInvoice = useCallback(async (payload: { invoice_id: string; recipient: string }) => {
     const response = await api.sendInvoice(payload);
     return response.message;
-  }
+  }, []);
 
-  function handleLogout() {
+  const handleLogout = useCallback(() => {
     authStorage.clear();
     setIsRedirectingToLogin(true);
     router.replace("/login");
-  }
+  }, [router]);
 
   return {
     currentUser,
     users,
+    auditEvents,
     loadUsers,
+    loadAuditEvents,
     catalogItems,
     loadCatalogItems,
     clinicSettings,
