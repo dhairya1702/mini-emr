@@ -508,9 +508,9 @@ async def get_patient_timeline(
             PatientTimelineEvent(
                 id=f"patient-created-{patient['id']}",
                 type="patient_created",
-                title="Patient added to queue",
+                title="Patient record created",
                 timestamp=patient["created_at"],
-                description=f"{patient['name']} was added with status {patient['status']}.",
+                description=f"Record opened with {patient['reason']} as the visit reason.",
             )
         ]
 
@@ -522,7 +522,7 @@ async def get_patient_timeline(
                 PatientTimelineEvent(
                     id=f"note-{note['id']}",
                     type="consultation_note",
-                    title="Consultation note generated",
+                    title="Consultation note saved",
                     timestamp=note["created_at"],
                     description=excerpt or "SOAP note saved.",
                 )
@@ -534,9 +534,9 @@ async def get_patient_timeline(
                 PatientTimelineEvent(
                     id=f"appointment-booked-{appointment['id']}",
                     type="appointment_booked",
-                    title="Appointment booked",
+                    title="Appointment scheduled",
                     timestamp=appointment["created_at"],
-                    description=f"Appointment booked for {display_date}.",
+                    description=f"Visit scheduled for {display_date}.",
                 )
             )
             if appointment.get("checked_in_at"):
@@ -544,9 +544,9 @@ async def get_patient_timeline(
                     PatientTimelineEvent(
                         id=f"appointment-checked-in-{appointment['id']}",
                         type="appointment_checked_in",
-                        title="Appointment checked in",
+                        title="Checked in from appointment",
                         timestamp=appointment["checked_in_at"],
-                        description="Patient was moved into the waiting queue from a scheduled appointment.",
+                        description="Patient moved from the schedule into the active queue.",
                     )
                 )
 
@@ -556,9 +556,9 @@ async def get_patient_timeline(
                 PatientTimelineEvent(
                     id=f"invoice-created-{invoice['id']}",
                     type="invoice_created",
-                    title="Invoice created",
+                    title="Receipt created",
                     timestamp=invoice["created_at"],
-                    description=f"{item_count} item{'s' if item_count != 1 else ''} · total {float(invoice.get('total', 0)):.2f}",
+                    description=f"{item_count} item{'s' if item_count != 1 else ''} recorded · total {float(invoice.get('total', 0)):.2f}.",
                 )
             )
             if invoice.get("sent_at"):
@@ -566,9 +566,9 @@ async def get_patient_timeline(
                     PatientTimelineEvent(
                         id=f"invoice-sent-{invoice['id']}",
                         type="bill_sent",
-                        title="Bill sent",
+                        title="Receipt shared",
                         timestamp=invoice["sent_at"],
-                        description=f"Bill sent to patient and marked paid on {invoice.get('paid_at') or invoice['created_at']}.",
+                        description=f"Receipt shared with the patient after payment was recorded on {format_display_datetime(invoice.get('paid_at') or invoice['created_at'])}.",
                     )
                 )
 
@@ -598,7 +598,7 @@ async def get_patient_timeline(
                         type="follow_up_completed",
                         title="Follow-up completed",
                         timestamp=completed_at,
-                        description=f"Follow-up completed on {completed_display_date}.",
+                        description=f"Follow-up marked complete on {completed_display_date}.",
                     )
                 )
 

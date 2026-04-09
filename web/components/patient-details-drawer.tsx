@@ -106,6 +106,20 @@ export function PatientDetailsDrawer({
     minute: "2-digit",
   });
 
+  function formatStatusLabel(value: string) {
+    return value
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  }
+
+  const summaryCards = [
+    { label: "Last Visit", value: createdAt },
+    { label: "Status", value: formatStatusLabel(currentPatient.status) },
+    { label: "Phone", value: currentPatient.phone },
+    { label: "Latest Reason", value: currentPatient.reason },
+  ];
+
   function getTimelineIcon(type: PatientTimelineEvent["type"]) {
     if (type === "consultation_note") return <FileText className="h-4 w-4 text-sky-600" />;
     if (type === "invoice_created" || type === "bill_sent") return <Receipt className="h-4 w-4 text-emerald-600" />;
@@ -191,7 +205,9 @@ export function PatientDetailsDrawer({
           <div>
             <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Patient Details</p>
             <h2 className="mt-2 text-2xl font-semibold text-slate-800">{currentPatient.name}</h2>
-            <p className="mt-2 text-sm text-slate-500">Current status: {currentPatient.status}</p>
+            <p className="mt-2 text-sm text-slate-500">
+              Record opened for {formatStatusLabel(currentPatient.status)} care.
+            </p>
           </div>
           <button
             type="button"
@@ -206,6 +222,30 @@ export function PatientDetailsDrawer({
         </div>
 
         <div className="space-y-4 overflow-y-auto pr-1">
+          <div className="rounded-[24px] border border-sky-100 bg-white p-4">
+            <div>
+              <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Patient Snapshot</p>
+              <h3 className="mt-2 text-lg font-semibold text-slate-900">Quick record summary</h3>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {summaryCards.map((item) => (
+                <div key={item.label} className="rounded-[22px] border border-sky-100 bg-sky-50/45 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
+                  <p className="mt-2 text-sm font-medium leading-6 text-slate-900">{item.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-sky-100 bg-white p-4">
+            <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Patient Info</p>
+            <h3 className="mt-2 text-lg font-semibold text-slate-900">Editable patient details</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Update the core chart details here. Changes are saved back to the patient record.
+            </p>
+          </div>
+
           <div className="rounded-[24px] border border-sky-100 bg-sky-50/50 p-4">
             <div className="flex items-center gap-3 text-slate-700">
               <UserRound className="h-4 w-4 text-sky-600" />
@@ -314,8 +354,11 @@ export function PatientDetailsDrawer({
           <div className="rounded-[24px] border border-sky-100 bg-white p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-slate-800">Patient Timeline</p>
-                <p className="mt-1 text-xs text-slate-500">Queue, notes, and billing events for this patient.</p>
+                <p className="text-sm uppercase tracking-[0.2em] text-slate-500">History</p>
+                <h3 className="mt-2 text-lg font-semibold text-slate-900">Patient timeline</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Review appointments, notes, follow-ups, and billing activity tied to this record.
+                </p>
               </div>
               {isTimelineLoading ? <span className="text-xs text-slate-500">Loading...</span> : null}
             </div>
