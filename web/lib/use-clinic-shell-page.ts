@@ -7,6 +7,10 @@ import { api } from "@/lib/api";
 import { authStorage } from "@/lib/auth";
 import { AuditEvent, AuthUser, CatalogItem, ClinicSettings, Invoice } from "@/lib/types";
 
+const BOOTSTRAP_TIMEOUT_MS = 20000;
+const BOOTSTRAP_RETRY_DELAY_MS = 400;
+const BOOTSTRAP_MAX_ATTEMPTS = 2;
+
 export type ClinicCatalogItemPayload = {
   name: string;
   item_type: "service" | "medicine";
@@ -26,7 +30,7 @@ export type ClinicInvoicePayload = {
     quantity: number;
     unit_price: number;
   }>;
-  payment_status: "paid";
+  payment_status: "unpaid" | "paid" | "partial";
 };
 
 type UseClinicShellPageOptions<T> = {
@@ -61,8 +65,58 @@ export function useClinicShellPage<T>({
 
   useEffect(() => {
     let active = true;
+    let bootstrapTimeoutId: number | null = null;
+
+    function clearBootstrapTimeout() {
+      if (bootstrapTimeoutId !== null) {
+        window.clearTimeout(bootstrapTimeoutId);
+        bootstrapTimeoutId = null;
+      }
+    }
+
+    function scheduleBootstrapTimeout() {
+      clearBootstrapTimeout();
+      bootstrapTimeoutId = window.setTimeout(() => {
+        if (!active) {
+          return;
+        }
+        setError("ClinicOS took too long to load. Refresh again or check the backend.");
+        setIsAuthReady(true);
+      }, BOOTSTRAP_TIMEOUT_MS);
+    }
+
+    async function delay(ms: number) {
+      await new Promise((resolve) => window.setTimeout(resolve, ms));
+    }
+
+    async function loadBootstrapData() {
+      const [user, settings] = await Promise.all([
+        api.getCurrentUser(),
+        api.getClinicSettings(),
+      ]);
+
+      if (active) {
+        setCurrentUser(user);
+        setClinicSettings(settings);
+      }
+
+      if (canLoadPageDataRef.current && !canLoadPageDataRef.current(user)) {
+        return;
+      }
+
+      const pageData = await loadPageDataRef.current();
+      if (active) {
+        onPageDataRef.current(pageData);
+      }
+    }
 
     async function loadApp() {
+      if (active) {
+        setError("");
+        setIsAuthReady(false);
+        setIsRedirectingToLogin(false);
+      }
+
       const token = authStorage.getToken();
       if (!token) {
         if (active) {
@@ -73,27 +127,44 @@ export function useClinicShellPage<T>({
         return;
       }
 
+      scheduleBootstrapTimeout();
+
       try {
-        const [user, settings] = await Promise.all([
-          api.getCurrentUser(),
-          api.getClinicSettings(),
-        ]);
-        if (active) {
-          setCurrentUser(user);
-          setClinicSettings(settings);
-        }
+        for (let attempt = 1; attempt <= BOOTSTRAP_MAX_ATTEMPTS; attempt += 1) {
+          try {
+            await loadBootstrapData();
+            if (active) {
+              setIsAuthReady(true);
+            }
+            return;
+          } catch (loadError) {
+            const message = loadError instanceof Error ? loadError.message : "Failed to load page.";
+            const shouldRedirect =
+              message === "Authentication required." ||
+              message === "Invalid token." ||
+              message === "Token expired." ||
+              message === "Session expired.";
+            if (shouldRedirect) {
+              authStorage.clear();
+              if (active) {
+                setError(message);
+                setIsRedirectingToLogin(true);
+                setIsAuthReady(true);
+              }
+              router.replace("/login");
+              return;
+            }
 
-        if (canLoadPageDataRef.current && !canLoadPageDataRef.current(user)) {
-          if (active) {
-            setIsAuthReady(true);
+            const isRetryable =
+              attempt < BOOTSTRAP_MAX_ATTEMPTS &&
+              (message === "Request timed out. Check the backend and refresh." ||
+                message === "Failed to fetch");
+            if (!isRetryable) {
+              throw loadError;
+            }
+
+            await delay(BOOTSTRAP_RETRY_DELAY_MS);
           }
-          return;
-        }
-
-        const pageData = await loadPageDataRef.current();
-        if (active) {
-          onPageDataRef.current(pageData);
-          setIsAuthReady(true);
         }
       } catch (loadError) {
         if (active) {
@@ -114,12 +185,15 @@ export function useClinicShellPage<T>({
           setError(message);
           setIsAuthReady(true);
         }
+      } finally {
+        clearBootstrapTimeout();
       }
     }
 
     loadApp();
     return () => {
       active = false;
+      clearBootstrapTimeout();
     };
   }, [router]);
 
@@ -195,6 +269,10 @@ export function useClinicShellPage<T>({
     return response.message;
   }, []);
 
+  const handleExportPatientsCsv = useCallback(async () => api.exportPatientsCsv(), []);
+  const handleExportVisitsCsv = useCallback(async () => api.exportVisitsCsv(), []);
+  const handleExportInvoicesCsv = useCallback(async () => api.exportInvoicesCsv(), []);
+
   const handleLogout = useCallback(() => {
     authStorage.clear();
     setIsRedirectingToLogin(true);
@@ -224,5 +302,8 @@ export function useClinicShellPage<T>({
     handleGenerateLetter,
     handleSendLetter,
     handleSendInvoice,
+    handleExportPatientsCsv,
+    handleExportVisitsCsv,
+    handleExportInvoicesCsv,
   };
 }

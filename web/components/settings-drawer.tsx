@@ -6,6 +6,7 @@ import {
   BarChart3,
   Building2,
   CalendarClock,
+  Download,
   CreditCard,
   FilePenLine,
   History,
@@ -24,9 +25,9 @@ import { SettingsDrawerAppointmentsPanel } from "@/components/settings-drawer-ap
 import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/settings-drawer-inventory-panel";
 import { SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-panel";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
-import { Appointment, AuditEvent, AuthUser, CatalogItem, ClinicSettings, FollowUp, Invoice, Patient } from "@/lib/types";
+import { Appointment, AuditEvent, AuthUser, CatalogItem, ClinicSettings, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
-type SettingsTab = "settings" | "about" | "contact" | "billing" | "clinic" | "users" | "letter" | "catalog" | "appointments" | "audit";
+type SettingsTab = "settings" | "about" | "contact" | "billing" | "clinic" | "users" | "letter" | "catalog" | "appointments" | "audit" | "exports";
 type DrawerMenuItem =
   | { href: string; label: string; icon: typeof Settings2 }
   | { tab: SettingsTab; label: string; icon: typeof Settings2 };
@@ -70,10 +71,13 @@ interface SettingsDrawerProps {
       quantity: number;
       unit_price: number;
     }>;
-    payment_status: "paid";
+    payment_status: PaymentStatus;
   }) => Promise<Invoice>;
   onGenerateInvoicePdf: (invoiceId: string) => Promise<Blob>;
   onSendInvoice: (payload: { invoice_id: string; recipient: string }) => Promise<string>;
+  onExportPatientsCsv: () => Promise<Blob>;
+  onExportVisitsCsv: () => Promise<Blob>;
+  onExportInvoicesCsv: () => Promise<Blob>;
   onCheckInAppointment: (
     appointmentId: string,
     options?: { existingPatientId?: string; forceNew?: boolean },
@@ -97,6 +101,7 @@ const tabs: Array<{ id: SettingsTab; label: string; icon: typeof Settings2 }> = 
   { id: "users", label: "Users", icon: UserPlus },
   { id: "audit", label: "Audit", icon: Settings2 },
   { id: "clinic", label: "Clinic", icon: Building2 },
+  { id: "exports", label: "Exports", icon: Download },
   { id: "letter", label: "Generate Letter", icon: FilePenLine },
   { id: "about", label: "About", icon: Info },
   { id: "contact", label: "Contact Us", icon: Mail },
@@ -133,6 +138,9 @@ export function SettingsDrawer({
   onCreateInvoice,
   onGenerateInvoicePdf,
   onSendInvoice,
+  onExportPatientsCsv,
+  onExportVisitsCsv,
+  onExportInvoicesCsv,
   onCheckInAppointment,
   onUpdateAppointment,
   onUpdateFollowUp,
@@ -193,6 +201,10 @@ export function SettingsDrawer({
   const [billingError, setBillingError] = useState("");
   const [billingStatus, setBillingStatus] = useState("");
   const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("paid");
+  const [isExporting, setIsExporting] = useState("");
+  const [exportStatus, setExportStatus] = useState("");
+  const [exportError, setExportError] = useState("");
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
   const [isPreparingInvoicePdf, setIsPreparingInvoicePdf] = useState(false);
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
@@ -572,25 +584,17 @@ export function SettingsDrawer({
 
   async function handleSendLetter() {
     if (!letterForm.generated.trim()) {
-      setLetterError("Generate the letter before sending.");
+      setLetterError("Generate the letter before copying.");
       return;
     }
-    if (!letterForm.recipient.trim()) {
-      setLetterError("Enter an email or phone number to send the letter.");
-      return;
-    }
-
     setIsSendingLetter(true);
     setLetterError("");
     setLetterStatus("");
     try {
-      await onSendLetter({
-        recipient: letterForm.recipient.trim(),
-        content: letterForm.generated,
-      });
-      onClose();
+      await navigator.clipboard.writeText(letterForm.generated);
+      setLetterStatus("Letter copied. Share it outside ClinicOS.");
     } catch (sendError) {
-      setLetterError(sendError instanceof Error ? sendError.message : "Failed to send letter.");
+      setLetterError(sendError instanceof Error ? sendError.message : "Failed to copy letter.");
     } finally {
       setIsSendingLetter(false);
     }
@@ -656,10 +660,10 @@ export function SettingsDrawer({
           quantity: item.quantity,
           unit_price: item.unit_price,
         })),
-        payment_status: "paid",
+        payment_status: paymentStatus,
       });
       setSavedInvoice(created);
-      setBillingStatus("Bill created.");
+      setBillingStatus("Invoice created.");
     } catch (createError) {
       setBillingError(createError instanceof Error ? createError.message : "Failed to create bill.");
     } finally {
@@ -724,7 +728,7 @@ export function SettingsDrawer({
             quantity: item.quantity,
             unit_price: item.unit_price,
           })),
-          payment_status: "paid",
+          payment_status: paymentStatus,
         }));
       if (!savedInvoice) {
         setSavedInvoice(invoice);
@@ -736,9 +740,34 @@ export function SettingsDrawer({
       setBillingStatus(message);
       onBillingComplete(selectedBillingPatient.id);
     } catch (sendError) {
-      setBillingError(sendError instanceof Error ? sendError.message : "Failed to send invoice.");
+      setBillingError(sendError instanceof Error ? sendError.message : "Failed to mark invoice as shared.");
     } finally {
       setIsSendingInvoice(false);
+    }
+  }
+
+  async function handleExportCsv(
+    kind: "patients" | "visits" | "invoices",
+    loader: () => Promise<Blob>,
+  ) {
+    setIsExporting(kind);
+    setExportError("");
+    setExportStatus("");
+    try {
+      const blob = await loader();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${kind}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setExportStatus(`${kind[0].toUpperCase()}${kind.slice(1)} export downloaded.`);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : `Failed to export ${kind}.`);
+    } finally {
+      setIsExporting("");
     }
   }
 
@@ -919,6 +948,7 @@ export function SettingsDrawer({
         medicineItems={medicineItems}
         invoiceItems={invoiceItems}
         invoiceSubtotal={invoiceSubtotal}
+        paymentStatus={paymentStatus}
         billingError={billingError}
         billingStatus={billingStatus}
         isSavingInvoice={isSavingInvoice}
@@ -936,6 +966,12 @@ export function SettingsDrawer({
         onUpdateInvoiceItem={updateInvoiceItem}
         onRemoveInvoiceItem={removeInvoiceItem}
         onCreateBill={handleCreateBill}
+        onPaymentStatusChange={(status) => {
+          setPaymentStatus(status);
+          setSavedInvoice(null);
+          setBillingStatus("");
+          setBillingError("");
+        }}
         onPreviewPdf={() => handleInvoicePdf("preview")}
         onSendInvoice={handleSendInvoice}
       />
@@ -997,6 +1033,42 @@ export function SettingsDrawer({
     );
   }
 
+  function renderExportsTab() {
+    return (
+      <div className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+        <div className="max-w-2xl">
+          <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Exports</p>
+          <h3 className="mt-2 text-xl font-semibold text-slate-900">Download clinic data</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Export patients, visit history, and invoices as CSV files for backup, review, or migration.
+          </p>
+        </div>
+        {exportError ? <p className="mt-4 text-sm font-medium text-rose-600">{exportError}</p> : null}
+        {exportStatus ? <p className="mt-4 text-sm font-medium text-emerald-700">{exportStatus}</p> : null}
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {[
+            { key: "patients", label: "Patients", description: "Current patient snapshot and latest visit date.", loader: onExportPatientsCsv },
+            { key: "visits", label: "Visits", description: "Per-visit vitals and reasons for every recorded visit.", loader: onExportVisitsCsv },
+            { key: "invoices", label: "Invoices", description: "Invoice totals, payment status, and shared timestamps.", loader: onExportInvoicesCsv },
+          ].map((item) => (
+            <div key={item.key} className="rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
+              <h4 className="text-base font-semibold text-slate-900">{item.label}</h4>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
+              <button
+                type="button"
+                onClick={() => void handleExportCsv(item.key as "patients" | "visits" | "invoices", item.loader)}
+                disabled={isExporting === item.key}
+                className="mt-4 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+              >
+                {isExporting === item.key ? "Preparing..." : `Download ${item.label}`}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   function renderSimplePanel(title: string, text: string) {
     return (
       <div className="rounded-[28px] border border-sky-200 bg-sky-50/40 p-5">
@@ -1014,8 +1086,9 @@ export function SettingsDrawer({
     if (activeTab === "appointments") return renderAppointmentsTab();
     if (activeTab === "letter") return renderLetterTab();
     if (activeTab === "billing") return renderBillingTab();
+    if (activeTab === "exports") return renderExportsTab();
 
-    const copy: Record<Exclude<SettingsTab, "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments" | "audit">, { title: string; text: string }> = {
+    const copy: Record<Exclude<SettingsTab, "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments" | "audit" | "exports">, { title: string; text: string }> = {
       settings: {
         title: "Settings",
         text: "Core clinic configuration, inventory management, users, letters, and billing all live in this drawer.",
@@ -1026,11 +1099,11 @@ export function SettingsDrawer({
       },
       contact: {
         title: "Contact Us",
-        text: "Add your support contact process here later. For now, this can be replaced with your clinic admin details.",
+        text: "For support, contact your ClinicOS setup lead or your clinic admin. Replace this copy with your real support channel before external demos.",
       },
     };
 
-    const item = copy[activeTab as Exclude<SettingsTab, "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments" | "audit">];
+    const item = copy[activeTab as Exclude<SettingsTab, "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments" | "audit" | "exports">];
     return renderSimplePanel(item.title, item.text);
   }
 

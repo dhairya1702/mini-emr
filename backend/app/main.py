@@ -1,6 +1,8 @@
+import csv
 from contextlib import asynccontextmanager
 from datetime import datetime
 from io import BytesIO
+from io import StringIO
 import re
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -43,6 +45,7 @@ from app.schemas import (
     PatientMatchOut,
     PatientOut,
     PatientUpdate,
+    PatientVisitCreate,
     SendInvoiceRequest,
     SendLetterRequest,
     SendNoteRequest,
@@ -110,6 +113,34 @@ def format_display_datetime(value: datetime | str) -> str:
 
 def get_actor_name(current_user: UserOut) -> str:
     return current_user.name.strip() or current_user.identifier.strip() or "Clinic User"
+
+
+def build_visit_description(visit: dict) -> str:
+    measurements: list[str] = []
+    if visit.get("reason"):
+        measurements.append(str(visit["reason"]))
+    if visit.get("age") is not None:
+        measurements.append(f"Age {visit['age']}")
+    if visit.get("weight") is not None:
+        measurements.append(f"Weight {float(visit['weight']):g} kg")
+    if visit.get("height") is not None:
+        measurements.append(f"Height {float(visit['height']):g} cm")
+    if visit.get("temperature") is not None:
+        measurements.append(f"Temp {float(visit['temperature']):g} F")
+    return " · ".join(measurements) if measurements else "Visit recorded."
+
+
+def build_csv_response(filename: str, rows: list[dict], fieldnames: list[str]) -> StreamingResponse:
+    buffer = StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({key: row.get(key) for key in fieldnames})
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 async def write_audit_event(
@@ -349,6 +380,31 @@ async def create_patient(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/patients/{patient_id}/visits", response_model=PatientOut)
+async def create_patient_visit(
+    patient_id: str,
+    payload: PatientVisitCreate,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> PatientOut:
+    try:
+        updated = await repo.create_patient_visit(str(current_user.org_id), patient_id, payload)
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="patient",
+            entity_id=str(updated["id"]),
+            action="patient_visit_recorded",
+            summary=f"Recorded a new visit for patient {updated['name']}.",
+            metadata={"status": updated.get("status"), "phone": updated.get("phone")},
+        )
+        return PatientOut(**updated)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/appointments", response_model=AppointmentOut, status_code=201)
 async def create_appointment(
     payload: AppointmentCreate,
@@ -499,6 +555,7 @@ async def get_patient_timeline(
 ) -> list[PatientTimelineEvent]:
     try:
         patient = await repo.get_patient(str(current_user.org_id), patient_id)
+        visits = await repo.list_patient_visits_for_patient(str(current_user.org_id), patient_id)
         notes = await repo.list_notes_for_patient(str(current_user.org_id), patient_id)
         invoices = await repo.list_invoices_for_patient(str(current_user.org_id), patient_id)
         follow_ups = await repo.list_follow_ups_for_patient(str(current_user.org_id), patient_id)
@@ -513,6 +570,17 @@ async def get_patient_timeline(
                 description=f"Record opened with {patient['reason']} as the visit reason.",
             )
         ]
+
+        for visit in visits:
+            events.append(
+                PatientTimelineEvent(
+                    id=f"visit-{visit['id']}",
+                    type="visit_recorded",
+                    title="Visit recorded",
+                    timestamp=visit["created_at"],
+                    description=build_visit_description(visit),
+                )
+            )
 
         for note in notes:
             excerpt = str(note.get("content", "")).strip().replace("\n", " ")
@@ -809,7 +877,7 @@ async def send_note(
 ) -> SendNoteResponse:
     return SendNoteResponse(
         success=True,
-        message=f"Mock WhatsApp send queued for {payload.phone}.",
+        message=f"Note copied or shared outside ClinicOS for {payload.phone}.",
     )
 
 
@@ -820,7 +888,7 @@ async def send_letter(
 ) -> SendNoteResponse:
     return SendNoteResponse(
         success=True,
-        message=f"Mock letter send queued for {payload.recipient}.",
+        message=f"Letter copied or shared outside ClinicOS for {payload.recipient}.",
     )
 
 
@@ -837,16 +905,106 @@ async def send_invoice(
             current_user,
             entity_type="invoice",
             entity_id=str(payload.invoice_id),
-            action="invoice_sent",
-            summary=f"Sent invoice {payload.invoice_id} to {payload.recipient}.",
+            action="invoice_shared",
+            summary=f"Marked invoice {payload.invoice_id} as shared with {payload.recipient}.",
             metadata={"patient_id": patient_id, "recipient": payload.recipient},
         )
         return SendNoteResponse(
             success=True,
-            message=f"Mock invoice send queued for {payload.recipient}.",
+            message=f"Invoice marked shared for {payload.recipient}.",
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/exports/patients.csv")
+async def export_patients_csv(
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(require_admin),
+) -> StreamingResponse:
+    patients = await repo.list_patients(str(current_user.org_id))
+    return build_csv_response(
+        "patients.csv",
+        patients,
+        [
+            "id",
+            "name",
+            "phone",
+            "reason",
+            "age",
+            "weight",
+            "height",
+            "temperature",
+            "status",
+            "billed",
+            "created_at",
+            "last_visit_at",
+        ],
+    )
+
+
+@app.get("/exports/visits.csv")
+async def export_visits_csv(
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(require_admin),
+) -> StreamingResponse:
+    visits = await repo.list_patient_visits(str(current_user.org_id))
+    return build_csv_response(
+        "patient_visits.csv",
+        visits,
+        [
+            "id",
+            "patient_id",
+            "name",
+            "phone",
+            "reason",
+            "age",
+            "weight",
+            "height",
+            "temperature",
+            "source",
+            "appointment_id",
+            "created_at",
+        ],
+    )
+
+
+@app.get("/exports/invoices.csv")
+async def export_invoices_csv(
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(require_admin),
+) -> StreamingResponse:
+    invoices = await repo.list_invoices(str(current_user.org_id))
+    rows: list[dict] = []
+    for invoice in invoices:
+        rows.append(
+            {
+                "id": invoice.get("id"),
+                "patient_id": invoice.get("patient_id"),
+                "payment_status": invoice.get("payment_status"),
+                "subtotal": invoice.get("subtotal"),
+                "total": invoice.get("total"),
+                "paid_at": invoice.get("paid_at"),
+                "sent_at": invoice.get("sent_at"),
+                "created_at": invoice.get("created_at"),
+                "item_count": len(invoice.get("items", [])),
+            }
+        )
+    return build_csv_response(
+        "invoices.csv",
+        rows,
+        [
+            "id",
+            "patient_id",
+            "payment_status",
+            "subtotal",
+            "total",
+            "paid_at",
+            "sent_at",
+            "created_at",
+            "item_count",
+        ],
+    )
 
 
 @app.post("/generate-note-pdf")

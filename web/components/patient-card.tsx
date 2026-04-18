@@ -25,7 +25,7 @@ interface PatientCardProps {
 
 export function PatientCard({ patient, onOpen, onAdvance, canAdvance = true }: PatientCardProps) {
   const target = nextStatus[patient.status];
-  const createdAt = new Date(patient.created_at).toLocaleTimeString([], {
+  const createdAt = new Date(patient.last_visit_at).toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
   });

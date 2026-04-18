@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { X } from "lucide-react";
 
 import { api } from "@/lib/api";
@@ -11,6 +11,7 @@ interface AddPatientModalProps {
   onClose: () => void;
   onSubmit: (payload: {
     entryType: "queue" | "appointment";
+    existingPatientId?: string;
     name: string;
     phone: string;
     reason: string;
@@ -46,10 +47,6 @@ export function AddPatientModal({
   const [existingMatches, setExistingMatches] = useState<PatientMatch[]>([]);
   const [selectedExistingMatchId, setSelectedExistingMatchId] = useState("");
 
-  if (!open) {
-    return null;
-  }
-
   function getPhoneDigits(value: string) {
     return value.replace(/\D/g, "");
   }
@@ -80,16 +77,35 @@ export function AddPatientModal({
     setSelectedExistingMatchId("");
   }
 
+  function handleClose() {
+    resetForm();
+    setExistingMatches([]);
+    setError("");
+    onClose();
+  }
+
+  useEffect(() => {
+    if (!open) {
+      resetForm();
+      setExistingMatches([]);
+      setError("");
+    }
+  }, [open]);
+
+  if (!open) {
+    return null;
+  }
+
   function loadExistingRecord(match: PatientMatch) {
     setForm((current) => ({
       ...current,
       name: match.name,
       phone: match.phone,
       reason: match.reason,
-      age: match.age !== null ? String(match.age) : "",
-      weight: match.weight !== null ? String(match.weight) : "",
-      height: match.height !== null ? String(match.height) : "",
-      temperature: match.temperature !== null ? String(match.temperature) : "",
+      age: "",
+      weight: "",
+      height: "",
+      temperature: "",
       heightUnit: "cm",
       temperatureUnit: "F",
     }));
@@ -178,6 +194,7 @@ export function AddPatientModal({
 
       await onSubmit({
         entryType: form.entryType,
+        existingPatientId: selectedExistingMatchId || undefined,
         name: form.name,
         phone: form.phone,
         reason: form.reason,
@@ -217,11 +234,7 @@ export function AddPatientModal({
           </div>
           <button
             type="button"
-            onClick={() => {
-              setError("");
-              setExistingMatches([]);
-              onClose();
-            }}
+            onClick={handleClose}
             className="rounded-full border border-sky-200 p-2 text-slate-700 transition hover:text-slate-900"
           >
             <X className="h-4 w-4" />

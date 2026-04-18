@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, FormEvent, useEffect, useState } from "react";
-import { CalendarPlus2, Eye, FileText, Send, Sparkles, X } from "lucide-react";
+import { CalendarPlus2, Copy, Eye, FileText, Sparkles, X } from "lucide-react";
 
 import { EyeExamEntry, Patient, TestScoreEntry } from "@/lib/types";
 
@@ -140,7 +140,7 @@ export function ConsultationDrawer({
       });
       setStatusMessage(message);
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Failed to send note.");
+      setStatusMessage(error instanceof Error ? error.message : "Failed to copy note.");
     } finally {
       setIsSending(false);
     }
@@ -635,8 +635,8 @@ export function ConsultationDrawer({
                 onClick={handleSend}
                 className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
               >
-                <Send className="h-4 w-4" />
-                {isSending ? "Sending..." : "Send to WhatsApp"}
+                <Copy className="h-4 w-4" />
+                {isSending ? "Copying..." : "Copy for WhatsApp"}
               </button>
             </div>
             </div>

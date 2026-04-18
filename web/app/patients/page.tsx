@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Search, UserRound } from "lucide-react";
+import { Download, Search, UserRound } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
@@ -24,9 +24,12 @@ export default function PatientsPage() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [exportStatus, setExportStatus] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [isExporting, setIsExporting] = useState("");
   const loadPageData = useCallback(async () => {
     const records = await api.listPatients();
-    return records.sort((left, right) => right.created_at.localeCompare(left.created_at));
+    return records.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at));
   }, []);
   const onPageData = useCallback((data: Patient[]) => {
     setPatients(data);
@@ -53,6 +56,9 @@ export default function PatientsPage() {
     handleGenerateLetter,
     handleSendLetter,
     handleSendInvoice,
+    handleExportPatientsCsv,
+    handleExportVisitsCsv,
+    handleExportInvoicesCsv,
   } = useClinicShellPage({
     loadPageData,
     onPageData,
@@ -90,6 +96,31 @@ export default function PatientsPage() {
 
   async function handleLoadPatientTimeline(patientId: string) {
     return api.getPatientTimeline(patientId);
+  }
+
+  async function handleExport(
+    kind: "patients" | "visits",
+    loader: () => Promise<Blob>,
+  ) {
+    setIsExporting(kind);
+    setExportError("");
+    setExportStatus("");
+    try {
+      const blob = await loader();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${kind}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setExportStatus(`${kind === "patients" ? "Patients" : "Visits"} export downloaded.`);
+    } catch (loadError) {
+      setExportError(loadError instanceof Error ? loadError.message : `Failed to export ${kind}.`);
+    } finally {
+      setIsExporting("");
+    }
   }
 
   if (isRedirectingToLogin) {
@@ -142,6 +173,26 @@ export default function PatientsPage() {
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 Find patients by name or phone, open the chart, and review their visit trail from one clean place.
               </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleExport("patients", handleExportPatientsCsv)}
+                  disabled={isExporting === "patients"}
+                  className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                >
+                  <Download className="h-4 w-4" />
+                  {isExporting === "patients" ? "Preparing..." : "Export Patients"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExport("visits", handleExportVisitsCsv)}
+                  disabled={isExporting === "visits"}
+                  className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                >
+                  <Download className="h-4 w-4" />
+                  {isExporting === "visits" ? "Preparing..." : "Export Visits"}
+                </button>
+              </div>
             </div>
 
             <div className="w-full max-w-xl">
@@ -160,6 +211,17 @@ export default function PatientsPage() {
             </div>
           </div>
 
+          {exportError ? (
+            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {exportError}
+            </div>
+          ) : null}
+          {exportStatus ? (
+            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {exportStatus}
+            </div>
+          ) : null}
+
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             <div className="rounded-[24px] border border-sky-100 bg-sky-50/60 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Total Records</p>
@@ -172,7 +234,7 @@ export default function PatientsPage() {
             <div className="rounded-[24px] border border-sky-100 bg-white p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Latest Record</p>
               <p className="mt-3 text-lg font-semibold text-slate-900">
-                {patients[0] ? formatVisitDate(patients[0].created_at) : "No records yet"}
+                {patients[0] ? formatVisitDate(patients[0].last_visit_at) : "No records yet"}
               </p>
             </div>
           </div>
@@ -217,7 +279,7 @@ export default function PatientsPage() {
                           <div className="max-w-md truncate">{patient.reason}</div>
                         </td>
                         <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-500">
-                          {formatVisitDate(patient.created_at)}
+                          {formatVisitDate(patient.last_visit_at)}
                         </td>
                       </tr>
                     ))}
@@ -263,6 +325,9 @@ export default function PatientsPage() {
         onCreateInvoice={handleCreateInvoice}
         onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
         onSendInvoice={handleSendInvoice}
+        onExportPatientsCsv={handleExportPatientsCsv}
+        onExportVisitsCsv={handleExportVisitsCsv}
+        onExportInvoicesCsv={handleExportInvoicesCsv}
         onCheckInAppointment={async (appointmentId, options) => {
           const checkedInPatient = options?.existingPatientId
             ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId)

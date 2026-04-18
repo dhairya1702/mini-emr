@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Clock3, Search } from "lucide-react";
+import { Clock3, Download, Search } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
@@ -31,9 +31,12 @@ export default function HistoryPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [filter, setFilter] = useState<HistoryFilter>("all");
   const [query, setQuery] = useState("");
+  const [exportStatus, setExportStatus] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [isExporting, setIsExporting] = useState("");
   const loadPageData = useCallback(async () => {
     const historyPatients = await api.listPatients();
-    return historyPatients.sort((left, right) => right.created_at.localeCompare(left.created_at));
+    return historyPatients.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at));
   }, []);
   const onPageData = useCallback((data: Patient[]) => {
     setPatients(data);
@@ -60,6 +63,9 @@ export default function HistoryPage() {
     handleGenerateLetter,
     handleSendLetter,
     handleSendInvoice,
+    handleExportPatientsCsv,
+    handleExportVisitsCsv,
+    handleExportInvoicesCsv,
   } = useClinicShellPage({
     loadPageData,
     onPageData,
@@ -103,6 +109,31 @@ export default function HistoryPage() {
 
   async function handleLoadPatientTimeline(patientId: string) {
     return api.getPatientTimeline(patientId);
+  }
+
+  async function handleExport(
+    kind: "patients" | "visits",
+    loader: () => Promise<Blob>,
+  ) {
+    setIsExporting(kind);
+    setExportError("");
+    setExportStatus("");
+    try {
+      const blob = await loader();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${kind}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setExportStatus(`${kind === "patients" ? "Patients" : "Visits"} export downloaded.`);
+    } catch (loadError) {
+      setExportError(loadError instanceof Error ? loadError.message : `Failed to export ${kind}.`);
+    } finally {
+      setIsExporting("");
+    }
   }
 
   if (isRedirectingToLogin) {
@@ -150,6 +181,26 @@ export default function HistoryPage() {
               <p className="mt-2 text-sm leading-7 text-slate-600">
                 Search prior patients, review queue outcomes, and open the full patient timeline.
               </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleExport("patients", handleExportPatientsCsv)}
+                  disabled={isExporting === "patients"}
+                  className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                >
+                  <Download className="h-4 w-4" />
+                  {isExporting === "patients" ? "Preparing..." : "Export Patients"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExport("visits", handleExportVisitsCsv)}
+                  disabled={isExporting === "visits"}
+                  className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                >
+                  <Download className="h-4 w-4" />
+                  {isExporting === "visits" ? "Preparing..." : "Export Visits"}
+                </button>
+              </div>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row">
               <div className="relative">
@@ -174,6 +225,17 @@ export default function HistoryPage() {
               </select>
             </div>
           </div>
+
+          {exportError ? (
+            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {exportError}
+            </div>
+          ) : null}
+          {exportStatus ? (
+            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {exportStatus}
+            </div>
+          ) : null}
 
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div className="col-span-full overflow-hidden rounded-[28px] border border-sky-200 bg-white">
@@ -226,7 +288,7 @@ export default function HistoryPage() {
                           <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-500">
                             <div className="inline-flex items-center gap-2">
                               <Clock3 className="h-3.5 w-3.5" />
-                              {new Date(patient.created_at).toLocaleString([], {
+                              {new Date(patient.last_visit_at).toLocaleString([], {
                                 month: 'short',
                                 day: 'numeric',
                                 hour: 'numeric',
@@ -279,6 +341,9 @@ export default function HistoryPage() {
         onCreateInvoice={handleCreateInvoice}
         onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
         onSendInvoice={handleSendInvoice}
+        onExportPatientsCsv={handleExportPatientsCsv}
+        onExportVisitsCsv={handleExportVisitsCsv}
+        onExportInvoicesCsv={handleExportInvoicesCsv}
         onCheckInAppointment={async (appointmentId, options) => {
           const checkedInPatient = options?.existingPatientId
             ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId)

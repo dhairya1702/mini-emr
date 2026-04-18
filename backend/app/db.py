@@ -18,6 +18,7 @@ from app.schemas import (
     InvoiceCreate,
     NoteCreate,
     PatientCreate,
+    PatientVisitCreate,
     UserRole,
 )
 
@@ -60,6 +61,18 @@ def _normalize_phone_number(value: str | None) -> str:
     return digits
 
 
+def _visit_payload(payload: PatientCreate | PatientVisitCreate) -> dict[str, Any]:
+    return {
+        "name": payload.name.strip(),
+        "phone": _normalize_phone_number(payload.phone),
+        "reason": payload.reason.strip(),
+        "age": payload.age,
+        "weight": payload.weight,
+        "height": payload.height,
+        "temperature": payload.temperature,
+    }
+
+
 def _find_check_in_matches(client: Client, org_id: str, appointment_id: str) -> list[dict[str, Any]]:
     appointment = (
         client.table("appointments")
@@ -82,7 +95,7 @@ def _find_check_in_matches(client: Client, org_id: str, appointment_id: str) -> 
         .select("*")
         .eq("org_id", org_id)
         .eq("billed", False)
-        .order("created_at", desc=True)
+        .order("last_visit_at", desc=True)
         .limit(50)
         .execute()
         .data
@@ -154,24 +167,82 @@ class SupabaseRepository:
             lambda: self.client.table("patients")
             .select("*")
             .eq("org_id", org_id)
-            .order("created_at", desc=False)
+            .order("last_visit_at", desc=True)
             .execute()
             .data
         )
 
     async def create_patient(self, org_id: str, payload: PatientCreate) -> dict[str, Any]:
-        return await asyncio.to_thread(
-            lambda: self.client.table("patients")
-            .insert(
+        def _create() -> dict[str, Any]:
+            patient = (
+                self.client.table("patients")
+                .insert(
+                    {
+                        "org_id": org_id,
+                        **_visit_payload(payload),
+                        "last_visit_at": datetime.now(UTC).isoformat(),
+                    }
+                )
+                .execute()
+                .data[0]
+            )
+            self.client.table("patient_visits").insert(
                 {
                     "org_id": org_id,
-                    **payload.model_dump(),
-                    "phone": _normalize_phone_number(payload.phone),
+                    "patient_id": patient["id"],
+                    **_visit_payload(payload),
+                    "source": "queue",
                 }
+            ).execute()
+            return patient
+
+        return await asyncio.to_thread(_create)
+
+    async def create_patient_visit(
+        self,
+        org_id: str,
+        patient_id: str,
+        payload: PatientVisitCreate,
+    ) -> dict[str, Any]:
+        def _create() -> dict[str, Any]:
+            patient = (
+                self.client.table("patients")
+                .select("*")
+                .eq("org_id", org_id)
+                .eq("id", patient_id)
+                .single()
+                .execute()
+                .data
             )
-            .execute()
-            .data[0]
-        )
+            if not patient:
+                raise ValueError("Patient not found for this organization.")
+
+            updated = (
+                self.client.table("patients")
+                .update(
+                    {
+                        **_visit_payload(payload),
+                        "status": "waiting",
+                        "billed": False,
+                        "last_visit_at": datetime.now(UTC).isoformat(),
+                    }
+                )
+                .eq("org_id", org_id)
+                .eq("id", patient_id)
+                .execute()
+                .data[0]
+            )
+            self.client.table("patient_visits").insert(
+                {
+                    "org_id": org_id,
+                    "patient_id": patient_id,
+                    **_visit_payload(payload),
+                    "source": "queue",
+                }
+            ).execute()
+            return updated
+
+        return await asyncio.to_thread(_create)
 
     async def create_appointment(self, org_id: str, payload: AppointmentCreate) -> dict[str, Any]:
         return await asyncio.to_thread(
@@ -226,6 +297,27 @@ class SupabaseRepository:
             .select("*")
             .eq("org_id", org_id)
             .eq("checked_in_patient_id", patient_id)
+            .order("created_at", desc=True)
+            .execute()
+            .data
+        )
+
+    async def list_patient_visits_for_patient(self, org_id: str, patient_id: str) -> list[dict[str, Any]]:
+        return await asyncio.to_thread(
+            lambda: self.client.table("patient_visits")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("patient_id", patient_id)
+            .order("created_at", desc=True)
+            .execute()
+            .data
+        )
+
+    async def list_patient_visits(self, org_id: str) -> list[dict[str, Any]]:
+        return await asyncio.to_thread(
+            lambda: self.client.table("patient_visits")
+            .select("*")
+            .eq("org_id", org_id)
             .order("created_at", desc=True)
             .execute()
             .data
@@ -341,7 +433,7 @@ class SupabaseRepository:
                 self.client.table("patients")
                 .select("*")
                 .eq("org_id", org_id)
-                .order("created_at", desc=True)
+                .order("last_visit_at", desc=True)
                 .limit(100)
                 .execute()
                 .data

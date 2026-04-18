@@ -12,6 +12,7 @@ export interface Patient {
   status: PatientStatus;
   billed: boolean;
   created_at: string;
+  last_visit_at: string;
 }
 
 export interface PatientMatch {
@@ -26,6 +27,7 @@ export interface PatientMatch {
   status: PatientStatus;
   billed: boolean;
   created_at: string;
+  last_visit_at: string;
 }
 
 export type AppointmentStatus = "scheduled" | "checked_in" | "cancelled";
@@ -49,6 +51,7 @@ export interface Appointment {
 
 export type PatientTimelineEventType =
   | "patient_created"
+  | "visit_recorded"
   | "appointment_booked"
   | "appointment_checked_in"
   | "consultation_note"

@@ -99,7 +99,7 @@ export function PatientDetailsDrawer({
 
   const currentPatient = patient;
 
-  const createdAt = new Date(currentPatient.created_at).toLocaleString([], {
+  const createdAt = new Date(currentPatient.last_visit_at).toLocaleString([], {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -129,6 +129,7 @@ export function PatientDetailsDrawer({
     if (type === "appointment_booked" || type === "appointment_checked_in") {
       return <CalendarClock className="h-4 w-4 text-sky-600" />;
     }
+    if (type === "visit_recorded") return <UserRound className="h-4 w-4 text-sky-600" />;
     return <Clock3 className="h-4 w-4 text-sky-600" />;
   }
 

@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, ReceiptIndianRupee, Wallet } from "lucide-react";
+import { CalendarDays, Download, ReceiptIndianRupee, Wallet } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { SettingsDrawer } from "@/components/settings-drawer";
 import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { Invoice, Patient } from "@/lib/types";
+import { Invoice, Patient, PaymentStatus } from "@/lib/types";
 
 type GroupMode = "day" | "week" | "month";
 
@@ -35,6 +35,9 @@ export default function EarningsPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [mode, setMode] = useState<GroupMode>("day");
+  const [exportStatus, setExportStatus] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [isExporting, setIsExporting] = useState("");
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(async () => {
     const [dataInvoices, historyPatients] = await Promise.all([
@@ -71,6 +74,9 @@ export default function EarningsPage() {
     handleGenerateLetter,
     handleSendLetter,
     handleSendInvoice,
+    handleExportPatientsCsv,
+    handleExportVisitsCsv,
+    handleExportInvoicesCsv,
   } = useClinicShellPage({
     canLoadPageData: canLoadAdminPageData,
     loadPageData,
@@ -161,11 +167,36 @@ export default function EarningsPage() {
       quantity: number;
       unit_price: number;
     }>;
-    payment_status: "paid";
+    payment_status: PaymentStatus;
   }): Promise<Invoice> {
     const invoice = await api.createInvoice(payload);
     setInvoices((current) => [invoice, ...current]);
     return invoice;
+  }
+
+  async function handleExport(
+    kind: "invoices" | "patients" | "visits",
+    loader: () => Promise<Blob>,
+  ) {
+    setIsExporting(kind);
+    setExportError("");
+    setExportStatus("");
+    try {
+      const blob = await loader();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${kind}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setExportStatus(`${kind[0].toUpperCase()}${kind.slice(1)} export downloaded.`);
+    } catch (loadError) {
+      setExportError(loadError instanceof Error ? loadError.message : `Failed to export ${kind}.`);
+    } finally {
+      setIsExporting("");
+    }
   }
 
   if (isRedirectingToLogin) {
@@ -212,6 +243,47 @@ export default function EarningsPage() {
         {error ? (
           <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}
+          </div>
+        ) : null}
+
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void handleExport("invoices", handleExportInvoicesCsv)}
+            disabled={isExporting === "invoices"}
+            className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+          >
+            <Download className="h-4 w-4" />
+            {isExporting === "invoices" ? "Preparing..." : "Export Invoices"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleExport("patients", handleExportPatientsCsv)}
+            disabled={isExporting === "patients"}
+            className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+          >
+            <Download className="h-4 w-4" />
+            {isExporting === "patients" ? "Preparing..." : "Export Patients"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleExport("visits", handleExportVisitsCsv)}
+            disabled={isExporting === "visits"}
+            className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+          >
+            <Download className="h-4 w-4" />
+            {isExporting === "visits" ? "Preparing..." : "Export Visits"}
+          </button>
+        </div>
+
+        {exportError ? (
+          <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {exportError}
+          </div>
+        ) : null}
+        {exportStatus ? (
+          <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {exportStatus}
           </div>
         ) : null}
 
@@ -368,6 +440,9 @@ export default function EarningsPage() {
           );
           return message;
         }}
+        onExportPatientsCsv={handleExportPatientsCsv}
+        onExportVisitsCsv={handleExportVisitsCsv}
+        onExportInvoicesCsv={handleExportInvoicesCsv}
         onCheckInAppointment={async (appointmentId, options) => {
           const checkedInPatient = options?.existingPatientId
             ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId)

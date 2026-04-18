@@ -2,7 +2,7 @@
 
 import { ReceiptIndianRupee, Trash2 } from "lucide-react";
 
-import { CatalogItem, Invoice, Patient } from "@/lib/types";
+import { CatalogItem, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
 export type DraftInvoiceItem = {
   id: string;
@@ -21,6 +21,7 @@ interface SettingsDrawerBillingPanelProps {
   medicineItems: CatalogItem[];
   invoiceItems: DraftInvoiceItem[];
   invoiceSubtotal: number;
+  paymentStatus: PaymentStatus;
   billingError: string;
   billingStatus: string;
   isSavingInvoice: boolean;
@@ -32,6 +33,7 @@ interface SettingsDrawerBillingPanelProps {
   onUpdateInvoiceItem: (itemId: string, patch: Partial<DraftInvoiceItem>) => void;
   onRemoveInvoiceItem: (itemId: string) => void;
   onCreateBill: () => void | Promise<void>;
+  onPaymentStatusChange: (status: PaymentStatus) => void;
   onPreviewPdf: () => void | Promise<void>;
   onSendInvoice: () => void | Promise<void>;
 }
@@ -44,6 +46,7 @@ export function SettingsDrawerBillingPanel({
   medicineItems,
   invoiceItems,
   invoiceSubtotal,
+  paymentStatus,
   billingError,
   billingStatus,
   isSavingInvoice,
@@ -55,6 +58,7 @@ export function SettingsDrawerBillingPanel({
   onUpdateInvoiceItem,
   onRemoveInvoiceItem,
   onCreateBill,
+  onPaymentStatusChange,
   onPreviewPdf,
   onSendInvoice,
 }: SettingsDrawerBillingPanelProps) {
@@ -96,12 +100,29 @@ export function SettingsDrawerBillingPanel({
                 {selectedBillingPatient ? `Billing for ${selectedBillingPatient.name}` : "Billing"}
               </h3>
               <p className="mt-2 text-sm leading-7 text-slate-600">
-                Quick-add services and medicines from your inventory. Bills are recorded as fully paid upfront.
+                Quick-add services and medicines from your inventory, then choose whether the invoice is paid, partial, or unpaid.
               </p>
             </div>
-            <div className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700">
-              Paid Upfront
+            <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
+              {paymentStatus.charAt(0).toUpperCase() + paymentStatus.slice(1)}
             </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {(["paid", "partial", "unpaid"] as PaymentStatus[]).map((status) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => onPaymentStatusChange(status)}
+                className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                  paymentStatus === status
+                    ? "border-sky-300 bg-sky-100 text-sky-800"
+                    : "border-sky-200 bg-white text-slate-700 hover:bg-sky-50"
+                }`}
+              >
+                {status.charAt(0).toUpperCase() + status.slice(1)}
+              </button>
+            ))}
           </div>
 
           <div className="mt-5 grid gap-4 xl:grid-cols-2">
@@ -208,7 +229,7 @@ export function SettingsDrawerBillingPanel({
               disabled={isSavingInvoice}
               className="rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
             >
-              {isSavingInvoice ? "Saving..." : savedInvoice ? "Recreate Bill" : "Create Bill"}
+              {isSavingInvoice ? "Saving..." : savedInvoice ? "Recreate Invoice" : "Create Invoice"}
             </button>
             <button
               type="button"
@@ -224,7 +245,7 @@ export function SettingsDrawerBillingPanel({
               disabled={isSendingInvoice || isSavingInvoice}
               className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
             >
-              {isSendingInvoice ? "Saving & Sending..." : "Send Bill"}
+              {isSendingInvoice ? "Saving..." : "Mark Shared"}
             </button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -47,6 +47,7 @@ class PatientOut(BaseModel):
     status: PatientStatus
     billed: bool = False
     created_at: datetime
+    last_visit_at: datetime
 
 
 class AppointmentCreate(BaseModel):
@@ -99,6 +100,17 @@ class PatientMatchOut(BaseModel):
     status: PatientStatus
     billed: bool = False
     created_at: datetime
+    last_visit_at: datetime
+
+
+class PatientVisitCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    phone: str = Field(min_length=5, max_length=30)
+    reason: str = Field(min_length=1, max_length=200)
+    age: int = Field(ge=0, le=130)
+    weight: float = Field(gt=0, le=500)
+    temperature: float = Field(ge=90, le=110)
+    height: float | None = Field(default=None, gt=0, le=300)
 
 
 class NoteCreate(BaseModel):
@@ -115,6 +127,7 @@ class NoteOut(BaseModel):
 
 TimelineEventType = Literal[
     "patient_created",
+    "visit_recorded",
     "appointment_booked",
     "appointment_checked_in",
     "consultation_note",
@@ -296,6 +309,10 @@ class SendNoteRequest(BaseModel):
 class SendNoteResponse(BaseModel):
     success: bool
     message: str
+
+
+class ExportRow(BaseModel):
+    row: dict[str, Any]
 
 
 class ClinicSettingsBase(BaseModel):

@@ -18,7 +18,8 @@ create table if not exists public.patients (
   temperature double precision,
   status text not null default 'waiting' check (status in ('waiting', 'consultation', 'done')),
   billed boolean not null default false,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  last_visit_at timestamptz not null default now()
 );
 
 create table if not exists public.notes (
@@ -130,11 +131,34 @@ create table if not exists public.appointments (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.patient_visits (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  name text not null,
+  phone text not null,
+  reason text not null,
+  age integer,
+  weight double precision,
+  height double precision,
+  temperature double precision,
+  source text not null default 'queue' check (source in ('queue', 'appointment')),
+  appointment_id uuid references public.appointments(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
 alter table public.patients
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;
 
 alter table public.patients
 add column if not exists billed boolean not null default false;
+
+alter table public.patients
+add column if not exists last_visit_at timestamptz not null default now();
+
+update public.patients
+set last_visit_at = created_at
+where last_visit_at is null;
 
 alter table public.notes
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;
@@ -186,6 +210,8 @@ add column if not exists checked_in_at timestamptz;
 
 create unique index if not exists clinic_settings_org_id_key on public.clinic_settings (org_id);
 create index if not exists patients_org_status_idx on public.patients (org_id, status, created_at desc);
+create index if not exists patients_org_last_visit_idx on public.patients (org_id, last_visit_at desc);
+create index if not exists patient_visits_patient_created_idx on public.patient_visits (patient_id, created_at desc);
 create index if not exists notes_org_patient_id_idx on public.notes (org_id, patient_id, created_at desc);
 create index if not exists clinic_users_org_role_idx on public.clinic_users (org_id, role, created_at desc);
 create index if not exists catalog_items_org_type_idx on public.catalog_items (org_id, item_type, name);
@@ -206,6 +232,7 @@ as $$
 declare
   v_appointment public.appointments%rowtype;
   v_patient public.patients%rowtype;
+  v_visit public.patient_visits%rowtype;
 begin
   select *
   into v_appointment
@@ -237,6 +264,21 @@ begin
     if v_patient.billed then
       raise exception 'Only active queue patients can be linked to this appointment.';
     end if;
+
+    update public.patients
+    set
+      name = v_appointment.name,
+      phone = v_appointment.phone,
+      reason = v_appointment.reason,
+      age = v_appointment.age,
+      weight = v_appointment.weight,
+      height = v_appointment.height,
+      temperature = v_appointment.temperature,
+      status = 'waiting',
+      billed = false,
+      last_visit_at = now()
+    where id = v_patient.id
+    returning * into v_patient;
   else
     insert into public.patients (
       org_id,
@@ -248,7 +290,8 @@ begin
       height,
       temperature,
       status,
-      billed
+      billed,
+      last_visit_at
     )
     values (
       p_org_id,
@@ -260,10 +303,39 @@ begin
       v_appointment.height,
       v_appointment.temperature,
       'waiting',
-      false
+      false,
+      now()
     )
     returning * into v_patient;
   end if;
+
+  insert into public.patient_visits (
+    org_id,
+    patient_id,
+    name,
+    phone,
+    reason,
+    age,
+    weight,
+    height,
+    temperature,
+    source,
+    appointment_id
+  )
+  values (
+    p_org_id,
+    v_patient.id,
+    v_appointment.name,
+    v_appointment.phone,
+    v_appointment.reason,
+    v_appointment.age,
+    v_appointment.weight,
+    v_appointment.height,
+    v_appointment.temperature,
+    'appointment',
+    v_appointment.id
+  )
+  returning * into v_visit;
 
   update public.appointments
   set

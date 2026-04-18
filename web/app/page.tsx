@@ -47,6 +47,9 @@ export default function HomePage() {
     handleGenerateLetter,
     handleSendLetter,
     handleSendInvoice,
+    handleExportPatientsCsv,
+    handleExportVisitsCsv,
+    handleExportInvoicesCsv,
   } = useClinicShellPage({
     loadPageData,
     onPageData,
@@ -71,6 +74,7 @@ export default function HomePage() {
 
   async function handleCreatePatient(payload: {
     entryType: "queue" | "appointment";
+    existingPatientId?: string;
     name: string;
     phone: string;
     reason: string;
@@ -100,9 +104,30 @@ export default function HomePage() {
       return;
     }
 
+    if (payload.existingPatientId) {
+      try {
+        const updated = await api.createPatientVisit(payload.existingPatientId, {
+          name: payload.name,
+          phone: payload.phone,
+          reason: payload.reason,
+          age: payload.age ?? 0,
+          weight: payload.weight ?? 0,
+          height: payload.height,
+          temperature: payload.temperature ?? 0,
+        });
+        setPatients((current) => [updated, ...current.filter((patient) => patient.id !== updated.id)]);
+        setError("");
+      } catch (createError) {
+        setError(createError instanceof Error ? createError.message : "Failed to record patient visit.");
+        throw createError;
+      }
+      return;
+    }
+
     const optimisticPatient: Patient = {
       id: crypto.randomUUID(),
       created_at: new Date().toISOString(),
+      last_visit_at: new Date().toISOString(),
       status: "waiting",
       billed: false,
       name: payload.name,
@@ -318,6 +343,9 @@ export default function HomePage() {
         onCreateInvoice={handleCreateInvoice}
         onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
         onSendInvoice={handleSendInvoice}
+        onExportPatientsCsv={handleExportPatientsCsv}
+        onExportVisitsCsv={handleExportVisitsCsv}
+        onExportInvoicesCsv={handleExportInvoicesCsv}
         onCheckInAppointment={async (appointmentId, options) => {
           const checkedInPatient = options?.existingPatientId
             ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId)
@@ -369,8 +397,8 @@ export default function HomePage() {
         }}
         onGeneratePdf={(payload) => api.generateNotePdf(payload)}
         onSend={async (payload) => {
-          const response = await api.sendNote(payload);
-          return response.message;
+          await navigator.clipboard.writeText(payload.content);
+          return `Note copied. Share it with ${payload.phone} outside ClinicOS.`;
         }}
       />
     </main>

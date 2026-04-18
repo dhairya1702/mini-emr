@@ -184,7 +184,7 @@ export const api = {
       quantity: number;
       unit_price: number;
     }>;
-    payment_status: "paid";
+    payment_status: "unpaid" | "paid" | "partial";
   }) =>
     request<Invoice>("/invoices", {
       method: "POST",
@@ -192,6 +192,9 @@ export const api = {
     }),
   generateInvoicePdf: (invoiceId: string) =>
     requestBlob(`/invoices/${invoiceId}/pdf`),
+  exportPatientsCsv: () => requestBlob("/exports/patients.csv"),
+  exportVisitsCsv: () => requestBlob("/exports/visits.csv"),
+  exportInvoicesCsv: () => requestBlob("/exports/invoices.csv"),
   sendInvoice: (payload: { invoice_id: string; recipient: string }) =>
     request<{ success: boolean; message: string }>("/send-invoice", {
       method: "POST",
@@ -266,6 +269,17 @@ export const api = {
     >,
   ) =>
     request<Patient>("/patients", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  createPatientVisit: (
+    patientId: string,
+    payload: Pick<
+      Patient,
+      "name" | "phone" | "reason" | "age" | "weight" | "height" | "temperature"
+    >,
+  ) =>
+    request<Patient>(`/patients/${patientId}/visits`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

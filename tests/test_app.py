@@ -74,7 +74,7 @@ sys.modules.setdefault("reportlab.pdfgen.canvas", reportlab_canvas_module)
 
 from app import auth as auth_module
 from app.main import app
-from app.db import get_repository
+from app.db import DuplicateCheckInCandidateError, get_repository
 
 
 def _now() -> datetime:
@@ -92,6 +92,7 @@ class FakeRepo:
         self.clinic_settings: dict[str, dict] = {}
         self.users: dict[str, dict] = {}
         self.patients: dict[str, dict] = {}
+        self.patient_visits: dict[str, dict] = {}
         self.notes: dict[str, dict] = {}
         self.catalog_items: dict[str, dict] = {}
         self.invoices: dict[str, dict] = {}
@@ -213,6 +214,7 @@ class FakeRepo:
 
     async def create_patient(self, org_id: str, payload) -> dict:
         patient_id = str(uuid4())
+        created_at = _now()
         patient = {
             "id": patient_id,
             "org_id": org_id,
@@ -220,10 +222,32 @@ class FakeRepo:
             "phone": _normalize_phone(payload.phone),
             "status": "waiting",
             "billed": False,
-            "created_at": _now(),
+            "created_at": created_at,
+            "last_visit_at": created_at,
         }
         self.patients[patient_id] = patient
+        await self._record_patient_visit(org_id, patient_id, payload, source="queue")
         return patient
+
+    async def _record_patient_visit(self, org_id: str, patient_id: str, payload, source: str, appointment_id: str | None = None) -> dict:
+        visit_id = str(uuid4())
+        visit = {
+            "id": visit_id,
+            "org_id": org_id,
+            "patient_id": patient_id,
+            "name": payload.name,
+            "phone": _normalize_phone(payload.phone),
+            "reason": payload.reason,
+            "age": payload.age,
+            "weight": payload.weight,
+            "height": payload.height,
+            "temperature": payload.temperature,
+            "source": source,
+            "appointment_id": appointment_id,
+            "created_at": _now(),
+        }
+        self.patient_visits[visit_id] = visit
+        return visit
 
     async def list_patient_matches_by_phone(self, org_id: str, phone: str, limit: int = 10) -> list[dict]:
         rows = [
@@ -231,7 +255,7 @@ class FakeRepo:
             for patient in self.patients.values()
             if patient["org_id"] == org_id and patient["phone"] == _normalize_phone(phone)
         ]
-        rows.sort(key=lambda patient: patient["created_at"], reverse=True)
+        rows.sort(key=lambda patient: patient["last_visit_at"], reverse=True)
         return rows[:limit]
 
     async def create_appointment(self, org_id: str, payload) -> dict:
@@ -285,10 +309,28 @@ class FakeRepo:
         if appointment["status"] != "scheduled":
             raise ValueError("Only scheduled appointments can be added to the waiting queue.")
 
+        if payload.existing_patient_id is None and not payload.force_new:
+            matches = await self.list_potential_check_in_matches(org_id, appointment_id)
+            if matches:
+                raise DuplicateCheckInCandidateError(matches)
+
         if payload.existing_patient_id is not None:
             patient = self.patients[str(payload.existing_patient_id)]
+            patient.update({
+                "name": appointment["name"],
+                "phone": appointment["phone"],
+                "reason": appointment["reason"],
+                "age": appointment["age"],
+                "weight": appointment["weight"],
+                "height": appointment["height"],
+                "temperature": appointment["temperature"],
+                "status": "waiting",
+                "billed": False,
+                "last_visit_at": _now(),
+            })
         else:
             patient_id = str(uuid4())
+            created_at = _now()
             patient = {
                 "id": patient_id,
                 "org_id": org_id,
@@ -301,9 +343,29 @@ class FakeRepo:
                 "temperature": appointment["temperature"],
                 "status": "waiting",
                 "billed": False,
-                "created_at": _now(),
+                "created_at": created_at,
+                "last_visit_at": created_at,
             }
             self.patients[patient_id] = patient
+        await self._record_patient_visit(
+            org_id,
+            patient["id"],
+            type(
+                "VisitPayload",
+                (),
+                {
+                    "name": appointment["name"],
+                    "phone": appointment["phone"],
+                    "reason": appointment["reason"],
+                    "age": appointment["age"],
+                    "weight": appointment["weight"],
+                    "height": appointment["height"],
+                    "temperature": appointment["temperature"],
+                },
+            )(),
+            source="appointment",
+            appointment_id=appointment_id,
+        )
         appointment["status"] = "checked_in"
         appointment["checked_in_patient_id"] = patient["id"]
         appointment["checked_in_at"] = _now()
@@ -332,7 +394,33 @@ class FakeRepo:
         return appointment
 
     async def list_patients(self, org_id: str) -> list[dict]:
-        return [patient for patient in self.patients.values() if patient["org_id"] == org_id]
+        return sorted(
+            [patient for patient in self.patients.values() if patient["org_id"] == org_id],
+            key=lambda patient: patient["last_visit_at"],
+            reverse=True,
+        )
+
+    async def create_patient_visit(self, org_id: str, patient_id: str, payload) -> dict:
+        patient = self.patients[patient_id]
+        if patient["org_id"] != org_id:
+            raise ValueError("Patient not found for this organization.")
+        updated_at = _now()
+        patient.update(
+            {
+                "name": payload.name,
+                "phone": _normalize_phone(payload.phone),
+                "reason": payload.reason,
+                "age": payload.age,
+                "weight": payload.weight,
+                "height": payload.height,
+                "temperature": payload.temperature,
+                "status": "waiting",
+                "billed": False,
+                "last_visit_at": updated_at,
+            }
+        )
+        await self._record_patient_visit(org_id, patient_id, payload, source="queue")
+        return patient
 
     async def update_patient(self, org_id: str, patient_id: str, payload: dict) -> dict:
         patient = self.patients[patient_id]
@@ -349,6 +437,18 @@ class FakeRepo:
         if patient["org_id"] != org_id:
             raise ValueError("Patient not found for this organization.")
         return patient
+
+    async def list_patient_visits_for_patient(self, org_id: str, patient_id: str) -> list[dict]:
+        return [
+            visit for visit in self.patient_visits.values()
+            if visit["org_id"] == org_id and visit["patient_id"] == patient_id
+        ]
+
+    async def list_patient_visits(self, org_id: str) -> list[dict]:
+        return [
+            visit for visit in self.patient_visits.values()
+            if visit["org_id"] == org_id
+        ]
 
     async def create_note(self, org_id: str, payload) -> dict:
         note_id = str(uuid4())
@@ -448,6 +548,12 @@ class FakeRepo:
         return [
             invoice for invoice in self.invoices.values()
             if invoice["org_id"] == org_id and invoice["patient_id"] == patient_id
+        ]
+
+    async def list_invoices(self, org_id: str) -> list[dict]:
+        return [
+            invoice for invoice in self.invoices.values()
+            if invoice["org_id"] == org_id
         ]
 
     async def finalize_invoice(self, org_id: str, invoice_id: str) -> str:
@@ -694,6 +800,102 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client):
     assert repo.catalog_items[item["id"]]["stock_quantity"] == 7
 
 
+def test_invoice_can_be_created_with_partial_payment_status(client):
+    test_client, repo = client
+    session = register(test_client, identifier="billing-partial@clinic.com", clinic_name="Billing Partial Clinic")
+    headers = auth_headers(session["token"])
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Partial Pay Patient",
+            "phone": "5550102121",
+            "reason": "Consultation",
+            "age": 37,
+            "weight": 72,
+            "height": 171,
+            "temperature": 98.7,
+        },
+        headers=headers,
+    ).json()
+
+    invoice_response = test_client.post(
+        "/invoices",
+        json={
+            "patient_id": patient["id"],
+            "payment_status": "partial",
+            "items": [
+                {
+                    "item_type": "service",
+                    "label": "Consultation",
+                    "quantity": 1,
+                    "unit_price": 500,
+                }
+            ],
+        },
+        headers=headers,
+    )
+    assert invoice_response.status_code == 201
+    invoice = invoice_response.json()
+    assert invoice["payment_status"] == "partial"
+    assert invoice["paid_at"] is None
+    assert repo.patients[patient["id"]]["billed"] is False
+
+
+def test_admin_can_export_patients_visits_and_invoices_csv(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="exports@clinic.com", clinic_name="Exports Clinic")
+    headers = auth_headers(session["token"])
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Export Patient",
+            "phone": "5550102323",
+            "reason": "Review",
+            "age": 30,
+            "weight": 64,
+            "height": 169,
+            "temperature": 98.4,
+        },
+        headers=headers,
+    ).json()
+
+    invoice = test_client.post(
+        "/invoices",
+        json={
+            "patient_id": patient["id"],
+            "payment_status": "unpaid",
+            "items": [
+                {
+                    "item_type": "service",
+                    "label": "Consultation",
+                    "quantity": 1,
+                    "unit_price": 300,
+                }
+            ],
+        },
+        headers=headers,
+    )
+    assert invoice.status_code == 201
+
+    patients_csv = test_client.get("/exports/patients.csv", headers=headers)
+    assert patients_csv.status_code == 200
+    assert "text/csv" in patients_csv.headers["content-type"]
+    assert "Export Patient" in patients_csv.text
+    assert "last_visit_at" in patients_csv.text
+
+    visits_csv = test_client.get("/exports/visits.csv", headers=headers)
+    assert visits_csv.status_code == 200
+    assert "Export Patient" in visits_csv.text
+    assert "source" in visits_csv.text
+
+    invoices_csv = test_client.get("/exports/invoices.csv", headers=headers)
+    assert invoices_csv.status_code == 200
+    assert "payment_status" in invoices_csv.text
+    assert "unpaid" in invoices_csv.text
+
+
 def test_cross_org_invoice_and_negative_stock_adjustment_are_rejected(client):
     test_client, _repo = client
     session_a = register(test_client, identifier="owner-a2@clinic.com", clinic_name="Clinic A2")
@@ -855,9 +1057,65 @@ def test_patient_timeline_includes_notes_and_billing_events(client):
     assert timeline.status_code == 200
     event_types = [event["type"] for event in timeline.json()]
     assert "patient_created" in event_types
+    assert "visit_recorded" in event_types
     assert "consultation_note" in event_types
     assert "invoice_created" in event_types
     assert "bill_sent" in event_types
+
+
+def test_existing_patient_can_record_a_new_visit_and_refresh_latest_snapshot(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="patient-visits@clinic.com", clinic_name="Patient Visits Clinic")
+    headers = auth_headers(session["token"])
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Returning Patient",
+            "phone": "5550105050",
+            "reason": "Initial visit",
+            "age": 32,
+            "weight": 66,
+            "height": 168,
+            "temperature": 98.5,
+        },
+        headers=headers,
+    ).json()
+
+    revisit = test_client.post(
+        f"/patients/{patient['id']}/visits",
+        json={
+            "name": "Returning Patient",
+            "phone": "5550105050",
+            "reason": "Review visit",
+            "age": 33,
+            "weight": 67,
+            "height": 168,
+            "temperature": 99.1,
+        },
+        headers=headers,
+    )
+    assert revisit.status_code == 200
+    updated = revisit.json()
+    assert updated["id"] == patient["id"]
+    assert updated["reason"] == "Review visit"
+    assert updated["age"] == 33
+    assert updated["weight"] == 67
+    assert updated["temperature"] == 99.1
+    assert updated["last_visit_at"] >= patient["last_visit_at"]
+
+    timeline = test_client.get(
+        f"/patients/{patient['id']}/timeline",
+        headers=headers,
+    )
+    assert timeline.status_code == 200
+    event_types = [event["type"] for event in timeline.json()]
+    assert event_types.count("visit_recorded") == 2
+
+    audit_events = test_client.get("/audit-events", headers=headers)
+    assert audit_events.status_code == 200
+    actions = [event["action"] for event in audit_events.json()]
+    assert "patient_visit_recorded" in actions
 
 
 def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
@@ -945,6 +1203,7 @@ def test_audit_events_list_tracks_core_changes(client):
     actions = [event["action"] for event in audit_events.json()]
     assert "patient_created" in actions
     assert "patient_updated" in actions
+    assert "patient_visit_recorded" not in actions
     assert "follow_up_created" in actions
 
 
@@ -994,6 +1253,7 @@ def test_appointment_can_be_created_listed_and_checked_into_queue(client):
     )
     assert timeline.status_code == 200
     event_types = [event["type"] for event in timeline.json()]
+    assert "visit_recorded" in event_types
     assert "appointment_booked" in event_types
     assert "appointment_checked_in" in event_types
 
@@ -1035,6 +1295,55 @@ def test_appointment_check_in_preview_returns_active_phone_matches(client):
     matches = preview.json()
     assert len(matches) == 1
     assert matches[0]["id"] == patient["id"]
+
+
+def test_appointment_check_in_requires_explicit_choice_when_phone_has_active_matches(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="appointments-duplicate-choice@clinic.com", clinic_name="Appointments Duplicate Choice Clinic")
+    headers = auth_headers(session["token"])
+
+    existing = test_client.post(
+        "/patients",
+        json={
+            "name": "Existing Queue Patient",
+            "phone": "5550191919",
+            "reason": "Already waiting",
+            "age": 36,
+            "weight": 70,
+            "temperature": 98.6,
+        },
+        headers=headers,
+    ).json()
+
+    appointment = test_client.post(
+        "/appointments",
+        json={
+            "name": "Booked Patient",
+            "phone": "5550191919",
+            "reason": "Repeat visit",
+            "scheduled_for": "2026-04-18T11:30:00+00:00",
+        },
+        headers=headers,
+    ).json()
+
+    check_in = test_client.post(
+        f"/appointments/{appointment['id']}/check-in",
+        headers=headers,
+    )
+    assert check_in.status_code == 409
+    detail = check_in.json()["detail"]
+    assert detail["message"] == "Possible duplicate active patients found."
+    assert len(detail["matches"]) == 1
+    assert detail["matches"][0]["id"] == existing["id"]
+
+    updated_appointments = test_client.get("/appointments", headers=headers)
+    assert updated_appointments.status_code == 200
+    assert updated_appointments.json()[0]["status"] == "scheduled"
+    assert updated_appointments.json()[0]["checked_in_patient_id"] is None
+
+    patients = test_client.get("/patients", headers=headers)
+    assert patients.status_code == 200
+    assert len(patients.json()) == 1
 
 
 def test_patient_lookup_returns_multiple_matches_for_same_phone(client):
@@ -1079,6 +1388,38 @@ def test_patient_lookup_returns_multiple_matches_for_same_phone(client):
     matches = lookup.json()
     assert len(matches) == 2
     assert {match["name"] for match in matches} == {"Parent Patient", "Child Patient"}
+
+
+def test_patient_lookup_returns_most_recent_matches_first_and_honors_limit(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="patients-lookup-limit@clinic.com", clinic_name="Patient Lookup Limit Clinic")
+    headers = auth_headers(session["token"])
+
+    created_names: list[str] = []
+    for name in ["Oldest Patient", "Middle Patient", "Newest Patient"]:
+        created = test_client.post(
+            "/patients",
+            json={
+                "name": name,
+                "phone": "5550141414",
+                "reason": "Consultation",
+                "age": 30,
+                "weight": 65,
+                "temperature": 98.6,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201
+        created_names.append(created.json()["name"])
+
+    lookup = test_client.get(
+        "/patients/lookup",
+        params={"phone": "5550141414", "limit": 2},
+        headers=headers,
+    )
+    assert lookup.status_code == 200
+    matches = lookup.json()
+    assert [match["name"] for match in matches] == ["Newest Patient", "Middle Patient"]
 
 
 def test_patient_phone_is_normalized_for_lookup_and_storage(client):
@@ -1156,6 +1497,131 @@ def test_appointment_check_in_can_link_existing_active_patient(client):
     updated_appointments = test_client.get("/appointments", headers=headers)
     assert updated_appointments.status_code == 200
     assert updated_appointments.json()[0]["checked_in_patient_id"] == patient["id"]
+
+
+def test_appointment_check_in_can_force_new_patient_with_existing_phone(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="appointments-force-new@clinic.com", clinic_name="Appointments Force New Clinic")
+    headers = auth_headers(session["token"])
+
+    existing = test_client.post(
+        "/patients",
+        json={
+            "name": "Parent Patient",
+            "phone": "5550121212",
+            "reason": "Already waiting",
+            "age": 39,
+            "weight": 69,
+            "temperature": 98.5,
+        },
+        headers=headers,
+    ).json()
+
+    appointment = test_client.post(
+        "/appointments",
+        json={
+            "name": "Child Patient",
+            "phone": "5550121212",
+            "reason": "New consult",
+            "age": 11,
+            "weight": 34,
+            "temperature": 98.7,
+            "scheduled_for": "2026-04-18T09:30:00+00:00",
+        },
+        headers=headers,
+    ).json()
+
+    check_in = test_client.post(
+        f"/appointments/{appointment['id']}/check-in",
+        json={"force_new": True},
+        headers=headers,
+    )
+    assert check_in.status_code == 200
+    created = check_in.json()
+    assert created["id"] != existing["id"]
+    assert created["name"] == "Child Patient"
+    assert created["phone"] == existing["phone"]
+
+    patients = test_client.get("/patients", headers=headers)
+    assert patients.status_code == 200
+    matches = [patient for patient in patients.json() if patient["phone"] == "5550121212"]
+    assert len(matches) == 2
+    assert {patient["name"] for patient in matches} == {"Parent Patient", "Child Patient"}
+
+
+def test_patient_lookup_returns_family_cluster_after_reusing_and_adding_under_same_phone(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="patients-family@clinic.com", clinic_name="Patients Family Clinic")
+    headers = auth_headers(session["token"])
+
+    parent = test_client.post(
+        "/patients",
+        json={
+            "name": "Parent Patient",
+            "phone": "5550131313",
+            "reason": "Consultation",
+            "age": 42,
+            "weight": 71,
+            "temperature": 98.6,
+        },
+        headers=headers,
+    ).json()
+
+    sibling = test_client.post(
+        "/patients",
+        json={
+            "name": "Sibling Patient",
+            "phone": "5550131313",
+            "reason": "Review",
+            "age": 14,
+            "weight": 41,
+            "temperature": 98.4,
+        },
+        headers=headers,
+    ).json()
+
+    appointment = test_client.post(
+        "/appointments",
+        json={
+            "name": "Youngest Patient",
+            "phone": "5550131313",
+            "reason": "Fresh visit",
+            "age": 8,
+            "weight": 28,
+            "temperature": 99.0,
+            "scheduled_for": "2026-04-18T10:30:00+00:00",
+        },
+        headers=headers,
+    ).json()
+
+    preview = test_client.get(
+        f"/appointments/{appointment['id']}/check-in-preview",
+        headers=headers,
+    )
+    assert preview.status_code == 200
+    preview_ids = {match["id"] for match in preview.json()}
+    assert preview_ids == {parent["id"], sibling["id"]}
+
+    check_in = test_client.post(
+        f"/appointments/{appointment['id']}/check-in",
+        json={"force_new": True},
+        headers=headers,
+    )
+    assert check_in.status_code == 200
+
+    lookup = test_client.get(
+        "/patients/lookup",
+        params={"phone": "5550131313"},
+        headers=headers,
+    )
+    assert lookup.status_code == 200
+    matches = lookup.json()
+    assert len(matches) == 3
+    assert {match["name"] for match in matches} == {
+        "Parent Patient",
+        "Sibling Patient",
+        "Youngest Patient",
+    }
 
 
 def test_appointment_can_be_rescheduled_and_cancelled(client):
