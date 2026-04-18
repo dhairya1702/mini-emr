@@ -30,6 +30,24 @@ export interface PatientMatch {
   last_visit_at: string;
 }
 
+export interface PatientVisit {
+  id: string;
+  patient_id: string;
+  name: string;
+  phone: string;
+  reason: string;
+  age: number | null;
+  weight: number | null;
+  height: number | null;
+  temperature: number | null;
+  source: string;
+  appointment_id: string | null;
+  created_at: string;
+  status: PatientStatus;
+  billed: boolean;
+  last_visit_at: string;
+}
+
 export type AppointmentStatus = "scheduled" | "checked_in" | "cancelled";
 
 export interface Appointment {

@@ -1,6 +1,6 @@
 import csv
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from io import StringIO
 import re
@@ -46,6 +46,7 @@ from app.schemas import (
     PatientOut,
     PatientUpdate,
     PatientVisitCreate,
+    PatientVisitOut,
     SendInvoiceRequest,
     SendLetterRequest,
     SendNoteRequest,
@@ -111,6 +112,22 @@ def format_display_datetime(value: datetime | str) -> str:
     return f"{month} {day}, {hour}:{minute_period}"
 
 
+def format_export_datetime(value: datetime | str) -> str:
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        raw = str(value or "").strip()
+        if not raw:
+            return ""
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return raw
+
+    local_value = parsed.astimezone() if parsed.tzinfo else parsed
+    return local_value.strftime("%d/%m/%Y %I:%M %p")
+
+
 def get_actor_name(current_user: UserOut) -> str:
     return current_user.name.strip() or current_user.identifier.strip() or "Clinic User"
 
@@ -131,16 +148,117 @@ def build_visit_description(visit: dict) -> str:
 
 
 def build_csv_response(filename: str, rows: list[dict], fieldnames: list[str]) -> StreamingResponse:
+    datetime_fields = {
+        "created_at",
+        "updated_at",
+        "last_visit_at",
+        "scheduled_for",
+        "checked_in_at",
+        "completed_at",
+        "paid_at",
+        "sent_at",
+    }
     buffer = StringIO()
     writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     for row in rows:
-        writer.writerow({key: row.get(key) for key in fieldnames})
+        writer.writerow(
+            {
+                key: format_export_datetime(row.get(key)) if key in datetime_fields else row.get(key)
+                for key in fieldnames
+            }
+        )
     return StreamingResponse(
         iter([buffer.getvalue()]),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def build_history_visit_rows(visits: list[dict], patients: list[dict]) -> list[PatientVisitOut]:
+    patients_by_id = {str(patient["id"]): patient for patient in patients}
+    visit_counts_by_patient: dict[str, int] = {}
+    rows: list[PatientVisitOut] = []
+    for visit in visits:
+        patient_id = str(visit["patient_id"])
+        visit_counts_by_patient[patient_id] = visit_counts_by_patient.get(patient_id, 0) + 1
+        patient = patients_by_id.get(patient_id)
+        if not patient:
+            continue
+        rows.append(
+            PatientVisitOut(
+                **visit,
+                status=patient["status"],
+                billed=patient.get("billed", False),
+                last_visit_at=patient["last_visit_at"],
+            )
+        )
+
+    for patient in patients:
+        patient_id = str(patient["id"])
+        if visit_counts_by_patient.get(patient_id):
+            continue
+        rows.append(
+            PatientVisitOut(
+                id=patient["id"],
+                patient_id=patient["id"],
+                name=patient["name"],
+                phone=patient["phone"],
+                reason=patient["reason"],
+                age=patient.get("age"),
+                weight=patient.get("weight"),
+                height=patient.get("height"),
+                temperature=patient.get("temperature"),
+                source="queue",
+                appointment_id=None,
+                created_at=patient["last_visit_at"],
+                status=patient["status"],
+                billed=patient.get("billed", False),
+                last_visit_at=patient["last_visit_at"],
+            )
+        )
+
+    rows.sort(key=lambda visit: visit.created_at, reverse=True)
+    return rows
+
+
+def get_export_range_start(range_name: str | None) -> datetime | None:
+    if not range_name or range_name == "all":
+        return None
+
+    now = datetime.now().astimezone()
+    if range_name == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if range_name == "7d":
+        return now - timedelta(days=7)
+    if range_name == "30d":
+        return now - timedelta(days=30)
+    if range_name == "month":
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    raise HTTPException(status_code=400, detail="Invalid export range.")
+
+
+def filter_rows_by_created_at(rows: list[dict], start_at: datetime | None) -> list[dict]:
+    if start_at is None:
+        return rows
+
+    filtered: list[dict] = []
+    for row in rows:
+        raw_value = row.get("created_at")
+        if not raw_value:
+            continue
+        if isinstance(raw_value, datetime):
+            created_at = raw_value
+        else:
+            try:
+                created_at = datetime.fromisoformat(str(raw_value).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        if created_at.astimezone(start_at.tzinfo) >= start_at:
+            filtered.append(row)
+    return filtered
 
 
 async def write_audit_event(
@@ -340,6 +458,19 @@ async def get_patients(
     try:
         rows = await repo.list_patients(str(current_user.org_id))
         return [PatientOut(**row) for row in rows]
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/visits", response_model=list[PatientVisitOut])
+async def get_patient_visits(
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> list[PatientVisitOut]:
+    try:
+        visits = await repo.list_patient_visits(str(current_user.org_id))
+        patients = await repo.list_patients(str(current_user.org_id))
+        return build_history_visit_rows(visits, patients)
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -927,16 +1058,12 @@ async def export_patients_csv(
         "patients.csv",
         patients,
         [
-            "id",
             "name",
             "phone",
             "reason",
             "age",
             "weight",
             "height",
-            "temperature",
-            "status",
-            "billed",
             "created_at",
             "last_visit_at",
         ],
@@ -945,25 +1072,27 @@ async def export_patients_csv(
 
 @app.get("/exports/visits.csv")
 async def export_visits_csv(
+    range: str = Query(default="all", pattern="^(today|7d|30d|month|all)$"),
     repo: SupabaseRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     visits = await repo.list_patient_visits(str(current_user.org_id))
+    patients = await repo.list_patients(str(current_user.org_id))
+    history_rows = build_history_visit_rows(visits, patients)
+    filtered_rows = filter_rows_by_created_at(
+        [row.model_dump() for row in history_rows],
+        get_export_range_start(range),
+    )
     return build_csv_response(
         "patient_visits.csv",
-        visits,
+        filtered_rows,
         [
-            "id",
-            "patient_id",
             "name",
             "phone",
             "reason",
             "age",
             "weight",
             "height",
-            "temperature",
-            "source",
-            "appointment_id",
             "created_at",
         ],
     )
@@ -975,14 +1104,14 @@ async def export_invoices_csv(
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     invoices = await repo.list_invoices(str(current_user.org_id))
+    patients = await repo.list_patients(str(current_user.org_id))
+    patient_names = {str(patient.get("id")): patient.get("name", "") for patient in patients}
     rows: list[dict] = []
     for invoice in invoices:
         rows.append(
             {
-                "id": invoice.get("id"),
-                "patient_id": invoice.get("patient_id"),
+                "patient_name": patient_names.get(str(invoice.get("patient_id")), ""),
                 "payment_status": invoice.get("payment_status"),
-                "subtotal": invoice.get("subtotal"),
                 "total": invoice.get("total"),
                 "paid_at": invoice.get("paid_at"),
                 "sent_at": invoice.get("sent_at"),
@@ -994,10 +1123,8 @@ async def export_invoices_csv(
         "invoices.csv",
         rows,
         [
-            "id",
-            "patient_id",
+            "patient_name",
             "payment_status",
-            "subtotal",
             "total",
             "paid_at",
             "sent_at",

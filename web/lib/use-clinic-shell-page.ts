@@ -270,7 +270,9 @@ export function useClinicShellPage<T>({
   }, []);
 
   const handleExportPatientsCsv = useCallback(async () => api.exportPatientsCsv(), []);
-  const handleExportVisitsCsv = useCallback(async () => api.exportVisitsCsv(), []);
+  const handleExportVisitsCsv = useCallback(async (
+    params?: { range?: "today" | "7d" | "30d" | "month" | "all" },
+  ) => api.exportVisitsCsv(params), []);
   const handleExportInvoicesCsv = useCallback(async () => api.exportInvoicesCsv(), []);
 
   const handleLogout = useCallback(() => {

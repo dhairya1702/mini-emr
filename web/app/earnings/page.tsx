@@ -254,25 +254,7 @@ export default function EarningsPage() {
             className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
           >
             <Download className="h-4 w-4" />
-            {isExporting === "invoices" ? "Preparing..." : "Export Invoices"}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleExport("patients", handleExportPatientsCsv)}
-            disabled={isExporting === "patients"}
-            className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-          >
-            <Download className="h-4 w-4" />
-            {isExporting === "patients" ? "Preparing..." : "Export Patients"}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleExport("visits", handleExportVisitsCsv)}
-            disabled={isExporting === "visits"}
-            className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-          >
-            <Download className="h-4 w-4" />
-            {isExporting === "visits" ? "Preparing..." : "Export Visits"}
+            {isExporting === "invoices" ? "Preparing..." : "Export"}
           </button>
         </div>
 

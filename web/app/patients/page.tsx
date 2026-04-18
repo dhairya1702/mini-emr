@@ -19,6 +19,13 @@ function formatVisitDate(value: string) {
   });
 }
 
+function upsertPatient(current: Patient[], incoming: Patient) {
+  const withoutMatch = current.filter((patient) => patient.id !== incoming.id);
+  return [incoming, ...withoutMatch].sort((left, right) =>
+    right.last_visit_at.localeCompare(left.last_visit_at),
+  );
+}
+
 export default function PatientsPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -26,7 +33,7 @@ export default function PatientsPage() {
   const [query, setQuery] = useState("");
   const [exportStatus, setExportStatus] = useState("");
   const [exportError, setExportError] = useState("");
-  const [isExporting, setIsExporting] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
   const loadPageData = useCallback(async () => {
     const records = await api.listPatients();
     return records.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at));
@@ -98,28 +105,25 @@ export default function PatientsPage() {
     return api.getPatientTimeline(patientId);
   }
 
-  async function handleExport(
-    kind: "patients" | "visits",
-    loader: () => Promise<Blob>,
-  ) {
-    setIsExporting(kind);
+  async function handleExport() {
+    setIsExporting(true);
     setExportError("");
     setExportStatus("");
     try {
-      const blob = await loader();
+      const blob = await handleExportPatientsCsv();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${kind}.csv`;
+      link.download = "patients.csv";
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      setExportStatus(`${kind === "patients" ? "Patients" : "Visits"} export downloaded.`);
+      setExportStatus("Export downloaded.");
     } catch (loadError) {
-      setExportError(loadError instanceof Error ? loadError.message : `Failed to export ${kind}.`);
+      setExportError(loadError instanceof Error ? loadError.message : "Failed to export patients.");
     } finally {
-      setIsExporting("");
+      setIsExporting(false);
     }
   }
 
@@ -161,53 +165,38 @@ export default function PatientsPage() {
         ) : null}
 
         <section className="rounded-[32px] border border-sky-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)] sm:p-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-3 py-1 text-xs uppercase tracking-[0.2em] text-sky-700">
-                <UserRound className="h-3.5 w-3.5" />
-                Patients
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex w-full flex-col gap-4 lg:max-w-3xl lg:flex-row lg:items-end">
+              <div className="min-w-0 flex-1">
+                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Patient Search
+                </label>
+                <div className="mt-2 flex items-center gap-3 rounded-[28px] border border-sky-200 bg-sky-50/50 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                  <Search className="h-4 w-4 text-sky-700" />
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search by patient name or phone"
+                    className="w-full bg-transparent text-base text-slate-800 outline-none placeholder:text-slate-400"
+                  />
+                </div>
               </div>
-              <h2 className="mt-4 text-2xl font-semibold text-slate-900 sm:text-3xl">
-                Search your patient records without leaving the flow.
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Find patients by name or phone, open the chart, and review their visit trail from one clean place.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleExport("patients", handleExportPatientsCsv)}
-                  disabled={isExporting === "patients"}
-                  className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-                >
-                  <Download className="h-4 w-4" />
-                  {isExporting === "patients" ? "Preparing..." : "Export Patients"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleExport("visits", handleExportVisitsCsv)}
-                  disabled={isExporting === "visits"}
-                  className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-                >
-                  <Download className="h-4 w-4" />
-                  {isExporting === "visits" ? "Preparing..." : "Export Visits"}
-                </button>
+              <div className="rounded-[24px] border border-sky-100 bg-sky-50/60 px-4 py-3 text-sm text-slate-600 lg:min-w-[180px]">
+                <span className="font-medium text-slate-500">Total Records:</span>{" "}
+                <span className="text-lg font-semibold text-slate-900">{patients.length}</span>
               </div>
             </div>
 
-            <div className="w-full max-w-xl">
-              <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Patient Search
-              </label>
-              <div className="mt-2 flex items-center gap-3 rounded-[28px] border border-sky-200 bg-sky-50/50 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
-                <Search className="h-4 w-4 text-sky-700" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search by patient name or phone"
-                  className="w-full bg-transparent text-base text-slate-800 outline-none placeholder:text-slate-400"
-                />
-              </div>
+            <div className="flex justify-start lg:justify-end">
+              <button
+                type="button"
+                onClick={() => void handleExport()}
+                disabled={isExporting}
+                className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+              >
+                <Download className="h-4 w-4" />
+                {isExporting ? "Preparing..." : "Export"}
+              </button>
             </div>
           </div>
 
@@ -221,23 +210,6 @@ export default function PatientsPage() {
               {exportStatus}
             </div>
           ) : null}
-
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <div className="rounded-[24px] border border-sky-100 bg-sky-50/60 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Total Records</p>
-              <p className="mt-3 text-3xl font-semibold text-slate-900">{patients.length}</p>
-            </div>
-            <div className="rounded-[24px] border border-sky-100 bg-white p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Showing</p>
-              <p className="mt-3 text-3xl font-semibold text-slate-900">{visiblePatients.length}</p>
-            </div>
-            <div className="rounded-[24px] border border-sky-100 bg-white p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Latest Record</p>
-              <p className="mt-3 text-lg font-semibold text-slate-900">
-                {patients[0] ? formatVisitDate(patients[0].last_visit_at) : "No records yet"}
-              </p>
-            </div>
-          </div>
 
           <div className="mt-6 overflow-hidden rounded-[28px] border border-sky-200 bg-white">
             {visiblePatients.length ? (
@@ -332,7 +304,7 @@ export default function PatientsPage() {
           const checkedInPatient = options?.existingPatientId
             ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId)
             : await api.checkInAppointment(appointmentId, { force_new: options?.forceNew });
-          setPatients((current) => [checkedInPatient, ...current]);
+          setPatients((current) => upsertPatient(current, checkedInPatient));
           return {
             id: appointmentId,
             checked_in_at: new Date().toISOString(),

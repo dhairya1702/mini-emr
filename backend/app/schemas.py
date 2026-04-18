@@ -50,6 +50,24 @@ class PatientOut(BaseModel):
     last_visit_at: datetime
 
 
+class PatientVisitOut(BaseModel):
+    id: UUID
+    patient_id: UUID
+    name: str
+    phone: str
+    reason: str
+    age: int | None = None
+    weight: float | None = None
+    temperature: float | None = None
+    height: float | None = None
+    source: str = ""
+    appointment_id: UUID | None = None
+    created_at: datetime
+    status: PatientStatus
+    billed: bool = False
+    last_visit_at: datetime
+
+
 class AppointmentCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     phone: str = Field(min_length=5, max_length=30)

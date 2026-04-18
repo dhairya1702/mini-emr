@@ -16,6 +16,7 @@ import {
   Search,
   Settings2,
   Stethoscope,
+  RefreshCw,
   UserPlus,
   X,
 } from "lucide-react";
@@ -227,11 +228,11 @@ export function SettingsDrawer({
     { href: "/", label: "Queue", icon: LayoutDashboard },
     { href: "/patients", label: "Patients", icon: Search },
     { tab: "appointments" as SettingsTab, label: "Appointments", icon: CalendarClock },
-    { tab: "billing" as SettingsTab, label: "Billing", icon: CreditCard },
+    { href: "/billing", label: "Billing", icon: CreditCard },
     { href: "/history", label: "History", icon: History },
-    { tab: "catalog" as SettingsTab, label: "Inventory", icon: Stethoscope },
-    { tab: "users" as SettingsTab, label: "Users", icon: UserPlus },
-    { tab: "audit" as SettingsTab, label: "Audit", icon: Settings2 },
+    { href: "/inventory", label: "Inventory", icon: Stethoscope },
+    { href: "/users", label: "Users", icon: UserPlus },
+    { href: "/audit", label: "Audit", icon: Settings2 },
     { tab: "clinic" as SettingsTab, label: "Clinic", icon: Building2 },
     { tab: "letter" as SettingsTab, label: "Generate Letter", icon: FilePenLine },
     { tab: "about" as SettingsTab, label: "About", icon: Info },
@@ -367,13 +368,21 @@ export function SettingsDrawer({
         }
       })
       .finally(() => {
-        setIsAuditLoading(false);
+        if (active) {
+          setIsAuditLoading(false);
+        }
       });
 
     return () => {
       active = false;
     };
   }, [activeTab, hasLoadedAudit, isAuditLoading, onLoadAuditEvents, open]);
+
+  useEffect(() => {
+    if (open && activeTab === "audit") {
+      setHasLoadedAudit(false);
+    }
+  }, [activeTab, open]);
 
   if (!open) {
     return null;
@@ -431,6 +440,19 @@ export function SettingsDrawer({
       setUserError(saveError instanceof Error ? saveError.message : "Failed to add user.");
     } finally {
       setIsAddingUser(false);
+    }
+  }
+
+  async function handleRefreshAudit() {
+    setIsAuditLoading(true);
+    setAuditError("");
+    try {
+      await onLoadAuditEvents();
+      setHasLoadedAudit(true);
+    } catch (loadError) {
+      setAuditError(loadError instanceof Error ? loadError.message : "Failed to load audit events.");
+    } finally {
+      setIsAuditLoading(false);
     }
   }
 
@@ -993,8 +1015,18 @@ export function SettingsDrawer({
               This feed tracks who changed what across patients, appointments, follow-ups, notes, and billing.
             </p>
           </div>
-          <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
-            {auditEvents.length} event{auditEvents.length === 1 ? "" : "s"}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void handleRefreshAudit()}
+              className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
+            <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
+              {auditEvents.length} event{auditEvents.length === 1 ? "" : "s"}
+            </div>
           </div>
         </div>
 

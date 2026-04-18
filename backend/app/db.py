@@ -163,14 +163,45 @@ class SupabaseRepository:
         )
 
     async def list_patients(self, org_id: str) -> list[dict[str, Any]]:
-        return await asyncio.to_thread(
-            lambda: self.client.table("patients")
-            .select("*")
-            .eq("org_id", org_id)
-            .order("last_visit_at", desc=True)
-            .execute()
-            .data
-        )
+        def _list() -> list[dict[str, Any]]:
+            patients = (
+                self.client.table("patients")
+                .select("*")
+                .eq("org_id", org_id)
+                .execute()
+                .data
+            )
+            visits = (
+                self.client.table("patient_visits")
+                .select("patient_id,created_at")
+                .eq("org_id", org_id)
+                .order("created_at", desc=True)
+                .execute()
+                .data
+            )
+            latest_visit_by_patient: dict[str, str] = {}
+            for visit in visits:
+                patient_id = str(visit.get("patient_id") or "")
+                created_at = str(visit.get("created_at") or "")
+                if patient_id and created_at and patient_id not in latest_visit_by_patient:
+                    latest_visit_by_patient[patient_id] = created_at
+
+            enriched: list[dict[str, Any]] = []
+            for patient in patients:
+                effective_last_visit_at = latest_visit_by_patient.get(
+                    str(patient.get("id") or ""),
+                    str(patient.get("created_at") or patient.get("last_visit_at") or ""),
+                )
+                enriched.append(
+                    {
+                        **patient,
+                        "last_visit_at": effective_last_visit_at,
+                    }
+                )
+            enriched.sort(key=lambda patient: str(patient.get("last_visit_at") or ""), reverse=True)
+            return enriched
+
+        return await asyncio.to_thread(_list)
 
     async def create_patient(self, org_id: str, payload: PatientCreate) -> dict[str, Any]:
         def _create() -> dict[str, Any]:
@@ -427,24 +458,12 @@ class SupabaseRepository:
         normalized_phone = _normalize_phone_number(phone)
         if not normalized_phone:
             return []
-
-        def _list() -> list[dict[str, Any]]:
-            patients = (
-                self.client.table("patients")
-                .select("*")
-                .eq("org_id", org_id)
-                .order("last_visit_at", desc=True)
-                .limit(100)
-                .execute()
-                .data
-            )
-            return [
-                patient
-                for patient in patients
-                if _normalize_phone_number(patient.get("phone")) == normalized_phone
-            ][:limit]
-
-        return await asyncio.to_thread(_list)
+        patients = await self.list_patients(org_id)
+        return [
+            patient
+            for patient in patients
+            if _normalize_phone_number(patient.get("phone")) == normalized_phone
+        ][:limit]
 
     async def get_patient(self, org_id: str, patient_id: str) -> dict[str, Any]:
         return await asyncio.to_thread(

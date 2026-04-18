@@ -12,6 +12,7 @@ import {
   GenerateNotePayload,
   Patient,
   PatientMatch,
+  PatientVisit,
   PatientTimelineEvent,
   PatientStatus,
   RegisterPayload,
@@ -193,7 +194,8 @@ export const api = {
   generateInvoicePdf: (invoiceId: string) =>
     requestBlob(`/invoices/${invoiceId}/pdf`),
   exportPatientsCsv: () => requestBlob("/exports/patients.csv"),
-  exportVisitsCsv: () => requestBlob("/exports/visits.csv"),
+  exportVisitsCsv: (params?: { range?: "today" | "7d" | "30d" | "month" | "all" }) =>
+    requestBlob(withQuery("/exports/visits.csv", params ?? {})),
   exportInvoicesCsv: () => requestBlob("/exports/invoices.csv"),
   sendInvoice: (payload: { invoice_id: string; recipient: string }) =>
     request<{ success: boolean; message: string }>("/send-invoice", {
@@ -285,6 +287,7 @@ export const api = {
     }),
   lookupPatientsByPhone: (phone: string, limit = 10) =>
     request<PatientMatch[]>(withQuery("/patients/lookup", { phone, limit })),
+  listPatientVisits: () => request<PatientVisit[]>("/visits"),
   updatePatientStatus: (patientId: string, status: PatientStatus) =>
     request<Patient>(`/patients/${patientId}`, {
       method: "PATCH",
