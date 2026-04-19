@@ -43,7 +43,10 @@ export function AddPatientModal({
     appointmentTime: "",
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState("");
+  const [searchPhone, setSearchPhone] = useState("");
+  const [searchFeedback, setSearchFeedback] = useState("");
   const [existingMatches, setExistingMatches] = useState<PatientMatch[]>([]);
   const [selectedExistingMatchId, setSelectedExistingMatchId] = useState("");
 
@@ -75,6 +78,8 @@ export function AddPatientModal({
       appointmentTime: "",
     });
     setSelectedExistingMatchId("");
+    setSearchPhone("");
+    setSearchFeedback("");
   }
 
   function handleClose() {
@@ -110,8 +115,41 @@ export function AddPatientModal({
       temperatureUnit: "F",
     }));
     setExistingMatches([]);
+    setSearchPhone(match.phone);
+    setSearchFeedback(`Loaded ${match.name}. You can update the visit reason below before saving.`);
     setSelectedExistingMatchId(match.id);
     setError("");
+  }
+
+  async function handleSearchExistingPatient() {
+    const digits = getPhoneDigits(searchPhone).slice(0, 10);
+    setSearchPhone(digits);
+    setError("");
+    setSearchFeedback("");
+    setSelectedExistingMatchId("");
+    setExistingMatches([]);
+
+    if (digits.length !== 10) {
+      setSearchFeedback("Enter a 10-digit phone number to search existing patients.");
+      setForm((current) => ({ ...current, phone: digits }));
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const matches = await api.lookupPatientsByPhone(digits);
+      setForm((current) => ({ ...current, phone: digits }));
+      if (matches.length) {
+        setExistingMatches(matches);
+        setSearchFeedback("Existing patient records found. Select the right profile or continue as a new entry.");
+        return;
+      }
+      setSearchFeedback("No existing patient found for this number. Continue below to add a new patient.");
+    } catch (searchError) {
+      setError(searchError instanceof Error ? searchError.message : "Failed to search patients.");
+    } finally {
+      setIsSearching(false);
+    }
   }
 
   async function submitPatient(skipExistingCheck = false) {
@@ -242,14 +280,41 @@ export function AddPatientModal({
         </div>
 
         <form className="space-y-4 overflow-y-auto px-6 py-5" onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-3 sm:flex-row">
+              <input
+                value={searchPhone}
+                onChange={(event) => {
+                  setError("");
+                  setSearchFeedback("");
+                  setExistingMatches([]);
+                  setSelectedExistingMatchId("");
+                  const digits = getPhoneDigits(event.target.value).slice(0, 10);
+                  setSearchPhone(digits);
+                  setForm((current) => ({ ...current, phone: digits }));
+                }}
+                className="min-w-0 flex-1 rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                placeholder="Search by 10-digit phone number"
+              />
+              <button
+                type="button"
+                onClick={() => void handleSearchExistingPatient()}
+                disabled={isSearching}
+                className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSearching ? "Searching..." : "Search"}
+              </button>
+          </div>
+
+          {searchFeedback ? (
+            <p className="text-sm text-slate-700">{searchFeedback}</p>
+          ) : null}
+
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-800">Add As</span>
             <select
               value={form.entryType}
               onChange={(event) => {
                 setError("");
-                setExistingMatches([]);
-                setSelectedExistingMatchId("");
                 setForm((current) => ({
                   ...current,
                   entryType: event.target.value as "queue" | "appointment",
@@ -269,7 +334,6 @@ export function AddPatientModal({
               value={form.name}
               onChange={(event) => {
                 setError("");
-                setExistingMatches([]);
                 setSelectedExistingMatchId("");
                 setForm((current) => ({ ...current, name: event.target.value }));
               }}
@@ -285,9 +349,10 @@ export function AddPatientModal({
               value={form.phone}
               onChange={(event) => {
                 setError("");
-                setExistingMatches([]);
                 setSelectedExistingMatchId("");
-                setForm((current) => ({ ...current, phone: getPhoneDigits(event.target.value).slice(0, 10) }));
+                const digits = getPhoneDigits(event.target.value).slice(0, 10);
+                setSearchPhone(digits);
+                setForm((current) => ({ ...current, phone: digits }));
               }}
               className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
               placeholder="10-digit phone number"
@@ -296,9 +361,8 @@ export function AddPatientModal({
 
           {existingMatches.length ? (
             <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4">
-              <p className="text-sm font-semibold text-amber-900">Existing records found for this phone number</p>
-              <p className="mt-1 text-sm text-amber-800">
-                These are existing accounts under the same number. Select one or create a new entry.
+              <p className="text-sm font-semibold text-amber-900">
+                Existing records found for this phone number.
               </p>
               <div className="mt-4 max-h-64 space-y-3 overflow-y-auto pr-1">
                 {existingMatches.map((match) => (
@@ -334,12 +398,13 @@ export function AddPatientModal({
                   disabled={isSaving}
                   className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-60"
                 >
-                  Create New Entry
+                  Continue As New Patient
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     setExistingMatches([]);
+                    setSearchFeedback("");
                     setError("");
                   }}
                   className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100"

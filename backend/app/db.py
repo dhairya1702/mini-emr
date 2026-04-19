@@ -2,6 +2,7 @@ import asyncio
 from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any
+from uuid import uuid4
 
 from supabase import Client, create_client
 
@@ -59,6 +60,36 @@ def _normalize_phone_number(value: str | None) -> str:
     if raw.startswith("+") and digits:
         return f"+{digits}"
     return digits
+
+
+def _round_money(value: float) -> float:
+    return round(float(value), 2)
+
+
+def _normalize_invoice_amount_paid(payment_status: str, amount_paid: float | None, total: float) -> float:
+    normalized_total = _round_money(total)
+    if payment_status == "paid":
+        return normalized_total
+    if payment_status == "unpaid":
+        return 0.0
+    if amount_paid is None:
+        raise ValueError("Enter the amount received for a partial invoice.")
+    normalized_paid = _round_money(amount_paid)
+    if normalized_paid <= 0:
+        raise ValueError("Partial invoices must record an amount greater than zero.")
+    if normalized_paid >= normalized_total:
+        raise ValueError("Partial invoice amount must be less than the invoice total.")
+    return normalized_paid
+
+
+def _attach_invoice_balances(invoice: dict[str, Any]) -> dict[str, Any]:
+    total = _round_money(invoice.get("total") or 0)
+    amount_paid = _round_money(invoice.get("amount_paid") or 0)
+    return {
+        **invoice,
+        "amount_paid": amount_paid,
+        "balance_due": _round_money(max(total - amount_paid, 0)),
+    }
 
 
 def _visit_payload(payload: PatientCreate | PatientVisitCreate) -> dict[str, Any]:
@@ -476,18 +507,132 @@ class SupabaseRepository:
             .data
         )
 
-    async def create_note(self, org_id: str, payload: NoteCreate) -> dict[str, Any]:
+    async def create_note(
+        self,
+        org_id: str,
+        payload: NoteCreate,
+        *,
+        version_number: int = 1,
+        root_note_id: str | None = None,
+        amended_from_note_id: str | None = None,
+    ) -> dict[str, Any]:
+        note_id = str(uuid4())
         return await asyncio.to_thread(
             lambda: self.client.table("notes")
             .insert(
                 {
+                    "id": note_id,
                     "org_id": org_id,
                     "patient_id": str(payload.patient_id),
                     "content": payload.content,
+                    "status": "draft",
+                    "version_number": version_number,
+                    "root_note_id": root_note_id,
+                    "amended_from_note_id": amended_from_note_id,
+                    "snapshot_content": None,
+                    "finalized_at": None,
+                    "sent_at": None,
+                    "sent_by": None,
+                    "sent_to": None,
                 }
             )
             .execute()
             .data[0]
+        )
+
+    async def update_note_draft(self, org_id: str, note_id: str, content: str) -> dict[str, Any]:
+        def _update() -> dict[str, Any]:
+            note = (
+                self.client.table("notes")
+                .select("*")
+                .eq("org_id", org_id)
+                .eq("id", note_id)
+                .single()
+                .execute()
+                .data
+            )
+            if not note:
+                raise ValueError("Note not found for this organization.")
+            if note.get("status") != "draft":
+                raise ValueError("Only draft notes can be updated.")
+            updated = (
+                self.client.table("notes")
+                .update({"content": content})
+                .eq("org_id", org_id)
+                .eq("id", note_id)
+                .execute()
+                .data
+            )
+            if not updated:
+                raise ValueError("Failed to update note draft.")
+            return updated[0]
+
+        return await asyncio.to_thread(_update)
+
+    async def get_note(self, org_id: str, note_id: str) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            lambda: self.client.table("notes")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("id", note_id)
+            .single()
+            .execute()
+            .data
+        )
+
+    async def finalize_note(self, org_id: str, note_id: str) -> dict[str, Any]:
+        def _finalize() -> dict[str, Any]:
+            note = (
+                self.client.table("notes")
+                .select("*")
+                .eq("org_id", org_id)
+                .eq("id", note_id)
+                .single()
+                .execute()
+                .data
+            )
+            if not note:
+                raise ValueError("Note not found for this organization.")
+            if note.get("status") == "sent":
+                raise ValueError("Sent notes cannot be changed.")
+            if note.get("status") == "final" and note.get("snapshot_content"):
+                return note
+            updated = (
+                self.client.table("notes")
+                .update(
+                    {
+                        "status": "final",
+                        "snapshot_content": note.get("content") or "",
+                        "finalized_at": datetime.now(UTC).isoformat(),
+                    }
+                )
+                .eq("org_id", org_id)
+                .eq("id", note_id)
+                .execute()
+                .data
+            )
+            if not updated:
+                raise ValueError("Failed to finalize note.")
+            return updated[0]
+
+        return await asyncio.to_thread(_finalize)
+
+    async def create_note_amendment(self, org_id: str, note_id: str, content: str) -> dict[str, Any]:
+        note = await self.get_note(org_id, note_id)
+        patient_notes = await self.list_notes_for_patient(org_id, str(note["patient_id"]))
+        root_note_id = str(note.get("root_note_id") or note["id"])
+        existing_versions = [
+            entry
+            for entry in patient_notes
+            if str(entry.get("root_note_id") or entry["id"]) == root_note_id
+        ]
+        next_version = max(int(entry.get("version_number") or 1) for entry in existing_versions) + 1
+        return await self.create_note(
+            org_id,
+            NoteCreate(patient_id=note["patient_id"], content=content),
+            version_number=next_version,
+            root_note_id=root_note_id,
+            amended_from_note_id=str(note["id"]),
         )
 
     async def list_notes_for_patient(self, org_id: str, patient_id: str) -> list[dict[str, Any]]:
@@ -500,6 +645,45 @@ class SupabaseRepository:
             .execute()
             .data
         )
+
+    async def mark_note_sent(self, org_id: str, note_id: str, *, sent_by: str, sent_to: str) -> dict[str, Any]:
+        def _mark() -> dict[str, Any]:
+            note = (
+                self.client.table("notes")
+                .select("*")
+                .eq("org_id", org_id)
+                .eq("id", note_id)
+                .single()
+                .execute()
+                .data
+            )
+            if not note:
+                raise ValueError("Note not found for this organization.")
+            if note.get("status") == "draft":
+                raise ValueError("Finalize the note before sending it.")
+            if note.get("sent_at"):
+                return note
+            updated = (
+                self.client.table("notes")
+                .update(
+                    {
+                        "status": "sent",
+                        "snapshot_content": note.get("snapshot_content") or note.get("content") or "",
+                        "sent_at": datetime.now(UTC).isoformat(),
+                        "sent_by": sent_by,
+                        "sent_to": sent_to,
+                    }
+                )
+                .eq("org_id", org_id)
+                .eq("id", note_id)
+                .execute()
+                .data
+            )
+            if not updated:
+                raise ValueError("Failed to mark note as sent.")
+            return updated[0]
+
+        return await asyncio.to_thread(_mark)
 
     async def create_follow_up(
         self,
@@ -803,6 +987,12 @@ class SupabaseRepository:
 
     async def create_invoice(self, org_id: str, payload: InvoiceCreate) -> dict[str, Any]:
         def _create() -> dict[str, Any]:
+            invoice_total = _round_money(sum(item.quantity * item.unit_price for item in payload.items))
+            normalized_amount_paid = _normalize_invoice_amount_paid(
+                payload.payment_status,
+                payload.amount_paid,
+                invoice_total,
+            )
             result = (
                 self.client.rpc(
                     "create_invoice_atomic",
@@ -810,6 +1000,7 @@ class SupabaseRepository:
                         "p_org_id": org_id,
                         "p_patient_id": str(payload.patient_id),
                         "p_payment_status": payload.payment_status,
+                        "p_amount_paid": normalized_amount_paid,
                         "p_items": [
                             {
                                 "catalog_item_id": str(item.catalog_item_id) if item.catalog_item_id else None,
@@ -828,27 +1019,28 @@ class SupabaseRepository:
             invoice = _rpc_single(result)
             if not invoice:
                 raise ValueError("Failed to create invoice.")
-            return invoice
+            return _attach_invoice_balances(invoice)
 
         return await asyncio.to_thread(_create)
 
-    async def finalize_invoice(self, org_id: str, invoice_id: str) -> str:
-        def _finalize() -> str:
+    async def finalize_invoice(self, org_id: str, invoice_id: str, *, completed_by: str) -> dict[str, Any]:
+        def _finalize() -> dict[str, Any]:
             result = (
                 self.client.rpc(
                     "finalize_invoice_atomic",
                     {
                         "p_org_id": org_id,
                         "p_invoice_id": invoice_id,
+                        "p_completed_by": completed_by,
                     },
                 )
                 .execute()
                 .data
             )
-            patient_id = result[0] if isinstance(result, list) and result else result
-            if not patient_id:
+            finalized = _rpc_single(result)
+            if not finalized:
                 raise ValueError("Failed to finalize invoice.")
-            return str(patient_id)
+            return finalized
 
         return await asyncio.to_thread(_finalize)
 
@@ -872,7 +1064,7 @@ class SupabaseRepository:
                 .data
             )
             invoice["items"] = items
-            return invoice
+            return _attach_invoice_balances(invoice)
 
         return await asyncio.to_thread(_get)
 
@@ -895,7 +1087,7 @@ class SupabaseRepository:
                     .execute()
                     .data
                 )
-            return invoices
+            return [_attach_invoice_balances(invoice) for invoice in invoices]
 
         return await asyncio.to_thread(_list)
 
@@ -919,7 +1111,7 @@ class SupabaseRepository:
                     .execute()
                     .data
                 )
-            return invoices
+            return [_attach_invoice_balances(invoice) for invoice in invoices]
 
         return await asyncio.to_thread(_list)
 

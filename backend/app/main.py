@@ -1,18 +1,34 @@
-import csv
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
-from io import StringIO
 import re
+from time import monotonic
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from app.auth import create_access_token, get_current_user, hash_password, require_admin, verify_password
+from app.auth import (
+    SESSION_EXPIRES_AT_HEADER,
+    SESSION_TOKEN_HEADER,
+    clear_session,
+    get_current_user,
+    hash_password,
+    issue_session_headers,
+    require_admin,
+    verify_password,
+)
 from app.config import get_settings
 from app.db import SupabaseRepository, get_repository
 from app.db import DuplicateCheckInCandidateError
+from app.exports import (
+    build_csv_response,
+    build_history_visit_rows,
+    filter_rows_by_created_at,
+    get_export_range_start,
+)
+from app.formatting import format_display_datetime, format_money
 from app.schemas import (
     AuditEventOut,
     AppointmentCreate,
@@ -30,12 +46,14 @@ from app.schemas import (
     FollowUpOut,
     FollowUpStatus,
     FollowUpUpdate,
+    FinalizeNoteRequest,
     InvoiceCreate,
     InvoiceOut,
     GenerateLetterPdfRequest,
     GenerateLetterRequest,
     GenerateLetterResponse,
     LoginRequest,
+    NoteOut,
     PatientTimelineEvent,
     GeneratePdfRequest,
     GenerateNoteRequest,
@@ -55,8 +73,10 @@ from app.schemas import (
     UserCreate,
     UserOut,
 )
+from app.clinic_context import build_clinic_context, build_measurements_context, build_patient_context
 from app.services.anthropic_service import generate_clinic_letter, generate_soap_note
 from app.services.pdf_service import build_invoice_pdf, build_letter_pdf, build_note_pdf
+from app.timeline import build_patient_timeline
 
 
 @asynccontextmanager
@@ -73,10 +93,17 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[SESSION_TOKEN_HEADER, SESSION_EXPIRES_AT_HEADER],
 )
 
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 PHONE_PATTERN = re.compile(r"^\+?[0-9]{6,}$")
+RATE_LIMIT_WINDOWS: dict[str, tuple[int, float]] = {
+    "auth_login": (5, 60.0),
+    "auth_register": (3, 300.0),
+    "note_generation": (20, 300.0),
+}
+RATE_LIMIT_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
 
 
 def normalize_identifier(identifier: str) -> str:
@@ -94,171 +121,23 @@ def normalize_identifier(identifier: str) -> str:
     )
 
 
-def format_display_datetime(value: datetime | str) -> str:
-    if isinstance(value, datetime):
-        parsed = value
-    else:
-        raw = str(value).strip()
-        try:
-            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        except ValueError:
-            return raw
-
-    local_value = parsed.astimezone() if parsed.tzinfo else parsed
-    month = local_value.strftime("%b")
-    day = local_value.day
-    hour = local_value.strftime("%I").lstrip("0") or "0"
-    minute_period = local_value.strftime("%M %p")
-    return f"{month} {day}, {hour}:{minute_period}"
-
-
-def format_export_datetime(value: datetime | str) -> str:
-    if isinstance(value, datetime):
-        parsed = value
-    else:
-        raw = str(value or "").strip()
-        if not raw:
-            return ""
-        try:
-            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        except ValueError:
-            return raw
-
-    local_value = parsed.astimezone() if parsed.tzinfo else parsed
-    return local_value.strftime("%d/%m/%Y %I:%M %p")
-
-
 def get_actor_name(current_user: UserOut) -> str:
     return current_user.name.strip() or current_user.identifier.strip() or "Clinic User"
 
 
-def build_visit_description(visit: dict) -> str:
-    measurements: list[str] = []
-    if visit.get("reason"):
-        measurements.append(str(visit["reason"]))
-    if visit.get("age") is not None:
-        measurements.append(f"Age {visit['age']}")
-    if visit.get("weight") is not None:
-        measurements.append(f"Weight {float(visit['weight']):g} kg")
-    if visit.get("height") is not None:
-        measurements.append(f"Height {float(visit['height']):g} cm")
-    if visit.get("temperature") is not None:
-        measurements.append(f"Temp {float(visit['temperature']):g} F")
-    return " · ".join(measurements) if measurements else "Visit recorded."
+def user_names_by_id(users: list[dict]) -> dict[str, str]:
+    return {str(user["id"]): str(user.get("name") or "").strip() for user in users}
 
 
-def build_csv_response(filename: str, rows: list[dict], fieldnames: list[str]) -> StreamingResponse:
-    datetime_fields = {
-        "created_at",
-        "updated_at",
-        "last_visit_at",
-        "scheduled_for",
-        "checked_in_at",
-        "completed_at",
-        "paid_at",
-        "sent_at",
-    }
-    buffer = StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
-    writer.writeheader()
-    for row in rows:
-        writer.writerow(
-            {
-                key: format_export_datetime(row.get(key)) if key in datetime_fields else row.get(key)
-                for key in fieldnames
-            }
-        )
-    return StreamingResponse(
-        iter([buffer.getvalue()]),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-def build_history_visit_rows(visits: list[dict], patients: list[dict]) -> list[PatientVisitOut]:
-    patients_by_id = {str(patient["id"]): patient for patient in patients}
-    visit_counts_by_patient: dict[str, int] = {}
-    rows: list[PatientVisitOut] = []
-    for visit in visits:
-        patient_id = str(visit["patient_id"])
-        visit_counts_by_patient[patient_id] = visit_counts_by_patient.get(patient_id, 0) + 1
-        patient = patients_by_id.get(patient_id)
-        if not patient:
-            continue
-        rows.append(
-            PatientVisitOut(
-                **visit,
-                status=patient["status"],
-                billed=patient.get("billed", False),
-                last_visit_at=patient["last_visit_at"],
-            )
-        )
-
-    for patient in patients:
-        patient_id = str(patient["id"])
-        if visit_counts_by_patient.get(patient_id):
-            continue
-        rows.append(
-            PatientVisitOut(
-                id=patient["id"],
-                patient_id=patient["id"],
-                name=patient["name"],
-                phone=patient["phone"],
-                reason=patient["reason"],
-                age=patient.get("age"),
-                weight=patient.get("weight"),
-                height=patient.get("height"),
-                temperature=patient.get("temperature"),
-                source="queue",
-                appointment_id=None,
-                created_at=patient["last_visit_at"],
-                status=patient["status"],
-                billed=patient.get("billed", False),
-                last_visit_at=patient["last_visit_at"],
-            )
-        )
-
-    rows.sort(key=lambda visit: visit.created_at, reverse=True)
-    return rows
-
-
-def get_export_range_start(range_name: str | None) -> datetime | None:
-    if not range_name or range_name == "all":
-        return None
-
-    now = datetime.now().astimezone()
-    if range_name == "today":
-        return now.replace(hour=0, minute=0, second=0, microsecond=0)
-    if range_name == "7d":
-        return now - timedelta(days=7)
-    if range_name == "30d":
-        return now - timedelta(days=30)
-    if range_name == "month":
-        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    raise HTTPException(status_code=400, detail="Invalid export range.")
-
-
-def filter_rows_by_created_at(rows: list[dict], start_at: datetime | None) -> list[dict]:
-    if start_at is None:
-        return rows
-
-    filtered: list[dict] = []
-    for row in rows:
-        raw_value = row.get("created_at")
-        if not raw_value:
-            continue
-        if isinstance(raw_value, datetime):
-            created_at = raw_value
-        else:
-            try:
-                created_at = datetime.fromisoformat(str(raw_value).replace("Z", "+00:00"))
-            except ValueError:
-                continue
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=UTC)
-        if created_at.astimezone(start_at.tzinfo) >= start_at:
-            filtered.append(row)
-    return filtered
+def enforce_rate_limit(scope: str, key: str) -> None:
+    max_requests, window_seconds = RATE_LIMIT_WINDOWS[scope]
+    bucket = RATE_LIMIT_BUCKETS[f"{scope}:{key}"]
+    now = monotonic()
+    while bucket and now - bucket[0] > window_seconds:
+        bucket.popleft()
+    if len(bucket) >= max_requests:
+        raise HTTPException(status_code=429, detail="Too many requests. Please wait and try again.")
+    bucket.append(now)
 
 
 async def write_audit_event(
@@ -291,9 +170,11 @@ async def health() -> dict[str, str]:
 @app.post("/auth/register", response_model=AuthResponse, status_code=201)
 async def register_user(
     payload: UserCreate,
+    response: Response,
     repo: SupabaseRepository = Depends(get_repository),
 ) -> AuthResponse:
     identifier = normalize_identifier(payload.identifier)
+    enforce_rate_limit("auth_register", identifier)
     existing = await repo.get_user_by_identifier(identifier)
     if existing:
         raise HTTPException(status_code=409, detail="An account with that email or phone already exists.")
@@ -316,26 +197,39 @@ async def register_user(
         role="admin",
     )
     user = UserOut(**{key: created[key] for key in ("id", "org_id", "identifier", "name", "role", "created_at")})
-    return AuthResponse(token=create_access_token(created), user=user)
+    return AuthResponse(token=issue_session_headers(response, created), user=user)
 
 
 @app.post("/auth/login", response_model=AuthResponse)
 async def login_user(
     payload: LoginRequest,
+    response: Response,
     repo: SupabaseRepository = Depends(get_repository),
 ) -> AuthResponse:
     identifier = normalize_identifier(payload.identifier)
+    enforce_rate_limit("auth_login", identifier)
     existing = await repo.get_user_by_identifier(identifier)
     if not existing or not verify_password(payload.password, existing["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email/phone or password.")
 
     user = UserOut(**{key: existing[key] for key in ("id", "org_id", "identifier", "name", "role", "created_at")})
-    return AuthResponse(token=create_access_token(existing), user=user)
+    return AuthResponse(token=issue_session_headers(response, existing), user=user)
 
 
 @app.get("/auth/me", response_model=UserOut)
-async def get_me(current_user: UserOut = Depends(get_current_user)) -> UserOut:
+async def get_me(response: Response, current_user: UserOut = Depends(get_current_user)) -> UserOut:
+    issue_session_headers(response, {
+        "id": str(current_user.id),
+        "org_id": str(current_user.org_id),
+        "role": current_user.role,
+        "identifier": current_user.identifier,
+    })
     return current_user
+
+
+@app.post("/auth/logout", status_code=204)
+async def logout_user(response: Response) -> None:
+    clear_session(response)
 
 
 @app.post("/users/staff", response_model=UserOut, status_code=201)
@@ -360,7 +254,7 @@ async def create_staff_user(
 
 @app.get("/users", response_model=list[UserOut])
 async def list_users(
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin),
     repo: SupabaseRepository = Depends(get_repository),
 ) -> list[UserOut]:
     users = await repo.list_users(str(current_user.org_id))
@@ -369,7 +263,7 @@ async def list_users(
 
 @app.get("/catalog", response_model=list[CatalogItemOut])
 async def list_catalog(
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin),
     repo: SupabaseRepository = Depends(get_repository),
 ) -> list[CatalogItemOut]:
     items = await repo.list_catalog_items(str(current_user.org_id))
@@ -395,6 +289,21 @@ async def update_catalog_stock(
 ) -> CatalogItemOut:
     try:
         updated = await repo.update_catalog_stock(str(current_user.org_id), item_id, payload)
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="catalog_item",
+            entity_id=item_id,
+            action="catalog_stock_adjusted",
+            summary=f"Adjusted stock for {updated['name']} by {payload.delta:g}.",
+            metadata={
+                "catalog_item_id": item_id,
+                "item_name": updated.get("name"),
+                "delta": payload.delta,
+                "stock_quantity": updated.get("stock_quantity"),
+                "adjustment_source": "manual",
+            },
+        )
         return CatalogItemOut(**updated)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -412,19 +321,28 @@ async def delete_catalog_item(
 @app.post("/invoices", response_model=InvoiceOut, status_code=201)
 async def create_invoice(
     payload: InvoiceCreate,
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin),
     repo: SupabaseRepository = Depends(get_repository),
 ) -> InvoiceOut:
     try:
         created = await repo.create_invoice(str(current_user.org_id), payload)
+        patient = await repo.get_patient(str(current_user.org_id), str(created["patient_id"]))
+        patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
         await write_audit_event(
             repo,
             current_user,
             entity_type="invoice",
             entity_id=str(created["id"]),
             action="invoice_created",
-            summary=f"Created invoice for patient {created['patient_id']} totaling {float(created.get('total', 0)):.2f}.",
-            metadata={"patient_id": str(created["patient_id"]), "item_count": len(created.get("items", []))},
+            summary=f"Created invoice for {patient_name} totaling {float(created.get('total', 0)):.2f}.",
+            metadata={
+                "patient_id": str(created["patient_id"]),
+                "patient_name": patient_name,
+                "item_count": len(created.get("items", [])),
+                "payment_status": created.get("payment_status"),
+                "amount_paid": created.get("amount_paid"),
+                "balance_due": created.get("balance_due"),
+            },
         )
         return InvoiceOut(**created)
     except ValueError as exc:
@@ -437,14 +355,19 @@ async def list_invoices(
     repo: SupabaseRepository = Depends(get_repository),
 ) -> list[InvoiceOut]:
     invoices = await repo.list_invoices(str(current_user.org_id))
-    return [InvoiceOut(**invoice) for invoice in invoices]
+    users = await repo.list_users(str(current_user.org_id))
+    names = user_names_by_id(users)
+    return [
+        InvoiceOut(**{**invoice, "completed_by_name": names.get(str(invoice.get("completed_by") or ""))})
+        for invoice in invoices
+    ]
 
 
 @app.get("/audit-events", response_model=list[AuditEventOut])
 async def list_audit_events(
     limit: int = Query(default=100, ge=1, le=250),
     repo: SupabaseRepository = Depends(get_repository),
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin),
 ) -> list[AuditEventOut]:
     rows = await repo.list_audit_events(str(current_user.org_id), limit=limit)
     return [AuditEventOut(**row) for row in rows]
@@ -691,117 +614,68 @@ async def get_patient_timeline(
         invoices = await repo.list_invoices_for_patient(str(current_user.org_id), patient_id)
         follow_ups = await repo.list_follow_ups_for_patient(str(current_user.org_id), patient_id)
         appointments = await repo.list_appointments_for_patient(str(current_user.org_id), patient_id)
+        users = await repo.list_users(str(current_user.org_id))
+        names = user_names_by_id(users)
+        notes = [{**note, "sent_by_name": names.get(str(note.get("sent_by") or ""))} for note in notes]
+        invoices = [{**invoice, "completed_by_name": names.get(str(invoice.get("completed_by") or ""))} for invoice in invoices]
+        return build_patient_timeline(
+            patient=patient,
+            visits=visits,
+            notes=notes,
+            invoices=invoices,
+            follow_ups=follow_ups,
+            appointments=appointments,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-        events: list[PatientTimelineEvent] = [
-            PatientTimelineEvent(
-                id=f"patient-created-{patient['id']}",
-                type="patient_created",
-                title="Patient record created",
-                timestamp=patient["created_at"],
-                description=f"Record opened with {patient['reason']} as the visit reason.",
-            )
+
+@app.get("/patients/{patient_id}/notes", response_model=list[NoteOut])
+async def list_patient_notes(
+    patient_id: str,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> list[NoteOut]:
+    try:
+        await repo.get_patient(str(current_user.org_id), patient_id)
+        notes = await repo.list_notes_for_patient(str(current_user.org_id), patient_id)
+        users = await repo.list_users(str(current_user.org_id))
+        names = user_names_by_id(users)
+        enriched = [
+            {
+                **note,
+                "sent_by_name": names.get(str(note.get("sent_by") or "")),
+            }
+            for note in notes
         ]
+        return [NoteOut(**note) for note in enriched]
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-        for visit in visits:
-            events.append(
-                PatientTimelineEvent(
-                    id=f"visit-{visit['id']}",
-                    type="visit_recorded",
-                    title="Visit recorded",
-                    timestamp=visit["created_at"],
-                    description=build_visit_description(visit),
-                )
-            )
 
-        for note in notes:
-            excerpt = str(note.get("content", "")).strip().replace("\n", " ")
-            if len(excerpt) > 160:
-                excerpt = f"{excerpt[:157]}..."
-            events.append(
-                PatientTimelineEvent(
-                    id=f"note-{note['id']}",
-                    type="consultation_note",
-                    title="Consultation note saved",
-                    timestamp=note["created_at"],
-                    description=excerpt or "SOAP note saved.",
-                )
-            )
-
-        for appointment in appointments:
-            display_date = format_display_datetime(appointment["scheduled_for"])
-            events.append(
-                PatientTimelineEvent(
-                    id=f"appointment-booked-{appointment['id']}",
-                    type="appointment_booked",
-                    title="Appointment scheduled",
-                    timestamp=appointment["created_at"],
-                    description=f"Visit scheduled for {display_date}.",
-                )
-            )
-            if appointment.get("checked_in_at"):
-                events.append(
-                    PatientTimelineEvent(
-                        id=f"appointment-checked-in-{appointment['id']}",
-                        type="appointment_checked_in",
-                        title="Checked in from appointment",
-                        timestamp=appointment["checked_in_at"],
-                        description="Patient moved from the schedule into the active queue.",
-                    )
-                )
-
-        for invoice in invoices:
-            item_count = len(invoice.get("items", []))
-            events.append(
-                PatientTimelineEvent(
-                    id=f"invoice-created-{invoice['id']}",
-                    type="invoice_created",
-                    title="Receipt created",
-                    timestamp=invoice["created_at"],
-                    description=f"{item_count} item{'s' if item_count != 1 else ''} recorded · total {float(invoice.get('total', 0)):.2f}.",
-                )
-            )
-            if invoice.get("sent_at"):
-                events.append(
-                    PatientTimelineEvent(
-                        id=f"invoice-sent-{invoice['id']}",
-                        type="bill_sent",
-                        title="Receipt shared",
-                        timestamp=invoice["sent_at"],
-                        description=f"Receipt shared with the patient after payment was recorded on {format_display_datetime(invoice.get('paid_at') or invoice['created_at'])}.",
-                    )
-                )
-
-        for follow_up in follow_ups:
-            scheduled_for = follow_up["scheduled_for"]
-            display_date = format_display_datetime(scheduled_for)
-            description = (
-                f"Scheduled for {display_date}."
-                if not str(follow_up.get("notes") or "").strip()
-                else f"Scheduled for {display_date} · {str(follow_up.get('notes') or '').strip()}"
-            )
-            events.append(
-                PatientTimelineEvent(
-                    id=f"follow-up-{follow_up['id']}",
-                    type="follow_up_scheduled",
-                    title="Follow-up scheduled",
-                    timestamp=scheduled_for,
-                    description=description,
-                )
-            )
-            if follow_up.get("completed_at"):
-                completed_at = follow_up["completed_at"]
-                completed_display_date = format_display_datetime(completed_at)
-                events.append(
-                    PatientTimelineEvent(
-                        id=f"follow-up-completed-{follow_up['id']}",
-                        type="follow_up_completed",
-                        title="Follow-up completed",
-                        timestamp=completed_at,
-                        description=f"Follow-up marked complete on {completed_display_date}.",
-                    )
-                )
-
-        return sorted(events, key=lambda event: event.timestamp, reverse=True)
+@app.get("/patients/{patient_id}/invoices", response_model=list[InvoiceOut])
+async def list_patient_invoices(
+    patient_id: str,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> list[InvoiceOut]:
+    try:
+        await repo.get_patient(str(current_user.org_id), patient_id)
+        invoices = await repo.list_invoices_for_patient(str(current_user.org_id), patient_id)
+        users = await repo.list_users(str(current_user.org_id))
+        names = user_names_by_id(users)
+        enriched = [
+            {
+                **invoice,
+                "completed_by_name": names.get(str(invoice.get("completed_by") or "")),
+            }
+            for invoice in invoices
+        ]
+        return [InvoiceOut(**invoice) for invoice in enriched]
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover
@@ -822,14 +696,16 @@ async def create_follow_up(
             str(current_user.id),
             payload,
         )
+        patient = await repo.get_patient(str(current_user.org_id), str(created["patient_id"]))
+        patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
         await write_audit_event(
             repo,
             current_user,
             entity_type="follow_up",
             entity_id=str(created["id"]),
             action="follow_up_created",
-            summary=f"Scheduled follow-up for patient {created['patient_id']} on {format_display_datetime(created['scheduled_for'])}.",
-            metadata={"patient_id": str(created["patient_id"]), "status": created.get("status")},
+            summary=f"Scheduled follow-up for {patient_name} on {format_display_datetime(created['scheduled_for'])}.",
+            metadata={"patient_id": str(created["patient_id"]), "patient_name": patient_name, "status": created.get("status")},
         )
         return FollowUpOut(**created)
     except ValueError as exc:
@@ -880,70 +756,18 @@ async def update_follow_up(
 @app.post("/generate-note", response_model=GenerateNoteResponse)
 async def create_generated_note(
     payload: GenerateNoteRequest,
-    current_user: UserOut = Depends(get_current_user),
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(require_admin),
 ) -> GenerateNoteResponse:
     try:
-        patient_context = ""
-        clinic_context = ""
-        repo = get_repository()
+        enforce_rate_limit("note_generation", str(current_user.id))
         clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
-        clinic_context_bits = [
-            f"Clinic Name: {clinic_settings.get('clinic_name', 'ClinicOS') or 'ClinicOS'}",
-            f"Clinic Address: {clinic_settings.get('clinic_address', '')}" if clinic_settings.get("clinic_address") else "",
-            f"Clinic Phone: {clinic_settings.get('clinic_phone', '')}" if clinic_settings.get("clinic_phone") else "",
-            f"Doctor Name: {clinic_settings.get('doctor_name', '')}" if clinic_settings.get("doctor_name") else "",
-            f"Custom Header: {clinic_settings.get('custom_header', '')}" if clinic_settings.get("custom_header") else "",
-            f"Custom Footer: {clinic_settings.get('custom_footer', '')}" if clinic_settings.get("custom_footer") else "",
-        ]
-        clinic_context = "\n".join(bit for bit in clinic_context_bits if bit)
+        clinic_context = build_clinic_context(clinic_settings)
+        patient = None
         if payload.patient_id:
             patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
-            generated_at = datetime.now().strftime("%b %d, %Y %I:%M %p")
-            context_bits = [
-                f"Name: {patient['name']}",
-                f"Phone: {patient['phone']}",
-                f"Age: {patient['age']}" if patient.get("age") is not None else "",
-                f"Height: {patient['height']} cm" if patient.get("height") is not None else "",
-                f"Weight: {patient['weight']} kg" if patient.get("weight") is not None else "",
-                f"Temperature: {patient['temperature']} F" if patient.get("temperature") is not None else "",
-                f"Reason for Visit: {patient['reason']}",
-                f"Generated On: {generated_at}",
-            ]
-            patient_context = "\n".join(bit for bit in context_bits if bit)
-
-        measurement_bits: list[str] = []
-        if payload.blood_pressure_systolic is not None and payload.blood_pressure_diastolic is not None:
-            measurement_bits.append(
-                f"Blood Pressure: {payload.blood_pressure_systolic}/{payload.blood_pressure_diastolic} mmHg"
-            )
-        elif payload.blood_pressure_systolic is not None or payload.blood_pressure_diastolic is not None:
-            bp_parts = [
-                str(payload.blood_pressure_systolic) if payload.blood_pressure_systolic is not None else "?",
-                str(payload.blood_pressure_diastolic) if payload.blood_pressure_diastolic is not None else "?",
-            ]
-            measurement_bits.append(f"Blood Pressure: {'/'.join(bp_parts)} mmHg")
-        if payload.pulse is not None:
-            measurement_bits.append(f"Pulse: {payload.pulse} bpm")
-        if payload.spo2 is not None:
-            measurement_bits.append(f"SpO2: {payload.spo2}%")
-        if payload.blood_sugar is not None:
-            measurement_bits.append(f"Blood Sugar: {payload.blood_sugar}")
-        for score in payload.test_scores:
-            measurement_bits.append(f"{score.label}: {score.value}")
-        if payload.eye_exam:
-            eye_exam_lines = ["Eye Exam:"]
-            for entry in payload.eye_exam:
-                row_bits = [
-                    f"Sphere {entry.sphere}" if entry.sphere else "",
-                    f"Cylinder {entry.cylinder}" if entry.cylinder else "",
-                    f"Axis {entry.axis}" if entry.axis else "",
-                    f"Vision {entry.vision}" if entry.vision else "",
-                ]
-                eye_exam_lines.append(
-                    f"- {entry.eye.title()} Eye: " + ", ".join(bit for bit in row_bits if bit)
-                )
-            measurement_bits.append("\n".join(line for line in eye_exam_lines if line.strip()))
-        measurements_context = "\n".join(bit for bit in measurement_bits if bit)
+        patient_context = build_patient_context(patient)
+        measurements_context = build_measurements_context(payload)
 
         content = await generate_soap_note(
             symptoms=payload.symptoms,
@@ -954,21 +778,75 @@ async def create_generated_note(
             clinic_context=clinic_context,
             measurements_context=measurements_context,
         )
+        note = None
         if payload.patient_id:
-            note = await repo.create_note(
-                str(current_user.org_id),
-                NoteCreate(patient_id=payload.patient_id, content=content),
-            )
-            await write_audit_event(
-                repo,
-                current_user,
-                entity_type="note",
-                entity_id=str(note["id"]),
-                action="consultation_note_created",
-                summary=f"Generated consultation note for patient {payload.patient_id}.",
-                metadata={"patient_id": str(payload.patient_id)},
-            )
-        return GenerateNoteResponse(content=content)
+            patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
+            if payload.note_id:
+                existing_note = await repo.get_note(str(current_user.org_id), str(payload.note_id))
+                if str(existing_note["patient_id"]) != str(payload.patient_id):
+                    raise HTTPException(status_code=400, detail="Note does not belong to that patient.")
+                if existing_note.get("status") == "draft":
+                    note = await repo.update_note_draft(str(current_user.org_id), str(payload.note_id), content)
+                    await write_audit_event(
+                        repo,
+                        current_user,
+                        entity_type="note",
+                        entity_id=str(note["id"]),
+                        action="consultation_note_updated",
+                        summary=f"Updated draft consultation note for {patient_name}.",
+                        metadata={
+                            "patient_id": str(payload.patient_id),
+                            "patient_name": patient_name,
+                            "status": note.get("status"),
+                            "version_number": note.get("version_number", 1),
+                        },
+                    )
+                else:
+                    note = await repo.create_note_amendment(str(current_user.org_id), str(payload.note_id), content)
+                    await write_audit_event(
+                        repo,
+                        current_user,
+                        entity_type="note",
+                        entity_id=str(note["id"]),
+                        action="consultation_note_amended",
+                        summary=f"Created amended draft note v{note.get('version_number', 1)} for {patient_name}.",
+                        metadata={
+                            "patient_id": str(payload.patient_id),
+                            "patient_name": patient_name,
+                            "status": note.get("status"),
+                            "version_number": note.get("version_number", 1),
+                            "amended_from_note_id": note.get("amended_from_note_id"),
+                            "root_note_id": note.get("root_note_id"),
+                        },
+                    )
+            else:
+                note = await repo.create_note(
+                    str(current_user.org_id),
+                    NoteCreate(patient_id=payload.patient_id, content=content),
+                )
+                await write_audit_event(
+                    repo,
+                    current_user,
+                    entity_type="note",
+                    entity_id=str(note["id"]),
+                    action="consultation_note_created",
+                    summary=f"Generated draft consultation note for {patient_name}.",
+                    metadata={
+                        "patient_id": str(payload.patient_id),
+                        "patient_name": patient_name,
+                        "status": note.get("status"),
+                        "version_number": note.get("version_number", 1),
+                    },
+                )
+        return GenerateNoteResponse(
+            content=content,
+            note_id=note["id"] if note else None,
+            status=note.get("status") if note else None,
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -976,20 +854,12 @@ async def create_generated_note(
 @app.post("/generate-letter", response_model=GenerateLetterResponse)
 async def create_generated_letter(
     payload: GenerateLetterRequest,
+    repo: SupabaseRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> GenerateLetterResponse:
     try:
-        repo = get_repository()
         clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
-        clinic_context_bits = [
-            f"Clinic Name: {clinic_settings.get('clinic_name', 'ClinicOS') or 'ClinicOS'}",
-            f"Clinic Address: {clinic_settings.get('clinic_address', '')}" if clinic_settings.get("clinic_address") else "",
-            f"Clinic Phone: {clinic_settings.get('clinic_phone', '')}" if clinic_settings.get("clinic_phone") else "",
-            f"Doctor Name: {clinic_settings.get('doctor_name', '')}" if clinic_settings.get("doctor_name") else "",
-            f"Custom Header: {clinic_settings.get('custom_header', '')}" if clinic_settings.get("custom_header") else "",
-            f"Custom Footer: {clinic_settings.get('custom_footer', '')}" if clinic_settings.get("custom_footer") else "",
-        ]
-        clinic_context = "\n".join(bit for bit in clinic_context_bits if bit)
+        clinic_context = build_clinic_context(clinic_settings)
         content = await generate_clinic_letter(
             to=payload.to,
             subject=payload.subject,
@@ -1001,14 +871,74 @@ async def create_generated_letter(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/notes/finalize", response_model=NoteOut)
+async def finalize_note(
+    payload: FinalizeNoteRequest,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(require_admin),
+) -> NoteOut:
+    try:
+        note = await repo.finalize_note(str(current_user.org_id), str(payload.note_id))
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="note",
+            entity_id=str(payload.note_id),
+            action="consultation_note_finalized",
+            summary=f"Finalized consultation note v{note.get('version_number', 1)}.",
+            metadata={
+                "patient_id": str(note["patient_id"]),
+                "status": note.get("status"),
+                "version_number": note.get("version_number", 1),
+                "root_note_id": note.get("root_note_id"),
+                "amended_from_note_id": note.get("amended_from_note_id"),
+            },
+        )
+        return NoteOut(**note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/send-note", response_model=SendNoteResponse)
 async def send_note(
     payload: SendNoteRequest,
-    _: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin),
+    repo: SupabaseRepository = Depends(get_repository),
 ) -> SendNoteResponse:
+    try:
+        note = await repo.get_note(str(current_user.org_id), str(payload.note_id))
+        if str(note["patient_id"]) != str(payload.patient_id):
+            raise HTTPException(status_code=400, detail="Note does not belong to that patient.")
+        sent_note = await repo.mark_note_sent(
+            str(current_user.org_id),
+            str(payload.note_id),
+            sent_by=str(current_user.id),
+            sent_to=payload.phone,
+        )
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="note",
+            entity_id=str(payload.note_id),
+            action="consultation_note_shared",
+            summary=f"Shared consultation note v{sent_note.get('version_number', 1)} with {payload.phone}.",
+            metadata={
+                "patient_id": str(payload.patient_id),
+                "recipient": payload.phone,
+                "sent_at": sent_note.get("sent_at"),
+                "sent_by": str(current_user.id),
+                "sent_by_name": get_actor_name(current_user),
+                "sent_to": payload.phone,
+                "version_number": sent_note.get("version_number", 1),
+                "root_note_id": sent_note.get("root_note_id"),
+                "amended_from_note_id": sent_note.get("amended_from_note_id"),
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return SendNoteResponse(
         success=True,
-        message=f"Note copied or shared outside ClinicOS for {payload.phone}.",
+        message=f"Saved note locked and ready to share with {payload.phone}.",
     )
 
 
@@ -1026,23 +956,62 @@ async def send_letter(
 @app.post("/send-invoice", response_model=SendNoteResponse)
 async def send_invoice(
     payload: SendInvoiceRequest,
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin),
     repo: SupabaseRepository = Depends(get_repository),
 ) -> SendNoteResponse:
     try:
-        patient_id = await repo.finalize_invoice(str(current_user.org_id), str(payload.invoice_id))
+        invoice = await repo.get_invoice(str(current_user.org_id), str(payload.invoice_id))
+        patient = await repo.get_patient(str(current_user.org_id), str(invoice["patient_id"]))
+        patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
+        catalog_items = await repo.list_catalog_items(str(current_user.org_id))
+        catalog_by_id = {str(item["id"]): item for item in catalog_items}
+        stock_deductions = []
+        for item in invoice.get("items", []):
+            catalog_item_id = item.get("catalog_item_id")
+            if not catalog_item_id:
+                continue
+            catalog_item = catalog_by_id.get(str(catalog_item_id))
+            if catalog_item and catalog_item.get("track_inventory"):
+                stock_deductions.append(
+                    {
+                        "catalog_item_id": str(catalog_item_id),
+                        "item_name": item.get("label"),
+                        "quantity": item.get("quantity"),
+                    }
+                )
+        finalized = await repo.finalize_invoice(
+            str(current_user.org_id),
+            str(payload.invoice_id),
+            completed_by=str(current_user.id),
+        )
         await write_audit_event(
             repo,
             current_user,
             entity_type="invoice",
             entity_id=str(payload.invoice_id),
             action="invoice_shared",
-            summary=f"Marked invoice {payload.invoice_id} as shared with {payload.recipient}.",
-            metadata={"patient_id": patient_id, "recipient": payload.recipient},
+            summary=f"Shared invoice for {patient_name} with {payload.recipient}.",
+            metadata={
+                "patient_id": finalized.get("patient_id"),
+                "patient_name": patient_name,
+                "recipient": payload.recipient,
+                "completed_at": finalized.get("completed_at"),
+                "completed_by": finalized.get("completed_by"),
+                "completed_by_name": get_actor_name(current_user),
+                "sent_at": finalized.get("sent_at"),
+                "already_finalized": finalized.get("already_finalized", False),
+                "stock_deductions": finalized.get("stock_deductions", stock_deductions),
+                "amount_paid": invoice.get("amount_paid"),
+                "balance_due": invoice.get("balance_due"),
+            },
         )
         return SendNoteResponse(
             success=True,
-            message=f"Invoice marked shared for {payload.recipient}.",
+            message=(
+                f"Invoice already finalized for {payload.recipient}."
+                if finalized.get("already_finalized")
+                else f"Invoice marked shared for {payload.recipient}."
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1079,10 +1048,11 @@ async def export_visits_csv(
     visits = await repo.list_patient_visits(str(current_user.org_id))
     patients = await repo.list_patients(str(current_user.org_id))
     history_rows = build_history_visit_rows(visits, patients)
-    filtered_rows = filter_rows_by_created_at(
-        [row.model_dump() for row in history_rows],
-        get_export_range_start(range),
-    )
+    try:
+        start_at = get_export_range_start(range)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    filtered_rows = filter_rows_by_created_at([row.model_dump() for row in history_rows], start_at)
     return build_csv_response(
         "patient_visits.csv",
         filtered_rows,
@@ -1093,7 +1063,11 @@ async def export_visits_csv(
             "age",
             "weight",
             "height",
+            "source",
+            "status",
+            "billed",
             "created_at",
+            "last_visit_at",
         ],
     )
 
@@ -1112,6 +1086,8 @@ async def export_invoices_csv(
             {
                 "patient_name": patient_names.get(str(invoice.get("patient_id")), ""),
                 "payment_status": invoice.get("payment_status"),
+                "amount_paid": invoice.get("amount_paid"),
+                "balance_due": invoice.get("balance_due"),
                 "total": invoice.get("total"),
                 "paid_at": invoice.get("paid_at"),
                 "sent_at": invoice.get("sent_at"),
@@ -1125,6 +1101,8 @@ async def export_invoices_csv(
         [
             "patient_name",
             "payment_status",
+            "amount_paid",
+            "balance_due",
             "total",
             "paid_at",
             "sent_at",
@@ -1138,7 +1116,7 @@ async def export_invoices_csv(
 async def generate_note_pdf(
     payload: GeneratePdfRequest,
     repo: SupabaseRepository = Depends(get_repository),
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     try:
         patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
@@ -1157,6 +1135,35 @@ async def generate_note_pdf(
         )
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/notes/{note_id}/pdf")
+async def generate_saved_note_pdf(
+    note_id: str,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(require_admin),
+) -> StreamingResponse:
+    try:
+        note = await repo.get_note(str(current_user.org_id), note_id)
+        patient = await repo.get_patient(str(current_user.org_id), str(note["patient_id"]))
+        clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+        snapshot_content = str(note.get("snapshot_content") or note.get("content") or "").strip()
+        if not snapshot_content:
+            raise HTTPException(status_code=400, detail="Saved note content is empty.")
+        generated_on = format_display_datetime(note.get("finalized_at") or note.get("created_at") or datetime.now())
+        pdf_bytes = build_note_pdf(
+            patient={**patient, **clinic_settings},
+            note_content=snapshot_content,
+            generated_on=generated_on,
+        )
+        filename = f"{patient['name'].strip().replace(' ', '_') or 'patient'}_note_snapshot.pdf"
+        return StreamingResponse(
+            BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/generate-letter-pdf")
@@ -1186,7 +1193,7 @@ async def generate_letter_pdf(
 async def generate_invoice_pdf(
     invoice_id: str,
     repo: SupabaseRepository = Depends(get_repository),
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     try:
         invoice = await repo.get_invoice(str(current_user.org_id), invoice_id)

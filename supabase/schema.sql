@@ -27,6 +27,15 @@ create table if not exists public.notes (
   org_id uuid not null references public.organizations(id) on delete cascade,
   patient_id uuid not null references public.patients(id) on delete cascade,
   content text not null,
+  status text not null default 'draft' check (status in ('draft', 'final', 'sent')),
+  version_number integer not null default 1,
+  root_note_id uuid references public.notes(id) on delete set null,
+  amended_from_note_id uuid references public.notes(id) on delete set null,
+  snapshot_content text,
+  finalized_at timestamptz,
+  sent_at timestamptz,
+  sent_by uuid references public.clinic_users(id) on delete set null,
+  sent_to text,
   created_at timestamptz not null default now()
 );
 
@@ -72,7 +81,10 @@ create table if not exists public.invoices (
   subtotal double precision not null default 0,
   total double precision not null default 0,
   payment_status text not null default 'unpaid' check (payment_status in ('unpaid', 'paid', 'partial')),
+  amount_paid double precision not null default 0,
   paid_at timestamptz,
+  completed_at timestamptz,
+  completed_by uuid references public.clinic_users(id) on delete set null,
   sent_at timestamptz,
   created_at timestamptz not null default now()
 );
@@ -163,6 +175,33 @@ where last_visit_at is null;
 alter table public.notes
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;
 
+alter table public.notes
+add column if not exists sent_at timestamptz;
+
+alter table public.notes
+add column if not exists status text not null default 'draft';
+
+alter table public.notes
+add column if not exists version_number integer not null default 1;
+
+alter table public.notes
+add column if not exists root_note_id uuid references public.notes(id) on delete set null;
+
+alter table public.notes
+add column if not exists amended_from_note_id uuid references public.notes(id) on delete set null;
+
+alter table public.notes
+add column if not exists snapshot_content text;
+
+alter table public.notes
+add column if not exists finalized_at timestamptz;
+
+alter table public.notes
+add column if not exists sent_by uuid references public.clinic_users(id) on delete set null;
+
+alter table public.notes
+add column if not exists sent_to text;
+
 alter table public.clinic_users
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;
 
@@ -186,6 +225,15 @@ add column if not exists sent_at timestamptz;
 
 alter table public.invoices
 add column if not exists paid_at timestamptz;
+
+alter table public.invoices
+add column if not exists amount_paid double precision not null default 0;
+
+alter table public.invoices
+add column if not exists completed_at timestamptz;
+
+alter table public.invoices
+add column if not exists completed_by uuid references public.clinic_users(id) on delete set null;
 
 alter table public.invoice_items
 add column if not exists catalog_item_id uuid references public.catalog_items(id) on delete set null;
@@ -356,12 +404,15 @@ create or replace function public.create_invoice_atomic(
   p_org_id uuid,
   p_patient_id uuid,
   p_payment_status text,
+  p_amount_paid double precision,
   p_items jsonb
 ) returns jsonb
 language plpgsql
 as $$
 declare
   v_invoice public.invoices%rowtype;
+  v_total double precision;
+  v_amount_paid double precision;
 begin
   if p_payment_status not in ('unpaid', 'paid', 'partial') then
     raise exception 'Invalid payment status.';
@@ -399,27 +450,43 @@ begin
     raise exception 'Inventory item not found for this organization.';
   end if;
 
-  insert into public.invoices (
-    org_id,
-    patient_id,
-    subtotal,
-    total,
-    payment_status,
-    paid_at
-  )
-  select
-    p_org_id,
-    p_patient_id,
-    round(sum((item.quantity * item.unit_price)::numeric), 2)::double precision,
-    round(sum((item.quantity * item.unit_price)::numeric), 2)::double precision,
-    p_payment_status,
-    case when p_payment_status = 'paid' then now() else null end
+  select round(sum((item.quantity * item.unit_price)::numeric), 2)::double precision
+  into v_total
   from jsonb_to_recordset(p_items) as item(
     catalog_item_id uuid,
     item_type text,
     label text,
     quantity double precision,
     unit_price double precision
+  );
+
+  v_amount_paid := round(coalesce(p_amount_paid, 0)::numeric, 2)::double precision;
+
+  if p_payment_status = 'paid' then
+    v_amount_paid := v_total;
+  elsif p_payment_status = 'unpaid' then
+    v_amount_paid := 0;
+  elsif v_amount_paid <= 0 or v_amount_paid >= v_total then
+    raise exception 'Partial invoice amount must be greater than zero and less than the total.';
+  end if;
+
+  insert into public.invoices (
+    org_id,
+    patient_id,
+    subtotal,
+    total,
+    payment_status,
+    amount_paid,
+    paid_at
+  )
+  values (
+    p_org_id,
+    p_patient_id,
+    v_total,
+    v_total,
+    p_payment_status,
+    v_amount_paid,
+    case when p_payment_status = 'paid' then now() else null end
   )
   returning * into v_invoice;
 
@@ -455,7 +522,11 @@ begin
     'subtotal', v_invoice.subtotal,
     'total', v_invoice.total,
     'payment_status', v_invoice.payment_status,
+    'amount_paid', v_invoice.amount_paid,
+    'balance_due', greatest(round((v_invoice.total - v_invoice.amount_paid)::numeric, 2)::double precision, 0),
     'paid_at', v_invoice.paid_at,
+    'completed_at', v_invoice.completed_at,
+    'completed_by', v_invoice.completed_by,
     'sent_at', v_invoice.sent_at,
     'created_at', v_invoice.created_at,
     'items', coalesce(
@@ -483,8 +554,9 @@ $$;
 
 create or replace function public.finalize_invoice_atomic(
   p_org_id uuid,
-  p_invoice_id uuid
-) returns uuid
+  p_invoice_id uuid,
+  p_completed_by uuid
+) returns jsonb
 language plpgsql
 as $$
 declare
@@ -502,7 +574,13 @@ begin
   end if;
 
   if v_invoice.sent_at is not null then
-    return v_invoice.patient_id;
+    return jsonb_build_object(
+      'patient_id', v_invoice.patient_id,
+      'sent_at', v_invoice.sent_at,
+      'completed_at', v_invoice.completed_at,
+      'completed_by', v_invoice.completed_by,
+      'already_finalized', true
+    );
   end if;
 
   perform 1
@@ -560,9 +638,19 @@ begin
   where id = v_invoice.patient_id and org_id = p_org_id;
 
   update public.invoices
-  set sent_at = now()
-  where id = p_invoice_id;
+  set
+    sent_at = now(),
+    completed_at = coalesce(completed_at, now()),
+    completed_by = coalesce(completed_by, p_completed_by)
+  where id = p_invoice_id
+  returning * into v_invoice;
 
-  return v_invoice.patient_id;
+  return jsonb_build_object(
+    'patient_id', v_invoice.patient_id,
+    'sent_at', v_invoice.sent_at,
+    'completed_at', v_invoice.completed_at,
+    'completed_by', v_invoice.completed_by,
+    'already_finalized', false
+  );
 end;
 $$;

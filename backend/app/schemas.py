@@ -11,6 +11,7 @@ CatalogItemType = Literal["service", "medicine"]
 PaymentStatus = Literal["unpaid", "paid", "partial"]
 FollowUpStatus = Literal["scheduled", "completed", "cancelled"]
 AppointmentStatus = Literal["scheduled", "checked_in", "cancelled"]
+NoteStatus = Literal["draft", "final", "sent"]
 
 
 class PatientCreate(BaseModel):
@@ -140,6 +141,16 @@ class NoteOut(BaseModel):
     id: UUID
     patient_id: UUID
     content: str
+    status: NoteStatus = "draft"
+    version_number: int = 1
+    root_note_id: UUID | None = None
+    amended_from_note_id: UUID | None = None
+    snapshot_content: str | None = None
+    finalized_at: datetime | None = None
+    sent_at: datetime | None = None
+    sent_by: UUID | None = None
+    sent_by_name: str | None = None
+    sent_to: str | None = None
     created_at: datetime
 
 
@@ -162,6 +173,8 @@ class PatientTimelineEvent(BaseModel):
     title: str
     timestamp: datetime
     description: str
+    entity_type: str | None = None
+    entity_id: str | None = None
 
 
 class AuditEventOut(BaseModel):
@@ -215,6 +228,7 @@ class EyeExamEntry(BaseModel):
 
 
 class GenerateNoteRequest(BaseModel):
+    note_id: UUID | None = None
     patient_id: UUID | None = None
     symptoms: str = ""
     diagnosis: str = ""
@@ -230,7 +244,13 @@ class GenerateNoteRequest(BaseModel):
 
 
 class GenerateNoteResponse(BaseModel):
+    note_id: UUID | None = None
+    status: NoteStatus | None = None
     content: str
+
+
+class FinalizeNoteRequest(BaseModel):
+    note_id: UUID
 
 
 class GenerateLetterRequest(BaseModel):
@@ -298,6 +318,7 @@ class InvoiceCreate(BaseModel):
     patient_id: UUID
     items: list[InvoiceItemInput] = Field(min_length=1)
     payment_status: PaymentStatus = "paid"
+    amount_paid: float | None = Field(default=None, ge=0, le=100000000)
 
 
 class InvoiceOut(BaseModel):
@@ -307,7 +328,12 @@ class InvoiceOut(BaseModel):
     subtotal: float
     total: float
     payment_status: PaymentStatus
+    amount_paid: float = 0
+    balance_due: float = 0
     paid_at: datetime | None = None
+    completed_at: datetime | None = None
+    completed_by: UUID | None = None
+    completed_by_name: str | None = None
     sent_at: datetime | None = None
     created_at: datetime
     items: list[InvoiceItemOut]
@@ -319,9 +345,9 @@ class SendInvoiceRequest(BaseModel):
 
 
 class SendNoteRequest(BaseModel):
+    note_id: UUID
     patient_id: UUID
     phone: str = Field(min_length=5, max_length=30)
-    content: str = Field(min_length=1)
 
 
 class SendNoteResponse(BaseModel):

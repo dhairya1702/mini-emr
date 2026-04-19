@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { Invoice, Patient, PaymentStatus } from "@/lib/types";
 
-type GroupMode = "day" | "week" | "month";
+type GroupMode = "week" | "month" | "year";
 
 function startOfWeek(date: Date) {
   const result = new Date(date);
@@ -25,6 +25,10 @@ function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
+function startOfYear(date: Date) {
+  return new Date(date.getFullYear(), 0, 1);
+}
+
 function formatCurrency(value: number) {
   return value.toFixed(2);
 }
@@ -34,7 +38,7 @@ export default function EarningsPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [mode, setMode] = useState<GroupMode>("day");
+  const [mode, setMode] = useState<GroupMode>("week");
   const [exportStatus, setExportStatus] = useState("");
   const [exportError, setExportError] = useState("");
   const [isExporting, setIsExporting] = useState("");
@@ -103,34 +107,129 @@ export default function EarningsPage() {
     [invoices],
   );
 
-  const groupedEarnings = useMemo(() => {
-    const buckets = new Map<string, { label: string; invoiceCount: number; total: number }>();
+  const chartData = useMemo(() => {
+    const now = new Date();
+    if (mode === "week") {
+      const weekStart = startOfWeek(now);
+      const buckets = Array.from({ length: 7 }, (_, index) => {
+        const date = new Date(weekStart);
+        date.setDate(weekStart.getDate() + index);
+        return {
+          key: date.toISOString(),
+          label: date.toLocaleDateString([], { weekday: "short" }),
+          fullLabel: date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }),
+          total: 0,
+          invoiceCount: 0,
+        };
+      });
+
+      for (const invoice of paidInvoices) {
+        const sourceDate = new Date(invoice.paid_at || invoice.created_at);
+        const dayIndex = Math.floor(
+          (new Date(sourceDate.getFullYear(), sourceDate.getMonth(), sourceDate.getDate()).getTime() - weekStart.getTime())
+            / 86_400_000,
+        );
+        if (dayIndex >= 0 && dayIndex < 7) {
+          buckets[dayIndex].total += invoice.total;
+          buckets[dayIndex].invoiceCount += 1;
+        }
+      }
+
+      return {
+        title: "Monday to Sunday collections",
+        subtitle: `Week of ${weekStart.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`,
+        points: buckets,
+      };
+    }
+
+    if (mode === "month") {
+      const monthStart = startOfMonth(now);
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const buckets = Array.from({ length: daysInMonth }, (_, index) => ({
+        key: `${index + 1}`,
+        label: String(index + 1),
+        fullLabel: new Date(now.getFullYear(), now.getMonth(), index + 1).toLocaleDateString([], {
+          month: "short",
+          day: "numeric",
+        }),
+        total: 0,
+        invoiceCount: 0,
+      }));
+
+      for (const invoice of paidInvoices) {
+        const sourceDate = new Date(invoice.paid_at || invoice.created_at);
+        if (sourceDate >= monthStart && sourceDate.getMonth() === now.getMonth() && sourceDate.getFullYear() === now.getFullYear()) {
+          const dayIndex = sourceDate.getDate() - 1;
+          buckets[dayIndex].total += invoice.total;
+          buckets[dayIndex].invoiceCount += 1;
+        }
+      }
+
+      return {
+        title: "Daily collections this month",
+        subtitle: now.toLocaleDateString([], { month: "long", year: "numeric" }),
+        points: buckets,
+      };
+    }
+
+    const yearStart = startOfYear(now);
+    const buckets = Array.from({ length: 12 }, (_, index) => ({
+      key: `${index}`,
+      label: new Date(now.getFullYear(), index, 1).toLocaleDateString([], { month: "short" }),
+      fullLabel: new Date(now.getFullYear(), index, 1).toLocaleDateString([], { month: "long", year: "numeric" }),
+      total: 0,
+      invoiceCount: 0,
+    }));
 
     for (const invoice of paidInvoices) {
       const sourceDate = new Date(invoice.paid_at || invoice.created_at);
-      const bucketDate =
-        mode === "day"
-          ? new Date(sourceDate.getFullYear(), sourceDate.getMonth(), sourceDate.getDate())
-          : mode === "week"
-            ? startOfWeek(sourceDate)
-            : startOfMonth(sourceDate);
-      const key = bucketDate.toISOString();
-      const label =
-        mode === "day"
-          ? bucketDate.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
-          : mode === "week"
-            ? `Week of ${bucketDate.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`
-            : bucketDate.toLocaleDateString([], { month: "long", year: "numeric" });
-      const current = buckets.get(key) ?? { label, invoiceCount: 0, total: 0 };
-      current.invoiceCount += 1;
-      current.total += invoice.total;
-      buckets.set(key, current);
+      if (sourceDate >= yearStart && sourceDate.getFullYear() === now.getFullYear()) {
+        const monthIndex = sourceDate.getMonth();
+        buckets[monthIndex].total += invoice.total;
+        buckets[monthIndex].invoiceCount += 1;
+      }
     }
 
-    return Array.from(buckets.entries())
-      .sort((left, right) => right[0].localeCompare(left[0]))
-      .map(([key, value]) => ({ key, ...value }));
+    return {
+      title: "Monthly collections this year",
+      subtitle: String(now.getFullYear()),
+      points: buckets,
+    };
   }, [mode, paidInvoices]);
+
+  const chartGeometry = useMemo(() => {
+    const width = 920;
+    const height = 260;
+    const paddingX = 24;
+    const paddingTop = 18;
+    const paddingBottom = 42;
+    const innerWidth = width - paddingX * 2;
+    const innerHeight = height - paddingTop - paddingBottom;
+    const maxValue = Math.max(...chartData.points.map((point) => point.total), 0);
+    const safeMax = maxValue > 0 ? maxValue : 1;
+    const stepX = chartData.points.length > 1 ? innerWidth / (chartData.points.length - 1) : 0;
+
+    const points = chartData.points.map((point, index) => {
+      const x = paddingX + stepX * index;
+      const y = paddingTop + innerHeight - (point.total / safeMax) * innerHeight;
+      return { ...point, x, y };
+    });
+
+    const linePath = points
+      .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+      .join(" ");
+    const areaPath = points.length
+      ? `${linePath} L ${points[points.length - 1].x} ${paddingTop + innerHeight} L ${points[0].x} ${paddingTop + innerHeight} Z`
+      : "";
+
+    const yTicks = Array.from({ length: 4 }, (_, index) => {
+      const value = safeMax * (1 - index / 3);
+      const y = paddingTop + innerHeight * (index / 3);
+      return { value, y };
+    });
+
+    return { width, height, paddingX, paddingTop, paddingBottom, innerHeight, points, linePath, areaPath, yTicks };
+  }, [chartData]);
 
   const summary = useMemo(() => {
     const now = new Date();
@@ -168,6 +267,7 @@ export default function EarningsPage() {
       unit_price: number;
     }>;
     payment_status: PaymentStatus;
+    amount_paid?: number | null;
   }): Promise<Invoice> {
     const invoice = await api.createInvoice(payload);
     setInvoices((current) => [invoice, ...current]);
@@ -300,15 +400,16 @@ export default function EarningsPage() {
           </div>
         </section>
 
-        <section className="mt-6 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <section className="mt-6 space-y-4">
           <div className="rounded-[32px] border border-sky-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Earnings</p>
-                <h2 className="mt-2 text-2xl font-semibold text-slate-900">Collected revenue</h2>
+                <h2 className="mt-2 text-2xl font-semibold text-slate-900">Collection graph</h2>
+                <p className="mt-2 text-sm text-slate-500">{chartData.title} · {chartData.subtitle}</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                {(["day", "week", "month"] as GroupMode[]).map((option) => (
+                {(["week", "month", "year"] as GroupMode[]).map((option) => (
                   <button
                     key={option}
                     type="button"
@@ -319,27 +420,83 @@ export default function EarningsPage() {
                         : "border border-sky-200 bg-sky-50/70 text-slate-700 hover:bg-sky-100"
                     }`}
                   >
-                    {option === "day" ? "Daily" : option === "week" ? "Weekly" : "Monthly"}
+                    {option === "week" ? "Weekly" : option === "month" ? "Monthly" : "Yearly"}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="mt-6 space-y-3">
-              {groupedEarnings.length ? groupedEarnings.map((bucket) => (
-                <div key={bucket.key} className="rounded-[24px] border border-sky-100 bg-sky-50/30 p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{bucket.label}</p>
-                      <p className="mt-1 text-xs text-slate-500">{bucket.invoiceCount} paid invoice{bucket.invoiceCount === 1 ? "" : "s"}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Collected</p>
-                      <p className="mt-1 text-xl font-semibold text-slate-900">{formatCurrency(bucket.total)}</p>
-                    </div>
+            <div className="mt-6 rounded-[28px] border border-sky-100 bg-[linear-gradient(180deg,rgba(240,249,255,0.9),rgba(255,255,255,1))] p-4">
+              {paidInvoices.length ? (
+                <div>
+                  <div className="mb-4 flex items-center justify-between gap-4">
+                    <p className="text-sm font-medium text-slate-600">Collected amount</p>
+                    <p className="text-sm text-slate-500">
+                      Peak {formatCurrency(Math.max(...chartData.points.map((point) => point.total), 0))}
+                    </p>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <svg
+                      viewBox={`0 0 ${chartGeometry.width} ${chartGeometry.height}`}
+                      className="min-w-[760px]"
+                      role="img"
+                      aria-label="Collections chart"
+                    >
+                      {chartGeometry.yTicks.map((tick) => (
+                        <g key={`${tick.value}-${tick.y}`}>
+                          <line
+                            x1={chartGeometry.paddingX}
+                            y1={tick.y}
+                            x2={chartGeometry.width - chartGeometry.paddingX}
+                            y2={tick.y}
+                            stroke="rgba(148,163,184,0.18)"
+                            strokeDasharray="4 6"
+                          />
+                          <text x={chartGeometry.paddingX} y={tick.y - 6} fontSize="11" fill="#64748b">
+                            {formatCurrency(tick.value)}
+                          </text>
+                        </g>
+                      ))}
+
+                      <path d={chartGeometry.areaPath} fill="rgba(14,165,233,0.12)" />
+                      <path
+                        d={chartGeometry.linePath}
+                        fill="none"
+                        stroke="#38bdf8"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+
+                      {chartGeometry.points.map((point) => (
+                        <g key={point.key}>
+                          <circle cx={point.x} cy={point.y} r="5" fill="#ffffff" stroke="#0ea5e9" strokeWidth="3" />
+                          <text x={point.x} y={chartGeometry.height - 12} textAnchor="middle" fontSize="11" fill="#64748b">
+                            {point.label}
+                          </text>
+                        </g>
+                      ))}
+                    </svg>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    {chartData.points
+                      .filter((point) => point.total > 0)
+                      .slice(-3)
+                      .reverse()
+                      .map((point) => (
+                        <div key={point.key} className="rounded-[20px] border border-sky-100 bg-white/85 px-4 py-3">
+                          <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{point.fullLabel}</p>
+                          <p className="mt-2 text-lg font-semibold text-slate-900">{formatCurrency(point.total)}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {point.invoiceCount} paid invoice{point.invoiceCount === 1 ? "" : "s"}
+                          </p>
+                        </div>
+                      ))}
                   </div>
                 </div>
-              )) : (
+              ) : (
                 <div className="rounded-[28px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-16 text-center text-sm text-slate-500">
                   No paid invoices yet.
                 </div>

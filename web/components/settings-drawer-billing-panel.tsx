@@ -21,6 +21,9 @@ interface SettingsDrawerBillingPanelProps {
   medicineItems: CatalogItem[];
   invoiceItems: DraftInvoiceItem[];
   invoiceSubtotal: number;
+  amountPaid: number;
+  amountPaidInput: string;
+  balanceDue: number;
   paymentStatus: PaymentStatus;
   billingError: string;
   billingStatus: string;
@@ -34,6 +37,7 @@ interface SettingsDrawerBillingPanelProps {
   onRemoveInvoiceItem: (itemId: string) => void;
   onCreateBill: () => void | Promise<void>;
   onPaymentStatusChange: (status: PaymentStatus) => void;
+  onAmountPaidChange: (value: string) => void;
   onPreviewPdf: () => void | Promise<void>;
   onSendInvoice: () => void | Promise<void>;
 }
@@ -46,6 +50,9 @@ export function SettingsDrawerBillingPanel({
   medicineItems,
   invoiceItems,
   invoiceSubtotal,
+  amountPaid,
+  amountPaidInput,
+  balanceDue,
   paymentStatus,
   billingError,
   billingStatus,
@@ -59,6 +66,7 @@ export function SettingsDrawerBillingPanel({
   onRemoveInvoiceItem,
   onCreateBill,
   onPaymentStatusChange,
+  onAmountPaidChange,
   onPreviewPdf,
   onSendInvoice,
 }: SettingsDrawerBillingPanelProps) {
@@ -206,11 +214,35 @@ export function SettingsDrawerBillingPanel({
               <span>Subtotal</span>
               <span>{invoiceSubtotal.toFixed(2)}</span>
             </div>
+            <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
+              <span>Amount Paid</span>
+              <span>{amountPaid.toFixed(2)}</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
+              <span>Balance Due</span>
+              <span>{balanceDue.toFixed(2)}</span>
+            </div>
             <div className="mt-2 flex items-center justify-between text-base font-semibold text-slate-900">
               <span>Total</span>
               <span>{invoiceSubtotal.toFixed(2)}</span>
             </div>
           </div>
+
+          {paymentStatus === "partial" ? (
+            <div className="mt-4 rounded-[24px] border border-amber-200 bg-amber-50/70 p-4">
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Amount Received</span>
+                <input
+                  value={amountPaidInput}
+                  inputMode="decimal"
+                  onChange={(event) => onAmountPaidChange(event.target.value)}
+                  placeholder="Enter amount received"
+                  className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                />
+              </label>
+              <p className="mt-2 text-xs text-amber-800">Partial invoices require an amount greater than zero and less than the total.</p>
+            </div>
+          ) : null}
 
           {selectedBillingPatient ? (
             <div className="mt-4 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">

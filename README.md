@@ -47,7 +47,7 @@ Backend:
 
 - `SUPABASE_URL=...`
 - `SUPABASE_SERVICE_ROLE_KEY=...`
-- `AUTH_SECRET=...` (recommended, otherwise the service role key is used to sign app tokens)
+- `AUTH_SECRET=...` (required and must stay fixed across restarts so app sessions remain valid)
 - `ANTHROPIC_API_KEY=...`
 - `ANTHROPIC_MODEL=claude-3-5-sonnet-20241022`
 - `APP_ORIGIN=http://127.0.0.1:3000`

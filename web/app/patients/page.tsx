@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { Download, Search, UserRound } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Download, RefreshCw, Search } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
 import { SettingsDrawer } from "@/components/settings-drawer";
 import { api } from "@/lib/api";
+import { loadRecentPatients, saveRecentPatient } from "@/lib/recent-patients";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { Patient } from "@/lib/types";
 
@@ -17,6 +18,10 @@ function formatVisitDate(value: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/\D/g, "");
 }
 
 function upsertPatient(current: Patient[], incoming: Patient) {
@@ -31,6 +36,7 @@ export default function PatientsPage() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [recentPatients, setRecentPatients] = useState<Patient[]>([]);
   const [exportStatus, setExportStatus] = useState("");
   const [exportError, setExportError] = useState("");
   const [isExporting, setIsExporting] = useState(false);
@@ -72,15 +78,21 @@ export default function PatientsPage() {
   });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
 
+  useEffect(() => {
+    setRecentPatients(loadRecentPatients());
+  }, []);
+
   const visiblePatients = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) {
       return patients;
     }
+    const normalizedPhoneQuery = normalizePhone(normalizedQuery);
     return patients.filter((patient) =>
       patient.name.toLowerCase().includes(normalizedQuery) ||
       patient.phone.toLowerCase().includes(normalizedQuery) ||
-      patient.reason.toLowerCase().includes(normalizedQuery),
+      patient.reason.toLowerCase().includes(normalizedQuery) ||
+      (normalizedPhoneQuery.length >= 3 && normalizePhone(patient.phone).includes(normalizedPhoneQuery)),
     );
   }, [patients, query]);
 
@@ -99,6 +111,7 @@ export default function PatientsPage() {
     const saved = await api.updatePatient(patientId, payload);
     setPatients((current) => current.map((patient) => (patient.id === patientId ? saved : patient)));
     setSelectedPatient(saved);
+    setRecentPatients(saveRecentPatient(saved));
   }
 
   async function handleLoadPatientTimeline(patientId: string) {
@@ -176,7 +189,7 @@ export default function PatientsPage() {
                   <input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search by patient name or phone"
+                    placeholder="Search by name, phone fragment, or visit reason"
                     className="w-full bg-transparent text-base text-slate-800 outline-none placeholder:text-slate-400"
                   />
                 </div>
@@ -188,17 +201,50 @@ export default function PatientsPage() {
             </div>
 
             <div className="flex justify-start lg:justify-end">
-              <button
-                type="button"
-                onClick={() => void handleExport()}
-                disabled={isExporting}
-                className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-              >
-                <Download className="h-4 w-4" />
-                {isExporting ? "Preparing..." : "Export"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleExport()}
+                  disabled={isExporting}
+                  className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                >
+                  <Download className="h-4 w-4" />
+                  {isExporting ? "Preparing..." : "Export"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Retry
+                </button>
+              </div>
             </div>
           </div>
+
+          {recentPatients.length ? (
+            <div className="mt-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recent Patients</p>
+              <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
+                {recentPatients.map((patient) => (
+                  <button
+                    key={patient.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedPatient(patient);
+                      setRecentPatients(saveRecentPatient(patient));
+                    }}
+                    className="min-w-[220px] rounded-[22px] border border-sky-100 bg-sky-50/50 px-4 py-3 text-left transition hover:border-sky-200 hover:bg-white"
+                  >
+                    <p className="text-sm font-semibold text-slate-900">{patient.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">{patient.reason}</p>
+                    <p className="mt-2 text-xs text-slate-500">{formatVisitDate(patient.last_visit_at)}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {exportError ? (
             <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -235,7 +281,10 @@ export default function PatientsPage() {
                     {visiblePatients.map((patient) => (
                       <tr
                         key={patient.id}
-                        onClick={() => setSelectedPatient(patient)}
+                        onClick={() => {
+                          setSelectedPatient(patient);
+                          setRecentPatients(saveRecentPatient(patient));
+                        }}
                         className="cursor-pointer transition hover:bg-sky-50/70"
                       >
                         <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-800">
@@ -259,8 +308,21 @@ export default function PatientsPage() {
                 </table>
               </div>
             ) : (
-              <div className="px-6 py-16 text-center text-sm text-slate-500">
-                No patients matched that search.
+              <div className="px-6 py-16 text-center">
+                <p className="text-sm font-medium text-slate-700">
+                  {patients.length
+                    ? "No patients match this search yet."
+                    : error === "Failed to fetch" || error.includes("timed out")
+                      ? "The backend is unavailable right now."
+                      : "No patients have been recorded yet."}
+                </p>
+                <p className="mt-2 text-sm text-slate-500">
+                  {patients.length
+                    ? "Try a broader name, reason, or phone fragment."
+                    : error === "Failed to fetch" || error.includes("timed out")
+                      ? "Check the API server and refresh this page."
+                      : "Add a patient from the queue to start building the chart history."}
+                </p>
               </div>
             )}
           </div>

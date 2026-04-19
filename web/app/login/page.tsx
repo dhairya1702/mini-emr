@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, ShieldPlus, Stethoscope } from "lucide-react";
 
-import { authStorage } from "@/lib/auth";
+import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
 import { api } from "@/lib/api";
 
 export default function LoginPage() {
@@ -21,10 +21,15 @@ export default function LoginPage() {
 
   useEffect(() => {
     let active = true;
+    const expiredReason =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("reason") === "session-expired";
 
     async function checkSession() {
-      const token = authStorage.getToken();
-      if (!token) {
+      if (authStorage.clearExpiredSession()) {
+        if (active) {
+          setError(SESSION_EXPIRED_MESSAGE);
+        }
         return;
       }
 
@@ -33,8 +38,15 @@ export default function LoginPage() {
         if (active) {
           router.replace("/");
         }
-      } catch {
+      } catch (error) {
         authStorage.clear();
+        if (
+          active &&
+          error instanceof Error &&
+          (error.message === SESSION_EXPIRED_MESSAGE || expiredReason)
+        ) {
+          setError(SESSION_EXPIRED_MESSAGE);
+        }
       }
     }
 
@@ -73,7 +85,7 @@ export default function LoginPage() {
           doctor_name: doctorName.trim(),
         });
       }
-      authStorage.setSession(session);
+      authStorage.setSession(session, authStorage.getTokenExpiryMs());
       router.replace("/");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Authentication failed.");

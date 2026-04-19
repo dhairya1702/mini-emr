@@ -10,7 +10,7 @@ import { PatientColumn } from "@/components/patient-column";
 import { SettingsDrawer } from "@/components/settings-drawer";
 import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { Invoice, Patient, PatientStatus, PatientTimelineEvent } from "@/lib/types";
+import { Patient, PatientStatus, PatientTimelineEvent } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
 
@@ -393,12 +393,15 @@ export default function HomePage() {
         }}
         onGenerate={async (payload) => {
           const response = await api.generateNote(payload);
-          return response.content;
+          return { content: response.content, noteId: response.note_id, status: response.status };
         }}
-        onGeneratePdf={(payload) => api.generateNotePdf(payload)}
+        onFinalize={(noteId) => api.finalizeNote(noteId)}
+        onGeneratePdf={(payload) => (
+          payload.note_id ? api.generateSavedNotePdf(payload.note_id) : api.generateNotePdf(payload)
+        )}
         onSend={async (payload) => {
-          await navigator.clipboard.writeText(payload.content);
-          return `Note copied. Share it with ${payload.phone} outside ClinicOS.`;
+          const response = await api.sendNote(payload);
+          return `${response.message} Share it with ${payload.phone} outside ClinicOS.`;
         }}
       />
     </main>

@@ -1,6 +1,7 @@
 "use client";
 
 import { LogOut, Menu, Plus } from "lucide-react";
+import Link from "next/link";
 
 import { AuthUser } from "@/lib/types";
 
@@ -16,11 +17,12 @@ interface AppHeaderProps {
 export function AppHeader({
   clinicName,
   currentUser,
-  active: _active,
+  active,
   onLogout,
   onAddPatient,
   onOpenSettings,
 }: AppHeaderProps) {
+  void active;
   return (
     <div className="mb-6 flex flex-col gap-4 rounded-[32px] border border-sky-100 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.22)]">
       <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
@@ -38,9 +40,12 @@ export function AppHeader({
         </div>
 
         <div className="text-center">
-          <h1 className="text-3xl font-semibold text-slate-800 sm:text-4xl">
+          <Link
+            href="/"
+            className="inline-block text-3xl font-semibold text-slate-800 transition hover:text-sky-600 sm:text-4xl"
+          >
             {clinicName}
-          </h1>
+          </Link>
         </div>
 
         <div className="flex flex-wrap items-center justify-start gap-3 lg:justify-end">

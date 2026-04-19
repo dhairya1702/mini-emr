@@ -13,6 +13,7 @@ interface ConsultationDrawerProps {
     followUp?: { scheduled_for: string; notes: string },
   ) => Promise<void>;
   onGenerate: (payload: {
+    note_id?: string;
     patient_id: string;
     symptoms: string;
     diagnosis: string;
@@ -25,9 +26,10 @@ interface ConsultationDrawerProps {
     blood_sugar?: number | null;
     test_scores?: TestScoreEntry[];
     eye_exam?: EyeExamEntry[];
-  }) => Promise<string>;
-  onGeneratePdf: (payload: { patient_id: string; content: string }) => Promise<Blob>;
-  onSend: (payload: { patient_id: string; phone: string; content: string }) => Promise<string>;
+  }) => Promise<{ content: string; noteId?: string | null; status?: "draft" | "final" | "sent" | null }>;
+  onFinalize: (noteId: string) => Promise<{ status: "draft" | "final" | "sent"; snapshot_content?: string | null }>;
+  onGeneratePdf: (payload: { note_id?: string; patient_id: string; content: string }) => Promise<Blob>;
+  onSend: (payload: { note_id: string; patient_id: string; phone: string }) => Promise<string>;
 }
 
 function createEmptyForm() {
@@ -57,6 +59,7 @@ export function ConsultationDrawer({
   onClose,
   onDone,
   onGenerate,
+  onFinalize,
   onGeneratePdf,
   onSend,
 }: ConsultationDrawerProps) {
@@ -73,6 +76,10 @@ export function ConsultationDrawer({
   const [isSending, setIsSending] = useState(false);
   const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
   const [hasGeneratedNote, setHasGeneratedNote] = useState(false);
+  const [currentNoteId, setCurrentNoteId] = useState("");
+  const [noteStatus, setNoteStatus] = useState<"draft" | "final" | "sent" | "">("");
+  const [isSent, setIsSent] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
 
   useEffect(() => {
     setForm(createEmptyForm());
@@ -84,6 +91,9 @@ export function ConsultationDrawer({
     setStatusMessage("");
     setIsFollowUpOpen(false);
     setHasGeneratedNote(false);
+    setCurrentNoteId("");
+    setNoteStatus("");
+    setIsSent(false);
   }, [patient?.id]);
 
   if (!patient) {
@@ -97,7 +107,8 @@ export function ConsultationDrawer({
     setIsGenerating(true);
     setStatusMessage("");
     try {
-      const content = await onGenerate({
+      const generated = await onGenerate({
+        note_id: currentNoteId && noteStatus === "draft" ? currentNoteId : undefined,
         patient_id: currentPatient.id,
         symptoms: form.symptoms,
         diagnosis: form.diagnosis,
@@ -115,13 +126,44 @@ export function ConsultationDrawer({
           entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim(),
         ),
       });
-      setForm((current) => ({ ...current, generatedNote: content }));
+      setForm((current) => ({ ...current, generatedNote: generated.content }));
       setHasGeneratedNote(true);
-      setStatusMessage("SOAP note generated.");
+      setCurrentNoteId(generated.noteId || "");
+      setNoteStatus(generated.status || "draft");
+      setIsSent(false);
+      setStatusMessage(
+        currentNoteId && noteStatus === "draft"
+          ? "Draft note refreshed."
+          : "Draft SOAP note generated.",
+      );
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to generate SOAP note.");
     } finally {
       setIsGenerating(false);
+    }
+  }
+
+  async function handleFinalize() {
+    if (!currentNoteId) {
+      setStatusMessage("Generate a draft note before finalizing.");
+      return;
+    }
+    if (noteStatus === "final" || noteStatus === "sent") {
+      setStatusMessage(noteStatus === "sent" ? "This note has already been sent and locked." : "This note is already finalized.");
+      return;
+    }
+    setIsFinalizing(true);
+    try {
+      const finalized = await onFinalize(currentNoteId);
+      setNoteStatus(finalized.status);
+      if (finalized.snapshot_content) {
+        setForm((current) => ({ ...current, generatedNote: finalized.snapshot_content || current.generatedNote }));
+      }
+      setStatusMessage("Note finalized. The shared version is now fixed.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Failed to finalize note.");
+    } finally {
+      setIsFinalizing(false);
     }
   }
 
@@ -130,14 +172,28 @@ export function ConsultationDrawer({
       setStatusMessage("Generate a note before sending.");
       return;
     }
+    if (!currentNoteId) {
+      setStatusMessage("Generate and save the note before sending it.");
+      return;
+    }
+    if (noteStatus !== "final" && noteStatus !== "sent") {
+      setStatusMessage("Finalize the note before sending it.");
+      return;
+    }
+    if (isSent) {
+      setStatusMessage("This saved note has already been sent and is locked.");
+      return;
+    }
 
     setIsSending(true);
     try {
       const message = await onSend({
+        note_id: currentNoteId,
         patient_id: currentPatient.id,
         phone: currentPatient.phone,
-        content: form.generatedNote,
       });
+      setNoteStatus("sent");
+      setIsSent(true);
       setStatusMessage(message);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to copy note.");
@@ -155,6 +211,7 @@ export function ConsultationDrawer({
     setIsGeneratingPdf(true);
     try {
       const blob = await onGeneratePdf({
+        note_id: currentNoteId && (noteStatus === "final" || noteStatus === "sent") ? currentNoteId : undefined,
         patient_id: currentPatient.id,
         content: form.generatedNote,
       });
@@ -181,8 +238,8 @@ export function ConsultationDrawer({
   }
 
   async function handleDone() {
-    if (!hasGeneratedNote || !form.generatedNote.trim()) {
-      setStatusMessage("Generate the consultation note before marking this patient done.");
+    if (!hasGeneratedNote || !form.generatedNote.trim() || !currentNoteId || noteStatus === "draft") {
+      setStatusMessage("Finalize the consultation note before marking this patient done.");
       return;
     }
 
@@ -266,6 +323,14 @@ export function ConsultationDrawer({
       active: openSections.eyeExam || hasEyeExam,
     },
   ];
+  const lifecycleLabel =
+    noteStatus === "sent"
+      ? "Sent and locked"
+      : noteStatus === "final"
+        ? "Finalized"
+        : noteStatus === "draft"
+          ? "Draft"
+          : "No note yet";
 
   return (
     <aside className="fixed inset-y-0 right-0 z-30 w-full max-w-2xl border-l-2 border-sky-300 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.2)] sm:p-6">
@@ -550,24 +615,32 @@ export function ConsultationDrawer({
                 <FileText className="h-4 w-4 text-sky-600" />
                 <span className="text-sm font-medium text-slate-900">Generated Note</span>
               </div>
-              <button
-                type="submit"
-                disabled={isGenerating}
-                className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
-              >
-                <Sparkles className="h-4 w-4" />
-                {isGenerating ? "Generating..." : "Generate Note"}
-              </button>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-600">
+                  {lifecycleLabel}
+                </span>
+                <button
+                  type="submit"
+                  disabled={isGenerating}
+                  className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {isGenerating ? "Generating..." : noteStatus === "draft" ? "Refresh Draft" : "Generate Note"}
+                </button>
+              </div>
             </div>
             <textarea
               rows={12}
               value={form.generatedNote}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, generatedNote: event.target.value }))
-              }
+              readOnly
               className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-sky-400"
-              placeholder="SOAP note will appear here"
+              placeholder="Saved SOAP note will appear here"
             />
+            <p className="mt-2 text-xs text-slate-500">
+              Saved notes are read-only. Generate again from the consultation fields if you need a different note.
+              {noteStatus === "final" ? " Finalizing freezes the version that can be sent." : ""}
+              {isSent ? " This note has been sent and is locked." : ""}
+            </p>
           </div>
         </form>
 
@@ -606,7 +679,7 @@ export function ConsultationDrawer({
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
               <button
                 type="button"
-                disabled={isCompleting}
+                disabled={isCompleting || noteStatus === "draft" || !currentNoteId}
                 onClick={handleDone}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
               >
@@ -614,7 +687,16 @@ export function ConsultationDrawer({
               </button>
               <button
                 type="button"
-                disabled={isGeneratingPdf}
+                disabled={isFinalizing || !currentNoteId || noteStatus === "final" || noteStatus === "sent"}
+                onClick={handleFinalize}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+              >
+                <FileText className="h-4 w-4" />
+                {isFinalizing ? "Finalizing..." : noteStatus === "final" || noteStatus === "sent" ? "Finalized" : "Finalize"}
+              </button>
+              <button
+                type="button"
+                disabled={isGeneratingPdf || !currentNoteId}
                 onClick={() => handlePdf("preview")}
                 className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
               >
@@ -631,12 +713,12 @@ export function ConsultationDrawer({
               </button>
               <button
                 type="button"
-                disabled={isSending}
+                disabled={isSending || !currentNoteId || isSent || noteStatus !== "final"}
                 onClick={handleSend}
                 className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
               >
                 <Copy className="h-4 w-4" />
-                {isSending ? "Copying..." : "Copy for WhatsApp"}
+                {isSending ? "Locking..." : isSent ? "Sent and Locked" : "Copy for WhatsApp"}
               </button>
             </div>
             </div>

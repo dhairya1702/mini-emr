@@ -4,12 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
-import { authStorage } from "@/lib/auth";
+import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
 import { AuditEvent, AuthUser, CatalogItem, ClinicSettings, Invoice } from "@/lib/types";
 
 const BOOTSTRAP_TIMEOUT_MS = 20000;
 const BOOTSTRAP_RETRY_DELAY_MS = 400;
 const BOOTSTRAP_MAX_ATTEMPTS = 2;
+const SESSION_EXPIRED_REDIRECT = "/login?reason=session-expired";
 
 export type ClinicCatalogItemPayload = {
   name: string;
@@ -31,6 +32,7 @@ export type ClinicInvoicePayload = {
     unit_price: number;
   }>;
   payment_status: "unpaid" | "paid" | "partial";
+  amount_paid?: number | null;
 };
 
 type UseClinicShellPageOptions<T> = {
@@ -117,13 +119,13 @@ export function useClinicShellPage<T>({
         setIsRedirectingToLogin(false);
       }
 
-      const token = authStorage.getToken();
-      if (!token) {
+      if (authStorage.clearExpiredSession()) {
         if (active) {
+          setError(SESSION_EXPIRED_MESSAGE);
           setIsRedirectingToLogin(true);
           setIsAuthReady(true);
         }
-        router.replace("/login");
+        router.replace(SESSION_EXPIRED_REDIRECT);
         return;
       }
 
@@ -143,15 +145,26 @@ export function useClinicShellPage<T>({
               message === "Authentication required." ||
               message === "Invalid token." ||
               message === "Token expired." ||
-              message === "Session expired.";
+              message === "Session expired." ||
+              message === SESSION_EXPIRED_MESSAGE;
             if (shouldRedirect) {
               authStorage.clear();
+              const redirectTarget =
+                message === "Token expired." ||
+                message === "Session expired." ||
+                message === SESSION_EXPIRED_MESSAGE
+                  ? SESSION_EXPIRED_REDIRECT
+                  : "/login";
               if (active) {
-                setError(message);
+                setError(
+                  message === "Token expired." || message === "Session expired."
+                    ? SESSION_EXPIRED_MESSAGE
+                    : message,
+                );
                 setIsRedirectingToLogin(true);
                 setIsAuthReady(true);
               }
-              router.replace("/login");
+              router.replace(redirectTarget);
               return;
             }
 
@@ -173,13 +186,24 @@ export function useClinicShellPage<T>({
             message === "Authentication required." ||
             message === "Invalid token." ||
             message === "Token expired." ||
-            message === "Session expired.";
+            message === "Session expired." ||
+            message === SESSION_EXPIRED_MESSAGE;
           if (shouldRedirect) {
             authStorage.clear();
-            setError(message);
+            const redirectTarget =
+              message === "Token expired." ||
+              message === "Session expired." ||
+              message === SESSION_EXPIRED_MESSAGE
+                ? SESSION_EXPIRED_REDIRECT
+                : "/login";
+            setError(
+              message === "Token expired." || message === "Session expired."
+                ? SESSION_EXPIRED_MESSAGE
+                : message,
+            );
             setIsRedirectingToLogin(true);
             setIsAuthReady(true);
-            router.replace("/login");
+            router.replace(redirectTarget);
             return;
           }
           setError(message);
@@ -276,9 +300,13 @@ export function useClinicShellPage<T>({
   const handleExportInvoicesCsv = useCallback(async () => api.exportInvoicesCsv(), []);
 
   const handleLogout = useCallback(() => {
-    authStorage.clear();
     setIsRedirectingToLogin(true);
-    router.replace("/login");
+    void api.logout()
+      .catch(() => undefined)
+      .finally(() => {
+        authStorage.clear();
+        router.replace("/login");
+      });
   }, [router]);
 
   return {

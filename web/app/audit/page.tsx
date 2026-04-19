@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 
@@ -16,6 +16,8 @@ export default function AuditPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [auditError, setAuditError] = useState("");
   const [isAuditLoading, setIsAuditLoading] = useState(false);
+  const [actionFilter, setActionFilter] = useState("all");
+  const [entityFilter, setEntityFilter] = useState("all");
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(() => api.listPatients(), []);
   const onPageData = useCallback((data: Patient[]) => {
@@ -59,13 +61,7 @@ export default function AuditPage() {
     }
   }, [currentUser, isAuthReady, router]);
 
-  useEffect(() => {
-    if (isAuthReady && currentUser?.role === "admin") {
-      void handleRefreshAudit();
-    }
-  }, [currentUser, isAuthReady]);
-
-  async function handleRefreshAudit() {
+  const handleRefreshAudit = useCallback(async () => {
     setIsAuditLoading(true);
     setAuditError("");
     try {
@@ -75,6 +71,100 @@ export default function AuditPage() {
     } finally {
       setIsAuditLoading(false);
     }
+  }, [loadAuditEvents]);
+
+  useEffect(() => {
+    if (isAuthReady && currentUser?.role === "admin") {
+      void handleRefreshAudit();
+    }
+  }, [currentUser, handleRefreshAudit, isAuthReady]);
+
+  const visibleAuditEvents = useMemo(() => auditEvents.filter((event) => {
+    const matchesAction = actionFilter === "all" || event.action === actionFilter;
+    const matchesEntity = entityFilter === "all" || event.entity_type === entityFilter;
+    return matchesAction && matchesEntity;
+  }), [actionFilter, auditEvents, entityFilter]);
+
+  const patientNamesById = useMemo(
+    () =>
+      Object.fromEntries(
+        patients.map((patient) => [patient.id, patient.name]),
+      ),
+    [patients],
+  );
+
+  function getPatientName(event: (typeof auditEvents)[number]) {
+    const metadataName = String(event.metadata?.patient_name || "").trim();
+    if (metadataName) {
+      return metadataName;
+    }
+    const patientId = String(event.metadata?.patient_id || "").trim();
+    return patientNamesById[patientId] || "";
+  }
+
+  function getAuditSummary(event: (typeof auditEvents)[number]) {
+    const patientName = getPatientName(event);
+    const recipient = String(event.metadata?.recipient || event.metadata?.sent_to || "").trim();
+    if (event.action === "invoice_shared" && patientName && recipient) {
+      return `Shared invoice for ${patientName} with ${recipient}.`;
+    }
+    if (event.action === "invoice_created" && patientName) {
+      const matchedTotal = event.summary.match(/totaling\s+([0-9.,]+)/i);
+      return matchedTotal
+        ? `Created invoice for ${patientName} totaling ${matchedTotal[1]}.`
+        : `Created invoice for ${patientName}.`;
+    }
+    if (event.action === "consultation_note_shared" && patientName && recipient) {
+      const matchedVersion = event.summary.match(/v(\d+)/i);
+      return matchedVersion
+        ? `Shared consultation note v${matchedVersion[1]} for ${patientName} with ${recipient}.`
+        : `Shared consultation note for ${patientName} with ${recipient}.`;
+    }
+    if (event.action === "consultation_note_finalized" && patientName) {
+      const matchedVersion = event.summary.match(/v(\d+)/i);
+      return matchedVersion
+        ? `Finalized consultation note v${matchedVersion[1]} for ${patientName}.`
+        : `Finalized consultation note for ${patientName}.`;
+    }
+    if (event.action === "consultation_note_created" && patientName) {
+      const matchedVersion = event.summary.match(/v(\d+)/i);
+      return matchedVersion
+        ? `Generated consultation note v${matchedVersion[1]} for ${patientName}.`
+        : `Generated consultation note for ${patientName}.`;
+    }
+    if (event.action === "consultation_note_updated" && patientName) {
+      const matchedVersion = event.summary.match(/v(\d+)/i);
+      return matchedVersion
+        ? `Updated consultation note v${matchedVersion[1]} for ${patientName}.`
+        : `Updated consultation note for ${patientName}.`;
+    }
+    if (event.action === "consultation_note_amended" && patientName) {
+      const matchedVersion = event.summary.match(/v(\d+)/i);
+      return matchedVersion
+        ? `Created amended consultation note v${matchedVersion[1]} for ${patientName}.`
+        : `Created amended consultation note for ${patientName}.`;
+    }
+    if (event.action === "follow_up_created" && patientName) {
+      const matchedDate = event.summary.match(/on\s+(.+)\.$/i);
+      return matchedDate
+        ? `Scheduled follow-up for ${patientName} on ${matchedDate[1]}.`
+        : `Scheduled follow-up for ${patientName}.`;
+    }
+    if (event.action === "patient_updated" && patientName) {
+      const changedFields = Array.isArray(event.metadata?.changed_fields)
+        ? event.metadata.changed_fields.map(String).join(", ")
+        : "";
+      return changedFields ? `Updated ${patientName}: ${changedFields}.` : `Updated ${patientName}.`;
+    }
+    return event.summary;
+  }
+
+  function getAuditMetaLine(event: (typeof auditEvents)[number]) {
+    const patientName = getPatientName(event);
+    if (patientName) {
+      return `${event.entity_type.replaceAll("_", " ")} · ${patientName}`;
+    }
+    return event.entity_type.replaceAll("_", " ");
   }
 
   if (isRedirectingToLogin) {
@@ -102,24 +192,57 @@ export default function AuditPage() {
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">This feed tracks who changed what across patients, appointments, follow-ups, notes, and billing.</p>
               </div>
               <div className="flex items-center gap-3">
+                <select value={entityFilter} onChange={(event) => setEntityFilter(event.target.value)} className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm text-slate-700">
+                  <option value="all">All entities</option>
+                  <option value="note">Notes</option>
+                  <option value="invoice">Invoices</option>
+                  <option value="catalog_item">Inventory</option>
+                  <option value="patient">Patients</option>
+                  <option value="follow_up">Follow-ups</option>
+                </select>
+                <select value={actionFilter} onChange={(event) => setActionFilter(event.target.value)} className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm text-slate-700">
+                  <option value="all">All actions</option>
+                  <option value="consultation_note_shared">Note shared</option>
+                  <option value="consultation_note_finalized">Note finalized</option>
+                  <option value="consultation_note_amended">Note amended</option>
+                  <option value="invoice_shared">Invoice shared</option>
+                  <option value="invoice_created">Invoice created</option>
+                  <option value="catalog_stock_adjusted">Stock adjusted</option>
+                </select>
                 <button type="button" onClick={() => void handleRefreshAudit()} className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50"><RefreshCw className="h-4 w-4" />Refresh</button>
-                <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">{auditEvents.length} event{auditEvents.length === 1 ? "" : "s"}</div>
+                <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">{visibleAuditEvents.length} event{visibleAuditEvents.length === 1 ? "" : "s"}</div>
               </div>
             </div>
             {auditError ? <p className="mt-4 text-sm font-medium text-rose-600">{auditError}</p> : null}
-            <div className="mt-6 space-y-3">
-              {auditEvents.length ? auditEvents.map((event) => (
-                <div key={event.id} className="rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
+            <div className="mt-5 divide-y divide-sky-100">
+              {visibleAuditEvents.length ? visibleAuditEvents.map((event) => (
+                <div key={event.id} className="py-3 first:pt-0 last:pb-0">
                   <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{event.summary}</p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{event.actor_name} · {event.action.replaceAll("_", " ")}</p>
-                      <p className="mt-2 text-xs text-slate-500">{event.entity_type.replaceAll("_", " ")} · ID {event.entity_id.slice(0, 8).toUpperCase()}</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <p className="text-sm font-semibold text-slate-900">{getAuditSummary(event)}</p>
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                          {event.actor_name} · {event.action.replaceAll("_", " ")}
+                        </p>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                        <span>{getAuditMetaLine(event)}</span>
+                      </div>
+                      {Object.keys(event.metadata || {}).length ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {event.metadata.sent_to ? <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] leading-5 text-slate-600">To {String(event.metadata.sent_to)}</span> : null}
+                          {event.metadata.sent_by_name ? <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] leading-5 text-slate-600">By {String(event.metadata.sent_by_name)}</span> : null}
+                          {event.metadata.completed_by_name ? <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] leading-5 text-slate-600">Completed by {String(event.metadata.completed_by_name)}</span> : null}
+                          {event.metadata.version_number ? <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] leading-5 text-slate-600">V{String(event.metadata.version_number)}</span> : null}
+                          {Array.isArray(event.metadata.stock_deductions) && event.metadata.stock_deductions.length ? <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] leading-5 text-slate-600">{event.metadata.stock_deductions.length} stock item{event.metadata.stock_deductions.length === 1 ? "" : "s"}</span> : null}
+                          {typeof event.metadata.delta === "number" ? <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] leading-5 text-slate-600">Delta {event.metadata.delta}</span> : null}
+                        </div>
+                      ) : null}
                     </div>
-                    <p className="text-right text-xs text-slate-500">{new Date(event.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
+                    <p className="shrink-0 text-right text-xs text-slate-500">{new Date(event.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
                   </div>
                 </div>
-              )) : <div className="rounded-[24px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-12 text-center text-sm text-slate-500">No audit events yet.</div>}
+              )) : <div className="rounded-[24px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-12 text-center text-sm text-slate-500">No audit events match these filters.</div>}
             </div>
           </div>
         )}

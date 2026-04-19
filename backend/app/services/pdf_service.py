@@ -373,8 +373,10 @@ def build_invoice_pdf(
         ("Patient", patient.get("name", "Not recorded")),
         ("Phone", patient.get("phone", "Not recorded")),
         ("Visit Reason", patient.get("reason", "Not recorded")),
-        ("Payment Status", "Paid"),
-        ("Paid On", _format_display_datetime(invoice.get("paid_at") or generated_on)),
+        ("Payment Status", str(invoice.get("payment_status", "unpaid")).replace("_", " ").title()),
+        ("Amount Paid", f"{float(invoice.get('amount_paid', 0)):.2f}"),
+        ("Balance Due", f"{float(invoice.get('balance_due', 0)):.2f}"),
+        ("Paid On", _format_display_datetime(invoice.get("paid_at")) or "Pending"),
     ]
     for index in range(0, len(details), 2):
         left = details[index]

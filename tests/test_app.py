@@ -73,6 +73,7 @@ sys.modules.setdefault("reportlab.pdfgen", reportlab_pdfgen_module)
 sys.modules.setdefault("reportlab.pdfgen.canvas", reportlab_canvas_module)
 
 from app import auth as auth_module
+from app import main as main_module
 from app.main import app
 from app.db import DuplicateCheckInCandidateError, get_repository
 
@@ -451,22 +452,104 @@ class FakeRepo:
         ]
 
     async def create_note(self, org_id: str, payload) -> dict:
+        return await self._create_note(
+            org_id,
+            str(payload.patient_id),
+            payload.content,
+            version_number=1,
+            root_note_id=None,
+            amended_from_note_id=None,
+        )
+
+    async def _create_note(
+        self,
+        org_id: str,
+        patient_id: str,
+        content: str,
+        *,
+        version_number: int,
+        root_note_id: str | None,
+        amended_from_note_id: str | None,
+    ) -> dict:
         note_id = str(uuid4())
         note = {
             "id": note_id,
             "org_id": org_id,
-            "patient_id": str(payload.patient_id),
-            "content": payload.content,
+            "patient_id": patient_id,
+            "content": content,
+            "status": "draft",
+            "version_number": version_number,
+            "root_note_id": root_note_id,
+            "amended_from_note_id": amended_from_note_id,
+            "snapshot_content": None,
+            "finalized_at": None,
+            "sent_at": None,
+            "sent_by": None,
+            "sent_to": None,
             "created_at": _now(),
         }
         self.notes[note_id] = note
         return note
+
+    async def update_note_draft(self, org_id: str, note_id: str, content: str) -> dict:
+        note = await self.get_note(org_id, note_id)
+        if note["status"] != "draft":
+            raise ValueError("Only draft notes can be updated.")
+        note["content"] = content
+        return note
+
+    async def get_note(self, org_id: str, note_id: str) -> dict:
+        note = self.notes[note_id]
+        if note["org_id"] != org_id:
+            raise ValueError("Note not found for this organization.")
+        return note
+
+    async def finalize_note(self, org_id: str, note_id: str) -> dict:
+        note = await self.get_note(org_id, note_id)
+        if note["status"] == "sent":
+            raise ValueError("Sent notes cannot be changed.")
+        if note["status"] == "final" and note["snapshot_content"]:
+            return note
+        note["status"] = "final"
+        note["snapshot_content"] = note["content"]
+        note["finalized_at"] = _now()
+        return note
+
+    async def create_note_amendment(self, org_id: str, note_id: str, content: str) -> dict:
+        note = await self.get_note(org_id, note_id)
+        related = [
+            entry for entry in self.notes.values()
+            if entry["org_id"] == org_id
+            and entry["patient_id"] == note["patient_id"]
+            and str(entry.get("root_note_id") or entry["id"]) == str(note.get("root_note_id") or note["id"])
+        ]
+        next_version = max(int(entry.get("version_number") or 1) for entry in related) + 1
+        return await self._create_note(
+            org_id,
+            note["patient_id"],
+            content,
+            version_number=next_version,
+            root_note_id=str(note.get("root_note_id") or note["id"]),
+            amended_from_note_id=note_id,
+        )
 
     async def list_notes_for_patient(self, org_id: str, patient_id: str) -> list[dict]:
         return [
             note for note in self.notes.values()
             if note["org_id"] == org_id and note["patient_id"] == patient_id
         ]
+
+    async def mark_note_sent(self, org_id: str, note_id: str, *, sent_by: str, sent_to: str) -> dict:
+        note = await self.get_note(org_id, note_id)
+        if note["status"] == "draft":
+            raise ValueError("Finalize the note before sending it.")
+        if note["sent_at"] is None:
+            note["status"] = "sent"
+            note["snapshot_content"] = note["snapshot_content"] or note["content"]
+            note["sent_at"] = _now()
+            note["sent_by"] = sent_by
+            note["sent_to"] = sent_to
+        return note
 
     async def create_catalog_item(self, org_id: str, payload) -> dict:
         item_id = str(uuid4())
@@ -504,6 +587,14 @@ class FakeRepo:
             raise ValueError("Patient not found for this organization.")
 
         subtotal = round(sum(item.quantity * item.unit_price for item in payload.items), 2)
+        if payload.payment_status == "paid":
+            amount_paid = subtotal
+        elif payload.payment_status == "unpaid":
+            amount_paid = 0
+        else:
+            amount_paid = round(float(payload.amount_paid or 0), 2)
+            if amount_paid <= 0 or amount_paid >= subtotal:
+                raise ValueError("Partial invoice amount must be less than the invoice total.")
         invoice_id = str(uuid4())
         items = []
         for raw_item in payload.items:
@@ -530,7 +621,11 @@ class FakeRepo:
             "subtotal": subtotal,
             "total": subtotal,
             "payment_status": payload.payment_status,
+            "amount_paid": amount_paid,
+            "balance_due": round(max(subtotal - amount_paid, 0), 2),
             "paid_at": _now() if payload.payment_status == "paid" else None,
+            "completed_at": None,
+            "completed_by": None,
             "sent_at": None,
             "created_at": _now(),
             "items": items,
@@ -556,12 +651,18 @@ class FakeRepo:
             if invoice["org_id"] == org_id
         ]
 
-    async def finalize_invoice(self, org_id: str, invoice_id: str) -> str:
+    async def finalize_invoice(self, org_id: str, invoice_id: str, *, completed_by: str) -> dict:
         invoice = self.invoices[invoice_id]
         if invoice["org_id"] != org_id:
             raise ValueError("Invoice not found for this organization.")
         if invoice["sent_at"] is not None:
-            return invoice["patient_id"]
+            return {
+                "patient_id": invoice["patient_id"],
+                "completed_at": invoice["completed_at"],
+                "completed_by": invoice["completed_by"],
+                "sent_at": invoice["sent_at"],
+                "already_finalized": True,
+            }
 
         required_by_item: dict[str, float] = {}
         for item in invoice["items"]:
@@ -583,8 +684,24 @@ class FakeRepo:
             self.catalog_items[item_id]["stock_quantity"] -= quantity
 
         self.patients[invoice["patient_id"]]["billed"] = True
+        invoice["completed_at"] = invoice["completed_at"] or _now()
+        invoice["completed_by"] = invoice["completed_by"] or completed_by
         invoice["sent_at"] = _now()
-        return invoice["patient_id"]
+        return {
+            "patient_id": invoice["patient_id"],
+            "completed_at": invoice["completed_at"],
+            "completed_by": invoice["completed_by"],
+            "sent_at": invoice["sent_at"],
+            "already_finalized": False,
+            "stock_deductions": [
+                {
+                    "catalog_item_id": item_id,
+                    "item_name": self.catalog_items[item_id]["name"],
+                    "quantity": quantity,
+                }
+                for item_id, quantity in required_by_item.items()
+            ],
+        }
 
     async def create_follow_up(self, org_id: str, patient_id: str, created_by: str, payload) -> dict:
         patient = self.patients.get(patient_id)
@@ -647,6 +764,12 @@ class FakeRepo:
 def client(monkeypatch: pytest.MonkeyPatch):
     repo = FakeRepo()
     auth_module.get_settings.cache_clear()
+    main_module.RATE_LIMIT_BUCKETS.clear()
+    main_module.RATE_LIMIT_WINDOWS.update({
+        "auth_login": (5, 60.0),
+        "auth_register": (3, 300.0),
+        "note_generation": (20, 300.0),
+    })
     monkeypatch.setattr(
         auth_module,
         "get_settings",
@@ -724,6 +847,77 @@ def test_auth_org_isolation_and_admin_staff_rules(client):
     assert forbidden.status_code == 403
 
 
+def test_auth_me_reissues_session_headers(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="session@clinic.com", clinic_name="Session Clinic")
+    assert test_client.cookies.get(auth_module.SESSION_COOKIE_NAME) == session["token"]
+
+    response = test_client.get("/auth/me", headers=auth_headers(session["token"]))
+    assert response.status_code == 200
+    refreshed_token = response.headers.get("x-session-token")
+    refreshed_expiry = response.headers.get("x-session-expires-at")
+    assert refreshed_token
+    assert refreshed_expiry
+
+    payload = auth_module.decode_access_token(refreshed_token)
+    assert payload["sub"] == response.json()["id"]
+    assert int(refreshed_expiry) == payload["exp"]
+    assert test_client.cookies.get(auth_module.SESSION_COOKIE_NAME) == refreshed_token
+
+
+def test_auth_cookie_session_and_logout(client):
+    test_client, _repo = client
+    register(test_client, identifier="cookie@clinic.com", clinic_name="Cookie Clinic")
+
+    cookie_response = test_client.get("/auth/me")
+    assert cookie_response.status_code == 200
+    assert cookie_response.json()["identifier"] == "cookie@clinic.com"
+
+    logout_response = test_client.post("/auth/logout")
+    assert logout_response.status_code == 204
+    assert test_client.cookies.get(auth_module.SESSION_COOKIE_NAME) is None
+
+    after_logout = test_client.get("/auth/me")
+    assert after_logout.status_code == 401
+
+
+def test_access_token_requires_explicit_auth_secret(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        auth_module,
+        "get_settings",
+        lambda: SimpleNamespace(auth_secret="", supabase_service_role_key="service-role-key"),
+    )
+
+    with pytest.raises(RuntimeError, match="AUTH_SECRET must be configured."):
+        auth_module.create_access_token(
+            {
+                "id": str(uuid4()),
+                "org_id": str(uuid4()),
+                "identifier": "owner@clinic.com",
+                "role": "admin",
+            }
+        )
+
+
+def test_login_rate_limit_returns_429(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    register(test_client, identifier="ratelimit-login@clinic.com", clinic_name="Rate Limit Clinic")
+    monkeypatch.setitem(main_module.RATE_LIMIT_WINDOWS, "auth_login", (1, 60.0))
+    main_module.RATE_LIMIT_BUCKETS.clear()
+
+    first = test_client.post(
+        "/auth/login",
+        json={"identifier": "ratelimit-login@clinic.com", "password": "password123"},
+    )
+    assert first.status_code == 200
+
+    second = test_client.post(
+        "/auth/login",
+        json={"identifier": "ratelimit-login@clinic.com", "password": "password123"},
+    )
+    assert second.status_code == 429
+
+
 def test_billing_finalize_marks_patient_and_deducts_stock_once(client):
     test_client, repo = client
     session = register(test_client, identifier="billing@clinic.com", clinic_name="Billing Clinic")
@@ -776,6 +970,8 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client):
     assert invoice_response.status_code == 201
     invoice = invoice_response.json()
     assert invoice["payment_status"] == "paid"
+    assert invoice["amount_paid"] == invoice["total"]
+    assert invoice["balance_due"] == 0
     assert invoice["paid_at"] is not None
     assert invoice["sent_at"] is None
     assert repo.patients[patient["id"]]["billed"] is False
@@ -790,6 +986,8 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client):
     assert repo.patients[patient["id"]]["billed"] is True
     assert repo.catalog_items[item["id"]]["stock_quantity"] == 7
     assert repo.invoices[invoice["id"]]["sent_at"] is not None
+    assert repo.invoices[invoice["id"]]["completed_at"] is not None
+    assert repo.invoices[invoice["id"]]["completed_by"] == session["user"]["id"]
 
     second_send = test_client.post(
         "/send-invoice",
@@ -798,6 +996,7 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client):
     )
     assert second_send.status_code == 200
     assert repo.catalog_items[item["id"]]["stock_quantity"] == 7
+    assert "already finalized" in second_send.json()["message"].lower()
 
 
 def test_invoice_can_be_created_with_partial_payment_status(client):
@@ -824,6 +1023,7 @@ def test_invoice_can_be_created_with_partial_payment_status(client):
         json={
             "patient_id": patient["id"],
             "payment_status": "partial",
+            "amount_paid": 150,
             "items": [
                 {
                     "item_type": "service",
@@ -838,6 +1038,8 @@ def test_invoice_can_be_created_with_partial_payment_status(client):
     assert invoice_response.status_code == 201
     invoice = invoice_response.json()
     assert invoice["payment_status"] == "partial"
+    assert invoice["amount_paid"] == 150
+    assert invoice["balance_due"] == 350
     assert invoice["paid_at"] is None
     assert repo.patients[patient["id"]]["billed"] is False
 
@@ -893,7 +1095,124 @@ def test_admin_can_export_patients_visits_and_invoices_csv(client):
     invoices_csv = test_client.get("/exports/invoices.csv", headers=headers)
     assert invoices_csv.status_code == 200
     assert "payment_status" in invoices_csv.text
+    assert "amount_paid" in invoices_csv.text
+    assert "balance_due" in invoices_csv.text
     assert "unpaid" in invoices_csv.text
+
+
+def test_sent_consultation_note_is_locked_to_saved_record(client):
+    test_client, repo = client
+    session = register(test_client, identifier="notes-lock@clinic.com", clinic_name="Notes Lock Clinic")
+    headers = auth_headers(session["token"])
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Note Patient",
+            "phone": "5550102424",
+            "reason": "Consultation",
+            "age": 29,
+            "weight": 61,
+            "height": 166,
+            "temperature": 98.6,
+        },
+        headers=headers,
+    ).json()
+
+    generated = test_client.post(
+        "/generate-note",
+        json={
+            "patient_id": patient["id"],
+            "symptoms": "Headache",
+            "diagnosis": "Migraine",
+            "medications": "Paracetamol",
+            "notes": "Hydrate well.",
+        },
+        headers=headers,
+    )
+    assert generated.status_code == 200
+    note_id = generated.json()["note_id"]
+    assert note_id
+    assert generated.json()["status"] == "draft"
+    assert repo.notes[note_id]["status"] == "draft"
+    assert repo.notes[note_id]["sent_at"] is None
+
+    not_finalized = test_client.post(
+        "/send-note",
+        json={"note_id": note_id, "patient_id": patient["id"], "phone": patient["phone"]},
+        headers=headers,
+    )
+    assert not_finalized.status_code == 400
+    assert "Finalize the note" in not_finalized.text
+
+    finalized = test_client.post(
+        "/notes/finalize",
+        json={"note_id": note_id},
+        headers=headers,
+    )
+    assert finalized.status_code == 200
+    assert finalized.json()["status"] == "final"
+    assert finalized.json()["snapshot_content"]
+
+    sent = test_client.post(
+        "/send-note",
+        json={"note_id": note_id, "patient_id": patient["id"], "phone": patient["phone"]},
+        headers=headers,
+    )
+    assert sent.status_code == 200
+    first_sent_at = repo.notes[note_id]["sent_at"]
+    assert first_sent_at is not None
+    assert repo.notes[note_id]["status"] == "sent"
+    assert repo.notes[note_id]["snapshot_content"]
+
+    resent = test_client.post(
+        "/send-note",
+        json={"note_id": note_id, "patient_id": patient["id"], "phone": patient["phone"]},
+        headers=headers,
+    )
+    assert resent.status_code == 200
+    assert repo.notes[note_id]["sent_at"] == first_sent_at
+
+    notes = test_client.get(f"/patients/{patient['id']}/notes", headers=headers)
+    assert notes.status_code == 200
+    assert notes.json()[0]["sent_at"] is not None
+    assert notes.json()[0]["status"] == "sent"
+
+
+def test_note_generation_rate_limit_returns_429(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    session = register(test_client, identifier="ratelimit-note@clinic.com", clinic_name="Rate Limit Note Clinic")
+    headers = auth_headers(session["token"])
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Rate Limit Patient",
+            "phone": "5550102525",
+            "reason": "Review",
+            "age": 31,
+            "weight": 64,
+            "height": 167,
+            "temperature": 98.5,
+        },
+        headers=headers,
+    ).json()
+
+    monkeypatch.setitem(main_module.RATE_LIMIT_WINDOWS, "note_generation", (1, 60.0))
+    main_module.RATE_LIMIT_BUCKETS.clear()
+
+    first = test_client.post(
+        "/generate-note",
+        json={"patient_id": patient["id"], "symptoms": "Cough", "diagnosis": "Cold", "medications": "Rest", "notes": "Observe"},
+        headers=headers,
+    )
+    assert first.status_code == 200
+
+    second = test_client.post(
+        "/generate-note",
+        json={"patient_id": patient["id"], "symptoms": "Cough", "diagnosis": "Cold", "medications": "Rest", "notes": "Observe"},
+        headers=headers,
+    )
+    assert second.status_code == 429
 
 
 def test_cross_org_invoice_and_negative_stock_adjustment_are_rejected(client):
@@ -988,10 +1307,115 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
         },
         headers=auth_headers(session["token"]),
     ).json()
+    note = test_client.post(
+        "/generate-note",
+        json={
+            "patient_id": patient["id"],
+            "symptoms": "Fever",
+            "diagnosis": "Viral",
+            "medications": "Rest",
+            "notes": "Hydration",
+        },
+        headers=auth_headers(session["token"]),
+    ).json()
+    finalized_note = test_client.post(
+        "/notes/finalize",
+        json={"note_id": note["note_id"]},
+        headers=auth_headers(session["token"]),
+    )
+    assert finalized_note.status_code == 200
+
+    invoice = test_client.post(
+        "/invoices",
+        json={
+            "patient_id": patient["id"],
+            "payment_status": "paid",
+            "items": [{"item_type": "service", "label": "Consultation", "quantity": 1, "unit_price": 500}],
+        },
+        headers=auth_headers(session["token"]),
+    ).json()
 
     invoices = test_client.get("/invoices", headers=staff_headers)
     assert invoices.status_code == 403
     assert "Admin access required" in invoices.text
+
+    users = test_client.get("/users", headers=staff_headers)
+    assert users.status_code == 403
+
+    audit_events = test_client.get("/audit-events", headers=staff_headers)
+    assert audit_events.status_code == 403
+
+    exports = test_client.get("/exports/patients.csv", headers=staff_headers)
+    assert exports.status_code == 403
+
+    catalog = test_client.get("/catalog", headers=staff_headers)
+    assert catalog.status_code == 403
+
+    create_catalog = test_client.post(
+        "/catalog",
+        json={
+            "name": "Drug",
+            "item_type": "medicine",
+            "default_price": 10,
+            "track_inventory": False,
+            "stock_quantity": 0,
+            "low_stock_threshold": 0,
+            "unit": "strip",
+        },
+        headers=staff_headers,
+    )
+    assert create_catalog.status_code == 403
+
+    create_invoice = test_client.post(
+        "/invoices",
+        json={
+            "patient_id": patient["id"],
+            "payment_status": "paid",
+            "items": [{"item_type": "service", "label": "Consultation", "quantity": 1, "unit_price": 500}],
+        },
+        headers=staff_headers,
+    )
+    assert create_invoice.status_code == 403
+
+    send_invoice = test_client.post(
+        "/send-invoice",
+        json={"invoice_id": invoice["id"], "recipient": patient["phone"]},
+        headers=staff_headers,
+    )
+    assert send_invoice.status_code == 403
+
+    invoice_pdf = test_client.get(f"/invoices/{invoice['id']}/pdf", headers=staff_headers)
+    assert invoice_pdf.status_code == 403
+
+    generate_note = test_client.post(
+        "/generate-note",
+        json={
+            "patient_id": patient["id"],
+            "symptoms": "Fever",
+            "diagnosis": "Viral",
+            "medications": "Rest",
+            "notes": "Hydration",
+        },
+        headers=staff_headers,
+    )
+    assert generate_note.status_code == 403
+
+    finalize_note = test_client.post(
+        "/notes/finalize",
+        json={"note_id": note["note_id"]},
+        headers=staff_headers,
+    )
+    assert finalize_note.status_code == 403
+
+    send_note = test_client.post(
+        "/send-note",
+        json={"note_id": note["note_id"], "patient_id": patient["id"], "phone": patient["phone"]},
+        headers=staff_headers,
+    )
+    assert send_note.status_code == 403
+
+    note_pdf = test_client.get(f"/notes/{note['note_id']}/pdf", headers=staff_headers)
+    assert note_pdf.status_code == 403
 
     start_consultation = test_client.patch(
         f"/patients/{patient['id']}",

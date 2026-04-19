@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { Clock3, Download, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Clock3, Download, RefreshCw, Search } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
 import { SettingsDrawer } from "@/components/settings-drawer";
 import { api } from "@/lib/api";
+import { loadRecentPatients, saveRecentPatient } from "@/lib/recent-patients";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { Patient, PatientVisit } from "@/lib/types";
 
@@ -60,6 +61,7 @@ export default function HistoryPage() {
   const [exportError, setExportError] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [recentPatients, setRecentPatients] = useState<Patient[]>([]);
   const loadPageData = useCallback(async () => {
     const historyVisits = await api.listPatientVisits();
     return historyVisits
@@ -99,6 +101,9 @@ export default function HistoryPage() {
     onPageData,
   });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
+  useEffect(() => {
+    setRecentPatients(loadRecentPatients());
+  }, []);
   const uniquePatients = useMemo<Patient[]>(() => {
     const seen = new Set<string>();
     const records: Patient[] = [];
@@ -164,6 +169,7 @@ export default function HistoryPage() {
       ),
     );
     setSelectedPatient(saved);
+    setRecentPatients(saveRecentPatient(saved));
   }
 
   async function handleLoadPatientTimeline(patientId: string) {
@@ -255,7 +261,8 @@ export default function HistoryPage() {
               </select>
             </div>
             <div>
-              <div className="relative inline-flex">
+              <div className="flex items-center gap-2">
+                <div className="relative inline-flex">
                 <button
                   type="button"
                   onClick={() => setIsExportMenuOpen((current) => !current)}
@@ -285,9 +292,37 @@ export default function HistoryPage() {
                     ))}
                   </div>
                 ) : null}
+                </div>
+                <button type="button" onClick={() => window.location.reload()} className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50">
+                  <RefreshCw className="h-4 w-4" />
+                  Retry
+                </button>
               </div>
             </div>
           </div>
+
+          {recentPatients.length ? (
+            <div className="mt-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Quick Reopen</p>
+              <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
+                {recentPatients.slice(0, 5).map((patient) => (
+                  <button
+                    key={patient.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedPatient(patient);
+                      setRecentPatients(saveRecentPatient(patient));
+                    }}
+                    className="min-w-[220px] rounded-[22px] border border-sky-100 bg-sky-50/50 px-4 py-3 text-left transition hover:border-sky-200 hover:bg-white"
+                  >
+                    <p className="text-sm font-semibold text-slate-900">{patient.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">{patient.reason}</p>
+                    <p className="mt-2 text-xs text-slate-500">{patient.phone}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {exportError ? (
             <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -328,8 +363,8 @@ export default function HistoryPage() {
                       {visibleVisits.map((visit) => (
                         <tr
                           key={visit.id}
-                          onClick={() =>
-                            setSelectedPatient({
+                          onClick={() => {
+                            const selected = {
                               id: visit.patient_id,
                               name: visit.name,
                               phone: visit.phone,
@@ -342,8 +377,10 @@ export default function HistoryPage() {
                               billed: visit.billed,
                               created_at: visit.created_at,
                               last_visit_at: visit.last_visit_at,
-                            })
-                          }
+                            };
+                            setSelectedPatient(selected);
+                            setRecentPatients(saveRecentPatient(selected));
+                          }}
                           className="cursor-pointer transition hover:bg-sky-50/70"
                         >
                           <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-800">

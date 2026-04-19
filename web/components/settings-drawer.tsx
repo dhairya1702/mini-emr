@@ -6,7 +6,6 @@ import {
   BarChart3,
   Building2,
   CalendarClock,
-  Download,
   CreditCard,
   FilePenLine,
   History,
@@ -73,6 +72,7 @@ interface SettingsDrawerProps {
       unit_price: number;
     }>;
     payment_status: PaymentStatus;
+    amount_paid?: number | null;
   }) => Promise<Invoice>;
   onGenerateInvoicePdf: (invoiceId: string) => Promise<Blob>;
   onSendInvoice: (payload: { invoice_id: string; recipient: string }) => Promise<string>;
@@ -93,20 +93,6 @@ interface SettingsDrawerProps {
   ) => Promise<FollowUp>;
   onBillingComplete: (patientId: string) => void;
 }
-
-const tabs: Array<{ id: SettingsTab; label: string; icon: typeof Settings2 }> = [
-  { id: "settings", label: "Settings", icon: Settings2 },
-  { id: "appointments", label: "Appointments", icon: CalendarClock },
-  { id: "billing", label: "Billing", icon: CreditCard },
-  { id: "catalog", label: "Inventory", icon: Stethoscope },
-  { id: "users", label: "Users", icon: UserPlus },
-  { id: "audit", label: "Audit", icon: Settings2 },
-  { id: "clinic", label: "Clinic", icon: Building2 },
-  { id: "exports", label: "Exports", icon: Download },
-  { id: "letter", label: "Generate Letter", icon: FilePenLine },
-  { id: "about", label: "About", icon: Info },
-  { id: "contact", label: "Contact Us", icon: Mail },
-];
 
 const emptyLetterForm = {
   to: "",
@@ -135,7 +121,6 @@ export function SettingsDrawer({
   onDeleteCatalogItem,
   onGenerateLetter,
   onGenerateLetterPdf,
-  onSendLetter,
   onCreateInvoice,
   onGenerateInvoicePdf,
   onSendInvoice,
@@ -203,6 +188,7 @@ export function SettingsDrawer({
   const [billingStatus, setBillingStatus] = useState("");
   const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("paid");
+  const [amountPaidInput, setAmountPaidInput] = useState("");
   const [isExporting, setIsExporting] = useState("");
   const [exportStatus, setExportStatus] = useState("");
   const [exportError, setExportError] = useState("");
@@ -224,6 +210,13 @@ export function SettingsDrawer({
     (sum, item) => sum + item.quantity * item.unit_price,
     0,
   );
+  const normalizedAmountPaid =
+    paymentStatus === "paid"
+      ? invoiceSubtotal
+      : paymentStatus === "unpaid"
+        ? 0
+        : Number(amountPaidInput || "0");
+  const balanceDue = Math.max(invoiceSubtotal - normalizedAmountPaid, 0);
   const menuItems: DrawerMenuItem[] = [
     { href: "/", label: "Queue", icon: LayoutDashboard },
     { href: "/patients", label: "Patients", icon: Search },
@@ -683,6 +676,7 @@ export function SettingsDrawer({
           unit_price: item.unit_price,
         })),
         payment_status: paymentStatus,
+        amount_paid: paymentStatus === "partial" ? normalizedAmountPaid : undefined,
       });
       setSavedInvoice(created);
       setBillingStatus("Invoice created.");
@@ -751,6 +745,7 @@ export function SettingsDrawer({
             unit_price: item.unit_price,
           })),
           payment_status: paymentStatus,
+          amount_paid: paymentStatus === "partial" ? normalizedAmountPaid : undefined,
         }));
       if (!savedInvoice) {
         setSavedInvoice(invoice);
@@ -970,6 +965,9 @@ export function SettingsDrawer({
         medicineItems={medicineItems}
         invoiceItems={invoiceItems}
         invoiceSubtotal={invoiceSubtotal}
+        amountPaid={normalizedAmountPaid}
+        amountPaidInput={amountPaidInput}
+        balanceDue={balanceDue}
         paymentStatus={paymentStatus}
         billingError={billingError}
         billingStatus={billingStatus}
@@ -983,6 +981,7 @@ export function SettingsDrawer({
           setSavedInvoice(null);
           setBillingError("");
           setBillingStatus("");
+          setAmountPaidInput("");
         }}
         onAddCatalogItem={addCatalogItemToInvoice}
         onUpdateInvoiceItem={updateInvoiceItem}
@@ -990,10 +989,12 @@ export function SettingsDrawer({
         onCreateBill={handleCreateBill}
         onPaymentStatusChange={(status) => {
           setPaymentStatus(status);
+          setAmountPaidInput(status === "partial" ? invoiceSubtotal.toFixed(2) : "");
           setSavedInvoice(null);
           setBillingStatus("");
           setBillingError("");
         }}
+        onAmountPaidChange={setAmountPaidInput}
         onPreviewPdf={() => handleInvoicePdf("preview")}
         onSendInvoice={handleSendInvoice}
       />

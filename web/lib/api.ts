@@ -1,26 +1,82 @@
-import { authStorage } from "@/lib/auth";
+import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
 import {
   AuditEvent,
   Appointment,
+  AppointmentCheckInPayload,
+  AppointmentCreatePayload,
+  AppointmentUpdatePayload,
+  ConsultationNote,
   AuthResponse,
   AuthUser,
   CatalogItem,
+  CatalogItemCreatePayload,
+  CatalogStockUpdatePayload,
   ClinicSettings,
+  ClinicSettingsUpdatePayload,
+  FinalizeNotePayload,
   FollowUp,
+  FollowUpCreatePayload,
+  FollowUpUpdatePayload,
   GenerateLetterPayload,
+  GenerateLetterResponse,
+  GenerateLetterPdfPayload,
+  GeneratePdfPayload,
   Invoice,
+  InvoiceCreatePayload,
   GenerateNotePayload,
+  GenerateNoteResponse,
+  OperationResult,
   Patient,
+  PatientInput,
   PatientMatch,
   PatientVisit,
   PatientTimelineEvent,
   PatientStatus,
   RegisterPayload,
+  SendInvoicePayload,
+  SendLetterPayload,
+  SendNotePayload,
+  StaffUserCreatePayload,
 } from "@/lib/types";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
 const REQUEST_TIMEOUT_MS = 15000;
+const SESSION_TOKEN_HEADER = "x-session-token";
+const SESSION_EXPIRES_AT_HEADER = "x-session-expires-at";
+
+function shouldAttachAuth(path: string) {
+  return path !== "/auth/login" && path !== "/auth/register";
+}
+
+function isSessionErrorMessage(message: string) {
+  return (
+    message === "Authentication required." ||
+    message === "Invalid token." ||
+    message === "Token expired." ||
+    message === "Session expired." ||
+    message === SESSION_EXPIRED_MESSAGE
+  );
+}
+
+function getActiveToken(path: string) {
+  if (!shouldAttachAuth(path)) {
+    return "";
+  }
+  if (authStorage.clearExpiredSession()) {
+    throw new Error(SESSION_EXPIRED_MESSAGE);
+  }
+  return authStorage.getToken();
+}
+
+function syncSessionFromResponse(response: Response) {
+  const refreshedToken = response.headers.get(SESSION_TOKEN_HEADER);
+  const refreshedExpiry = response.headers.get(SESSION_EXPIRES_AT_HEADER);
+  if (refreshedToken) {
+    authStorage.setToken(refreshedToken);
+  }
+  authStorage.setSessionExpiry(refreshedExpiry ? Number(refreshedExpiry) : null);
+}
 
 function withQuery(path: string, params: Record<string, string | number | undefined>) {
   const searchParams = new URLSearchParams();
@@ -44,13 +100,14 @@ function createTimeoutSignal() {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = authStorage.getToken();
+  const token = getActiveToken(path);
   const timeout = typeof window !== "undefined" ? createTimeoutSignal() : null;
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
       ...(timeout ? { signal: timeout.signal } : {}),
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -66,6 +123,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw error;
   }
   timeout?.cleanup();
+  syncSessionFromResponse(response);
 
   if (!response.ok) {
     const raw = await response.text();
@@ -90,6 +148,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       }
     }
 
+    if (isSessionErrorMessage(message)) {
+      const currentToken = authStorage.getToken();
+      if (!currentToken || currentToken === token) {
+        authStorage.clear();
+      }
+      if (message === "Token expired." || message === "Session expired.") {
+        throw new Error(SESSION_EXPIRED_MESSAGE);
+      }
+    }
+
     throw new Error(message);
   }
 
@@ -101,13 +169,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
-  const token = authStorage.getToken();
+  const token = getActiveToken(path);
   const timeout = typeof window !== "undefined" ? createTimeoutSignal() : null;
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
       ...(timeout ? { signal: timeout.signal } : {}),
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -123,10 +192,21 @@ async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
     throw error;
   }
   timeout?.cleanup();
+  syncSessionFromResponse(response);
 
   if (!response.ok) {
     const raw = await response.text();
-    throw new Error(raw || "Request failed.");
+    const message = raw || "Request failed.";
+    if (isSessionErrorMessage(message)) {
+      const currentToken = authStorage.getToken();
+      if (!currentToken || currentToken === token) {
+        authStorage.clear();
+      }
+      if (message === "Token expired." || message === "Session expired.") {
+        throw new Error(SESSION_EXPIRED_MESSAGE);
+      }
+    }
+    throw new Error(message);
   }
 
   return response.blob();
@@ -143,30 +223,26 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  logout: () =>
+    request<void>("/auth/logout", {
+      method: "POST",
+    }),
   getCurrentUser: () => request<AuthUser>("/auth/me"),
   listUsers: () => request<AuthUser[]>("/users"),
   listAuditEvents: (params?: { limit?: number }) =>
     request<AuditEvent[]>(withQuery("/audit-events", params ?? {})),
-  createStaffUser: (payload: { identifier: string; password: string }) =>
+  createStaffUser: (payload: StaffUserCreatePayload) =>
     request<AuthUser>("/users/staff", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
   listCatalogItems: () => request<CatalogItem[]>("/catalog"),
-  createCatalogItem: (payload: {
-    name: string;
-    item_type: "service" | "medicine";
-    default_price: number;
-    track_inventory: boolean;
-    stock_quantity: number;
-    low_stock_threshold: number;
-    unit: string;
-  }) =>
+  createCatalogItem: (payload: CatalogItemCreatePayload) =>
     request<CatalogItem>("/catalog", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  updateCatalogStock: (itemId: string, payload: { delta: number }) =>
+  updateCatalogStock: (itemId: string, payload: CatalogStockUpdatePayload) =>
     request<CatalogItem>(`/catalog/${itemId}/stock`, {
       method: "PATCH",
       body: JSON.stringify(payload),
@@ -176,17 +252,7 @@ export const api = {
       method: "DELETE",
     }),
   listInvoices: () => request<Invoice[]>("/invoices"),
-  createInvoice: (payload: {
-    patient_id: string;
-    items: Array<{
-      catalog_item_id?: string | null;
-      item_type: "service" | "medicine";
-      label: string;
-      quantity: number;
-      unit_price: number;
-    }>;
-    payment_status: "unpaid" | "paid" | "partial";
-  }) =>
+  createInvoice: (payload: InvoiceCreatePayload) =>
     request<Invoice>("/invoices", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -197,8 +263,8 @@ export const api = {
   exportVisitsCsv: (params?: { range?: "today" | "7d" | "30d" | "month" | "all" }) =>
     requestBlob(withQuery("/exports/visits.csv", params ?? {})),
   exportInvoicesCsv: () => requestBlob("/exports/invoices.csv"),
-  sendInvoice: (payload: { invoice_id: string; recipient: string }) =>
-    request<{ success: boolean; message: string }>("/send-invoice", {
+  sendInvoice: (payload: SendInvoicePayload) =>
+    request<OperationResult>("/send-invoice", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -212,24 +278,12 @@ export const api = {
     q?: string;
     limit?: number;
   }) => request<Appointment[]>(withQuery("/appointments", params ?? {})),
-  createAppointment: (payload: {
-    name: string;
-    phone: string;
-    reason: string;
-    age: number | null;
-    weight: number | null;
-    height: number | null;
-    temperature: number | null;
-    scheduled_for: string;
-  }) =>
+  createAppointment: (payload: AppointmentCreatePayload) =>
     request<Appointment>("/appointments", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  updateAppointment: (appointmentId: string, payload: {
-    scheduled_for?: string;
-    status?: "scheduled" | "checked_in" | "cancelled";
-  }) =>
+  updateAppointment: (appointmentId: string, payload: AppointmentUpdatePayload) =>
     request<Appointment>(`/appointments/${appointmentId}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
@@ -244,43 +298,25 @@ export const api = {
   checkInAppointmentWithPatient: (appointmentId: string, existingPatientId: string) =>
     request<Patient>(`/appointments/${appointmentId}/check-in`, {
       method: "POST",
-      body: JSON.stringify({ existing_patient_id: existingPatientId }),
+      body: JSON.stringify({ existing_patient_id: existingPatientId } satisfies AppointmentCheckInPayload),
     }),
-  createFollowUp: (
-    patientId: string,
-    payload: { scheduled_for: string; notes: string },
-  ) =>
+  createFollowUp: (patientId: string, payload: FollowUpCreatePayload) =>
     request<FollowUp>(`/patients/${patientId}/follow-ups`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  updateFollowUp: (followUpId: string, payload: {
-    status?: "scheduled" | "completed" | "cancelled";
-    scheduled_for?: string;
-    notes?: string;
-  }) =>
+  updateFollowUp: (followUpId: string, payload: FollowUpUpdatePayload) =>
     request<FollowUp>(`/follow-ups/${followUpId}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
   listPatients: () => request<Patient[]>("/patients"),
-  createPatient: (
-    payload: Pick<
-      Patient,
-      "name" | "phone" | "reason" | "age" | "weight" | "height" | "temperature"
-    >,
-  ) =>
+  createPatient: (payload: PatientInput) =>
     request<Patient>("/patients", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  createPatientVisit: (
-    patientId: string,
-    payload: Pick<
-      Patient,
-      "name" | "phone" | "reason" | "age" | "weight" | "height" | "temperature"
-    >,
-  ) =>
+  createPatientVisit: (patientId: string, payload: PatientInput) =>
     request<Patient>(`/patients/${patientId}/visits`, {
       method: "POST",
       body: JSON.stringify(payload),
@@ -306,41 +342,50 @@ export const api = {
     }),
   getPatientTimeline: (patientId: string) =>
     request<PatientTimelineEvent[]>(`/patients/${patientId}/timeline`),
+  listPatientNotes: (patientId: string) =>
+    request<ConsultationNote[]>(`/patients/${patientId}/notes`),
+  listPatientInvoices: (patientId: string) =>
+    request<Invoice[]>(`/patients/${patientId}/invoices`),
   generateNote: (payload: GenerateNotePayload) =>
-    request<{ content: string }>("/generate-note", {
+    request<GenerateNoteResponse>("/generate-note", {
       method: "POST",
       body: JSON.stringify(payload),
+    }),
+  finalizeNote: (noteId: string) =>
+    request<ConsultationNote>("/notes/finalize", {
+      method: "POST",
+      body: JSON.stringify({ note_id: noteId } satisfies FinalizeNotePayload),
     }),
   generateLetter: (payload: GenerateLetterPayload) =>
-    request<{ content: string }>("/generate-letter", {
+    request<GenerateLetterResponse>("/generate-letter", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  generateNotePdf: (payload: { patient_id: string; content: string }) =>
+  generateNotePdf: (payload: GeneratePdfPayload) =>
     requestBlob("/generate-note-pdf", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  generateLetterPdf: (payload: { content: string }) =>
+  generateSavedNotePdf: (noteId: string) =>
+    requestBlob(`/notes/${noteId}/pdf`),
+  generateLetterPdf: (payload: GenerateLetterPdfPayload) =>
     requestBlob("/generate-letter-pdf", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  sendLetter: (payload: { recipient: string; content: string }) =>
-    request<{ success: boolean; message: string }>("/send-letter", {
+  sendLetter: (payload: SendLetterPayload) =>
+    request<OperationResult>("/send-letter", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
   getClinicSettings: () => request<ClinicSettings>("/settings/clinic"),
-  updateClinicSettings: (
-    payload: Omit<ClinicSettings, "id" | "org_id" | "updated_at">,
-  ) =>
+  updateClinicSettings: (payload: ClinicSettingsUpdatePayload) =>
     request<ClinicSettings>("/settings/clinic", {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
-  sendNote: (payload: { patient_id: string; phone: string; content: string }) =>
-    request<{ success: boolean; message: string }>("/send-note", {
+  sendNote: (payload: SendNotePayload) =>
+    request<OperationResult>("/send-note", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
