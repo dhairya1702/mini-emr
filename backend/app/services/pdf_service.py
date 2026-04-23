@@ -1,3 +1,4 @@
+import base64
 from datetime import datetime
 from io import BytesIO
 from typing import Any
@@ -5,8 +6,63 @@ from typing import Any
 from reportlab.lib.colors import HexColor
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
+
+try:  # pragma: no cover - exercised through integration paths when installed
+    from pypdf import PdfReader, PdfWriter
+except Exception:  # pragma: no cover
+    PdfReader = None
+    PdfWriter = None
+
+
+DEFAULT_MARGIN = 0.75 * inch
+MIN_CONTENT_HEIGHT = 0.75 * inch
+DEFAULT_PAGE_SIZE = A4
+TEMPLATE_FLAGS = {
+    "note": "document_template_notes_enabled",
+    "letter": "document_template_letters_enabled",
+    "invoice": "document_template_invoices_enabled",
+}
+TEMPLATE_LABELS = {
+    "note": "consultation note",
+    "letter": "clinic letter",
+    "invoice": "invoice",
+}
+
+
+class TemplateConfigurationError(ValueError):
+    pass
+
+
+def _page_size_for_template(template: tuple[str, bytes] | None) -> tuple[float, float]:
+    if not template or template[0] != "application/pdf" or PdfReader is None:
+        return DEFAULT_PAGE_SIZE
+    try:
+        reader = PdfReader(BytesIO(template[1]))
+    except Exception as exc:
+        raise TemplateConfigurationError(
+            "The uploaded PDF template could not be opened. Re-upload the template in Clinic settings."
+        ) from exc
+    if not reader.pages:
+        raise TemplateConfigurationError(
+            "The uploaded PDF template has no pages. Re-upload the template in Clinic settings."
+        )
+    page = reader.pages[0]
+    box = page.mediabox
+    try:
+        width = float(box.width)
+        height = float(box.height)
+    except Exception as exc:
+        raise TemplateConfigurationError(
+            "The uploaded PDF template has an unsupported page size. Re-upload the template in Clinic settings."
+        ) from exc
+    if width <= 0 or height <= 0:
+        raise TemplateConfigurationError(
+            "The uploaded PDF template has an invalid page size. Re-upload the template in Clinic settings."
+        )
+    return width, height
 
 
 def _format_display_datetime(value: Any) -> str:
@@ -48,6 +104,127 @@ def _wrap_text(text: str, font_name: str, font_size: int, max_width: float) -> l
         lines.append(current)
 
     return lines
+
+
+def _clamp_margin(value: Any) -> float:
+    try:
+        margin = float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_MARGIN
+    return max(0.0, min(margin, 144.0))
+
+
+def _content_bounds(
+    data: dict[str, Any],
+    use_template: bool,
+    page_size: tuple[float, float] = DEFAULT_PAGE_SIZE,
+) -> tuple[float, float, float, float]:
+    width, height = page_size
+    if not use_template:
+        margin_x = DEFAULT_MARGIN
+        return margin_x, height - DEFAULT_MARGIN, width - (margin_x * 2), DEFAULT_MARGIN
+
+    left = _clamp_margin(data.get("document_template_margin_left"))
+    right = _clamp_margin(data.get("document_template_margin_right"))
+    top = _clamp_margin(data.get("document_template_margin_top"))
+    bottom = _clamp_margin(data.get("document_template_margin_bottom"))
+    max_width = max(width - left - right, 120.0)
+    bottom_limit = min(max(bottom, 0.0), height - 72.0)
+    top_y = max(height - top, bottom_limit + 72.0)
+    return left, top_y, max_width, bottom_limit
+
+
+def _resolve_template(data: dict[str, Any], document_kind: str) -> tuple[str, bytes] | None:
+    enabled = bool(data.get(TEMPLATE_FLAGS[document_kind]))
+    if not enabled:
+        return None
+    label = TEMPLATE_LABELS[document_kind]
+    mime_type = str(data.get("document_template_content_type") or "").strip().lower()
+    encoded = str(data.get("document_template_data_base64") or "").strip()
+    template_name = str(data.get("document_template_name") or "").strip()
+    if not mime_type or not encoded:
+        raise TemplateConfigurationError(
+            f"The {label} template is enabled, but the uploaded file is missing. Re-upload the template in Clinic settings."
+        )
+    try:
+        raw_bytes = base64.b64decode(encoded, validate=True)
+    except (ValueError, base64.binascii.Error):
+        raise TemplateConfigurationError(
+            f"The uploaded {label} template is invalid. Re-upload the template in Clinic settings."
+        ) from None
+    if mime_type == "application/pdf" and PdfReader is None:
+        raise TemplateConfigurationError(
+            f"The uploaded {label} template is a PDF, but PDF template support is unavailable. "
+            "Install backend requirements and restart the API."
+        )
+    if mime_type not in {"application/pdf", "image/jpeg", "image/png"}:
+        template_hint = f" for '{template_name}'" if template_name else ""
+        raise TemplateConfigurationError(
+            f"The uploaded {label} template{template_hint} has unsupported type '{mime_type}'."
+        )
+    return mime_type, raw_bytes
+
+
+def _draw_background(pdf: canvas.Canvas, template: tuple[str, bytes] | None, width: float, height: float) -> None:
+    if not template or template[0] == "application/pdf":
+        return
+    pdf.drawImage(ImageReader(BytesIO(template[1])), 0, 0, width=width, height=height)
+
+
+def _apply_pdf_template(base_pdf: bytes, template: tuple[str, bytes] | None) -> bytes:
+    if not template or template[0] != "application/pdf" or PdfReader is None or PdfWriter is None:
+        return base_pdf
+
+    content_reader = PdfReader(BytesIO(base_pdf))
+    template_reader = PdfReader(BytesIO(template[1]))
+    if not template_reader.pages:
+        return base_pdf
+
+    writer = PdfWriter()
+    template_page_count = len(template_reader.pages)
+    for index, content_page in enumerate(content_reader.pages):
+        merged_page = template_reader.pages[min(index, template_page_count - 1)].clone(writer)
+        merged_page.merge_page(content_page)
+        writer.add_page(merged_page)
+
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
+def _start_page(
+    pdf: canvas.Canvas,
+    template: tuple[str, bytes] | None,
+    width: float,
+    height: float,
+) -> None:
+    _draw_background(pdf, template, width, height)
+    pdf.setFillColor(HexColor("#1e293b"))
+
+
+def _draw_template_heading(
+    pdf: canvas.Canvas,
+    x: float,
+    top_y: float,
+    max_width: float,
+    title: str,
+    generated_on: str,
+) -> float:
+    pdf.setFillColor(HexColor("#0f172a"))
+    pdf.setFont("Helvetica-Bold", 13)
+    pdf.drawString(x, top_y, title)
+
+    pdf.setFont("Helvetica", 10)
+    label_text = "Date:"
+    label_width = stringWidth(label_text + " ", "Helvetica-Bold", 10)
+    value_width = stringWidth(generated_on, "Helvetica", 10)
+    right_x = x + max(max_width - label_width - value_width, 0)
+    pdf.setFillColor(HexColor("#1e293b"))
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(right_x, top_y, label_text)
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(right_x + label_width, top_y, generated_on)
+    return top_y - 24
 
 
 DETAIL_LABELS = {
@@ -135,13 +312,12 @@ def _draw_detail_pair_row(
 
 
 def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str) -> bytes:
+    template = _resolve_template(patient, "note")
+    width, height = _page_size_for_template(template)
     buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-
-    margin_x = 0.75 * inch
-    top_y = height - 0.75 * inch
-    max_width = width - (margin_x * 2)
+    pdf = canvas.Canvas(buffer, pagesize=(width, height))
+    use_template = template is not None
+    margin_x, top_y, max_width, bottom_limit = _content_bounds(patient, use_template, (width, height))
 
     patient_name = patient.get("name", "Patient")
     clinic_name = patient.get("clinic_name", "ClinicOS") or "ClinicOS"
@@ -149,27 +325,32 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
     custom_footer = patient.get("custom_footer", "")
     pdf.setTitle(f"{patient_name} Consultation Note")
 
-    pdf.setFillColor(HexColor("#0f172a"))
-    pdf.setFont("Helvetica-Bold", 18)
-    pdf.drawString(margin_x, top_y, clinic_name)
+    if use_template:
+        _start_page(pdf, template, width, height)
+        y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Consultation Note", generated_on)
+    else:
+        pdf.setFillColor(HexColor("#0f172a"))
+        pdf.setFont("Helvetica-Bold", 18)
+        pdf.drawString(margin_x, top_y, clinic_name)
 
-    pdf.setFillColor(HexColor("#475569"))
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(margin_x, top_y - 18, "Consultation Note")
-    if custom_header.strip():
-        pdf.drawString(margin_x, top_y - 32, custom_header.strip())
+        pdf.setFillColor(HexColor("#475569"))
+        pdf.setFont("Helvetica", 10)
+        pdf.drawString(margin_x, top_y - 18, "Consultation Note")
+        if custom_header.strip():
+            pdf.drawString(margin_x, top_y - 32, custom_header.strip())
 
-    pdf.setFont("Helvetica-Bold", 10)
-    generated_label = "Date:"
-    label_width = stringWidth(generated_label + " ", "Helvetica-Bold", 10)
-    value_width = stringWidth(generated_on, "Helvetica", 10)
-    right_x = width - margin_x - label_width - value_width
-    pdf.setFillColor(HexColor("#1e293b"))
-    pdf.drawString(right_x, top_y, generated_label)
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(right_x + label_width, top_y, generated_on)
+        pdf.setFont("Helvetica-Bold", 10)
+        generated_label = "Date:"
+        label_width = stringWidth(generated_label + " ", "Helvetica-Bold", 10)
+        value_width = stringWidth(generated_on, "Helvetica", 10)
+        right_x = width - margin_x - label_width - value_width
+        pdf.setFillColor(HexColor("#1e293b"))
+        pdf.drawString(right_x, top_y, generated_label)
+        pdf.setFont("Helvetica", 10)
+        pdf.drawString(right_x + label_width, top_y, generated_on)
 
-    y = top_y - (58 if custom_header.strip() else 42)
+        y = top_y - (58 if custom_header.strip() else 42)
+
     detail_lines = [
         ("Name", patient.get("name", "Not recorded")),
         ("Phone", patient.get("phone", "Not recorded")),
@@ -195,10 +376,14 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
     raw_lines = _extract_note_body(note_content).splitlines()
 
     for line in raw_lines:
-        if y < 0.75 * inch:
+        if y < bottom_limit:
             pdf.showPage()
-            y = height - 0.75 * inch
-            pdf.setFillColor(HexColor("#1e293b"))
+            if use_template:
+                _start_page(pdf, template, width, height)
+                y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Consultation Note", generated_on)
+            else:
+                y = height - 0.75 * inch
+                pdf.setFillColor(HexColor("#1e293b"))
 
         stripped = line.strip()
         if stripped == "":
@@ -224,15 +409,19 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
         pdf.setFont("Helvetica", 11)
         pdf.setFillColor(HexColor("#1e293b"))
         for wrapped in wrapped_lines:
-            if y < 0.75 * inch:
+            if y < bottom_limit:
                 pdf.showPage()
-                y = height - 0.75 * inch
-                pdf.setFont("Helvetica", 11)
-                pdf.setFillColor(HexColor("#1e293b"))
+                if use_template:
+                    _start_page(pdf, template, width, height)
+                    y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Consultation Note", generated_on)
+                else:
+                    y = height - 0.75 * inch
+                    pdf.setFont("Helvetica", 11)
+                    pdf.setFillColor(HexColor("#1e293b"))
             pdf.drawString(margin_x, y, wrapped)
             y -= 16
 
-    if custom_footer.strip():
+    if custom_footer.strip() and not use_template:
         footer_y = 0.55 * inch
         pdf.setStrokeColor(HexColor("#cbd5e1"))
         pdf.line(margin_x, footer_y + 12, width - margin_x, footer_y + 12)
@@ -246,48 +435,52 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
 
     pdf.save()
     buffer.seek(0)
-    return buffer.getvalue()
+    return _apply_pdf_template(buffer.getvalue(), template)
 
 
 def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: str) -> bytes:
+    template = _resolve_template(clinic, "letter")
+    width, height = _page_size_for_template(template)
     buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-
-    margin_x = 0.75 * inch
-    top_y = height - 0.75 * inch
-    max_width = width - (margin_x * 2)
+    pdf = canvas.Canvas(buffer, pagesize=(width, height))
+    use_template = template is not None
+    margin_x, top_y, max_width, bottom_limit = _content_bounds(clinic, use_template, (width, height))
 
     clinic_name = clinic.get("clinic_name", "ClinicOS") or "ClinicOS"
     custom_header = clinic.get("custom_header", "")
     custom_footer = clinic.get("custom_footer", "")
     pdf.setTitle("Clinic Letter")
 
-    pdf.setFillColor(HexColor("#0f172a"))
-    pdf.setFont("Helvetica-Bold", 18)
-    pdf.drawString(margin_x, top_y, clinic_name)
+    if use_template:
+        _start_page(pdf, template, width, height)
+        y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Clinic Letter", generated_on)
+    else:
+        pdf.setFillColor(HexColor("#0f172a"))
+        pdf.setFont("Helvetica-Bold", 18)
+        pdf.drawString(margin_x, top_y, clinic_name)
 
-    pdf.setFillColor(HexColor("#475569"))
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(margin_x, top_y - 18, "Clinic Letter")
-    if custom_header.strip():
-        header_lines = _wrap_text(custom_header.strip(), "Helvetica", 10, max_width)
-        header_y = top_y - 32
-        for header_line in header_lines[:2]:
-            pdf.drawString(margin_x, header_y, header_line)
-            header_y -= 12
+        pdf.setFillColor(HexColor("#475569"))
+        pdf.setFont("Helvetica", 10)
+        pdf.drawString(margin_x, top_y - 18, "Clinic Letter")
+        if custom_header.strip():
+            header_lines = _wrap_text(custom_header.strip(), "Helvetica", 10, max_width)
+            header_y = top_y - 32
+            for header_line in header_lines[:2]:
+                pdf.drawString(margin_x, header_y, header_line)
+                header_y -= 12
 
-    pdf.setFont("Helvetica-Bold", 10)
-    generated_label = "Date:"
-    label_width = stringWidth(generated_label + " ", "Helvetica-Bold", 10)
-    value_width = stringWidth(generated_on, "Helvetica", 10)
-    right_x = width - margin_x - label_width - value_width
-    pdf.setFillColor(HexColor("#1e293b"))
-    pdf.drawString(right_x, top_y, generated_label)
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(right_x + label_width, top_y, generated_on)
+        pdf.setFont("Helvetica-Bold", 10)
+        generated_label = "Date:"
+        label_width = stringWidth(generated_label + " ", "Helvetica-Bold", 10)
+        value_width = stringWidth(generated_on, "Helvetica", 10)
+        right_x = width - margin_x - label_width - value_width
+        pdf.setFillColor(HexColor("#1e293b"))
+        pdf.drawString(right_x, top_y, generated_label)
+        pdf.setFont("Helvetica", 10)
+        pdf.drawString(right_x + label_width, top_y, generated_on)
 
-    y = top_y - (70 if custom_header.strip() else 44)
+        y = top_y - (70 if custom_header.strip() else 44)
+
     pdf.setFont("Helvetica", 11)
     pdf.setFillColor(HexColor("#1e293b"))
 
@@ -305,15 +498,19 @@ def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: 
 
         wrapped_lines = _wrap_text(stripped, "Helvetica", 11, max_width)
         for wrapped in wrapped_lines:
-            if y < 0.95 * inch:
+            if y < bottom_limit:
                 pdf.showPage()
-                y = height - 0.75 * inch
-                pdf.setFont("Helvetica", 11)
-                pdf.setFillColor(HexColor("#1e293b"))
+                if use_template:
+                    _start_page(pdf, template, width, height)
+                    y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Clinic Letter", generated_on)
+                else:
+                    y = height - 0.75 * inch
+                    pdf.setFont("Helvetica", 11)
+                    pdf.setFillColor(HexColor("#1e293b"))
             pdf.drawString(margin_x, y, wrapped)
             y -= 16
 
-    if custom_footer.strip():
+    if custom_footer.strip() and not use_template:
         footer_y = 0.55 * inch
         pdf.setStrokeColor(HexColor("#cbd5e1"))
         pdf.line(margin_x, footer_y + 12, width - margin_x, footer_y + 12)
@@ -327,7 +524,7 @@ def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: 
 
     pdf.save()
     buffer.seek(0)
-    return buffer.getvalue()
+    return _apply_pdf_template(buffer.getvalue(), template)
 
 
 def build_invoice_pdf(
@@ -336,39 +533,44 @@ def build_invoice_pdf(
     invoice: dict[str, Any],
     generated_on: str,
 ) -> bytes:
+    template = _resolve_template(clinic, "invoice")
+    width, height = _page_size_for_template(template)
     buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    margin_x = 0.75 * inch
-    top_y = height - 0.75 * inch
-    max_width = width - (margin_x * 2)
+    pdf = canvas.Canvas(buffer, pagesize=(width, height))
+    use_template = template is not None
+    margin_x, top_y, max_width, bottom_limit = _content_bounds(clinic, use_template, (width, height))
 
     clinic_name = clinic.get("clinic_name", "ClinicOS") or "ClinicOS"
     custom_header = clinic.get("custom_header", "")
     custom_footer = clinic.get("custom_footer", "")
     pdf.setTitle("Clinic Invoice")
 
-    pdf.setFillColor(HexColor("#0f172a"))
-    pdf.setFont("Helvetica-Bold", 18)
-    pdf.drawString(margin_x, top_y, clinic_name)
+    if use_template:
+        _start_page(pdf, template, width, height)
+        y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Clinic Invoice", generated_on)
+    else:
+        pdf.setFillColor(HexColor("#0f172a"))
+        pdf.setFont("Helvetica-Bold", 18)
+        pdf.drawString(margin_x, top_y, clinic_name)
 
-    pdf.setFillColor(HexColor("#475569"))
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(margin_x, top_y - 18, "Clinic Invoice")
-    if custom_header.strip():
-        pdf.drawString(margin_x, top_y - 32, custom_header.strip())
+        pdf.setFillColor(HexColor("#475569"))
+        pdf.setFont("Helvetica", 10)
+        pdf.drawString(margin_x, top_y - 18, "Clinic Invoice")
+        if custom_header.strip():
+            pdf.drawString(margin_x, top_y - 32, custom_header.strip())
 
-    pdf.setFont("Helvetica-Bold", 10)
-    generated_label = "Date:"
-    label_width = stringWidth(generated_label + " ", "Helvetica-Bold", 10)
-    value_width = stringWidth(generated_on, "Helvetica", 10)
-    right_x = width - margin_x - label_width - value_width
-    pdf.setFillColor(HexColor("#1e293b"))
-    pdf.drawString(right_x, top_y, generated_label)
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(right_x + label_width, top_y, generated_on)
+        pdf.setFont("Helvetica-Bold", 10)
+        generated_label = "Date:"
+        label_width = stringWidth(generated_label + " ", "Helvetica-Bold", 10)
+        value_width = stringWidth(generated_on, "Helvetica", 10)
+        right_x = width - margin_x - label_width - value_width
+        pdf.setFillColor(HexColor("#1e293b"))
+        pdf.drawString(right_x, top_y, generated_label)
+        pdf.setFont("Helvetica", 10)
+        pdf.drawString(right_x + label_width, top_y, generated_on)
 
-    y = top_y - (58 if custom_header.strip() else 42)
+        y = top_y - (58 if custom_header.strip() else 42)
+
     details = [
         ("Patient", patient.get("name", "Not recorded")),
         ("Phone", patient.get("phone", "Not recorded")),
@@ -396,11 +598,15 @@ def build_invoice_pdf(
 
     pdf.setFont("Helvetica", 10)
     for item in invoice.get("items", []):
-        if y < 1.25 * inch:
+        if y < bottom_limit + 48:
             pdf.showPage()
-            y = height - 0.9 * inch
-            pdf.setFont("Helvetica", 10)
-            pdf.setFillColor(HexColor("#1e293b"))
+            if use_template:
+                _start_page(pdf, template, width, height)
+                y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Clinic Invoice", generated_on)
+            else:
+                y = height - 0.9 * inch
+                pdf.setFont("Helvetica", 10)
+                pdf.setFillColor(HexColor("#1e293b"))
         pdf.drawString(margin_x + 10, y, str(item.get("label", "")))
         pdf.drawRightString(margin_x + max_width - 145, y, str(item.get("quantity", "")))
         pdf.drawRightString(margin_x + max_width - 80, y, f"{float(item.get('unit_price', 0)):.2f}")
@@ -415,7 +621,7 @@ def build_invoice_pdf(
     pdf.drawRightString(margin_x + max_width - 80, y, "Total")
     pdf.drawRightString(margin_x + max_width - 10, y, f"{float(invoice.get('total', 0)):.2f}")
 
-    if custom_footer.strip():
+    if custom_footer.strip() and not use_template:
         footer_y = 0.55 * inch
         pdf.setStrokeColor(HexColor("#cbd5e1"))
         pdf.line(margin_x, footer_y + 12, width - margin_x, footer_y + 12)
@@ -429,4 +635,4 @@ def build_invoice_pdf(
 
     pdf.save()
     buffer.seek(0)
-    return buffer.getvalue()
+    return _apply_pdf_template(buffer.getvalue(), template)

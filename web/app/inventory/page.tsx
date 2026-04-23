@@ -48,6 +48,7 @@ export default function InventoryPage() {
     isRedirectingToLogin,
     handleLogout,
     handleSaveClinicSettings,
+    applyClinicSettings,
     handleAddStaffUser,
     handleCreateCatalogItem,
     handleAdjustCatalogStock,
@@ -204,6 +205,7 @@ export default function InventoryPage() {
         onLoadCatalogItems={loadCatalogItems}
         onClose={() => setIsSettingsOpen(false)}
         onSaveClinic={handleSaveClinicSettings}
+        onClinicSettingsChange={applyClinicSettings}
         onAddUser={handleAddStaffUser}
         onCreateCatalogItem={handleCreateCatalogItem}
         onAdjustCatalogStock={handleAdjustCatalogStock}

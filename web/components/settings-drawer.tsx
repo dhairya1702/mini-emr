@@ -7,6 +7,7 @@ import {
   Building2,
   CalendarClock,
   CreditCard,
+  FileText,
   FilePenLine,
   History,
   Info,
@@ -16,6 +17,8 @@ import {
   Settings2,
   Stethoscope,
   RefreshCw,
+  Trash2,
+  Upload,
   UserPlus,
   X,
 } from "lucide-react";
@@ -25,7 +28,15 @@ import { SettingsDrawerAppointmentsPanel } from "@/components/settings-drawer-ap
 import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/settings-drawer-inventory-panel";
 import { SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-panel";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
+import { api } from "@/lib/api";
 import { Appointment, AuditEvent, AuthUser, CatalogItem, ClinicSettings, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
+
+function createId() {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 type SettingsTab = "settings" | "about" | "contact" | "billing" | "clinic" | "users" | "letter" | "catalog" | "appointments" | "audit" | "exports";
 type DrawerMenuItem =
@@ -46,7 +57,8 @@ interface SettingsDrawerProps {
   onClose: () => void;
   onSaveClinic: (
     payload: Omit<ClinicSettings, "id" | "org_id" | "updated_at">,
-  ) => Promise<void>;
+  ) => Promise<ClinicSettings | void>;
+  onClinicSettingsChange?: (settings: ClinicSettings) => void;
   onAddUser: (payload: { identifier: string; password: string }) => Promise<void>;
   onCreateCatalogItem: (payload: {
     name: string;
@@ -102,6 +114,48 @@ const emptyLetterForm = {
   recipient: "",
 };
 
+type ClinicFormState = {
+  clinic_name: string;
+  clinic_address: string;
+  clinic_phone: string;
+  doctor_name: string;
+  custom_header: string;
+  custom_footer: string;
+  document_template_name: string | null;
+  document_template_url: string | null;
+  document_template_notes_enabled: boolean;
+  document_template_letters_enabled: boolean;
+  document_template_invoices_enabled: boolean;
+  document_template_margin_top: string;
+  document_template_margin_right: string;
+  document_template_margin_bottom: string;
+  document_template_margin_left: string;
+};
+
+function toMarginInput(value?: number | null) {
+  return Number.isFinite(value) ? String(value) : "54";
+}
+
+function createClinicFormState(settings?: ClinicSettings | null): ClinicFormState {
+  return {
+    clinic_name: settings?.clinic_name ?? "ClinicOS",
+    clinic_address: settings?.clinic_address ?? "",
+    clinic_phone: settings?.clinic_phone ?? "",
+    doctor_name: settings?.doctor_name ?? "",
+    custom_header: settings?.custom_header ?? "",
+    custom_footer: settings?.custom_footer ?? "",
+    document_template_name: settings?.document_template_name ?? null,
+    document_template_url: settings?.document_template_url ?? null,
+    document_template_notes_enabled: settings?.document_template_notes_enabled ?? false,
+    document_template_letters_enabled: settings?.document_template_letters_enabled ?? false,
+    document_template_invoices_enabled: settings?.document_template_invoices_enabled ?? false,
+    document_template_margin_top: toMarginInput(settings?.document_template_margin_top),
+    document_template_margin_right: toMarginInput(settings?.document_template_margin_right),
+    document_template_margin_bottom: toMarginInput(settings?.document_template_margin_bottom),
+    document_template_margin_left: toMarginInput(settings?.document_template_margin_left),
+  };
+}
+
 export function SettingsDrawer({
   open,
   settings,
@@ -115,6 +169,7 @@ export function SettingsDrawer({
   onLoadCatalogItems,
   onClose,
   onSaveClinic,
+  onClinicSettingsChange,
   onAddUser,
   onCreateCatalogItem,
   onAdjustCatalogStock,
@@ -135,16 +190,14 @@ export function SettingsDrawer({
   const router = useRouter();
   const pathname = usePathname();
   const [activeTab, setActiveTab] = useState<SettingsTab>("clinic");
-  const [form, setForm] = useState({
-    clinic_name: "ClinicOS",
-    clinic_address: "",
-    clinic_phone: "",
-    doctor_name: "",
-    custom_header: "",
-    custom_footer: "",
-  });
+  const [form, setForm] = useState<ClinicFormState>(() => createClinicFormState());
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [templateError, setTemplateError] = useState("");
+  const [templateStatus, setTemplateStatus] = useState("");
+  const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
+  const [isRemovingTemplate, setIsRemovingTemplate] = useState(false);
+  const [isOpeningTemplate, setIsOpeningTemplate] = useState(false);
 
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [userForm, setUserForm] = useState<UserFormState>({ identifier: "", password: "" });
@@ -240,15 +293,10 @@ export function SettingsDrawer({
     if (!settings) {
       return;
     }
-    setForm({
-      clinic_name: settings.clinic_name,
-      clinic_address: settings.clinic_address,
-      clinic_phone: settings.clinic_phone,
-      doctor_name: settings.doctor_name,
-      custom_header: settings.custom_header,
-      custom_footer: settings.custom_footer,
-    });
+    setForm(createClinicFormState(settings));
     setError("");
+    setTemplateError("");
+    setTemplateStatus("");
   }, [settings]);
 
   useEffect(() => {
@@ -388,21 +436,92 @@ export function SettingsDrawer({
       return;
     }
 
+    const margins = {
+      top: Number(form.document_template_margin_top),
+      right: Number(form.document_template_margin_right),
+      bottom: Number(form.document_template_margin_bottom),
+      left: Number(form.document_template_margin_left),
+    };
+    if (Object.values(margins).some((value) => !Number.isFinite(value) || value < 0)) {
+      setError("Document template margins must be valid positive numbers or zero.");
+      return;
+    }
+
     setIsSaving(true);
     setError("");
     try {
-      await onSaveClinic({
+      const saved = await onSaveClinic({
         clinic_name: form.clinic_name.trim(),
         clinic_address: form.clinic_address.trim(),
         clinic_phone: form.clinic_phone.trim(),
         doctor_name: form.doctor_name.trim(),
         custom_header: form.custom_header.trim(),
         custom_footer: form.custom_footer.trim(),
+        document_template_name: form.document_template_name,
+        document_template_url: form.document_template_url,
+        document_template_notes_enabled: form.document_template_notes_enabled,
+        document_template_letters_enabled: form.document_template_letters_enabled,
+        document_template_invoices_enabled: form.document_template_invoices_enabled,
+        document_template_margin_top: margins.top,
+        document_template_margin_right: margins.right,
+        document_template_margin_bottom: margins.bottom,
+        document_template_margin_left: margins.left,
       });
+      if (saved) {
+        onClinicSettingsChange?.(saved);
+        setForm(createClinicFormState(saved));
+      }
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to save settings.");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleDocumentTemplateUpload(file: File) {
+    setIsUploadingTemplate(true);
+    setTemplateError("");
+    setTemplateStatus("");
+    try {
+      const updated = await api.uploadClinicDocumentTemplate(file);
+      setForm(createClinicFormState(updated));
+      onClinicSettingsChange?.(updated);
+      setTemplateStatus("Document template uploaded.");
+    } catch (uploadError) {
+      setTemplateError(uploadError instanceof Error ? uploadError.message : "Failed to upload document template.");
+    } finally {
+      setIsUploadingTemplate(false);
+    }
+  }
+
+  async function handleRemoveDocumentTemplate() {
+    setIsRemovingTemplate(true);
+    setTemplateError("");
+    setTemplateStatus("");
+    try {
+      const updated = await api.removeClinicDocumentTemplate();
+      setForm(createClinicFormState(updated));
+      onClinicSettingsChange?.(updated);
+      setTemplateStatus("Document template removed.");
+    } catch (removeError) {
+      setTemplateError(removeError instanceof Error ? removeError.message : "Failed to remove document template.");
+    } finally {
+      setIsRemovingTemplate(false);
+    }
+  }
+
+  async function handleOpenDocumentTemplate() {
+    setIsOpeningTemplate(true);
+    setTemplateError("");
+    try {
+      const blob = await api.downloadClinicDocumentTemplate();
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (openError) {
+      setTemplateError(openError instanceof Error ? openError.message : "Failed to open document template.");
+    } finally {
+      setIsOpeningTemplate(false);
     }
   }
 
@@ -623,7 +742,7 @@ export function SettingsDrawer({
     setInvoiceItems((current) => [
       ...current,
       {
-        id: crypto.randomUUID(),
+        id: createId(),
         catalog_item_id: item.id,
         item_type: item.item_type,
         label: item.name,
@@ -789,6 +908,8 @@ export function SettingsDrawer({
   }
 
   function renderClinicTab() {
+    const hasDocumentTemplate = Boolean(form.document_template_name || form.document_template_url);
+
     return (
       <form className="space-y-4" onSubmit={handleClinicSave}>
         <label className="block">
@@ -836,8 +957,164 @@ export function SettingsDrawer({
           />
         </label>
 
+        <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Document Template</p>
+              <h3 className="mt-2 text-xl font-semibold text-slate-900">Shared clinic paper</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Upload one shared paper template for generated notes, letters, and invoices. Custom header and footer stay available below as fallback when the template is absent or disabled for a document type.
+              </p>
+            </div>
+            <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
+              {hasDocumentTemplate ? "Template ready" : "Fallback only"}
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-white p-3 text-sky-700">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    {form.document_template_name || "No document template uploaded"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Upload a PDF or image to use as the shared clinic page background.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50">
+                  <Upload className="h-4 w-4" />
+                  {isUploadingTemplate ? "Uploading..." : "Upload template"}
+                  <input
+                    type="file"
+                    accept=".pdf,image/png,image/jpeg"
+                    disabled={isUploadingTemplate || isRemovingTemplate}
+                    className="sr-only"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) {
+                        void handleDocumentTemplateUpload(file);
+                      }
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={!hasDocumentTemplate || isRemovingTemplate || isUploadingTemplate}
+                  onClick={() => void handleRemoveDocumentTemplate()}
+                  className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {isRemovingTemplate ? "Removing..." : "Remove"}
+                </button>
+              </div>
+            </div>
+
+            {hasDocumentTemplate ? (
+              <button
+                type="button"
+                onClick={() => void handleOpenDocumentTemplate()}
+                disabled={isOpeningTemplate}
+                className="mt-4 inline-flex text-sm font-medium text-sky-700 hover:text-sky-800 disabled:opacity-60"
+              >
+                {isOpeningTemplate ? "Opening template..." : "View current template"}
+              </button>
+            ) : null}
+
+            {templateError ? <p className="mt-4 text-sm font-medium text-rose-600">{templateError}</p> : null}
+            {templateStatus ? <p className="mt-4 text-sm font-medium text-emerald-700">{templateStatus}</p> : null}
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            {[
+              {
+                key: "document_template_notes_enabled" as const,
+                label: "Use for notes",
+                description: "Generated consultation PDFs use the uploaded clinic paper.",
+              },
+              {
+                key: "document_template_letters_enabled" as const,
+                label: "Use for letters",
+                description: "Generated letters use the uploaded clinic paper.",
+              },
+              {
+                key: "document_template_invoices_enabled" as const,
+                label: "Use for invoices",
+                description: "Invoices use the uploaded clinic paper.",
+              },
+            ].map((item) => (
+              <label
+                key={item.key}
+                className={`rounded-[24px] border p-4 transition ${
+                  hasDocumentTemplate ? "border-sky-100 bg-sky-50/30" : "border-slate-200 bg-slate-50/70"
+                }`}
+              >
+                <span className="flex items-start justify-between gap-3">
+                  <span>
+                    <span className="block text-sm font-semibold text-slate-900">{item.label}</span>
+                    <span className="mt-2 block text-sm leading-6 text-slate-600">{item.description}</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={form[item.key]}
+                    disabled={!hasDocumentTemplate}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, [item.key]: event.target.checked }))
+                    }
+                    className="mt-1 h-4 w-4 rounded border-sky-300 text-sky-500 focus:ring-sky-400"
+                  />
+                </span>
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Template margins</h4>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Set page margins for the uploaded template. Values are saved as numeric spacing and used only where the template is enabled.
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-4">
+              {[
+                { key: "document_template_margin_top" as const, label: "Top" },
+                { key: "document_template_margin_right" as const, label: "Right" },
+                { key: "document_template_margin_bottom" as const, label: "Bottom" },
+                { key: "document_template_margin_left" as const, label: "Left" },
+              ].map((item) => (
+                <label key={item.key} className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">{item.label}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={form[item.key]}
+                    disabled={!hasDocumentTemplate}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, [item.key]: event.target.value }))
+                    }
+                    className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <label className="block">
           <span className="mb-2 block text-sm font-medium text-slate-700">Custom Header</span>
+          <span className="mb-2 block text-xs text-slate-500">
+            Fallback header when no document template is uploaded or the document type toggle is off.
+          </span>
           <textarea
             rows={2}
             value={form.custom_header}
@@ -850,6 +1127,9 @@ export function SettingsDrawer({
 
         <label className="block">
           <span className="mb-2 block text-sm font-medium text-slate-700">Custom Footer</span>
+          <span className="mb-2 block text-xs text-slate-500">
+            Fallback footer when no document template is uploaded or the document type toggle is off.
+          </span>
           <textarea
             rows={3}
             value={form.custom_footer}

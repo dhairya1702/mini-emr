@@ -85,6 +85,7 @@ export default function HistoryPage() {
     isRedirectingToLogin,
     handleLogout,
     handleSaveClinicSettings,
+    applyClinicSettings,
     handleAddStaffUser,
     handleCreateCatalogItem,
     handleAdjustCatalogStock,
@@ -446,6 +447,7 @@ export default function HistoryPage() {
         onLoadCatalogItems={loadCatalogItems}
         onClose={() => setIsSettingsOpen(false)}
         onSaveClinic={handleSaveClinicSettings}
+        onClinicSettingsChange={applyClinicSettings}
         onAddUser={handleAddStaffUser}
         onCreateCatalogItem={handleCreateCatalogItem}
         onAdjustCatalogStock={handleAdjustCatalogStock}

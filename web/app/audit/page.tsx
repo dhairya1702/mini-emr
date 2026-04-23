@@ -37,6 +37,7 @@ export default function AuditPage() {
     isRedirectingToLogin,
     handleLogout,
     handleSaveClinicSettings,
+    applyClinicSettings,
     handleAddStaffUser,
     handleCreateCatalogItem,
     handleAdjustCatalogStock,
@@ -260,6 +261,7 @@ export default function AuditPage() {
         onLoadCatalogItems={loadCatalogItems}
         onClose={() => setIsSettingsOpen(false)}
         onSaveClinic={handleSaveClinicSettings}
+        onClinicSettingsChange={applyClinicSettings}
         onAddUser={handleAddStaffUser}
         onCreateCatalogItem={handleCreateCatalogItem}
         onAdjustCatalogStock={handleAdjustCatalogStock}

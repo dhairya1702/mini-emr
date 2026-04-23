@@ -10,6 +10,13 @@ import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { Invoice, Patient, PaymentStatus } from "@/lib/types";
 
+function createId() {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export default function BillingPage() {
   const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -50,6 +57,7 @@ export default function BillingPage() {
     isRedirectingToLogin,
     handleLogout,
     handleSaveClinicSettings,
+    applyClinicSettings,
     handleAddStaffUser,
     handleCreateCatalogItem,
     handleAdjustCatalogStock,
@@ -104,7 +112,7 @@ export default function BillingPage() {
       setBillingError(`No stock left for ${item.name}.`);
       return;
     }
-    setInvoiceItems((current) => [...current, { id: crypto.randomUUID(), catalog_item_id: item.id, item_type: item.item_type, label: item.name, quantity: 1, unit_price: item.default_price }]);
+    setInvoiceItems((current) => [...current, { id: createId(), catalog_item_id: item.id, item_type: item.item_type, label: item.name, quantity: 1, unit_price: item.default_price }]);
     setBillingStatus("");
     setBillingError("");
     setSavedInvoice(null);
@@ -333,6 +341,7 @@ export default function BillingPage() {
         onLoadCatalogItems={loadCatalogItems}
         onClose={() => setIsSettingsOpen(false)}
         onSaveClinic={handleSaveClinicSettings}
+        onClinicSettingsChange={applyClinicSettings}
         onAddUser={handleAddStaffUser}
         onCreateCatalogItem={handleCreateCatalogItem}
         onAdjustCatalogStock={handleAdjustCatalogStock}

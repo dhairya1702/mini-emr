@@ -359,20 +359,43 @@ class ExportRow(BaseModel):
     row: dict[str, Any]
 
 
-class ClinicSettingsBase(BaseModel):
+DEFAULT_DOCUMENT_TEMPLATE_MARGIN = 54.0
+
+
+class ClinicSettingsUpdate(BaseModel):
+    clinic_name: str | None = Field(default=None, min_length=1, max_length=120)
+    clinic_address: str | None = Field(default=None, max_length=300)
+    clinic_phone: str | None = Field(default=None, max_length=40)
+    doctor_name: str | None = Field(default=None, max_length=120)
+    custom_header: str | None = Field(default=None, max_length=500)
+    custom_footer: str | None = Field(default=None, max_length=500)
+    document_template_name: str | None = Field(default=None, max_length=255)
+    document_template_url: str | None = None
+    document_template_notes_enabled: bool | None = None
+    document_template_letters_enabled: bool | None = None
+    document_template_invoices_enabled: bool | None = None
+    document_template_margin_top: float | None = Field(default=None, ge=0, le=144)
+    document_template_margin_right: float | None = Field(default=None, ge=0, le=144)
+    document_template_margin_bottom: float | None = Field(default=None, ge=0, le=144)
+    document_template_margin_left: float | None = Field(default=None, ge=0, le=144)
+
+
+class ClinicSettingsOut(BaseModel):
     clinic_name: str = "ClinicOS"
     clinic_address: str = ""
     clinic_phone: str = ""
     doctor_name: str = ""
     custom_header: str = ""
     custom_footer: str = ""
-
-
-class ClinicSettingsUpdate(ClinicSettingsBase):
-    pass
-
-
-class ClinicSettingsOut(ClinicSettingsBase):
+    document_template_name: str | None = None
+    document_template_url: str | None = None
+    document_template_notes_enabled: bool = False
+    document_template_letters_enabled: bool = False
+    document_template_invoices_enabled: bool = False
+    document_template_margin_top: float = DEFAULT_DOCUMENT_TEMPLATE_MARGIN
+    document_template_margin_right: float = DEFAULT_DOCUMENT_TEMPLATE_MARGIN
+    document_template_margin_bottom: float = DEFAULT_DOCUMENT_TEMPLATE_MARGIN
+    document_template_margin_left: float = DEFAULT_DOCUMENT_TEMPLATE_MARGIN
     id: UUID
     org_id: UUID
     updated_at: datetime | None = None
@@ -384,6 +407,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=128)
+    admin_name: str = Field(min_length=1, max_length=120)
     clinic_name: str = Field(min_length=1, max_length=120)
     clinic_address: str = Field(min_length=1, max_length=300)
     clinic_phone: str = Field(default="", max_length=40)

@@ -226,6 +226,11 @@ export function useClinicShellPage<T>({
   ) => {
     const saved = await api.updateClinicSettings(payload);
     setClinicSettings(saved);
+    return saved;
+  }, []);
+
+  const applyClinicSettings = useCallback((settings: ClinicSettings) => {
+    setClinicSettings(settings);
   }, []);
 
   const loadUsers = useCallback(async () => {
@@ -324,6 +329,7 @@ export function useClinicShellPage<T>({
     isRedirectingToLogin,
     handleLogout,
     handleSaveClinicSettings,
+    applyClinicSettings,
     handleAddStaffUser,
     handleCreateCatalogItem,
     handleAdjustCatalogStock,

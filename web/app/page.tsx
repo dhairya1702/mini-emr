@@ -14,6 +14,13 @@ import { Patient, PatientStatus, PatientTimelineEvent } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
 
+function createId() {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export default function HomePage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -39,6 +46,7 @@ export default function HomePage() {
     isRedirectingToLogin,
     handleLogout,
     handleSaveClinicSettings,
+    applyClinicSettings,
     handleAddStaffUser,
     handleCreateCatalogItem,
     handleAdjustCatalogStock,
@@ -125,7 +133,7 @@ export default function HomePage() {
     }
 
     const optimisticPatient: Patient = {
-      id: crypto.randomUUID(),
+      id: createId(),
       created_at: new Date().toISOString(),
       last_visit_at: new Date().toISOString(),
       status: "waiting",
@@ -333,6 +341,7 @@ export default function HomePage() {
         onLoadCatalogItems={loadCatalogItems}
         onClose={() => setIsSettingsOpen(false)}
         onSaveClinic={handleSaveClinicSettings}
+        onClinicSettingsChange={applyClinicSettings}
         onAddUser={handleAddStaffUser}
         onCreateCatalogItem={handleCreateCatalogItem}
         onAdjustCatalogStock={handleAdjustCatalogStock}

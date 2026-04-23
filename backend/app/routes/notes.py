@@ -124,6 +124,8 @@ async def generate_note_pdf(
             media_type="application/pdf",
             headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -176,5 +178,7 @@ async def generate_letter_pdf(
             media_type="application/pdf",
             headers={"Content-Disposition": 'inline; filename="clinic_letter.pdf"'},
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc

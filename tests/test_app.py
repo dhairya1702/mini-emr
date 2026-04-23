@@ -20,6 +20,8 @@ reportlab_pagesizes_module = ModuleType("reportlab.lib.pagesizes")
 reportlab_pagesizes_module.A4 = (595, 842)
 reportlab_units_module = ModuleType("reportlab.lib.units")
 reportlab_units_module.inch = 72
+reportlab_utils_module = ModuleType("reportlab.lib.utils")
+reportlab_utils_module.ImageReader = lambda source: source
 reportlab_pdfbase_module = ModuleType("reportlab.pdfbase")
 reportlab_pdfmetrics_module = ModuleType("reportlab.pdfbase.pdfmetrics")
 reportlab_pdfmetrics_module.stringWidth = lambda text, *_args: float(len(text) * 6)
@@ -50,6 +52,12 @@ class _DummyCanvas:
     def roundRect(self, *_args, **_kwargs) -> None:
         pass
 
+    def setStrokeColor(self, *_args, **_kwargs) -> None:
+        pass
+
+    def drawImage(self, *_args, **_kwargs) -> None:
+        pass
+
     def showPage(self) -> None:
         pass
 
@@ -67,6 +75,7 @@ sys.modules.setdefault("reportlab.lib", reportlab_lib_module)
 sys.modules.setdefault("reportlab.lib.colors", reportlab_colors_module)
 sys.modules.setdefault("reportlab.lib.pagesizes", reportlab_pagesizes_module)
 sys.modules.setdefault("reportlab.lib.units", reportlab_units_module)
+sys.modules.setdefault("reportlab.lib.utils", reportlab_utils_module)
 sys.modules.setdefault("reportlab.pdfbase", reportlab_pdfbase_module)
 sys.modules.setdefault("reportlab.pdfbase.pdfmetrics", reportlab_pdfmetrics_module)
 sys.modules.setdefault("reportlab.pdfgen", reportlab_pdfgen_module)
@@ -148,7 +157,9 @@ class FakeRepo:
         row = {
             "id": settings_id,
             "org_id": org_id,
-            **payload.model_dump(),
+            "document_template_content_type": None,
+            "document_template_data_base64": None,
+            **payload.model_dump(exclude_unset=True),
             "updated_at": _now(),
         }
         self.clinic_settings[org_id] = row
@@ -162,19 +173,56 @@ class FakeRepo:
         row = {
             "id": current["id"] if current else str(uuid4()),
             "org_id": org_id,
-            **payload.model_dump(),
+            **(current or {"document_template_content_type": None, "document_template_data_base64": None}),
+            **payload.model_dump(exclude_unset=True),
             "updated_at": _now(),
         }
         self.clinic_settings[org_id] = row
         return row
 
-    async def create_user(self, org_id: str, identifier: str, password_hash: str, role: str) -> dict:
+    async def set_clinic_document_template(self, org_id: str, *, filename: str, content_type: str, data_base64: str) -> dict:
+        current = self.clinic_settings.get(org_id, {})
+        row = {
+            "id": current.get("id", str(uuid4())),
+            "org_id": org_id,
+            **current,
+            "document_template_name": filename,
+            "document_template_url": "/settings/clinic/document-template/file",
+            "document_template_content_type": content_type,
+            "document_template_data_base64": data_base64,
+            "document_template_notes_enabled": True,
+            "document_template_letters_enabled": True,
+            "document_template_invoices_enabled": True,
+            "updated_at": _now(),
+        }
+        self.clinic_settings[org_id] = row
+        return row
+
+    async def clear_clinic_document_template(self, org_id: str) -> dict:
+        current = self.clinic_settings.get(org_id, {})
+        row = {
+            "id": current.get("id", str(uuid4())),
+            "org_id": org_id,
+            **current,
+            "document_template_name": None,
+            "document_template_url": None,
+            "document_template_content_type": None,
+            "document_template_data_base64": None,
+            "document_template_notes_enabled": False,
+            "document_template_letters_enabled": False,
+            "document_template_invoices_enabled": False,
+            "updated_at": _now(),
+        }
+        self.clinic_settings[org_id] = row
+        return row
+
+    async def create_user(self, org_id: str, identifier: str, name: str, password_hash: str, role: str) -> dict:
         user_id = str(uuid4())
         user = {
             "id": user_id,
             "org_id": org_id,
             "identifier": identifier,
-            "name": identifier.split("@", 1)[0].title() if "@" in identifier else identifier,
+            "name": name.strip() or (identifier.split("@", 1)[0].title() if "@" in identifier else identifier),
             "password_hash": password_hash,
             "role": role,
             "created_at": _now(),
@@ -787,6 +835,7 @@ def register(client: TestClient, *, identifier: str, clinic_name: str) -> dict:
         json={
             "identifier": identifier,
             "password": "password123",
+            "admin_name": "Clinic Admin",
             "clinic_name": clinic_name,
             "clinic_address": "123 Main Street",
             "clinic_phone": "5550100000",

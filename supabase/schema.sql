@@ -58,6 +58,17 @@ create table if not exists public.clinic_settings (
   doctor_name text not null default '',
   custom_header text not null default '',
   custom_footer text not null default '',
+  document_template_name text,
+  document_template_url text,
+  document_template_content_type text,
+  document_template_data_base64 text,
+  document_template_notes_enabled boolean not null default false,
+  document_template_letters_enabled boolean not null default false,
+  document_template_invoices_enabled boolean not null default false,
+  document_template_margin_top double precision not null default 54,
+  document_template_margin_right double precision not null default 54,
+  document_template_margin_bottom double precision not null default 54,
+  document_template_margin_left double precision not null default 54,
   updated_at timestamptz not null default now()
 );
 
@@ -210,6 +221,39 @@ add column if not exists name text not null default '';
 
 alter table public.clinic_settings
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;
+
+alter table public.clinic_settings
+add column if not exists document_template_name text;
+
+alter table public.clinic_settings
+add column if not exists document_template_url text;
+
+alter table public.clinic_settings
+add column if not exists document_template_content_type text;
+
+alter table public.clinic_settings
+add column if not exists document_template_data_base64 text;
+
+alter table public.clinic_settings
+add column if not exists document_template_notes_enabled boolean not null default false;
+
+alter table public.clinic_settings
+add column if not exists document_template_letters_enabled boolean not null default false;
+
+alter table public.clinic_settings
+add column if not exists document_template_invoices_enabled boolean not null default false;
+
+alter table public.clinic_settings
+add column if not exists document_template_margin_top double precision not null default 54;
+
+alter table public.clinic_settings
+add column if not exists document_template_margin_right double precision not null default 54;
+
+alter table public.clinic_settings
+add column if not exists document_template_margin_bottom double precision not null default 54;
+
+alter table public.clinic_settings
+add column if not exists document_template_margin_left double precision not null default 54;
 
 alter table public.catalog_items
 add column if not exists track_inventory boolean not null default false;

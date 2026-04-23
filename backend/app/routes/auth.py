@@ -41,6 +41,7 @@ async def register_user(
     created = await repo.create_user(
         org_id=org_id,
         identifier=identifier,
+        name=payload.admin_name,
         password_hash=hash_password(payload.password),
         role="admin",
     )

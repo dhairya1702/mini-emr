@@ -5,6 +5,13 @@ import { CalendarPlus2, Copy, Eye, FileText, Sparkles, X } from "lucide-react";
 
 import { EyeExamEntry, Patient, TestScoreEntry } from "@/lib/types";
 
+function createId() {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 interface ConsultationDrawerProps {
   patient: Patient | null;
   onClose: () => void;
@@ -43,7 +50,7 @@ function createEmptyForm() {
     pulse: "",
     spo2: "",
     bloodSugar: "",
-    testScores: [{ id: crypto.randomUUID(), label: "", value: "" }],
+    testScores: [{ id: createId(), label: "", value: "" }],
     eyeExam: [
       { eye: "right", sphere: "", cylinder: "", axis: "", vision: "" },
       { eye: "left", sphere: "", cylinder: "", axis: "", vision: "" },
@@ -269,7 +276,7 @@ export function ConsultationDrawer({
   function addTestScore() {
     setForm((current) => ({
       ...current,
-      testScores: [...current.testScores, { id: crypto.randomUUID(), label: "", value: "" }],
+      testScores: [...current.testScores, { id: createId(), label: "", value: "" }],
     }));
   }
 
@@ -278,7 +285,7 @@ export function ConsultationDrawer({
       ...current,
       testScores: current.testScores.length > 1
         ? current.testScores.filter((entry) => entry.id !== id)
-        : [{ id: crypto.randomUUID(), label: "", value: "" }],
+        : [{ id: createId(), label: "", value: "" }],
     }));
   }
 

@@ -232,6 +232,15 @@ export interface ClinicSettings {
   doctor_name: string;
   custom_header: string;
   custom_footer: string;
+  document_template_name: string | null;
+  document_template_url: string | null;
+  document_template_notes_enabled: boolean;
+  document_template_letters_enabled: boolean;
+  document_template_invoices_enabled: boolean;
+  document_template_margin_top: number;
+  document_template_margin_right: number;
+  document_template_margin_bottom: number;
+  document_template_margin_left: number;
   updated_at: string | null;
 }
 
@@ -249,6 +258,7 @@ export interface AuthUser {
 export interface RegisterPayload {
   identifier: string;
   password: string;
+  admin_name: string;
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string;
@@ -377,4 +387,13 @@ export interface ClinicSettingsUpdatePayload {
   doctor_name: string;
   custom_header: string;
   custom_footer: string;
+  document_template_name: string | null;
+  document_template_url: string | null;
+  document_template_notes_enabled: boolean;
+  document_template_letters_enabled: boolean;
+  document_template_invoices_enabled: boolean;
+  document_template_margin_top: number;
+  document_template_margin_right: number;
+  document_template_margin_bottom: number;
+  document_template_margin_left: number;
 }

@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ShieldPlus, Stethoscope } from "lucide-react";
+import { ArrowLeft, ArrowRight, ShieldPlus, Stethoscope } from "lucide-react";
 
 import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -10,8 +10,11 @@ import { api } from "@/lib/api";
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
+  const [registerStep, setRegisterStep] = useState<1 | 2>(1);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [adminName, setAdminName] = useState("");
   const [clinicName, setClinicName] = useState("");
   const [clinicAddress, setClinicAddress] = useState("");
   const [clinicPhone, setClinicPhone] = useState("");
@@ -56,8 +59,62 @@ export default function LoginPage() {
     };
   }, [router]);
 
+  function resetRegisterFields() {
+    setRegisterStep(1);
+    setIdentifier("");
+    setPassword("");
+    setConfirmPassword("");
+    setAdminName("");
+    setClinicName("");
+    setClinicAddress("");
+    setClinicPhone("");
+    setDoctorName("");
+  }
+
+  function handleModeChange(nextMode: "login" | "register") {
+    setMode(nextMode);
+    setError("");
+    if (nextMode === "register") {
+      resetRegisterFields();
+      return;
+    }
+    setRegisterStep(1);
+    setConfirmPassword("");
+  }
+
+  function handleContinueRegistration() {
+    if (!adminName.trim()) {
+      setError("Admin name is required.");
+      return;
+    }
+    if (!clinicName.trim()) {
+      setError("Clinic name is required.");
+      return;
+    }
+    if (!clinicPhone.trim()) {
+      setError("Clinic phone is required.");
+      return;
+    }
+    if (!clinicAddress.trim()) {
+      setError("Clinic address is required.");
+      return;
+    }
+
+    if (!identifier.trim()) {
+      setIdentifier(clinicPhone.trim());
+    }
+    setError("");
+    setRegisterStep(2);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (mode === "register" && registerStep === 1) {
+      handleContinueRegistration();
+      return;
+    }
+
     setIsSubmitting(true);
     setError("");
 
@@ -69,20 +126,36 @@ export default function LoginPage() {
           password,
         });
       } else {
+        if (!adminName.trim()) {
+          throw new Error("Admin name is required.");
+        }
         if (!clinicName.trim()) {
           throw new Error("Clinic name is required.");
         }
+        if (!clinicPhone.trim()) {
+          throw new Error("Clinic phone is required.");
+        }
         if (!clinicAddress.trim()) {
           throw new Error("Clinic address is required.");
+        }
+        if (!identifier.trim()) {
+          throw new Error("Username, email, or phone number is required.");
+        }
+        if (password.length < 8) {
+          throw new Error("Password must be at least 8 characters.");
+        }
+        if (password !== confirmPassword) {
+          throw new Error("Passwords do not match.");
         }
 
         session = await api.register({
           identifier: identifier.trim(),
           password,
+          admin_name: adminName.trim(),
           clinic_name: clinicName.trim(),
           clinic_address: clinicAddress.trim(),
           clinic_phone: clinicPhone.trim(),
-          doctor_name: doctorName.trim(),
+          doctor_name: doctorName.trim() || adminName.trim(),
         });
       }
       authStorage.setSession(session, authStorage.getTokenExpiryMs());
@@ -136,7 +209,11 @@ export default function LoginPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-500">
-                  {mode === "login" ? "Welcome Back" : "Create Admin"}
+                  {mode === "login"
+                    ? "Welcome Back"
+                    : registerStep === 1
+                      ? "Create Admin"
+                      : "Account Access"}
                 </p>
                 <h2 className="mt-3 text-3xl font-semibold text-slate-900">
                   {mode === "login" ? "Sign in" : "Create account"}
@@ -148,31 +225,47 @@ export default function LoginPage() {
             </div>
 
             <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">
-                  Email or phone number
-                </span>
-                <input
-                  value={identifier}
-                  onChange={(event) => setIdentifier(event.target.value)}
-                  placeholder="doctor@clinic.com or +1 555 010 2020"
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Password</span>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Minimum 8 characters"
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                />
-              </label>
-
-              {mode === "register" ? (
+              {mode === "login" ? (
                 <>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Email or phone number
+                    </span>
+                    <input
+                      value={identifier}
+                      onChange={(event) => setIdentifier(event.target.value)}
+                      placeholder="doctor@clinic.com or +1 555 010 2020"
+                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Password</span>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="Minimum 8 characters"
+                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+                </>
+              ) : registerStep === 1 ? (
+                <>
+                  <div className="rounded-[28px] border border-sky-100 bg-sky-50/60 px-4 py-3 text-sm text-slate-600">
+                    Step 1 of 2. Start with clinic and admin details, then create the login credentials.
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Admin name</span>
+                    <input
+                      value={adminName}
+                      onChange={(event) => setAdminName(event.target.value)}
+                      placeholder="Dr. Aditi Sharma"
+                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-slate-700">
                       Clinic name
@@ -181,19 +274,6 @@ export default function LoginPage() {
                       value={clinicName}
                       onChange={(event) => setClinicName(event.target.value)}
                       placeholder="Bluebird Clinic"
-                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">
-                      Clinic address
-                    </span>
-                    <textarea
-                      rows={3}
-                      value={clinicAddress}
-                      onChange={(event) => setClinicAddress(event.target.value)}
-                      placeholder="Street, city, state"
                       className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
                     />
                   </label>
@@ -210,26 +290,98 @@ export default function LoginPage() {
                         className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
                       />
                     </label>
-
-                    <label className="block">
-                      <span className="mb-2 block text-sm font-medium text-slate-700">
-                        Doctor name
-                      </span>
-                      <input
-                        value={doctorName}
-                        onChange={(event) => setDoctorName(event.target.value)}
-                        placeholder="Dr. Sharma"
-                        className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                      />
-                    </label>
                   </div>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Clinic address
+                    </span>
+                    <textarea
+                      rows={3}
+                      value={clinicAddress}
+                      onChange={(event) => setClinicAddress(event.target.value)}
+                      placeholder="Street, city, state"
+                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Doctor name for letters and PDFs
+                    </span>
+                    <input
+                      value={doctorName}
+                      onChange={(event) => setDoctorName(event.target.value)}
+                      placeholder="Leave blank to reuse admin name"
+                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
                 </>
-              ) : null}
+              ) : (
+                <>
+                  <div className="rounded-[28px] border border-sky-100 bg-sky-50/60 px-4 py-3 text-sm text-slate-600">
+                    Step 2 of 2. Choose the login identifier and password for the admin account.
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Username, email, or phone number
+                    </span>
+                    <input
+                      value={identifier}
+                      onChange={(event) => setIdentifier(event.target.value)}
+                      placeholder="doctor@clinic.com or +1 555 010 2020"
+                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                    <p className="mt-2 text-sm text-slate-500">
+                      This is your login credential. It can match the clinic phone or be a separate email.
+                    </p>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Password</span>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="Minimum 8 characters"
+                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Confirm password
+                    </span>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      placeholder="Re-enter password"
+                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+                </>
+              )}
 
               {error ? (
                 <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   {error}
                 </div>
+              ) : null}
+
+              {mode === "register" && registerStep === 2 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegisterStep(1);
+                    setError("");
+                  }}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-sky-200 bg-white px-5 py-3 text-sm font-medium text-sky-700 transition hover:border-sky-300 hover:bg-sky-50"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to clinic details
+                </button>
               ) : null}
 
               <button
@@ -243,7 +395,9 @@ export default function LoginPage() {
                     : "Creating account..."
                   : mode === "login"
                     ? "Sign in"
-                    : "Create admin account"}
+                    : registerStep === 1
+                      ? "Continue to account setup"
+                      : "Create admin account"}
                 <ArrowRight className="h-4 w-4" />
               </button>
             </form>
@@ -254,10 +408,7 @@ export default function LoginPage() {
                 : "Already have an account?"}{" "}
               <button
                 type="button"
-                onClick={() => {
-                  setMode((current) => (current === "login" ? "register" : "login"));
-                  setError("");
-                }}
+                onClick={() => handleModeChange(mode === "login" ? "register" : "login")}
                 className="font-semibold text-sky-700 transition hover:text-sky-800"
               >
                 {mode === "login" ? "Create account" : "Sign in instead"}

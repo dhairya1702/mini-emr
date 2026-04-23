@@ -18,6 +18,8 @@ def _install_reportlab_stubs() -> None:
     reportlab_pagesizes_module.A4 = (595, 842)
     reportlab_units_module = ModuleType("reportlab.lib.units")
     reportlab_units_module.inch = 72
+    reportlab_utils_module = ModuleType("reportlab.lib.utils")
+    reportlab_utils_module.ImageReader = lambda source: source
     reportlab_pdfbase_module = ModuleType("reportlab.pdfbase")
     reportlab_pdfmetrics_module = ModuleType("reportlab.pdfbase.pdfmetrics")
     reportlab_pdfmetrics_module.stringWidth = lambda text, *_args: float(len(text) * 6)
@@ -47,6 +49,12 @@ def _install_reportlab_stubs() -> None:
         def roundRect(self, *_args, **_kwargs) -> None:
             pass
 
+        def setStrokeColor(self, *_args, **_kwargs) -> None:
+            pass
+
+        def drawImage(self, *_args, **_kwargs) -> None:
+            pass
+
         def showPage(self) -> None:
             pass
 
@@ -63,6 +71,7 @@ def _install_reportlab_stubs() -> None:
     sys.modules.setdefault("reportlab.lib.colors", reportlab_colors_module)
     sys.modules.setdefault("reportlab.lib.pagesizes", reportlab_pagesizes_module)
     sys.modules.setdefault("reportlab.lib.units", reportlab_units_module)
+    sys.modules.setdefault("reportlab.lib.utils", reportlab_utils_module)
     sys.modules.setdefault("reportlab.pdfbase", reportlab_pdfbase_module)
     sys.modules.setdefault("reportlab.pdfbase.pdfmetrics", reportlab_pdfmetrics_module)
     sys.modules.setdefault("reportlab.pdfgen", reportlab_pdfgen_module)

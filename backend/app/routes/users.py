@@ -23,6 +23,7 @@ async def create_staff_user(
     created = await repo.create_user(
         org_id=str(current_user.org_id),
         identifier=identifier,
+        name="",
         password_hash=hash_password(payload.password),
         role="staff",
     )

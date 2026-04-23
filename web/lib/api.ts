@@ -99,8 +99,23 @@ function createTimeoutSignal() {
   };
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+function buildRequestHeaders(
+  path: string,
+  init?: RequestInit,
+  options?: { includeJsonContentType?: boolean },
+) {
   const token = getActiveToken(path);
+  const headers = {
+    ...((options?.includeJsonContentType ?? true) ? { "Content-Type": "application/json" } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...((init?.headers as Record<string, string> | undefined) || {}),
+  };
+
+  return { token, headers };
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const { token, headers } = buildRequestHeaders(path, init);
   const timeout = typeof window !== "undefined" ? createTimeoutSignal() : null;
   let response: Response;
   try {
@@ -108,11 +123,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init,
       ...(timeout ? { signal: timeout.signal } : {}),
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...((init?.headers as Record<string, string> | undefined) || {}),
-      },
+      headers,
       cache: "no-store",
     });
   } catch (error) {
@@ -169,7 +180,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
-  const token = getActiveToken(path);
+  const { token, headers } = buildRequestHeaders(path, init);
   const timeout = typeof window !== "undefined" ? createTimeoutSignal() : null;
   let response: Response;
   try {
@@ -177,11 +188,7 @@ async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
       ...init,
       ...(timeout ? { signal: timeout.signal } : {}),
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...((init?.headers as Record<string, string> | undefined) || {}),
-      },
+      headers,
       cache: "no-store",
     });
   } catch (error) {
@@ -210,6 +217,51 @@ async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
   }
 
   return response.blob();
+}
+
+async function requestForm<T>(path: string, formData: FormData, init?: RequestInit): Promise<T> {
+  const { token, headers } = buildRequestHeaders(path, init, { includeJsonContentType: false });
+  const timeout = typeof window !== "undefined" ? createTimeoutSignal() : null;
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      ...(timeout ? { signal: timeout.signal } : {}),
+      body: formData,
+      credentials: "include",
+      headers,
+      cache: "no-store",
+    });
+  } catch (error) {
+    timeout?.cleanup();
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Request timed out. Check the backend and refresh.");
+    }
+    throw error;
+  }
+  timeout?.cleanup();
+  syncSessionFromResponse(response);
+
+  if (!response.ok) {
+    const raw = await response.text();
+    const message = raw || "Request failed.";
+    if (isSessionErrorMessage(message)) {
+      const currentToken = authStorage.getToken();
+      if (!currentToken || currentToken === token) {
+        authStorage.clear();
+      }
+      if (message === "Token expired." || message === "Session expired.") {
+        throw new Error(SESSION_EXPIRED_MESSAGE);
+      }
+    }
+    throw new Error(message);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return response.json();
 }
 
 export const api = {
@@ -383,6 +435,19 @@ export const api = {
     request<ClinicSettings>("/settings/clinic", {
       method: "PUT",
       body: JSON.stringify(payload),
+    }),
+  uploadClinicDocumentTemplate: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return requestForm<ClinicSettings>("/settings/clinic/document-template", formData, {
+      method: "POST",
+    });
+  },
+  downloadClinicDocumentTemplate: () =>
+    requestBlob("/settings/clinic/document-template/file"),
+  removeClinicDocumentTemplate: () =>
+    request<ClinicSettings>("/settings/clinic/document-template", {
+      method: "DELETE",
     }),
   sendNote: (payload: SendNotePayload) =>
     request<OperationResult>("/send-note", {
