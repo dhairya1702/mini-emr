@@ -318,7 +318,7 @@ export function SettingsDrawerBillingPanel({
               disabled={isPreparingInvoicePdf}
               className="rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
             >
-              Preview PDF
+              Preview
             </button>
             <button
               type="button"

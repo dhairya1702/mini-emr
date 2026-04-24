@@ -114,7 +114,7 @@ export function AddPatientModal({
       phone: match.phone,
       email: match.email ?? "",
       address: match.address ?? "",
-      reason: match.reason,
+      reason: "",
       age: "",
       weight: "",
       height: "",

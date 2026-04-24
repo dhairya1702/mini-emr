@@ -26,7 +26,9 @@ import {
 
 import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
 import { SettingsDrawerAppointmentsPanel } from "@/components/settings-drawer-appointments-panel";
+import { SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-panel";
 import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/settings-drawer-inventory-panel";
+import { PasswordInput } from "@/components/password-input";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
 import { api } from "@/lib/api";
 import { Appointment, AuditEvent, AuthUser, CatalogItem, ClinicSettings, ClinicSettingsUpdatePayload, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
@@ -71,6 +73,10 @@ interface SettingsDrawerProps {
   }) => Promise<void>;
   onAdjustCatalogStock: (itemId: string, delta: number) => Promise<void>;
   onDeleteCatalogItem: (itemId: string) => Promise<void>;
+  onUpdateUserRole?: (userId: string, role: "admin" | "staff") => Promise<void>;
+  onDeleteUser?: (userId: string) => Promise<void>;
+  onUploadUserSignature?: (userId: string, file: File) => Promise<void>;
+  onRemoveUserSignature?: (userId: string) => Promise<void>;
   onGenerateLetter: (payload: { to: string; subject: string; content: string }) => Promise<string>;
   onGenerateLetterPdf: (payload: { content: string }) => Promise<Blob>;
   onSendLetter: (payload: { recipient_email: string; subject: string; content: string }) => Promise<string>;
@@ -331,7 +337,7 @@ function LetterDocumentPreview({
             {hasRenderedPreview
               ? "This panel shows the generated letter PDF inside the same workspace."
               : hasTemplate
-                ? "The uploaded clinic paper is shown here before generation. Click Preview PDF after generating the letter to fill it."
+                ? "The uploaded clinic paper is shown here before generation. Click Preview after generating the letter to fill it."
                 : "No template is uploaded, so the preview starts with the fallback clinic letter layout."}
           </p>
         </div>
@@ -366,7 +372,7 @@ function LetterDocumentPreview({
                   <div className="mt-6 space-y-4 text-sm leading-6">
                     <p><span className="font-semibold">To:</span> {letterForm.to.trim() || "Recipient name"}</p>
                     <p><span className="font-semibold">Subject:</span> {letterForm.subject.trim() || "Letter subject"}</p>
-                    <p>{letterForm.generated.trim() || letterForm.content.trim() || "Generated letter content will appear here after you click Generate Letter and then Preview PDF."}</p>
+                    <p>{letterForm.generated.trim() || letterForm.content.trim() || "Generated letter content will appear here after you click Generate Letter and then Preview."}</p>
                   </div>
                 </div>
                 <div className="border-t border-slate-200 px-10 py-5 text-xs leading-5 text-slate-500">
@@ -429,6 +435,7 @@ export function SettingsDrawer({
   onDeleteCatalogItem,
   onGenerateLetter,
   onGenerateLetterPdf,
+  onSendLetter,
   onCreateInvoice,
   onGenerateInvoicePdf,
   onSendInvoice,
@@ -439,6 +446,7 @@ export function SettingsDrawer({
   onUpdateAppointment,
   onUpdateFollowUp,
   onBillingComplete,
+  onDeleteUser,
 }: SettingsDrawerProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -874,8 +882,8 @@ export function SettingsDrawer({
       setUserError("Email or phone number is required.");
       return;
     }
-    if (userForm.password.length < 8) {
-      setUserError("Password must be at least 8 characters.");
+    if (userForm.password.length < 6) {
+      setUserError("Password must be at least 6 characters.");
       return;
     }
 
@@ -1260,6 +1268,7 @@ export function SettingsDrawer({
 
   function renderClinicTab() {
     const hasDocumentTemplate = Boolean(form.document_template_name || form.document_template_url);
+    const canEditClinic = currentUser?.role === "admin";
 
     return (
       <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.82fr)_minmax(520px,1.18fr)]">
@@ -1271,6 +1280,11 @@ export function SettingsDrawer({
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 Configure the clinic identity on the left and use the live page preview on the right to tune where generated content sits.
               </p>
+              {!canEditClinic ? (
+                <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                  Clinic settings are admin-only. You can view them here, but only admins can save changes.
+                </p>
+              ) : null}
             </div>
 
             <div className="mt-6 grid gap-4">
@@ -1361,18 +1375,14 @@ export function SettingsDrawer({
                 />
               </label>
 
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Gmail App Password</span>
-                <input
-                  type="password"
-                  value={form.sender_email_app_password}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, sender_email_app_password: event.target.value }))
-                  }
-                  placeholder={form.email_configured ? "Leave blank to keep current app password" : "16-character Gmail app password"}
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                />
-              </label>
+              <PasswordInput
+                label="Gmail App Password"
+                value={form.sender_email_app_password}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, sender_email_app_password: event.target.value }))
+                }
+                placeholder={form.email_configured ? "Leave blank to keep current app password" : "16-character Gmail app password"}
+              />
 
               <p className="text-xs leading-6 text-slate-500">
                 Turn on 2-Step Verification for the Gmail account, create an App Password in Google Account settings, and paste it here. Leave this field blank on future saves if the password has not changed.
@@ -1555,7 +1565,7 @@ export function SettingsDrawer({
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={isSaving}
+              disabled={isSaving || !canEditClinic}
               className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
             >
               {isSaving ? "Saving..." : "Save Clinic Details"}
@@ -1624,6 +1634,8 @@ export function SettingsDrawer({
         }}
         onSubmit={handleAddUser}
         onUserFormChange={(patch) => setUserForm((current) => ({ ...current, ...patch }))}
+        onUpdateUserRole={onUpdateUserRole ?? (async () => {})}
+        onDeleteUser={onDeleteUser ?? (async () => {})}
       />
     );
   }
@@ -1631,99 +1643,18 @@ export function SettingsDrawer({
   function renderLetterTab() {
     return (
       <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.82fr)_minmax(520px,1.18fr)]">
-        <div className="space-y-4">
-          <form className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]" onSubmit={handleGenerateLetter}>
-            <div className="mb-4">
-              <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Letter Workspace</p>
-              <h3 className="mt-2 text-xl font-semibold text-slate-900">Generate a clinic letter and preview it inline</h3>
-              <p className="mt-2 text-sm leading-7 text-slate-600">
-                The right side starts with the clinic paper only. After you generate the draft and click Preview PDF, the rendered letter appears there.
-              </p>
-            </div>
-
-            <div className="grid gap-4">
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">To</span>
-                <input
-                  value={letterForm.to}
-                  onChange={(event) => setLetterForm((current) => ({ ...current, to: event.target.value }))}
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Subject</span>
-                <input
-                  value={letterForm.subject}
-                  onChange={(event) => setLetterForm((current) => ({ ...current, subject: event.target.value }))}
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Recipient Email</span>
-                <input
-                  type="email"
-                  value={letterForm.recipient_email}
-                  onChange={(event) => setLetterForm((current) => ({ ...current, recipient_email: event.target.value }))}
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Content</span>
-                <textarea
-                  rows={7}
-                  value={letterForm.content}
-                  onChange={(event) => setLetterForm((current) => ({ ...current, content: event.target.value }))}
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                />
-              </label>
-              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 px-4 py-3 text-sm leading-6 text-slate-600">
-                Generate the draft first. `Preview PDF` renders it into the live panel on the right using the saved clinic template or fallback branding.
-              </div>
-            </div>
-
-            {letterError ? <p className="mt-4 text-sm font-medium text-rose-600">{letterError}</p> : null}
-            {letterStatus ? <p className="mt-4 text-sm font-medium text-emerald-700">{letterStatus}</p> : null}
-
-            <div className="mt-5 flex flex-wrap justify-end gap-3">
-              <button
-                type="submit"
-                disabled={isGeneratingLetter}
-                className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
-              >
-                {isGeneratingLetter ? "Generating..." : "Generate Letter"}
-              </button>
-              <button
-                type="button"
-                disabled={isPreparingLetterPdf}
-                onClick={() => void handleLetterPdf()}
-                className="rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-              >
-                {isPreparingLetterPdf ? "Rendering..." : "Preview PDF"}
-              </button>
-              <button
-                type="button"
-                disabled={isSendingLetter}
-                onClick={() => void handleSendLetter()}
-                className="rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-              >
-                {isSendingLetter ? "Sending..." : "Send Email"}
-              </button>
-            </div>
-          </form>
-
-          <div className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
-            <div className="mb-4">
-              <h3 className="text-base font-semibold text-slate-900">Generated Draft</h3>
-              <p className="mt-2 text-sm leading-7 text-slate-600">Edit the generated content before rendering the PDF preview.</p>
-            </div>
-            <textarea
-              rows={18}
-              value={letterForm.generated}
-              onChange={(event) => setLetterForm((current) => ({ ...current, generated: event.target.value }))}
-              className="w-full rounded-2xl border border-sky-200 bg-sky-50/30 px-4 py-3 text-sm leading-7 text-slate-800 outline-none transition focus:border-sky-400"
-            />
-          </div>
-        </div>
+        <SettingsDrawerLetterPanel
+          letterForm={letterForm}
+          letterError={letterError}
+          letterStatus={letterStatus}
+          isGeneratingLetter={isGeneratingLetter}
+          isPreparingLetterPdf={isPreparingLetterPdf}
+          isSendingLetter={isSendingLetter}
+          onSubmit={handleGenerateLetter}
+          onChange={(patch) => setLetterForm((current) => ({ ...current, ...patch }))}
+          onPreviewPdf={() => void handleLetterPdf()}
+          onSend={() => void handleSendLetter()}
+        />
 
         <div className="xl:sticky xl:top-0 xl:self-start">
           <LetterDocumentPreview

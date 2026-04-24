@@ -8,7 +8,22 @@ from app.services.auth_flow import enforce_rate_limit, normalize_identifier
 
 
 def build_user_out(row: dict) -> UserOut:
-    return UserOut(**{key: row[key] for key in ("id", "org_id", "identifier", "name", "role", "created_at")})
+    return UserOut(**{
+        key: row.get(key)
+        for key in (
+            "id",
+            "org_id",
+            "identifier",
+            "name",
+            "role",
+            "doctor_dob",
+            "doctor_address",
+            "doctor_signature_name",
+            "doctor_signature_url",
+            "doctor_signature_content_type",
+            "created_at",
+        )
+    })
 
 
 async def register_user_workflow(

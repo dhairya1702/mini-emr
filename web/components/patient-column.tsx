@@ -9,6 +9,7 @@ interface PatientColumnProps {
   patients: Patient[];
   onOpen: (patient: Patient) => void;
   onAdvance: (patient: Patient, next: PatientStatus) => void;
+  onRemoveFromQueue: (patient: Patient) => void;
   canAdvance?: (patient: Patient) => boolean;
 }
 
@@ -18,6 +19,7 @@ export function PatientColumn({
   patients,
   onOpen,
   onAdvance,
+  onRemoveFromQueue,
   canAdvance,
 }: PatientColumnProps) {
   const statusLabel = status === "done" ? "billing" : status;
@@ -55,6 +57,7 @@ export function PatientColumn({
               patient={patient}
               onOpen={onOpen}
               onAdvance={onAdvance}
+              onRemoveFromQueue={onRemoveFromQueue}
               canAdvance={canAdvance ? canAdvance(patient) : true}
             />
           ))

@@ -8,7 +8,7 @@ import { AuthUser } from "@/lib/types";
 interface AppHeaderProps {
   clinicName: string;
   currentUser: AuthUser | null;
-  active: "queue" | "patients" | "history" | "earnings" | "billing" | "users" | "audit" | "inventory";
+  active: "queue" | "patients" | "history" | "earnings" | "billing" | "users" | "audit" | "inventory" | "account";
   onLogout: () => void;
   onAddPatient?: () => void;
   onOpenSettings?: () => void;
@@ -29,6 +29,7 @@ export function AppHeader({
     { href: "/billing", label: "Billing", key: "billing" },
     { href: "/inventory", label: "Inventory", key: "inventory" },
     { href: "/users", label: "Users", key: "users" },
+    { href: "/account", label: "Account", key: "account" },
     { href: "/audit", label: "Audit", key: "audit" },
     { href: "/earnings", label: "Earnings", key: "earnings" },
   ] as const;

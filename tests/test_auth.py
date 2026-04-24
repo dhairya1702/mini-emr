@@ -80,3 +80,70 @@ def test_login_rate_limit_returns_429(client, monkeypatch: pytest.MonkeyPatch):
         json={"identifier": "ratelimit-login@clinic.com", "password": "password123"},
     )
     assert second.status_code == 429
+
+
+def test_auth_me_can_update_account_details(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="account@clinic.com", clinic_name="Account Clinic")
+    headers = auth_headers(session["token"])
+
+    response = test_client.patch(
+        "/auth/me",
+        headers=headers,
+        json={
+            "name": "Dr Akanksha Goyal",
+            "doctor_dob": "1990-05-12",
+            "doctor_address": "12 Marine Drive",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "Dr Akanksha Goyal"
+    assert body["doctor_dob"] == "1990-05-12"
+    assert body["doctor_address"] == "12 Marine Drive"
+
+
+def test_auth_me_can_change_password(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="password-change@clinic.com", clinic_name="Password Clinic")
+    headers = auth_headers(session["token"])
+
+    response = test_client.post(
+        "/auth/me/password",
+        headers=headers,
+        json={
+            "current_password": "password123",
+            "new_password": "newpassword456",
+        },
+    )
+
+    assert response.status_code == 204
+
+    login = test_client.post(
+        "/auth/login",
+        json={"identifier": "password-change@clinic.com", "password": "newpassword456"},
+    )
+    assert login.status_code == 200
+
+
+def test_auth_me_can_manage_own_signature(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="self-signature@clinic.com", clinic_name="Self Signature Clinic")
+    headers = auth_headers(session["token"])
+
+    uploaded = test_client.post(
+        "/auth/me/signature",
+        headers=headers,
+        files={"file": ("signature.png", b"\x89PNG\r\n\x1a\nfake", "image/png")},
+    )
+    assert uploaded.status_code == 200
+    assert uploaded.json()["doctor_signature_name"] == "signature.png"
+
+    downloaded = test_client.get("/auth/me/signature/file", headers=headers)
+    assert downloaded.status_code == 200
+    assert downloaded.headers["content-type"] == "image/png"
+
+    removed = test_client.delete("/auth/me/signature", headers=headers)
+    assert removed.status_code == 200
+    assert removed.json()["doctor_signature_name"] is None

@@ -35,6 +35,8 @@ TEMPLATE_MIN_TOP_CLEARANCE = {
     "letter": 2.3 * inch,
     "invoice": 2.3 * inch,
 }
+SIGNATURE_MAX_WIDTH = 2.0 * inch
+SIGNATURE_MAX_HEIGHT = 0.8 * inch
 
 
 class TemplateConfigurationError(ValueError):
@@ -166,7 +168,23 @@ def _resolve_template(data: dict[str, Any], document_kind: str) -> tuple[str, by
         template_hint = f" for '{template_name}'" if template_name else ""
         raise TemplateConfigurationError(
             f"The uploaded {label} template{template_hint} has unsupported type '{mime_type}'."
+    )
+    return mime_type, raw_bytes
+
+
+def _resolve_signature(data: dict[str, Any]) -> tuple[str, bytes] | None:
+    mime_type = str(data.get("doctor_signature_content_type") or "").strip().lower()
+    encoded = str(data.get("doctor_signature_data_base64") or "").strip()
+    if not mime_type or not encoded:
+        return None
+    if mime_type not in {"image/jpeg", "image/png"}:
+        raise TemplateConfigurationError(
+            f"The uploaded doctor signature has unsupported type '{mime_type}'."
         )
+    try:
+        raw_bytes = base64.b64decode(encoded, validate=True)
+    except (ValueError, base64.binascii.Error):
+        raise TemplateConfigurationError("The uploaded doctor signature is invalid.") from None
     return mime_type, raw_bytes
 
 
@@ -230,6 +248,48 @@ def _draw_template_heading(
     pdf.setFont("Helvetica", 10)
     pdf.drawString(right_x + label_width, top_y, generated_on)
     return top_y - 24
+
+
+def _draw_doctor_signature(
+    pdf: canvas.Canvas,
+    data: dict[str, Any],
+    *,
+    width: float,
+    margin_x: float,
+    bottom_limit: float,
+    max_width: float,
+    y: float,
+) -> None:
+    signature = _resolve_signature(data)
+    if not signature:
+        doctor_name = str(data.get("doctor_name") or "").strip()
+        if not doctor_name:
+            return
+        y = max(y, bottom_limit + 28)
+        pdf.setFillColor(HexColor("#1e293b"))
+        pdf.setFont("Helvetica-Bold", 10)
+        pdf.drawRightString(width - margin_x, y, doctor_name)
+        return
+
+    _, raw_bytes = signature
+    doctor_name = str(data.get("doctor_name") or "").strip()
+    image_width = min(SIGNATURE_MAX_WIDTH, max_width * 0.45)
+    image_height = SIGNATURE_MAX_HEIGHT
+    x = width - margin_x - image_width
+    image_y = max(y - image_height, bottom_limit + 18)
+    pdf.drawImage(
+        ImageReader(BytesIO(raw_bytes)),
+        x,
+        image_y,
+        width=image_width,
+        height=image_height,
+        preserveAspectRatio=True,
+        mask="auto",
+    )
+    if doctor_name:
+        pdf.setFillColor(HexColor("#1e293b"))
+        pdf.setFont("Helvetica-Bold", 10)
+        pdf.drawRightString(width - margin_x, image_y - 12, doctor_name)
 
 
 def _template_content_start_y(top_y: float, page_height: float, document_kind: str) -> float:
@@ -431,6 +491,8 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
             pdf.drawString(margin_x, y, wrapped)
             y -= 16
 
+    _draw_doctor_signature(pdf, patient, width=width, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y)
+
     if custom_footer.strip() and not use_template:
         footer_y = 0.55 * inch
         pdf.setStrokeColor(HexColor("#cbd5e1"))
@@ -519,6 +581,8 @@ def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: 
                     pdf.setFillColor(HexColor("#1e293b"))
             pdf.drawString(margin_x, y, wrapped)
             y -= 16
+
+    _draw_doctor_signature(pdf, clinic, width=width, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y)
 
     if custom_footer.strip() and not use_template:
         footer_y = 0.55 * inch

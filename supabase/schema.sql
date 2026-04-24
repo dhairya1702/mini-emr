@@ -46,6 +46,12 @@ create table if not exists public.clinic_users (
   org_id uuid not null references public.organizations(id) on delete cascade,
   identifier text not null unique,
   name text not null default '',
+  doctor_dob date,
+  doctor_address text not null default '',
+  doctor_signature_name text,
+  doctor_signature_content_type text,
+  doctor_signature_data_base64 text,
+  updated_at timestamptz not null default now(),
   password_hash text not null,
   role text not null check (role in ('admin', 'staff')),
   created_at timestamptz not null default now()
@@ -251,6 +257,24 @@ add column if not exists org_id uuid references public.organizations(id) on dele
 
 alter table public.clinic_users
 add column if not exists name text not null default '';
+
+alter table public.clinic_users
+add column if not exists doctor_dob date;
+
+alter table public.clinic_users
+add column if not exists doctor_address text not null default '';
+
+alter table public.clinic_users
+add column if not exists doctor_signature_name text;
+
+alter table public.clinic_users
+add column if not exists doctor_signature_content_type text;
+
+alter table public.clinic_users
+add column if not exists doctor_signature_data_base64 text;
+
+alter table public.clinic_users
+add column if not exists updated_at timestamptz not null default now();
 
 alter table public.clinic_settings
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;

@@ -71,13 +71,14 @@ export function SettingsDrawerLetterPanel({
               className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
             />
           </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Recipient Email</span>
+          <label className="block rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recipient email</span>
+            <span className="mt-1 block text-xs leading-5 text-slate-500">Used only when sending the letter by email.</span>
             <input
               type="email"
               value={letterForm.recipient_email}
               onChange={(event) => onChange({ recipient_email: event.target.value })}
-              className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+              className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-sky-400"
             />
           </label>
         </div>
@@ -99,7 +100,7 @@ export function SettingsDrawerLetterPanel({
             onClick={onPreviewPdf}
             className="rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
           >
-            Preview PDF
+            Preview
           </button>
           <button
             type="button"

@@ -6,7 +6,13 @@ from typing import Any
 from uuid import UUID
 
 from app.repositories.base import BaseSupabaseRepository, display_name
-from app.schemas import ClinicSettingsOut, ClinicSettingsUpdate, UserRole
+from app.schemas import (
+    ClinicSettingsOut,
+    ClinicSettingsUpdate,
+    UserAccountUpdate,
+    UserRole,
+    UserRoleUpdate,
+)
 
 
 def _clinic_settings_defaults() -> dict[str, Any]:
@@ -54,10 +60,15 @@ class AuthSettingsRepositoryMixin(BaseSupabaseRepository):
         return await asyncio.to_thread(lambda: self.get_clinic_settings_sync(org_id))
 
     async def create_clinic_settings(self, org_id: str, payload: ClinicSettingsUpdate) -> dict[str, Any]:
+        payload_values = {
+            key: value
+            for key, value in payload.model_dump(exclude_unset=True, exclude={"email_configured"}).items()
+            if key != "doctor_name"
+        }
         values = {
             **_clinic_settings_defaults(),
             **_hidden_clinic_template_defaults(),
-            **payload.model_dump(exclude_unset=True, exclude={"email_configured"}),
+            **payload_values,
         }
         return await asyncio.to_thread(
             lambda: self.client.table("clinic_settings")
@@ -71,11 +82,16 @@ class AuthSettingsRepositoryMixin(BaseSupabaseRepository):
 
         def _upsert() -> dict[str, Any]:
             current = self.get_clinic_settings_sync(org_id)
+            payload_values = {
+                key: value
+                for key, value in payload.model_dump(exclude_unset=True, exclude={"email_configured"}).items()
+                if key != "doctor_name"
+            }
             values = {
                 **_clinic_settings_defaults(),
                 **_hidden_clinic_template_defaults(),
                 **current,
-                **payload.model_dump(exclude_unset=True, exclude={"email_configured"}),
+                **payload_values,
                 "org_id": org_id,
                 "updated_at": timestamp,
             }
@@ -182,14 +198,67 @@ class AuthSettingsRepositoryMixin(BaseSupabaseRepository):
     async def get_user(self, user_id: str) -> dict[str, Any]:
         user = await asyncio.to_thread(
             lambda: self.client.table("clinic_users")
-            .select("id, org_id, identifier, name, role, created_at")
+            .select(
+                "id, org_id, identifier, name, role, doctor_dob, doctor_address, doctor_signature_name, "
+                "doctor_signature_content_type, doctor_signature_data_base64, created_at"
+            )
             .eq("id", user_id)
             .single()
             .execute()
             .data
         )
         user["name"] = display_name(user)
+        user["doctor_signature_url"] = "/users/{}/signature/file".format(user_id) if user.get("doctor_signature_name") and user.get("doctor_signature_data_base64") else None
         return user
+
+    async def set_user_signature(
+        self,
+        user_id: str,
+        *,
+        filename: str,
+        content_type: str,
+        data_base64: str,
+    ) -> dict[str, Any]:
+        timestamp = datetime.now(UTC).isoformat()
+
+        def _set() -> dict[str, Any]:
+            return (
+                self.client.table("clinic_users")
+                .update(
+                    {
+                        "doctor_signature_name": filename,
+                        "doctor_signature_content_type": content_type,
+                        "doctor_signature_data_base64": data_base64,
+                        "updated_at": timestamp,
+                    }
+                )
+                .eq("id", user_id)
+                .execute()
+                .data[0]
+            )
+
+        return await asyncio.to_thread(_set)
+
+    async def clear_user_signature(self, user_id: str) -> dict[str, Any]:
+        timestamp = datetime.now(UTC).isoformat()
+
+        def _clear() -> dict[str, Any]:
+            return (
+                self.client.table("clinic_users")
+                .update(
+                    {
+                        "doctor_signature_name": None,
+                        "doctor_signature_content_type": None,
+                        "doctor_signature_data_base64": None,
+                        "updated_at": timestamp,
+                    }
+                )
+                .eq("id", user_id)
+                .execute()
+                .data[0]
+            )
+
+        return await asyncio.to_thread(_clear)
 
     async def create_user(
         self,
@@ -208,6 +277,8 @@ class AuthSettingsRepositoryMixin(BaseSupabaseRepository):
                     "name": name.strip(),
                     "password_hash": password_hash,
                     "role": role,
+                    "doctor_dob": None,
+                    "doctor_address": "",
                 }
             )
             .execute()
@@ -219,13 +290,88 @@ class AuthSettingsRepositoryMixin(BaseSupabaseRepository):
     async def list_users(self, org_id: str) -> list[dict[str, Any]]:
         rows = await asyncio.to_thread(
             lambda: self.client.table("clinic_users")
-            .select("id, org_id, identifier, name, role, created_at")
+            .select(
+                "id, org_id, identifier, name, role, doctor_dob, doctor_address, doctor_signature_name, "
+                "doctor_signature_content_type, created_at"
+            )
             .eq("org_id", org_id)
             .order("created_at", desc=False)
             .execute()
             .data
         )
-        return [{**row, "name": display_name(row)} for row in rows]
+        return [
+            {
+                **row,
+                "name": display_name(row),
+                "doctor_signature_url": "/users/{}/signature/file".format(row["id"])
+                if row.get("doctor_signature_name")
+                else None,
+            }
+            for row in rows
+        ]
+
+    async def update_user_role(self, user_id: str, payload: UserRoleUpdate) -> dict[str, Any]:
+        timestamp = datetime.now(UTC).isoformat()
+
+        def _update() -> dict[str, Any]:
+            updated = (
+                self.client.table("clinic_users")
+                .update({"role": payload.role, "updated_at": timestamp})
+                .eq("id", user_id)
+                .execute()
+                .data[0]
+            )
+            updated["name"] = display_name(updated)
+            return updated
+
+        return await asyncio.to_thread(_update)
+
+    async def update_user_account(self, user_id: str, payload: UserAccountUpdate) -> dict[str, Any]:
+        timestamp = datetime.now(UTC).isoformat()
+        updates = {
+            "name": payload.name.strip(),
+            "doctor_dob": payload.doctor_dob.isoformat() if payload.doctor_dob else None,
+            "doctor_address": payload.doctor_address.strip(),
+            "updated_at": timestamp,
+        }
+
+        def _update() -> dict[str, Any]:
+            updated = (
+                self.client.table("clinic_users")
+                .update(updates)
+                .eq("id", user_id)
+                .execute()
+                .data[0]
+            )
+            updated["name"] = display_name(updated)
+            updated["doctor_signature_url"] = "/users/{}/signature/file".format(user_id) if updated.get("doctor_signature_name") and updated.get("doctor_signature_data_base64") else None
+            return updated
+
+        return await asyncio.to_thread(_update)
+
+    async def update_user_password_hash(self, user_id: str, password_hash: str) -> dict[str, Any]:
+        timestamp = datetime.now(UTC).isoformat()
+
+        def _update() -> dict[str, Any]:
+            updated = (
+                self.client.table("clinic_users")
+                .update({"password_hash": password_hash, "updated_at": timestamp})
+                .eq("id", user_id)
+                .execute()
+                .data[0]
+            )
+            updated["name"] = display_name(updated)
+            return updated
+
+        return await asyncio.to_thread(_update)
+
+    async def delete_user(self, user_id: str) -> None:
+        await asyncio.to_thread(
+            lambda: self.client.table("clinic_users")
+            .delete()
+            .eq("id", user_id)
+            .execute()
+        )
 
     async def count_users(self) -> int:
         def _count() -> int:

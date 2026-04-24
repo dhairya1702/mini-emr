@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, Phone } from "lucide-react";
+import { ArrowRight, Check, Phone, Trash2 } from "lucide-react";
 
 import { Patient, PatientStatus } from "@/lib/types";
 
@@ -20,10 +20,17 @@ interface PatientCardProps {
   patient: Patient;
   onOpen: (patient: Patient) => void;
   onAdvance: (patient: Patient, next: PatientStatus) => void;
+  onRemoveFromQueue: (patient: Patient) => void;
   canAdvance?: boolean;
 }
 
-export function PatientCard({ patient, onOpen, onAdvance, canAdvance = true }: PatientCardProps) {
+export function PatientCard({
+  patient,
+  onOpen,
+  onAdvance,
+  onRemoveFromQueue,
+  canAdvance = true,
+}: PatientCardProps) {
   const target = nextStatus[patient.status];
   const createdAt = new Date(patient.last_visit_at).toLocaleTimeString([], {
     hour: "numeric",
@@ -72,24 +79,38 @@ export function PatientCard({ patient, onOpen, onAdvance, canAdvance = true }: P
       </p>
 
       <div className="mt-2 flex justify-end">
-        {target && canAdvance ? (
+        <div className="flex flex-wrap justify-end gap-2">
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-full bg-sky-500 px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-sky-600"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-700 transition hover:bg-rose-100"
             onClick={(event) => {
               event.stopPropagation();
-              onAdvance(patient, target);
+              onRemoveFromQueue(patient);
             }}
+            aria-label={`Remove ${patient.name} from queue`}
+            title="Remove from queue"
           >
-            {buttonLabel[patient.status]}
-            <ArrowRight className="h-3.5 w-3.5" />
+            <Trash2 className="h-4 w-4" />
           </button>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-100 px-3 py-1.5 text-[12px] text-sky-700">
-            <Check className="h-3.5 w-3.5" />
-            {target ? "View" : buttonLabel[patient.status]}
-          </span>
-        )}
+          {target && canAdvance ? (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-full bg-sky-500 px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-sky-600"
+              onClick={(event) => {
+                event.stopPropagation();
+                onAdvance(patient, target);
+              }}
+            >
+              {buttonLabel[patient.status]}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-100 px-3 py-1.5 text-[12px] text-sky-700">
+              <Check className="h-3.5 w-3.5" />
+              {target ? "View" : buttonLabel[patient.status]}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

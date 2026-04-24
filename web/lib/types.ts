@@ -257,13 +257,33 @@ export interface ClinicSettings {
 
 export type UserRole = "admin" | "staff";
 
+export interface UserRoleUpdatePayload {
+  role: UserRole;
+}
+
 export interface AuthUser {
   id: string;
   org_id: string;
   name: string;
   identifier: string;
   role: UserRole;
+  doctor_dob?: string | null;
+  doctor_address?: string;
+  doctor_signature_name?: string | null;
+  doctor_signature_url?: string | null;
+  doctor_signature_content_type?: string | null;
   created_at: string;
+}
+
+export interface AccountUpdatePayload {
+  name: string;
+  doctor_dob?: string | null;
+  doctor_address: string;
+}
+
+export interface PasswordUpdatePayload {
+  current_password: string;
+  new_password: string;
 }
 
 export interface RegisterPayload {

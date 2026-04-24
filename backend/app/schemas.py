@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -430,7 +430,7 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=6, max_length=128)
     admin_name: str = Field(min_length=1, max_length=120)
     clinic_name: str = Field(min_length=1, max_length=120)
     clinic_address: str = Field(min_length=1, max_length=300)
@@ -439,11 +439,26 @@ class UserCreate(UserBase):
 
 
 class StaffUserCreate(UserBase):
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=6, max_length=128)
+
+
+class UserRoleUpdate(BaseModel):
+    role: UserRole
 
 
 class LoginRequest(UserBase):
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=6, max_length=128)
+
+
+class UserAccountUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    doctor_dob: date | None = None
+    doctor_address: str = Field(default="", max_length=300)
+
+
+class UserPasswordUpdate(BaseModel):
+    current_password: str = Field(min_length=6, max_length=128)
+    new_password: str = Field(min_length=6, max_length=128)
 
 
 class UserOut(UserBase):
@@ -451,6 +466,11 @@ class UserOut(UserBase):
     org_id: UUID
     name: str
     role: UserRole
+    doctor_dob: date | None = None
+    doctor_address: str = ""
+    doctor_signature_name: str | None = None
+    doctor_signature_url: str | None = None
+    doctor_signature_content_type: str | None = None
     created_at: datetime
 
 

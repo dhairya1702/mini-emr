@@ -250,6 +250,29 @@ export function useClinicShellPage<T>({
     setUsers((current) => [...current, created]);
   }, []);
 
+  const handleUpdateUserRole = useCallback(async (userId: string, role: "admin" | "staff") => {
+    const updated = await api.updateUserRole(userId, { role });
+    setUsers((current) => current.map((user) => (user.id === userId ? updated : user)));
+    return updated;
+  }, []);
+
+  const handleDeleteUser = useCallback(async (userId: string) => {
+    await api.deleteUser(userId);
+    setUsers((current) => current.filter((user) => user.id !== userId));
+  }, []);
+
+  const handleUploadUserSignature = useCallback(async (userId: string, file: File) => {
+    const updated = await api.uploadUserSignature(userId, file);
+    setUsers((current) => current.map((user) => (user.id === userId ? updated : user)));
+    return updated;
+  }, []);
+
+  const handleRemoveUserSignature = useCallback(async (userId: string) => {
+    const updated = await api.removeUserSignature(userId);
+    setUsers((current) => current.map((user) => (user.id === userId ? updated : user)));
+    return updated;
+  }, []);
+
   const loadCatalogItems = useCallback(async () => {
     const loadedCatalogItems = await api.listCatalogItems();
     setCatalogItems(loadedCatalogItems);
@@ -331,6 +354,10 @@ export function useClinicShellPage<T>({
     handleSaveClinicSettings,
     applyClinicSettings,
     handleAddStaffUser,
+    handleUpdateUserRole,
+    handleDeleteUser,
+    handleUploadUserSignature,
+    handleRemoveUserSignature,
     handleCreateCatalogItem,
     handleAdjustCatalogStock,
     handleDeleteCatalogItem,

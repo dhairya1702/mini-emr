@@ -2,13 +2,62 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { SettingsDrawer } from "@/components/settings-drawer";
 import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { Patient } from "@/lib/types";
+import { AuditEvent, Patient } from "@/lib/types";
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString([], {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function getSectionLabel(entityType: string) {
+  const labels: Record<string, string> = {
+    note: "Consultation",
+    invoice: "Billing",
+    catalog_item: "Inventory",
+    patient: "Patients",
+    follow_up: "Follow-up",
+    user: "Users",
+    appointment: "Appointments",
+  };
+  return labels[entityType] || entityType.replaceAll("_", " ");
+}
+
+function getActionLabel(action: string) {
+  const labels: Record<string, string> = {
+    consultation_note_created: "Created",
+    consultation_note_updated: "Updated",
+    consultation_note_finalized: "Finalized",
+    consultation_note_shared: "Sent",
+    consultation_note_amended: "Amended",
+    invoice_created: "Created",
+    invoice_shared: "Sent",
+    catalog_stock_adjusted: "Stock Changed",
+    catalog_item_created: "Created",
+    catalog_item_deleted: "Deleted",
+    patient_updated: "Updated",
+    patient_created: "Created",
+    follow_up_created: "Created",
+    follow_up_updated: "Updated",
+    staff_user_created: "Created",
+  };
+  return labels[action] || action.replaceAll("_", " ");
+}
 
 export default function AuditPage() {
   const router = useRouter();
@@ -18,6 +67,7 @@ export default function AuditPage() {
   const [isAuditLoading, setIsAuditLoading] = useState(false);
   const [actionFilter, setActionFilter] = useState("all");
   const [entityFilter, setEntityFilter] = useState("all");
+  const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(() => api.listPatients(), []);
   const onPageData = useCallback((data: Patient[]) => {
@@ -94,7 +144,7 @@ export default function AuditPage() {
     [patients],
   );
 
-  function getPatientName(event: (typeof auditEvents)[number]) {
+  function getPatientName(event: AuditEvent) {
     const metadataName = String(event.metadata?.patient_name || "").trim();
     if (metadataName) {
       return metadataName;
@@ -103,7 +153,7 @@ export default function AuditPage() {
     return patientNamesById[patientId] || "";
   }
 
-  function getAuditSummary(event: (typeof auditEvents)[number]) {
+  function getAuditSummary(event: AuditEvent) {
     const patientName = getPatientName(event);
     const recipient = String(event.metadata?.recipient || event.metadata?.sent_to || "").trim();
     if (event.action === "invoice_shared" && patientName && recipient) {
@@ -116,34 +166,19 @@ export default function AuditPage() {
         : `Created invoice for ${patientName}.`;
     }
     if (event.action === "consultation_note_shared" && patientName && recipient) {
-      const matchedVersion = event.summary.match(/v(\d+)/i);
-      return matchedVersion
-        ? `Shared consultation note v${matchedVersion[1]} for ${patientName} with ${recipient}.`
-        : `Shared consultation note for ${patientName} with ${recipient}.`;
+      return `Shared consultation note for ${patientName} with ${recipient}.`;
     }
     if (event.action === "consultation_note_finalized" && patientName) {
-      const matchedVersion = event.summary.match(/v(\d+)/i);
-      return matchedVersion
-        ? `Finalized consultation note v${matchedVersion[1]} for ${patientName}.`
-        : `Finalized consultation note for ${patientName}.`;
+      return `Finalized consultation note for ${patientName}.`;
     }
     if (event.action === "consultation_note_created" && patientName) {
-      const matchedVersion = event.summary.match(/v(\d+)/i);
-      return matchedVersion
-        ? `Generated consultation note v${matchedVersion[1]} for ${patientName}.`
-        : `Generated consultation note for ${patientName}.`;
+      return `Generated consultation note for ${patientName}.`;
     }
     if (event.action === "consultation_note_updated" && patientName) {
-      const matchedVersion = event.summary.match(/v(\d+)/i);
-      return matchedVersion
-        ? `Updated consultation note v${matchedVersion[1]} for ${patientName}.`
-        : `Updated consultation note for ${patientName}.`;
+      return `Updated consultation note for ${patientName}.`;
     }
     if (event.action === "consultation_note_amended" && patientName) {
-      const matchedVersion = event.summary.match(/v(\d+)/i);
-      return matchedVersion
-        ? `Created amended consultation note v${matchedVersion[1]} for ${patientName}.`
-        : `Created amended consultation note for ${patientName}.`;
+      return `Created amended consultation note for ${patientName}.`;
     }
     if (event.action === "follow_up_created" && patientName) {
       const matchedDate = event.summary.match(/on\s+(.+)\.$/i);
@@ -158,14 +193,6 @@ export default function AuditPage() {
       return changedFields ? `Updated ${patientName}: ${changedFields}.` : `Updated ${patientName}.`;
     }
     return event.summary;
-  }
-
-  function getAuditMetaLine(event: (typeof auditEvents)[number]) {
-    const patientName = getPatientName(event);
-    if (patientName) {
-      return `${event.entity_type.replaceAll("_", " ")} · ${patientName}`;
-    }
-    return event.entity_type.replaceAll("_", " ");
   }
 
   if (isRedirectingToLogin) {
@@ -189,65 +216,134 @@ export default function AuditPage() {
           <div className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-xl font-semibold text-slate-900">Recent system activity</h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">This feed tracks who changed what across patients, appointments, follow-ups, notes, and billing.</p>
+                <h2 className="text-xl font-semibold text-slate-900">Audit Log</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Click any row to inspect the full event details.</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <select value={entityFilter} onChange={(event) => setEntityFilter(event.target.value)} className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm text-slate-700">
-                  <option value="all">All entities</option>
-                  <option value="note">Notes</option>
-                  <option value="invoice">Invoices</option>
+                  <option value="all">All sections</option>
+                  <option value="note">Consultation</option>
+                  <option value="invoice">Billing</option>
                   <option value="catalog_item">Inventory</option>
                   <option value="patient">Patients</option>
                   <option value="follow_up">Follow-ups</option>
+                  <option value="user">Users</option>
+                  <option value="appointment">Appointments</option>
                 </select>
                 <select value={actionFilter} onChange={(event) => setActionFilter(event.target.value)} className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm text-slate-700">
                   <option value="all">All actions</option>
-                  <option value="consultation_note_shared">Note shared</option>
-                  <option value="consultation_note_finalized">Note finalized</option>
-                  <option value="consultation_note_amended">Note amended</option>
-                  <option value="invoice_shared">Invoice shared</option>
+                  <option value="consultation_note_created">Created</option>
+                  <option value="consultation_note_updated">Updated</option>
+                  <option value="consultation_note_finalized">Finalized</option>
+                  <option value="consultation_note_shared">Sent</option>
                   <option value="invoice_created">Invoice created</option>
-                  <option value="catalog_stock_adjusted">Stock adjusted</option>
+                  <option value="invoice_shared">Invoice sent</option>
+                  <option value="catalog_stock_adjusted">Stock changed</option>
                 </select>
                 <button type="button" onClick={() => void handleRefreshAudit()} className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50"><RefreshCw className="h-4 w-4" />Refresh</button>
                 <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">{visibleAuditEvents.length} event{visibleAuditEvents.length === 1 ? "" : "s"}</div>
               </div>
             </div>
             {auditError ? <p className="mt-4 text-sm font-medium text-rose-600">{auditError}</p> : null}
-            <div className="mt-5 divide-y divide-sky-100">
-              {visibleAuditEvents.length ? visibleAuditEvents.map((event) => (
-                <div key={event.id} className="py-3 first:pt-0 last:pb-0">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <p className="text-sm font-semibold text-slate-900">{getAuditSummary(event)}</p>
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                          {event.actor_name} · {event.action.replaceAll("_", " ")}
-                        </p>
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                        <span>{getAuditMetaLine(event)}</span>
-                      </div>
-                      {Object.keys(event.metadata || {}).length ? (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {event.metadata.sent_to ? <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] leading-5 text-slate-600">To {String(event.metadata.sent_to)}</span> : null}
-                          {event.metadata.sent_by_name ? <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] leading-5 text-slate-600">By {String(event.metadata.sent_by_name)}</span> : null}
-                          {event.metadata.completed_by_name ? <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] leading-5 text-slate-600">Completed by {String(event.metadata.completed_by_name)}</span> : null}
-                          {event.metadata.version_number ? <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] leading-5 text-slate-600">V{String(event.metadata.version_number)}</span> : null}
-                          {Array.isArray(event.metadata.stock_deductions) && event.metadata.stock_deductions.length ? <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] leading-5 text-slate-600">{event.metadata.stock_deductions.length} stock item{event.metadata.stock_deductions.length === 1 ? "" : "s"}</span> : null}
-                          {typeof event.metadata.delta === "number" ? <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] leading-5 text-slate-600">Delta {event.metadata.delta}</span> : null}
-                        </div>
-                      ) : null}
-                    </div>
-                    <p className="shrink-0 text-right text-xs text-slate-500">{new Date(event.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
-                  </div>
-                </div>
-              )) : <div className="rounded-[24px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-12 text-center text-sm text-slate-500">No audit events match these filters.</div>}
+            <div className="mt-5 overflow-hidden rounded-[22px] border border-sky-200">
+              {visibleAuditEvents.length ? (
+                <table className="w-full border-collapse text-sm">
+                  <thead className="bg-sky-50/80 text-slate-600">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold">User</th>
+                      <th className="px-4 py-3 text-left font-semibold">Patient</th>
+                      <th className="px-4 py-3 text-left font-semibold">Section</th>
+                      <th className="px-4 py-3 text-left font-semibold">Action</th>
+                      <th className="px-4 py-3 text-left font-semibold">Date</th>
+                      <th className="px-4 py-3 text-left font-semibold">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {visibleAuditEvents.map((event) => (
+                      <tr
+                        key={event.id}
+                        className="cursor-pointer border-t border-sky-100 first:border-t-0 transition hover:bg-sky-50/50"
+                        onClick={() => setSelectedEvent(event)}
+                      >
+                        <td className="px-4 py-3 text-slate-800">{event.actor_name || "System"}</td>
+                        <td className="px-4 py-3 text-slate-600">{getPatientName(event) || "—"}</td>
+                        <td className="px-4 py-3 text-slate-600">{getSectionLabel(event.entity_type)}</td>
+                        <td className="px-4 py-3 text-slate-600">{getActionLabel(event.action)}</td>
+                        <td className="px-4 py-3 text-slate-600">{formatDate(event.created_at)}</td>
+                        <td className="px-4 py-3 text-slate-600">{formatTime(event.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="rounded-[24px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-12 text-center text-sm text-slate-500">No audit events match these filters.</div>
+              )}
             </div>
           </div>
         )}
       </div>
+      {selectedEvent ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 px-4">
+          <button
+            type="button"
+            aria-label="Close audit details"
+            onClick={() => setSelectedEvent(null)}
+            className="absolute inset-0"
+          />
+          <div className="relative z-10 w-full max-w-2xl rounded-[28px] border border-sky-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900">{getAuditSummary(selectedEvent)}</h3>
+                <p className="mt-2 text-sm text-slate-500">Full audit event details</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedEvent(null)}
+                className="rounded-full border border-sky-200 p-2 text-slate-500 transition hover:text-slate-900"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">User</p>
+                <p className="mt-2 text-sm font-medium text-slate-900">{selectedEvent.actor_name || "System"}</p>
+              </div>
+              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Patient</p>
+                <p className="mt-2 text-sm font-medium text-slate-900">{getPatientName(selectedEvent) || "—"}</p>
+              </div>
+              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Section</p>
+                <p className="mt-2 text-sm font-medium text-slate-900">{getSectionLabel(selectedEvent.entity_type)}</p>
+              </div>
+              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Action</p>
+                <p className="mt-2 text-sm font-medium text-slate-900">{getActionLabel(selectedEvent.action)}</p>
+              </div>
+              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Date</p>
+                <p className="mt-2 text-sm font-medium text-slate-900">{formatDate(selectedEvent.created_at)}</p>
+              </div>
+              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Time</p>
+                <p className="mt-2 text-sm font-medium text-slate-900">{formatTime(selectedEvent.created_at)}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-sky-100 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Summary</p>
+              <p className="mt-2 text-sm leading-6 text-slate-700">{getAuditSummary(selectedEvent)}</p>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-sky-100 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Metadata</p>
+              <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words rounded-2xl bg-slate-50 p-4 text-xs leading-6 text-slate-700">{JSON.stringify(selectedEvent.metadata || {}, null, 2)}</pre>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <SettingsDrawer
         open={isSettingsOpen}
         settings={clinicSettings}

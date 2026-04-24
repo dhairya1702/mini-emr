@@ -260,6 +260,11 @@ class FakeRepo:
             "name": name.strip() or (identifier.split("@", 1)[0].title() if "@" in identifier else identifier),
             "password_hash": password_hash,
             "role": role,
+            "doctor_dob": None,
+            "doctor_address": "",
+            "doctor_signature_name": None,
+            "doctor_signature_content_type": None,
+            "doctor_signature_data_base64": None,
             "created_at": _now(),
         }
         self.users[user_id] = user
@@ -279,6 +284,14 @@ class FakeRepo:
             "identifier": user["identifier"],
             "name": user["name"],
             "role": user["role"],
+            "doctor_dob": user.get("doctor_dob"),
+            "doctor_address": user.get("doctor_address", ""),
+            "doctor_signature_name": user.get("doctor_signature_name"),
+            "doctor_signature_content_type": user.get("doctor_signature_content_type"),
+            "doctor_signature_data_base64": user.get("doctor_signature_data_base64"),
+            "doctor_signature_url": (
+                f"/users/{user_id}/signature/file" if user.get("doctor_signature_name") else None
+            ),
             "created_at": user["created_at"],
         }
 
@@ -290,11 +303,54 @@ class FakeRepo:
                 "identifier": user["identifier"],
                 "name": user["name"],
                 "role": user["role"],
+                "doctor_dob": user.get("doctor_dob"),
+                "doctor_address": user.get("doctor_address", ""),
+                "doctor_signature_name": user.get("doctor_signature_name"),
+                "doctor_signature_content_type": user.get("doctor_signature_content_type"),
+                "doctor_signature_url": (
+                    f"/users/{user['id']}/signature/file" if user.get("doctor_signature_name") else None
+                ),
                 "created_at": user["created_at"],
             }
             for user in self.users.values()
             if user["org_id"] == org_id
         ]
+
+    async def update_user_role(self, user_id: str, payload) -> dict:
+        user = self.users[user_id]
+        user["role"] = payload.role
+        return dict(user)
+
+    async def update_user_account(self, user_id: str, payload) -> dict:
+        user = self.users[user_id]
+        user["name"] = payload.name.strip()
+        user["doctor_dob"] = payload.doctor_dob.isoformat() if payload.doctor_dob else None
+        user["doctor_address"] = payload.doctor_address.strip()
+        return dict(user)
+
+    async def update_user_password_hash(self, user_id: str, password_hash: str) -> dict:
+        user = self.users[user_id]
+        user["password_hash"] = password_hash
+        return dict(user)
+
+    async def delete_user(self, user_id: str) -> None:
+        self.users.pop(user_id, None)
+
+    async def set_user_signature(self, user_id: str, *, filename: str, content_type: str, data_base64: str) -> dict:
+        user = self.users[user_id]
+        user["doctor_signature_name"] = filename
+        user["doctor_signature_content_type"] = content_type
+        user["doctor_signature_data_base64"] = data_base64
+        user["doctor_signature_url"] = f"/users/{user_id}/signature/file"
+        return dict(user)
+
+    async def clear_user_signature(self, user_id: str) -> dict:
+        user = self.users[user_id]
+        user["doctor_signature_name"] = None
+        user["doctor_signature_content_type"] = None
+        user["doctor_signature_data_base64"] = None
+        user["doctor_signature_url"] = None
+        return dict(user)
 
     async def create_patient(self, org_id: str, payload) -> dict:
         patient_id = str(uuid4())

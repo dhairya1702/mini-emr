@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AddPatientModal } from "@/components/add-patient-modal";
 import { AppHeader } from "@/components/app-header";
@@ -13,6 +13,66 @@ import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { Patient, PatientStatus, PatientTimelineEvent } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
+const queueOrderStorageKey = "clinic_queue_order_v1";
+
+type QueueOrder = Record<PatientStatus, string[]>;
+
+function createEmptyQueueOrder(): QueueOrder {
+  return {
+    waiting: [],
+    consultation: [],
+    done: [],
+  };
+}
+
+function loadQueueOrder(): QueueOrder {
+  if (typeof window === "undefined") {
+    return createEmptyQueueOrder();
+  }
+
+  try {
+    const raw = window.localStorage.getItem(queueOrderStorageKey);
+    if (!raw) {
+      return createEmptyQueueOrder();
+    }
+    const parsed = JSON.parse(raw) as Partial<Record<PatientStatus, unknown>>;
+    return {
+      waiting: Array.isArray(parsed.waiting) ? parsed.waiting.map(String) : [],
+      consultation: Array.isArray(parsed.consultation) ? parsed.consultation.map(String) : [],
+      done: Array.isArray(parsed.done) ? parsed.done.map(String) : [],
+    };
+  } catch {
+    return createEmptyQueueOrder();
+  }
+}
+
+function getOrderedPatientsForStatus(
+  patients: Patient[],
+  status: PatientStatus,
+  orderedIds: string[],
+) {
+  const visiblePatients = patients.filter(
+    (patient) => patient.status === status && (status !== "done" || !patient.billed),
+  );
+  const positionById = new Map(orderedIds.map((id, index) => [id, index]));
+  const fallbackById = new Map(visiblePatients.map((patient, index) => [patient.id, index]));
+
+  return [...visiblePatients].sort((left, right) => {
+    const leftPosition = positionById.get(left.id);
+    const rightPosition = positionById.get(right.id);
+
+    if (leftPosition !== undefined && rightPosition !== undefined) {
+      return leftPosition - rightPosition;
+    }
+    if (leftPosition !== undefined) {
+      return -1;
+    }
+    if (rightPosition !== undefined) {
+      return 1;
+    }
+    return (fallbackById.get(left.id) ?? 0) - (fallbackById.get(right.id) ?? 0);
+  });
+}
 
 function createId() {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
@@ -27,6 +87,7 @@ export default function HomePage() {
   const [drawerMode, setDrawerMode] = useState<"details" | "consultation" | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [queueOrder, setQueueOrder] = useState<QueueOrder>(() => createEmptyQueueOrder());
   const loadPageData = useCallback(() => api.listPatients(), []);
   const onPageData = useCallback((data: Patient[]) => {
     setPatients(data);
@@ -51,6 +112,8 @@ export default function HomePage() {
     handleCreateCatalogItem,
     handleAdjustCatalogStock,
     handleDeleteCatalogItem,
+    handleUpdateUserRole,
+    handleDeleteUser,
     handleCreateInvoice,
     handleGenerateLetter,
     handleSendLetter,
@@ -64,12 +127,66 @@ export default function HomePage() {
   });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
 
+  useEffect(() => {
+    setQueueOrder(loadQueueOrder());
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(queueOrderStorageKey, JSON.stringify(queueOrder));
+  }, [queueOrder]);
+
+  useEffect(() => {
+    if (!isAuthReady || isRedirectingToLogin) {
+      return;
+    }
+
+    let active = true;
+
+    async function refreshPatients() {
+      try {
+        const nextPatients = await api.listPatients();
+        if (active) {
+          setPatients(nextPatients);
+        }
+      } catch {
+        // Keep the current queue stable if a background refresh fails.
+      }
+    }
+
+    void refreshPatients();
+
+    const intervalId = window.setInterval(() => {
+      void refreshPatients();
+    }, 15000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshPatients();
+      }
+    };
+
+    const handleFocus = () => {
+      void refreshPatients();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [isAuthReady, isRedirectingToLogin]);
+
   const groupedPatients = useMemo(() => {
     return statusOrder.reduce<Record<PatientStatus, Patient[]>>(
       (accumulator, status) => {
-        accumulator[status] = patients.filter(
-          (patient) => patient.status === status && !(status === "done" && patient.billed),
-        );
+        accumulator[status] = getOrderedPatientsForStatus(patients, status, queueOrder[status]);
         return accumulator;
       },
       {
@@ -78,7 +195,7 @@ export default function HomePage() {
         done: [],
       },
     );
-  }, [patients]);
+  }, [patients, queueOrder]);
 
   async function handleCreatePatient(payload: {
     entryType: "queue" | "appointment";
@@ -210,6 +327,44 @@ export default function HomePage() {
     }
   }
 
+  async function handleRemoveFromQueue(patient: Patient) {
+    const previousPatients = patients;
+    const previousSelectedPatient = selectedPatient;
+    const removedPatient = { ...patient, status: "done" as PatientStatus, billed: true };
+
+    setPatients((current) =>
+      current.map((entry) =>
+        entry.id === patient.id ? removedPatient : entry,
+      ),
+    );
+    if (selectedPatient?.id === patient.id) {
+      setSelectedPatient(removedPatient);
+    }
+
+    try {
+      const saved = await api.updatePatient(
+        patient.id,
+        {
+          status: "done",
+          billed: true,
+        } as Parameters<typeof api.updatePatient>[1],
+      );
+      setPatients((current) =>
+        current.map((entry) => (entry.id === patient.id ? saved : entry)),
+      );
+      if (selectedPatient?.id === patient.id) {
+        setSelectedPatient(saved);
+      }
+      setError("");
+    } catch (removeError) {
+      setPatients(previousPatients);
+      if (previousSelectedPatient?.id === patient.id) {
+        setSelectedPatient(previousSelectedPatient);
+      }
+      setError(removeError instanceof Error ? removeError.message : "Failed to remove patient from queue.");
+    }
+  }
+
   async function handleUpdatePatient(
     patientId: string,
     payload: {
@@ -314,6 +469,7 @@ export default function HomePage() {
             patients={groupedPatients.waiting}
             onOpen={handleOpenPatient}
             onAdvance={handleAdvancePatient}
+            onRemoveFromQueue={handleRemoveFromQueue}
             canAdvance={() => currentUser?.role === "admin"}
           />
           <PatientColumn
@@ -322,6 +478,7 @@ export default function HomePage() {
             patients={groupedPatients.consultation}
             onOpen={handleOpenPatient}
             onAdvance={handleAdvancePatient}
+            onRemoveFromQueue={handleRemoveFromQueue}
             canAdvance={() => currentUser?.role === "admin"}
           />
           <PatientColumn
@@ -330,6 +487,7 @@ export default function HomePage() {
             patients={groupedPatients.done}
             onOpen={handleOpenPatient}
             onAdvance={handleAdvancePatient}
+            onRemoveFromQueue={handleRemoveFromQueue}
           />
         </div>
       </div>
@@ -355,6 +513,8 @@ export default function HomePage() {
         onSaveClinic={handleSaveClinicSettings}
         onClinicSettingsChange={applyClinicSettings}
         onAddUser={handleAddStaffUser}
+        onUpdateUserRole={handleUpdateUserRole}
+        onDeleteUser={handleDeleteUser}
         onCreateCatalogItem={handleCreateCatalogItem}
         onAdjustCatalogStock={handleAdjustCatalogStock}
         onDeleteCatalogItem={handleDeleteCatalogItem}

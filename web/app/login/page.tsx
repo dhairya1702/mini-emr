@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, ShieldPlus, Stethoscope } from "lucide-react";
 
+import { PasswordInput } from "@/components/password-input";
 import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
 import { api } from "@/lib/api";
 
@@ -141,8 +142,8 @@ export default function LoginPage() {
         if (!identifier.trim()) {
           throw new Error("Username, email, or phone number is required.");
         }
-        if (password.length < 8) {
-          throw new Error("Password must be at least 8 characters.");
+        if (password.length < 6) {
+          throw new Error("Password must be at least 6 characters.");
         }
         if (password !== confirmPassword) {
           throw new Error("Passwords do not match.");
@@ -239,16 +240,12 @@ export default function LoginPage() {
                     />
                   </label>
 
-                  <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">Password</span>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      placeholder="Minimum 8 characters"
-                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
+                  <PasswordInput
+                    label="Password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="Minimum 6 characters"
+                  />
                 </>
               ) : registerStep === 1 ? (
                 <>
@@ -338,29 +335,19 @@ export default function LoginPage() {
                     </p>
                   </label>
 
-                  <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">Password</span>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      placeholder="Minimum 8 characters"
-                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
+                  <PasswordInput
+                    label="Password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="Minimum 6 characters"
+                  />
 
-                  <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">
-                      Confirm password
-                    </span>
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(event) => setConfirmPassword(event.target.value)}
-                      placeholder="Re-enter password"
-                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
+                  <PasswordInput
+                    label="Confirm password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    placeholder="Re-enter password"
+                  />
                 </>
               )}
 

@@ -1,5 +1,6 @@
 import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
 import {
+  AccountUpdatePayload,
   AuditEvent,
   Appointment,
   AppointmentCheckInPayload,
@@ -32,7 +33,9 @@ import {
   PatientVisit,
   PatientTimelineEvent,
   PatientStatus,
+  PasswordUpdatePayload,
   RegisterPayload,
+  UserRoleUpdatePayload,
   SendInvoicePayload,
   SendLetterPayload,
   SendNotePayload,
@@ -142,14 +145,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
     try {
       const parsed = JSON.parse(raw) as {
-        detail?: string | Array<{ msg?: string }> | { message?: string };
+        detail?: string | Array<{ msg?: string; type?: string; loc?: Array<string | number> }> | { message?: string };
       };
       if (typeof parsed.detail === "string") {
         message = parsed.detail;
       } else if (parsed.detail && typeof parsed.detail === "object" && "message" in parsed.detail) {
         message = parsed.detail.message || message;
       } else if (Array.isArray(parsed.detail) && parsed.detail[0]?.msg) {
-        message = parsed.detail[0].msg as string;
+        const firstError = parsed.detail[0];
+        const fieldName = String(firstError.loc?.[firstError.loc.length - 1] || "");
+        if (
+          firstError.type === "string_too_short" &&
+          ["password", "current_password", "new_password"].includes(fieldName)
+        ) {
+          message = "Password must be at least 6 characters.";
+        } else {
+          message = firstError.msg as string;
+        }
       } else if (raw) {
         message = raw;
       }
@@ -280,7 +292,48 @@ export const api = {
       method: "POST",
     }),
   getCurrentUser: () => request<AuthUser>("/auth/me"),
+  updateMyAccount: (payload: AccountUpdatePayload) =>
+    request<AuthUser>("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  updateMyPassword: (payload: PasswordUpdatePayload) =>
+    request<void>("/auth/me/password", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  uploadMySignature: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return requestForm<AuthUser>("/auth/me/signature", formData, {
+      method: "POST",
+    });
+  },
+  removeMySignature: () =>
+    request<AuthUser>("/auth/me/signature", {
+      method: "DELETE",
+    }),
   listUsers: () => request<AuthUser[]>("/users"),
+  deleteUser: (userId: string) =>
+    request<void>(`/users/${userId}`, {
+      method: "DELETE",
+    }),
+  updateUserRole: (userId: string, payload: UserRoleUpdatePayload) =>
+    request<AuthUser>(`/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  uploadUserSignature: (userId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return requestForm<AuthUser>(`/users/${userId}/signature`, formData, {
+      method: "POST",
+    });
+  },
+  removeUserSignature: (userId: string) =>
+    request<AuthUser>(`/users/${userId}/signature`, {
+      method: "DELETE",
+    }),
   listAuditEvents: (params?: { limit?: number }) =>
     request<AuditEvent[]>(withQuery("/audit-events", params ?? {})),
   createStaffUser: (payload: StaffUserCreatePayload) =>

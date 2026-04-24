@@ -29,7 +29,16 @@ async def generate_note_workflow(
 ) -> GenerateNoteResponse:
     enforce_rate_limit("note_generation", str(current_user.id))
     clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
-    clinic_context = build_clinic_context(clinic_settings)
+    doctor_profile = await repo.get_user(str(current_user.id))
+    clinic_context = build_clinic_context(
+        {
+            **clinic_settings,
+            "doctor_name": str(doctor_profile.get("name") or clinic_settings.get("doctor_name") or "").strip(),
+            "doctor_signature_name": doctor_profile.get("doctor_signature_name"),
+            "doctor_signature_content_type": doctor_profile.get("doctor_signature_content_type"),
+            "doctor_signature_data_base64": doctor_profile.get("doctor_signature_data_base64"),
+        }
+    )
     patient = None
     if payload.patient_id:
         patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
@@ -78,7 +87,7 @@ async def generate_note_workflow(
                     entity_type="note",
                     entity_id=str(note["id"]),
                     action="consultation_note_amended",
-                    summary=f"Created amended draft note v{note.get('version_number', 1)} for {patient_name}.",
+                    summary=f"Created amended draft consultation note for {patient_name}.",
                     metadata={
                         "patient_id": str(payload.patient_id),
                         "patient_name": patient_name,
@@ -99,7 +108,7 @@ async def generate_note_workflow(
                 entity_type="note",
                 entity_id=str(note["id"]),
                 action="consultation_note_created",
-                summary=f"Generated draft consultation note for {patient_name}.",
+                summary=f"Generated consultation note draft for {patient_name}.",
                 metadata={
                     "patient_id": str(payload.patient_id),
                     "patient_name": patient_name,
@@ -123,7 +132,16 @@ async def generate_letter_content(
     content: str,
 ) -> str:
     clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
-    clinic_context = build_clinic_context(clinic_settings)
+    doctor_profile = await repo.get_user(str(current_user.id))
+    clinic_context = build_clinic_context(
+        {
+            **clinic_settings,
+            "doctor_name": str(doctor_profile.get("name") or clinic_settings.get("doctor_name") or "").strip(),
+            "doctor_signature_name": doctor_profile.get("doctor_signature_name"),
+            "doctor_signature_content_type": doctor_profile.get("doctor_signature_content_type"),
+            "doctor_signature_data_base64": doctor_profile.get("doctor_signature_data_base64"),
+        }
+    )
     return await generate_clinic_letter(
         repo,
         str(current_user.org_id),
@@ -146,6 +164,14 @@ async def send_letter_workflow(
     if "@" not in normalized_email:
         raise HTTPException(status_code=400, detail="Enter a valid recipient email.")
     clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    doctor_profile = await repo.get_user(str(current_user.id))
+    clinic_settings = {
+        **clinic_settings,
+        "doctor_name": str(doctor_profile.get("name") or clinic_settings.get("doctor_name") or "").strip(),
+        "doctor_signature_name": doctor_profile.get("doctor_signature_name"),
+        "doctor_signature_content_type": doctor_profile.get("doctor_signature_content_type"),
+        "doctor_signature_data_base64": doctor_profile.get("doctor_signature_data_base64"),
+    }
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
     generated_on = datetime.now().strftime("%b %d, %Y")
     pdf_bytes = build_letter_pdf(
@@ -175,13 +201,15 @@ async def finalize_note_workflow(
     payload: FinalizeNoteRequest,
 ) -> NoteOut:
     note = await repo.finalize_note(str(current_user.org_id), str(payload.note_id))
+    patient = await repo.get_patient(str(current_user.org_id), str(note["patient_id"]))
+    patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
     await write_audit_event(
         repo,
         current_user,
         entity_type="note",
         entity_id=str(payload.note_id),
         action="consultation_note_finalized",
-        summary=f"Finalized consultation note v{note.get('version_number', 1)}.",
+        summary=f"Finalized consultation note for {patient_name}.",
         metadata={
             "patient_id": str(note["patient_id"]),
             "status": note.get("status"),
@@ -206,6 +234,14 @@ async def send_note_workflow(
         raise HTTPException(status_code=400, detail="Note does not belong to that patient.")
     patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
     clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    doctor_profile = await repo.get_user(str(current_user.id))
+    clinic_settings = {
+        **clinic_settings,
+        "doctor_name": str(doctor_profile.get("name") or clinic_settings.get("doctor_name") or "").strip(),
+        "doctor_signature_name": doctor_profile.get("doctor_signature_name"),
+        "doctor_signature_content_type": doctor_profile.get("doctor_signature_content_type"),
+        "doctor_signature_data_base64": doctor_profile.get("doctor_signature_data_base64"),
+    }
     finalized_note = note if note.get("status") in {"final", "sent"} else await repo.finalize_note(
         str(current_user.org_id),
         str(payload.note_id),
@@ -249,7 +285,7 @@ async def send_note_workflow(
         entity_type="note",
         entity_id=str(payload.note_id),
         action="consultation_note_shared",
-        summary=f"Shared consultation note v{sent_note.get('version_number', 1)} with {recipient_email}.",
+        summary=f"Shared consultation note with {recipient_email}.",
         metadata={
             "patient_id": str(payload.patient_id),
             "recipient": recipient_email,

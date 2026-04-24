@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
-from app.auth import get_current_user
+from app.auth import get_current_user, require_admin
 from app.db import SupabaseRepository, get_repository
 from app.schemas import ClinicSettingsOut, ClinicSettingsUpdate, UserOut
 
@@ -31,6 +31,7 @@ def _serialize_clinic_settings(settings_row: dict) -> ClinicSettingsOut:
     row = {**defaults, **{key: value for key, value in dict(settings_row).items() if value is not None}}
     has_template = bool(row.get("document_template_name") and settings_row.get("document_template_data_base64"))
     row["document_template_url"] = "/settings/clinic/document-template/file" if has_template else None
+    row["doctor_name"] = row.get("doctor_name") or ""
     row["email_configured"] = bool(
         str(settings_row.get("sender_email") or "").strip()
         and str(settings_row.get("sender_email_app_password") or "").strip()
@@ -63,6 +64,7 @@ async def get_clinic_settings(
                 str(current_user.org_id),
                 ClinicSettingsUpdate(),
             )
+        settings_row["doctor_name"] = current_user.name or str(settings_row.get("doctor_name") or "")
         return _serialize_clinic_settings(settings_row)
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -72,10 +74,14 @@ async def get_clinic_settings(
 async def update_clinic_settings(
     payload: ClinicSettingsUpdate,
     repo: SupabaseRepository = Depends(get_repository),
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin),
 ) -> ClinicSettingsOut:
     try:
-        saved = await repo.upsert_clinic_settings(str(current_user.org_id), payload)
+        saved = await repo.upsert_clinic_settings(
+            str(current_user.org_id),
+            payload.model_copy(update={"doctor_name": None}),
+        )
+        saved["doctor_name"] = current_user.name or str(saved.get("doctor_name") or "")
         return _serialize_clinic_settings(saved)
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -85,7 +91,7 @@ async def update_clinic_settings(
 async def upload_clinic_template(
     file: UploadFile = File(...),
     repo: SupabaseRepository = Depends(get_repository),
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin),
 ) -> ClinicSettingsOut:
     content_type = _resolve_template_content_type(file)
     raw_bytes = await file.read()
@@ -101,6 +107,7 @@ async def upload_clinic_template(
             content_type=content_type,
             data_base64=b64encode(raw_bytes).decode("ascii"),
         )
+        saved["doctor_name"] = current_user.name or str(saved.get("doctor_name") or "")
         return _serialize_clinic_settings(saved)
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -133,10 +140,11 @@ async def download_clinic_template(
 @router.delete("/settings/clinic/document-template", response_model=ClinicSettingsOut)
 async def delete_clinic_template(
     repo: SupabaseRepository = Depends(get_repository),
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin),
 ) -> ClinicSettingsOut:
     try:
         saved = await repo.clear_clinic_document_template(str(current_user.org_id))
+        saved["doctor_name"] = current_user.name or str(saved.get("doctor_name") or "")
         return _serialize_clinic_settings(saved)
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc

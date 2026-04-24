@@ -260,3 +260,81 @@ def test_send_letter_emails_generated_content(client, monkeypatch):
     assert response.status_code == 200
     assert sent_messages
     assert sent_messages[0]["recipient"] == "patient@example.com"
+
+
+def test_user_signature_can_be_uploaded_and_removed(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="profile@clinic.com", clinic_name="Profile Clinic")
+    headers = auth_headers(session["token"])
+
+    created = test_client.post(
+        "/users/staff",
+        headers=headers,
+        json={
+            "identifier": "signature-user@clinic.com",
+            "password": "password123",
+        },
+    )
+    assert created.status_code == 201
+    user_id = created.json()["id"]
+
+    signature = test_client.post(
+        f"/users/{user_id}/signature",
+        headers=headers,
+        files={"file": ("signature.png", b"\x89PNG\r\n\x1a\nfake", "image/png")},
+    )
+    assert signature.status_code == 200
+    signature_body = signature.json()
+    assert signature_body["doctor_signature_name"] == "signature.png"
+    assert signature_body["doctor_signature_url"] == f"/users/{user_id}/signature/file"
+
+    removed = test_client.delete(f"/users/{user_id}/signature", headers=headers)
+    assert removed.status_code == 200
+    assert removed.json()["doctor_signature_name"] is None
+
+
+def test_admin_can_change_user_role(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="role-admin@clinic.com", clinic_name="Role Clinic")
+    headers = auth_headers(session["token"])
+
+    created = test_client.post(
+        "/users/staff",
+        headers=headers,
+        json={"identifier": "staff-role@clinic.com", "password": "password123"},
+    )
+    assert created.status_code == 201
+    user_id = created.json()["id"]
+
+    updated = test_client.patch(
+        f"/users/{user_id}",
+        headers=headers,
+        json={"role": "admin"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["role"] == "admin"
+
+
+def test_admin_can_remove_user_but_not_self(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="remove-admin@clinic.com", clinic_name="Remove Clinic")
+    headers = auth_headers(session["token"])
+
+    created = test_client.post(
+        "/users/staff",
+        headers=headers,
+        json={"identifier": "remove-staff@clinic.com", "password": "password123"},
+    )
+    assert created.status_code == 201
+    user_id = created.json()["id"]
+
+    removed = test_client.delete(f"/users/{user_id}", headers=headers)
+    assert removed.status_code == 204
+
+    users = test_client.get("/users", headers=headers)
+    assert users.status_code == 200
+    assert all(user["id"] != user_id for user in users.json())
+
+    self_remove = test_client.delete(f"/users/{session['user']['id']}", headers=headers)
+    assert self_remove.status_code == 400
+    assert self_remove.json()["detail"] == "You cannot remove your own account."

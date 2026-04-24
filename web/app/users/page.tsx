@@ -43,6 +43,8 @@ export default function UsersPage() {
     handleCreateCatalogItem,
     handleAdjustCatalogStock,
     handleDeleteCatalogItem,
+    handleUpdateUserRole,
+    handleDeleteUser,
     handleCreateInvoice,
     handleGenerateLetter,
     handleSendLetter,
@@ -77,8 +79,8 @@ export default function UsersPage() {
       setUserError("Email or phone number is required.");
       return;
     }
-    if (userForm.password.length < 8) {
-      setUserError("Password must be at least 8 characters.");
+    if (userForm.password.length < 6) {
+      setUserError("Password must be at least 6 characters.");
       return;
     }
     setIsAddingUser(true);
@@ -127,6 +129,8 @@ export default function UsersPage() {
           }}
           onSubmit={handleAddUser}
           onUserFormChange={(patch) => setUserForm((current) => ({ ...current, ...patch }))}
+          onUpdateUserRole={handleUpdateUserRole}
+          onDeleteUser={handleDeleteUser}
         />
       </div>
       <SettingsDrawer
@@ -144,6 +148,8 @@ export default function UsersPage() {
         onSaveClinic={handleSaveClinicSettings}
         onClinicSettingsChange={applyClinicSettings}
         onAddUser={handleAddStaffUser}
+        onUpdateUserRole={handleUpdateUserRole}
+        onDeleteUser={handleDeleteUser}
         onCreateCatalogItem={handleCreateCatalogItem}
         onAdjustCatalogStock={handleAdjustCatalogStock}
         onDeleteCatalogItem={handleDeleteCatalogItem}

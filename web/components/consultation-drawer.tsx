@@ -1,9 +1,10 @@
 "use client";
 
-import { Fragment, FormEvent, useEffect, useState } from "react";
+import { Fragment, FormEvent, useEffect, useMemo, useState } from "react";
 import { CalendarPlus2, Eye, FileText, Mail, Sparkles, X } from "lucide-react";
 
-import { EyeExamEntry, Patient, TestScoreEntry } from "@/lib/types";
+import { CatalogItem, EyeExamEntry, Patient, TestScoreEntry } from "@/lib/types";
+import { api } from "@/lib/api";
 
 function createId() {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
@@ -60,6 +61,61 @@ function createEmptyForm() {
   };
 }
 
+type ConsultationWorkspaceSnapshot = {
+  form: ReturnType<typeof createEmptyForm>;
+  openSections: {
+    vitals: boolean;
+    testScores: boolean;
+    eyeExam: boolean;
+  };
+  selectedMedicineIds: string[];
+  medicineSearch: string;
+  currentNoteId: string;
+  noteStatus: "draft" | "final" | "sent" | "";
+  isSent: boolean;
+  recipientEmail: string;
+  hasGeneratedNote: boolean;
+  isFollowUpOpen: boolean;
+};
+
+function workspaceKey(patientId: string) {
+  return `consultation-workspace:${patientId}`;
+}
+
+function readWorkspace(patientId: string): ConsultationWorkspaceSnapshot | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const raw = window.localStorage.getItem(workspaceKey(patientId));
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as ConsultationWorkspaceSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+function writeWorkspace(patientId: string, snapshot: ConsultationWorkspaceSnapshot) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(workspaceKey(patientId), JSON.stringify(snapshot));
+}
+
+function clearWorkspace(patientId: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.removeItem(workspaceKey(patientId));
+}
+
+function formatMedicineLabel(item: CatalogItem) {
+  const unit = item.unit.trim();
+  return unit ? `${item.name} (${unit})` : item.name;
+}
+
 export function ConsultationDrawer({
   patient,
   onClose,
@@ -74,6 +130,9 @@ export function ConsultationDrawer({
     testScores: false,
     eyeExam: false,
   });
+  const [medicineItems, setMedicineItems] = useState<CatalogItem[]>([]);
+  const [medicineSearch, setMedicineSearch] = useState("");
+  const [selectedMedicineIds, setSelectedMedicineIds] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -87,20 +146,121 @@ export function ConsultationDrawer({
   const [recipientEmail, setRecipientEmail] = useState("");
 
   useEffect(() => {
-    setForm(createEmptyForm());
-    setOpenSections({
-      vitals: false,
-      testScores: false,
-      eyeExam: false,
-    });
+    if (!patient) {
+      return;
+    }
+
+    let active = true;
+    const cachedWorkspace = readWorkspace(patient.id);
     setStatusMessage("");
-    setIsFollowUpOpen(false);
-    setHasGeneratedNote(false);
-    setCurrentNoteId("");
-    setNoteStatus("");
-    setIsSent(false);
-    setRecipientEmail(patient?.email ?? "");
-  }, [patient?.email, patient?.id]);
+    setIsGenerating(false);
+    setIsGeneratingPdf(false);
+    setIsCompleting(false);
+    setIsSending(false);
+    setMedicineSearch(cachedWorkspace?.medicineSearch ?? "");
+    setForm(cachedWorkspace?.form ?? createEmptyForm());
+    setOpenSections(
+      cachedWorkspace?.openSections ?? {
+        vitals: false,
+        testScores: false,
+        eyeExam: false,
+      },
+    );
+    setSelectedMedicineIds(cachedWorkspace?.selectedMedicineIds ?? []);
+    setIsFollowUpOpen(cachedWorkspace?.isFollowUpOpen ?? false);
+    setHasGeneratedNote(cachedWorkspace?.hasGeneratedNote ?? false);
+    setCurrentNoteId(cachedWorkspace?.currentNoteId ?? "");
+    setNoteStatus(cachedWorkspace?.noteStatus ?? "");
+    setIsSent(cachedWorkspace?.isSent ?? false);
+    setRecipientEmail(cachedWorkspace?.recipientEmail ?? patient.email ?? "");
+
+    void Promise.all([api.listCatalogItems(), api.listPatientNotes(patient.id)])
+      .then(([items, notes]) => {
+        if (!active) {
+          return;
+        }
+
+        setMedicineItems(items.filter((item) => item.item_type === "medicine"));
+
+        const latestNote = notes[0] ?? null;
+
+        if (latestNote && !cachedWorkspace?.currentNoteId) {
+          setCurrentNoteId(String(latestNote.id));
+          setNoteStatus(latestNote.status);
+          setHasGeneratedNote(Boolean((latestNote.content || "").trim()));
+          if (!cachedWorkspace?.form.generatedNote.trim()) {
+            setForm((current) => ({ ...current, generatedNote: latestNote.content || "" }));
+          }
+        }
+      })
+      .catch((error) => {
+        if (!active) {
+          return;
+        }
+        setMedicineItems([]);
+        setStatusMessage(error instanceof Error ? error.message : "Failed to load inventory medicines.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [patient]);
+
+  useEffect(() => {
+    if (!patient) {
+      return;
+    }
+
+    writeWorkspace(patient.id, {
+      form,
+      openSections,
+      selectedMedicineIds,
+      medicineSearch,
+      currentNoteId,
+      noteStatus,
+      isSent,
+      recipientEmail,
+      hasGeneratedNote,
+      isFollowUpOpen,
+    });
+  }, [
+    currentNoteId,
+    form,
+    hasGeneratedNote,
+    isFollowUpOpen,
+    isSent,
+    medicineSearch,
+    noteStatus,
+    openSections,
+    patient,
+    recipientEmail,
+    selectedMedicineIds,
+  ]);
+
+  const selectedMedicines = useMemo(
+    () => medicineItems.filter((item) => selectedMedicineIds.includes(item.id)),
+    [medicineItems, selectedMedicineIds],
+  );
+  const filteredMedicineItems = useMemo(() => {
+    const query = medicineSearch.trim().toLowerCase();
+    return medicineItems.filter((item) => {
+      if (!query) {
+        return true;
+      }
+      return item.name.toLowerCase().includes(query) || item.unit.toLowerCase().includes(query);
+    });
+  }, [medicineItems, medicineSearch]);
+  const medicationPlan = useMemo(() => {
+    const manualPlan = form.medications.trim();
+    const selectedPlan = selectedMedicines.length
+      ? [
+          "Prescribed medicines:",
+          ...selectedMedicines.map((item) => `- ${formatMedicineLabel(item)}`),
+        ].join("\n")
+      : "";
+
+    return [manualPlan, selectedPlan].filter(Boolean).join("\n\n");
+  }, [form.medications, selectedMedicines]);
 
   if (!patient) {
     return null;
@@ -113,12 +273,13 @@ export function ConsultationDrawer({
     setIsGenerating(true);
     setStatusMessage("");
     try {
+      const refreshingDraft = Boolean(currentNoteId && noteStatus === "draft");
       const generated = await onGenerate({
-        note_id: currentNoteId && noteStatus === "draft" ? currentNoteId : undefined,
+        note_id: refreshingDraft ? currentNoteId : undefined,
         patient_id: currentPatient.id,
         symptoms: form.symptoms,
         diagnosis: form.diagnosis,
-        medications: form.medications,
+        medications: medicationPlan,
         notes: form.notes,
         blood_pressure_systolic: form.bloodPressureSystolic ? Number(form.bloodPressureSystolic) : null,
         blood_pressure_diastolic: form.bloodPressureDiastolic ? Number(form.bloodPressureDiastolic) : null,
@@ -137,11 +298,7 @@ export function ConsultationDrawer({
       setCurrentNoteId(generated.noteId || "");
       setNoteStatus(generated.status || "draft");
       setIsSent(false);
-      setStatusMessage(
-        currentNoteId && noteStatus === "draft"
-          ? "Draft note refreshed."
-          : "Draft SOAP note generated.",
-      );
+      setStatusMessage(refreshingDraft ? "Draft note refreshed." : "Draft SOAP note generated.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to generate SOAP note.");
     } finally {
@@ -177,6 +334,7 @@ export function ConsultationDrawer({
       setNoteStatus("sent");
       setIsSent(true);
       setStatusMessage(message);
+      clearWorkspace(currentPatient.id);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to send email.");
     } finally {
@@ -235,6 +393,7 @@ export function ConsultationDrawer({
             }
           : undefined;
       await onDone(currentPatient, followUp);
+      clearWorkspace(currentPatient.id);
       onClose();
     } finally {
       setIsCompleting(false);
@@ -269,6 +428,12 @@ export function ConsultationDrawer({
       ...current,
       eyeExam: current.eyeExam.map((entry) => (entry.eye === eye ? { ...entry, ...patch } : entry)),
     }));
+  }
+
+  function toggleMedicine(itemId: string) {
+    setSelectedMedicineIds((current) =>
+      current.includes(itemId) ? current.filter((selected) => selected !== itemId) : [...current, itemId],
+    );
   }
 
   function toggleSection(section: keyof typeof openSections) {
@@ -315,7 +480,7 @@ export function ConsultationDrawer({
           : null;
 
   return (
-    <aside className="fixed inset-y-0 right-0 z-30 w-full max-w-2xl border-l-2 border-sky-300 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.2)] sm:p-6">
+    <aside className="fixed inset-y-0 right-0 z-30 w-full max-w-2xl border-l-2 border-sky-300 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.2)] sm:max-w-4xl lg:max-w-6xl xl:max-w-[94vw] sm:p-6">
       <div className="flex h-full flex-col">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
@@ -377,7 +542,79 @@ export function ConsultationDrawer({
               className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
               placeholder="Prescriptions, dosage, duration"
             />
+            <p className="mt-2 text-xs text-slate-500">
+              Inventory picks are appended when you generate the note, so the same medicines can reappear in billing.
+            </p>
           </label>
+
+          <div className="rounded-[28px] border border-emerald-200 bg-emerald-50/50 p-4">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-900">Medicine Inventory</p>
+                <p className="mt-1 text-xs text-slate-500">Search the catalog and add medicines to the consultation plan.</p>
+              </div>
+              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-medium text-emerald-700">
+                {selectedMedicines.length} selected
+              </span>
+            </div>
+            <input
+              value={medicineSearch}
+              onChange={(event) => setMedicineSearch(event.target.value)}
+              placeholder="Search medicines by name or unit"
+              className="w-full rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
+            />
+            {selectedMedicines.length ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {selectedMedicines.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => toggleMedicine(item.id)}
+                    className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-emerald-50"
+                  >
+                    {formatMedicineLabel(item)}
+                    <X className="h-3 w-3" />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
+              {filteredMedicineItems.length ? (
+                filteredMedicineItems.slice(0, 12).map((item) => {
+                  const active = selectedMedicineIds.includes(item.id);
+                  const outOfStock = item.track_inventory && item.stock_quantity <= 0;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => toggleMedicine(item.id)}
+                      disabled={outOfStock}
+                      className={`flex w-full items-center justify-between gap-3 rounded-[22px] border px-4 py-3 text-left transition ${
+                        active
+                          ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                          : "border-emerald-100 bg-white text-slate-700 hover:bg-emerald-50"
+                      } disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">{item.name}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {item.default_price.toFixed(2)}{item.unit ? ` · ${item.unit}` : ""}
+                          {item.track_inventory ? ` · Stock ${item.stock_quantity}` : ""}
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-emerald-200 px-3 py-1 text-xs font-medium">
+                        {active ? "Selected" : outOfStock ? "Out of stock" : "Add"}
+                      </span>
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="rounded-[22px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">
+                  No medicines match this search.
+                </p>
+              )}
+            </div>
+          </div>
 
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">Clinical Notes</span>
@@ -662,13 +899,15 @@ export function ConsultationDrawer({
               ) : null}
               <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Recipient Email</span>
+                  <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+                    Recipient email
+                  </span>
                   <input
                     type="email"
                     value={recipientEmail}
                     onChange={(event) => setRecipientEmail(event.target.value)}
                     placeholder="patient@example.com"
-                    className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    className="w-full rounded-2xl border border-sky-100 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-400"
                   />
                 </label>
               </div>
