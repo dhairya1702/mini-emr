@@ -1,17 +1,26 @@
 from __future__ import annotations
 
 from test_app import auth_headers, client, register
+from app.services import billing_workflow
 
 
-def test_billing_finalize_marks_patient_and_deducts_stock_once(client):
+def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypatch):
     test_client, repo = client
     session = register(test_client, identifier="billing@clinic.com", clinic_name="Billing Clinic")
+    sent_messages: list[dict[str, object]] = []
+
+    async def fake_send_clinic_email_message(**kwargs):
+        sent_messages.append(kwargs)
+
+    monkeypatch.setattr(billing_workflow, "send_clinic_email_message", fake_send_clinic_email_message)
 
     patient = test_client.post(
         "/patients",
         json={
             "name": "Bill Patient",
             "phone": "5550102020",
+            "email": "bill@example.com",
+            "address": "12 Billing Street",
             "reason": "Consultation",
             "age": 40,
             "weight": 75,
@@ -64,7 +73,7 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client):
 
     first_send = test_client.post(
         "/send-invoice",
-        json={"invoice_id": invoice["id"], "recipient": patient["phone"]},
+        json={"invoice_id": invoice["id"], "recipient_email": patient["email"]},
         headers=auth_headers(session["token"]),
     )
     assert first_send.status_code == 200
@@ -73,10 +82,12 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client):
     assert repo.invoices[invoice["id"]]["sent_at"] is not None
     assert repo.invoices[invoice["id"]]["completed_at"] is not None
     assert repo.invoices[invoice["id"]]["completed_by"] == session["user"]["id"]
+    assert len(sent_messages) == 1
+    assert sent_messages[0]["recipient"] == patient["email"]
 
     second_send = test_client.post(
         "/send-invoice",
-        json={"invoice_id": invoice["id"], "recipient": patient["phone"]},
+        json={"invoice_id": invoice["id"], "recipient_email": patient["email"]},
         headers=auth_headers(session["token"]),
     )
     assert second_send.status_code == 200

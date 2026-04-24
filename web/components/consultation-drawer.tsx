@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, FormEvent, useEffect, useState } from "react";
-import { CalendarPlus2, Copy, Eye, FileText, Sparkles, X } from "lucide-react";
+import { CalendarPlus2, Eye, FileText, Mail, Sparkles, X } from "lucide-react";
 
 import { EyeExamEntry, Patient, TestScoreEntry } from "@/lib/types";
 
@@ -34,9 +34,8 @@ interface ConsultationDrawerProps {
     test_scores?: TestScoreEntry[];
     eye_exam?: EyeExamEntry[];
   }) => Promise<{ content: string; noteId?: string | null; status?: "draft" | "final" | "sent" | null }>;
-  onFinalize: (noteId: string) => Promise<{ status: "draft" | "final" | "sent"; snapshot_content?: string | null }>;
   onGeneratePdf: (payload: { note_id?: string; patient_id: string; content: string }) => Promise<Blob>;
-  onSend: (payload: { note_id: string; patient_id: string; phone: string }) => Promise<string>;
+  onSend: (payload: { note_id: string; patient_id: string; recipient_email: string }) => Promise<string>;
 }
 
 function createEmptyForm() {
@@ -66,7 +65,6 @@ export function ConsultationDrawer({
   onClose,
   onDone,
   onGenerate,
-  onFinalize,
   onGeneratePdf,
   onSend,
 }: ConsultationDrawerProps) {
@@ -86,7 +84,7 @@ export function ConsultationDrawer({
   const [currentNoteId, setCurrentNoteId] = useState("");
   const [noteStatus, setNoteStatus] = useState<"draft" | "final" | "sent" | "">("");
   const [isSent, setIsSent] = useState(false);
-  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState("");
 
   useEffect(() => {
     setForm(createEmptyForm());
@@ -101,7 +99,8 @@ export function ConsultationDrawer({
     setCurrentNoteId("");
     setNoteStatus("");
     setIsSent(false);
-  }, [patient?.id]);
+    setRecipientEmail(patient?.email ?? "");
+  }, [patient?.email, patient?.id]);
 
   if (!patient) {
     return null;
@@ -150,30 +149,6 @@ export function ConsultationDrawer({
     }
   }
 
-  async function handleFinalize() {
-    if (!currentNoteId) {
-      setStatusMessage("Generate a draft note before finalizing.");
-      return;
-    }
-    if (noteStatus === "final" || noteStatus === "sent") {
-      setStatusMessage(noteStatus === "sent" ? "This note has already been sent and locked." : "This note is already finalized.");
-      return;
-    }
-    setIsFinalizing(true);
-    try {
-      const finalized = await onFinalize(currentNoteId);
-      setNoteStatus(finalized.status);
-      if (finalized.snapshot_content) {
-        setForm((current) => ({ ...current, generatedNote: finalized.snapshot_content || current.generatedNote }));
-      }
-      setStatusMessage("Note finalized. The shared version is now fixed.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Failed to finalize note.");
-    } finally {
-      setIsFinalizing(false);
-    }
-  }
-
   async function handleSend() {
     if (!form.generatedNote.trim()) {
       setStatusMessage("Generate a note before sending.");
@@ -183,12 +158,12 @@ export function ConsultationDrawer({
       setStatusMessage("Generate and save the note before sending it.");
       return;
     }
-    if (noteStatus !== "final" && noteStatus !== "sent") {
-      setStatusMessage("Finalize the note before sending it.");
+    if (!recipientEmail.trim()) {
+      setStatusMessage("Enter a recipient email before sending.");
       return;
     }
     if (isSent) {
-      setStatusMessage("This saved note has already been sent and is locked.");
+      setStatusMessage("This saved note has already been emailed and is locked.");
       return;
     }
 
@@ -197,13 +172,13 @@ export function ConsultationDrawer({
       const message = await onSend({
         note_id: currentNoteId,
         patient_id: currentPatient.id,
-        phone: currentPatient.phone,
+        recipient_email: recipientEmail.trim(),
       });
       setNoteStatus("sent");
       setIsSent(true);
       setStatusMessage(message);
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Failed to copy note.");
+      setStatusMessage(error instanceof Error ? error.message : "Failed to send email.");
     } finally {
       setIsSending(false);
     }
@@ -647,7 +622,7 @@ export function ConsultationDrawer({
             />
             <p className="mt-2 text-xs text-slate-500">
               Saved notes are read-only. Generate again from the consultation fields if you need a different note.
-              {noteStatus === "final" ? " Finalizing freezes the version that can be sent." : ""}
+              {noteStatus === "draft" ? " Sending will lock the current saved version automatically." : ""}
               {isSent ? " This note has been sent and is locked." : ""}
             </p>
           </div>
@@ -685,6 +660,18 @@ export function ConsultationDrawer({
                   </div>
                 </div>
               ) : null}
+              <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Recipient Email</span>
+                  <input
+                    type="email"
+                    value={recipientEmail}
+                    onChange={(event) => setRecipientEmail(event.target.value)}
+                    placeholder="patient@example.com"
+                    className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  />
+                </label>
+              </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
               <button
                 type="button"
@@ -693,15 +680,6 @@ export function ConsultationDrawer({
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
               >
                 {isCompleting ? "Moving..." : "Done"}
-              </button>
-              <button
-                type="button"
-                disabled={isFinalizing || !currentNoteId || noteStatus === "final" || noteStatus === "sent"}
-                onClick={handleFinalize}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-              >
-                <FileText className="h-4 w-4" />
-                {isFinalizing ? "Finalizing..." : noteStatus === "final" || noteStatus === "sent" ? "Finalized" : "Finalize"}
               </button>
               <button
                 type="button"
@@ -722,12 +700,12 @@ export function ConsultationDrawer({
               </button>
               <button
                 type="button"
-                disabled={isSending || !currentNoteId || isSent || noteStatus !== "final"}
+                disabled={isSending || !currentNoteId || isSent || !recipientEmail.trim()}
                 onClick={handleSend}
                 className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
               >
-                <Copy className="h-4 w-4" />
-                {isSending ? "Locking..." : isSent ? "Sent and Locked" : "Copy for WhatsApp"}
+                <Mail className="h-4 w-4" />
+                {isSending ? "Sending..." : isSent ? "Sent and Locked" : "Send Email"}
               </button>
             </div>
             </div>

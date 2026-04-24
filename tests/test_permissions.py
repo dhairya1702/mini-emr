@@ -152,7 +152,7 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
 
     send_invoice = test_client.post(
         "/send-invoice",
-        json={"invoice_id": invoice["id"], "recipient": patient["phone"]},
+        json={"invoice_id": invoice["id"], "recipient_email": "patient@example.com"},
         headers=staff_headers,
     )
     assert send_invoice.status_code == 403
@@ -182,7 +182,7 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
 
     send_note = test_client.post(
         "/send-note",
-        json={"note_id": note["note_id"], "patient_id": patient["id"], "phone": patient["phone"]},
+        json={"note_id": note["note_id"], "patient_id": patient["id"], "recipient_email": "patient@example.com"},
         headers=staff_headers,
     )
     assert send_note.status_code == 403

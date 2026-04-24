@@ -25,6 +25,7 @@ from app.services.note_workflow import (
     finalize_note_workflow,
     generate_letter_content,
     generate_note_workflow,
+    send_letter_workflow,
     send_note_workflow,
 )
 from app.services.pdf_service import build_letter_pdf, build_note_pdf
@@ -95,11 +96,15 @@ async def send_note(
 @router.post("/send-letter", response_model=SendNoteResponse)
 async def send_letter(
     payload: SendLetterRequest,
-    _: UserOut = Depends(get_current_user),
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
 ) -> SendNoteResponse:
-    return SendNoteResponse(
-        success=True,
-        message=f"Letter copied or shared outside ClinicOS for {payload.recipient}.",
+    return await send_letter_workflow(
+        repo,
+        current_user,
+        recipient_email=payload.recipient_email,
+        subject=payload.subject,
+        content=payload.content,
     )
 
 

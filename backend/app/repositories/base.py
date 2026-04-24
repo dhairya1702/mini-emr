@@ -81,6 +81,8 @@ def visit_payload(payload: PatientCreate | PatientVisitCreate) -> dict[str, Any]
     return {
         "name": payload.name.strip(),
         "phone": normalize_phone_number(payload.phone),
+        "email": payload.email.strip().lower(),
+        "address": payload.address.strip(),
         "reason": payload.reason.strip(),
         "age": payload.age,
         "weight": payload.weight,

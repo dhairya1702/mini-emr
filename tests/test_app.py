@@ -186,12 +186,14 @@ class FakeRepo:
 
     async def create_clinic_settings(self, org_id: str, payload) -> dict:
         settings_id = str(uuid4())
+        values = payload.model_dump(exclude_unset=True, exclude={"email_configured"})
         row = {
             "id": settings_id,
             "org_id": org_id,
             "document_template_content_type": None,
             "document_template_data_base64": None,
-            **payload.model_dump(exclude_unset=True),
+            "sender_email_app_password": None,
+            **values,
             "updated_at": _now(),
         }
         self.clinic_settings[org_id] = row
@@ -202,11 +204,12 @@ class FakeRepo:
 
     async def upsert_clinic_settings(self, org_id: str, payload) -> dict:
         current = self.clinic_settings.get(org_id)
+        values = payload.model_dump(exclude_unset=True, exclude={"email_configured"})
         row = {
             "id": current["id"] if current else str(uuid4()),
             "org_id": org_id,
-            **(current or {"document_template_content_type": None, "document_template_data_base64": None}),
-            **payload.model_dump(exclude_unset=True),
+            **(current or {"document_template_content_type": None, "document_template_data_base64": None, "sender_email_app_password": None}),
+            **values,
             "updated_at": _now(),
         }
         self.clinic_settings[org_id] = row
@@ -301,6 +304,8 @@ class FakeRepo:
             "org_id": org_id,
             **payload.model_dump(),
             "phone": _normalize_phone(payload.phone),
+            "email": payload.email.strip().lower(),
+            "address": payload.address.strip(),
             "status": "waiting",
             "billed": False,
             "created_at": created_at,
@@ -318,6 +323,8 @@ class FakeRepo:
             "patient_id": patient_id,
             "name": payload.name,
             "phone": _normalize_phone(payload.phone),
+            "email": payload.email.strip().lower(),
+            "address": payload.address.strip(),
             "reason": payload.reason,
             "age": payload.age,
             "weight": payload.weight,
@@ -346,6 +353,8 @@ class FakeRepo:
             "org_id": org_id,
             **payload.model_dump(),
             "phone": _normalize_phone(payload.phone),
+            "email": payload.email.strip().lower(),
+            "address": payload.address.strip(),
             "status": "scheduled",
             "checked_in_patient_id": None,
             "checked_in_at": None,
@@ -400,6 +409,8 @@ class FakeRepo:
             patient.update({
                 "name": appointment["name"],
                 "phone": appointment["phone"],
+                "email": appointment["email"],
+                "address": appointment["address"],
                 "reason": appointment["reason"],
                 "age": appointment["age"],
                 "weight": appointment["weight"],
@@ -417,6 +428,8 @@ class FakeRepo:
                 "org_id": org_id,
                 "name": appointment["name"],
                 "phone": appointment["phone"],
+                "email": appointment["email"],
+                "address": appointment["address"],
                 "reason": appointment["reason"],
                 "age": appointment["age"],
                 "weight": appointment["weight"],
@@ -437,6 +450,8 @@ class FakeRepo:
                 {
                     "name": appointment["name"],
                     "phone": appointment["phone"],
+                    "email": appointment["email"],
+                    "address": appointment["address"],
                     "reason": appointment["reason"],
                     "age": appointment["age"],
                     "weight": appointment["weight"],
@@ -490,6 +505,8 @@ class FakeRepo:
             {
                 "name": payload.name,
                 "phone": _normalize_phone(payload.phone),
+                "email": payload.email.strip().lower(),
+                "address": payload.address.strip(),
                 "reason": payload.reason,
                 "age": payload.age,
                 "weight": payload.weight,

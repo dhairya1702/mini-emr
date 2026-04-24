@@ -32,6 +32,9 @@ export default function BillingPage() {
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
   const [isPreparingInvoicePdf, setIsPreparingInvoicePdf] = useState(false);
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
+  const [customItemLabel, setCustomItemLabel] = useState("");
+  const [customItemQuantity, setCustomItemQuantity] = useState("1");
+  const [customItemUnitPrice, setCustomItemUnitPrice] = useState("");
   const [historyPatientFilter, setHistoryPatientFilter] = useState("all");
   const [historyStatusFilter, setHistoryStatusFilter] = useState<PaymentStatus | "all">("all");
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
@@ -132,6 +135,43 @@ export default function BillingPage() {
     setSavedInvoice(null);
   }
 
+  function addCustomInvoiceItem() {
+    const label = customItemLabel.trim();
+    const quantity = Number(customItemQuantity);
+    const unitPrice = Number(customItemUnitPrice);
+
+    if (!label) {
+      setBillingError("Enter a label for the custom item.");
+      return;
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setBillingError("Custom item quantity must be greater than zero.");
+      return;
+    }
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      setBillingError("Custom item price must be zero or more.");
+      return;
+    }
+
+    setInvoiceItems((current) => [
+      ...current,
+      {
+        id: createId(),
+        catalog_item_id: null,
+        item_type: "service",
+        label,
+        quantity,
+        unit_price: unitPrice,
+      },
+    ]);
+    setCustomItemLabel("");
+    setCustomItemQuantity("1");
+    setCustomItemUnitPrice("");
+    setBillingStatus("");
+    setBillingError("");
+    setSavedInvoice(null);
+  }
+
   async function handleCreateBill() {
     if (!selectedBillingPatient) {
       setBillingError("Select a done patient to bill.");
@@ -193,6 +233,10 @@ export default function BillingPage() {
       setBillingError("Select a done patient to bill.");
       return;
     }
+    if (!selectedBillingPatient.email.trim()) {
+      setBillingError("This patient does not have an email address saved.");
+      return;
+    }
     if (!invoiceItems.length) {
       setBillingError("Add at least one service or medicine.");
       return;
@@ -217,7 +261,7 @@ export default function BillingPage() {
         setSavedInvoice(invoice);
         setInvoices((current) => [invoice, ...current.filter((entry) => entry.id !== invoice.id)]);
       }
-      const message = await handleSendInvoice({ invoice_id: invoice.id, recipient: selectedBillingPatient.phone });
+      const message = await handleSendInvoice({ invoice_id: invoice.id, recipient_email: selectedBillingPatient.email });
       setBillingStatus(message);
       setInvoices((current) =>
         current.map((entry) =>
@@ -261,6 +305,9 @@ export default function BillingPage() {
           isPreparingInvoicePdf={isPreparingInvoicePdf}
           isSendingInvoice={isSendingInvoice}
           savedInvoice={savedInvoice}
+          customItemLabel={customItemLabel}
+          customItemQuantity={customItemQuantity}
+          customItemUnitPrice={customItemUnitPrice}
           onSelectPatient={(patientId) => {
             setSelectedBillingPatientId(patientId);
             setInvoiceItems([]);
@@ -270,6 +317,10 @@ export default function BillingPage() {
             setAmountPaidInput("");
           }}
           onAddCatalogItem={addCatalogItemToInvoice}
+          onCustomItemLabelChange={setCustomItemLabel}
+          onCustomItemQuantityChange={setCustomItemQuantity}
+          onCustomItemUnitPriceChange={setCustomItemUnitPrice}
+          onAddCustomItem={addCustomInvoiceItem}
           onUpdateInvoiceItem={updateInvoiceItem}
           onRemoveInvoiceItem={removeInvoiceItem}
           onCreateBill={handleCreateBill}

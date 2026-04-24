@@ -31,8 +31,15 @@ interface SettingsDrawerBillingPanelProps {
   isPreparingInvoicePdf: boolean;
   isSendingInvoice: boolean;
   savedInvoice: Invoice | null;
+  customItemLabel: string;
+  customItemQuantity: string;
+  customItemUnitPrice: string;
   onSelectPatient: (patientId: string) => void;
   onAddCatalogItem: (item: CatalogItem) => void;
+  onCustomItemLabelChange: (value: string) => void;
+  onCustomItemQuantityChange: (value: string) => void;
+  onCustomItemUnitPriceChange: (value: string) => void;
+  onAddCustomItem: () => void | Promise<void>;
   onUpdateInvoiceItem: (itemId: string, patch: Partial<DraftInvoiceItem>) => void;
   onRemoveInvoiceItem: (itemId: string) => void;
   onCreateBill: () => void | Promise<void>;
@@ -60,8 +67,15 @@ export function SettingsDrawerBillingPanel({
   isPreparingInvoicePdf,
   isSendingInvoice,
   savedInvoice,
+  customItemLabel,
+  customItemQuantity,
+  customItemUnitPrice,
   onSelectPatient,
   onAddCatalogItem,
+  onCustomItemLabelChange,
+  onCustomItemQuantityChange,
+  onCustomItemUnitPriceChange,
+  onAddCustomItem,
   onUpdateInvoiceItem,
   onRemoveInvoiceItem,
   onCreateBill,
@@ -107,9 +121,6 @@ export function SettingsDrawerBillingPanel({
               <h3 className="text-base font-semibold text-slate-900">
                 {selectedBillingPatient ? `Billing for ${selectedBillingPatient.name}` : "Billing"}
               </h3>
-              <p className="mt-2 text-sm leading-7 text-slate-600">
-                Quick-add services and medicines from your inventory, then choose whether the invoice is paid, partial, or unpaid.
-              </p>
             </div>
             <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
               {paymentStatus.charAt(0).toUpperCase() + paymentStatus.slice(1)}
@@ -134,6 +145,44 @@ export function SettingsDrawerBillingPanel({
           </div>
 
           <div className="mt-5 grid gap-4 xl:grid-cols-2">
+            <div className="xl:col-span-2 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+                <label className="flex-1">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Item</span>
+                  <input
+                    value={customItemLabel}
+                    onChange={(event) => onCustomItemLabelChange(event.target.value)}
+                    placeholder="e.g. Procedure charge, dressing, emergency fee"
+                    className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                  />
+                </label>
+                <label>
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Qty</span>
+                  <input
+                    value={customItemQuantity}
+                    inputMode="decimal"
+                    onChange={(event) => onCustomItemQuantityChange(event.target.value)}
+                    className="w-24 rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                  />
+                </label>
+                <label>
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Price</span>
+                  <input
+                    value={customItemUnitPrice}
+                    inputMode="decimal"
+                    onChange={(event) => onCustomItemUnitPriceChange(event.target.value)}
+                    className="w-32 rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={onAddCustomItem}
+                  className="rounded-full bg-sky-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-sky-600"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
             <div>
               <p className="mb-3 text-sm font-semibold text-slate-800">Services</p>
               <div className="flex flex-wrap gap-2">
@@ -247,7 +296,7 @@ export function SettingsDrawerBillingPanel({
           {selectedBillingPatient ? (
             <div className="mt-4 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
               <p className="text-sm font-medium text-slate-700">Patient Recipient</p>
-              <p className="mt-2 text-sm text-slate-900">{selectedBillingPatient.phone}</p>
+              <p className="mt-2 text-sm text-slate-900">{selectedBillingPatient.email || "No patient email saved."}</p>
             </div>
           ) : null}
 
@@ -277,7 +326,7 @@ export function SettingsDrawerBillingPanel({
               disabled={isSendingInvoice || isSavingInvoice}
               className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
             >
-              {isSendingInvoice ? "Saving..." : "Mark Shared"}
+              {isSendingInvoice ? "Sending..." : "Send Email"}
             </button>
           </div>
         </div>

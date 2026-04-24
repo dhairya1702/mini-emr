@@ -85,6 +85,8 @@ export default function HomePage() {
     existingPatientId?: string;
     name: string;
     phone: string;
+    email: string;
+    address: string;
     reason: string;
     age: number | null;
     weight: number | null;
@@ -97,6 +99,8 @@ export default function HomePage() {
         await api.createAppointment({
           name: payload.name,
           phone: payload.phone,
+          email: payload.email,
+          address: payload.address,
           reason: payload.reason,
           age: payload.age,
           weight: payload.weight,
@@ -117,6 +121,8 @@ export default function HomePage() {
         const updated = await api.createPatientVisit(payload.existingPatientId, {
           name: payload.name,
           phone: payload.phone,
+          email: payload.email,
+          address: payload.address,
           reason: payload.reason,
           age: payload.age ?? 0,
           weight: payload.weight ?? 0,
@@ -140,6 +146,8 @@ export default function HomePage() {
       billed: false,
       name: payload.name,
       phone: payload.phone,
+      email: payload.email,
+      address: payload.address,
       reason: payload.reason,
       age: payload.age,
       weight: payload.weight,
@@ -152,6 +160,8 @@ export default function HomePage() {
       const created = await api.createPatient({
         name: payload.name,
         phone: payload.phone,
+        email: payload.email,
+        address: payload.address,
         reason: payload.reason,
         age: payload.age ?? 0,
         weight: payload.weight ?? 0,
@@ -205,6 +215,8 @@ export default function HomePage() {
     payload: {
       name: string;
       phone: string;
+      email: string;
+      address: string;
       reason: string;
       age: number;
       weight: number;
@@ -404,13 +416,12 @@ export default function HomePage() {
           const response = await api.generateNote(payload);
           return { content: response.content, noteId: response.note_id, status: response.status };
         }}
-        onFinalize={(noteId) => api.finalizeNote(noteId)}
         onGeneratePdf={(payload) => (
           payload.note_id ? api.generateSavedNotePdf(payload.note_id) : api.generateNotePdf(payload)
         )}
         onSend={async (payload) => {
           const response = await api.sendNote(payload);
-          return `${response.message} Share it with ${payload.phone} outside ClinicOS.`;
+          return response.message;
         }}
       />
     </main>

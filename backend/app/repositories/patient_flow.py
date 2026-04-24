@@ -106,6 +106,8 @@ class PatientFlowRepositoryMixin(BaseSupabaseRepository):
                     "org_id": org_id,
                     **payload.model_dump(),
                     "phone": normalize_phone_number(payload.phone),
+                    "email": payload.email.strip().lower(),
+                    "address": payload.address.strip(),
                     "scheduled_for": payload.scheduled_for.isoformat(),
                     "status": "scheduled",
                 }
@@ -244,6 +246,14 @@ class PatientFlowRepositoryMixin(BaseSupabaseRepository):
         update_payload = dict(payload)
         if "phone" in update_payload and update_payload["phone"] is not None:
             update_payload["phone"] = normalize_phone_number(update_payload["phone"])
+        if "email" in update_payload and update_payload["email"] is not None:
+            update_payload["email"] = str(update_payload["email"]).strip().lower()
+        if "address" in update_payload and update_payload["address"] is not None:
+            update_payload["address"] = str(update_payload["address"]).strip()
+        if "name" in update_payload and update_payload["name"] is not None:
+            update_payload["name"] = str(update_payload["name"]).strip()
+        if "reason" in update_payload and update_payload["reason"] is not None:
+            update_payload["reason"] = str(update_payload["reason"]).strip()
         return await asyncio.to_thread(
             lambda: self.client.table("patients")
             .update(update_payload)

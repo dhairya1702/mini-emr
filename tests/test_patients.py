@@ -4,11 +4,17 @@ import asyncio
 from types import SimpleNamespace
 
 from test_app import auth_headers, client, register
+from app.services import billing_workflow
 
 
-def test_patient_timeline_includes_notes_and_billing_events(client):
+def test_patient_timeline_includes_notes_and_billing_events(client, monkeypatch):
     test_client, repo = client
     session = register(test_client, identifier="timeline@clinic.com", clinic_name="Timeline Clinic")
+
+    async def fake_send_clinic_email_message(**_kwargs):
+        return None
+
+    monkeypatch.setattr(billing_workflow, "send_clinic_email_message", fake_send_clinic_email_message)
 
     patient = test_client.post(
         "/patients",
@@ -49,7 +55,7 @@ def test_patient_timeline_includes_notes_and_billing_events(client):
 
     test_client.post(
         "/send-invoice",
-        json={"invoice_id": invoice["id"], "recipient": patient["phone"]},
+        json={"invoice_id": invoice["id"], "recipient_email": "patient@example.com"},
         headers=auth_headers(session["token"]),
     )
 
@@ -119,6 +125,44 @@ def test_existing_patient_can_record_a_new_visit_and_refresh_latest_snapshot(cli
     assert audit_events.status_code == 200
     actions = [event["action"] for event in audit_events.json()]
     assert "patient_visit_recorded" in actions
+
+
+def test_patient_email_and_address_are_saved_and_updatable(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="patient-contact@clinic.com", clinic_name="Patient Contact Clinic")
+    headers = auth_headers(session["token"])
+
+    created = test_client.post(
+        "/patients",
+        json={
+            "name": "Contact Patient",
+            "phone": "5550109091",
+            "email": "Contact.Patient@Example.com",
+            "address": "12 Lake Road",
+            "reason": "Consultation",
+            "age": 28,
+            "weight": 60,
+            "height": 165,
+            "temperature": 98.4,
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201
+    patient = created.json()
+    assert patient["email"] == "contact.patient@example.com"
+    assert patient["address"] == "12 Lake Road"
+
+    updated = test_client.patch(
+        f"/patients/{patient['id']}",
+        json={
+            "email": "updated@example.com",
+            "address": "44 River Street",
+        },
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["email"] == "updated@example.com"
+    assert updated.json()["address"] == "44 River Street"
 
 
 def test_patient_lookup_returns_multiple_matches_for_same_phone(client):

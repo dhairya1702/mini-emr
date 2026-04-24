@@ -31,6 +31,11 @@ def _serialize_clinic_settings(settings_row: dict) -> ClinicSettingsOut:
     row = {**defaults, **{key: value for key, value in dict(settings_row).items() if value is not None}}
     has_template = bool(row.get("document_template_name") and settings_row.get("document_template_data_base64"))
     row["document_template_url"] = "/settings/clinic/document-template/file" if has_template else None
+    row["email_configured"] = bool(
+        str(settings_row.get("sender_email") or "").strip()
+        and str(settings_row.get("sender_email_app_password") or "").strip()
+    )
+    row.pop("sender_email_app_password", None)
     return ClinicSettingsOut(**row)
 
 

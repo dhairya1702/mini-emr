@@ -16,6 +16,8 @@ def _clinic_settings_defaults() -> dict[str, Any]:
         "clinic_address",
         "clinic_phone",
         "doctor_name",
+        "sender_name",
+        "sender_email",
         "custom_header",
         "custom_footer",
         "document_template_name",
@@ -35,6 +37,7 @@ def _hidden_clinic_template_defaults() -> dict[str, Any]:
     return {
         "document_template_content_type": None,
         "document_template_data_base64": None,
+        "sender_email_app_password": None,
     }
 
 
@@ -54,7 +57,7 @@ class AuthSettingsRepositoryMixin(BaseSupabaseRepository):
         values = {
             **_clinic_settings_defaults(),
             **_hidden_clinic_template_defaults(),
-            **payload.model_dump(exclude_unset=True),
+            **payload.model_dump(exclude_unset=True, exclude={"email_configured"}),
         }
         return await asyncio.to_thread(
             lambda: self.client.table("clinic_settings")
@@ -72,7 +75,7 @@ class AuthSettingsRepositoryMixin(BaseSupabaseRepository):
                 **_clinic_settings_defaults(),
                 **_hidden_clinic_template_defaults(),
                 **current,
-                **payload.model_dump(exclude_unset=True),
+                **payload.model_dump(exclude_unset=True, exclude={"email_configured"}),
                 "org_id": org_id,
                 "updated_at": timestamp,
             }

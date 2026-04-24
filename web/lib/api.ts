@@ -385,7 +385,7 @@ export const api = {
     patientId: string,
     payload: Pick<
       Patient,
-      "name" | "phone" | "reason" | "age" | "weight" | "height" | "temperature"
+      "name" | "phone" | "email" | "address" | "reason" | "age" | "weight" | "height" | "temperature"
     >,
   ) =>
     request<Patient>(`/patients/${patientId}`, {

@@ -17,6 +17,8 @@ NoteStatus = Literal["draft", "final", "sent"]
 class PatientCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     phone: str = Field(min_length=5, max_length=30)
+    email: str = Field(default="", max_length=200)
+    address: str = Field(default="", max_length=300)
     reason: str = Field(min_length=1, max_length=200)
     age: int = Field(ge=0, le=130)
     weight: float = Field(gt=0, le=500)
@@ -29,6 +31,8 @@ class PatientUpdate(BaseModel):
     billed: bool | None = None
     name: str | None = Field(default=None, min_length=1, max_length=120)
     phone: str | None = Field(default=None, min_length=5, max_length=30)
+    email: str | None = Field(default=None, max_length=200)
+    address: str | None = Field(default=None, max_length=300)
     reason: str | None = Field(default=None, min_length=1, max_length=200)
     age: int | None = Field(default=None, ge=0, le=130)
     weight: float | None = Field(default=None, gt=0, le=500)
@@ -40,6 +44,8 @@ class PatientOut(BaseModel):
     id: UUID
     name: str
     phone: str
+    email: str = ""
+    address: str = ""
     reason: str
     age: int | None = None
     weight: float | None = None
@@ -56,6 +62,8 @@ class PatientVisitOut(BaseModel):
     patient_id: UUID
     name: str
     phone: str
+    email: str = ""
+    address: str = ""
     reason: str
     age: int | None = None
     weight: float | None = None
@@ -72,6 +80,8 @@ class PatientVisitOut(BaseModel):
 class AppointmentCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     phone: str = Field(min_length=5, max_length=30)
+    email: str = Field(default="", max_length=200)
+    address: str = Field(default="", max_length=300)
     reason: str = Field(min_length=1, max_length=200)
     age: int | None = Field(default=None, ge=0, le=130)
     weight: float | None = Field(default=None, gt=0, le=500)
@@ -85,6 +95,8 @@ class AppointmentOut(BaseModel):
     org_id: UUID
     name: str
     phone: str
+    email: str = ""
+    address: str = ""
     reason: str
     age: int | None = None
     weight: float | None = None
@@ -111,6 +123,8 @@ class PatientMatchOut(BaseModel):
     id: UUID
     name: str
     phone: str
+    email: str = ""
+    address: str = ""
     reason: str
     age: int | None = None
     weight: float | None = None
@@ -125,6 +139,8 @@ class PatientMatchOut(BaseModel):
 class PatientVisitCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     phone: str = Field(min_length=5, max_length=30)
+    email: str = Field(default="", max_length=200)
+    address: str = Field(default="", max_length=300)
     reason: str = Field(min_length=1, max_length=200)
     age: int = Field(ge=0, le=130)
     weight: float = Field(gt=0, le=500)
@@ -273,7 +289,8 @@ class GenerateLetterPdfRequest(BaseModel):
 
 
 class SendLetterRequest(BaseModel):
-    recipient: str = Field(min_length=5, max_length=120)
+    recipient_email: str = Field(min_length=5, max_length=200)
+    subject: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1)
 
 
@@ -341,13 +358,13 @@ class InvoiceOut(BaseModel):
 
 class SendInvoiceRequest(BaseModel):
     invoice_id: UUID
-    recipient: str = Field(min_length=5, max_length=120)
+    recipient_email: str = Field(min_length=5, max_length=200)
 
 
 class SendNoteRequest(BaseModel):
     note_id: UUID
     patient_id: UUID
-    phone: str = Field(min_length=5, max_length=30)
+    recipient_email: str = Field(min_length=5, max_length=200)
 
 
 class SendNoteResponse(BaseModel):
@@ -367,6 +384,10 @@ class ClinicSettingsUpdate(BaseModel):
     clinic_address: str | None = Field(default=None, max_length=300)
     clinic_phone: str | None = Field(default=None, max_length=40)
     doctor_name: str | None = Field(default=None, max_length=120)
+    sender_name: str | None = Field(default=None, max_length=120)
+    sender_email: str | None = Field(default=None, max_length=200)
+    sender_email_app_password: str | None = Field(default=None, max_length=128)
+    email_configured: bool | None = None
     custom_header: str | None = Field(default=None, max_length=500)
     custom_footer: str | None = Field(default=None, max_length=500)
     document_template_name: str | None = Field(default=None, max_length=255)
@@ -385,6 +406,9 @@ class ClinicSettingsOut(BaseModel):
     clinic_address: str = ""
     clinic_phone: str = ""
     doctor_name: str = ""
+    sender_name: str = ""
+    sender_email: str = ""
+    email_configured: bool = False
     custom_header: str = ""
     custom_footer: str = ""
     document_template_name: str | None = None

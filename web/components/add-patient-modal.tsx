@@ -14,6 +14,8 @@ interface AddPatientModalProps {
     existingPatientId?: string;
     name: string;
     phone: string;
+    email: string;
+    address: string;
     reason: string;
     age: number | null;
     weight: number | null;
@@ -31,6 +33,8 @@ export function AddPatientModal({
   const [form, setForm] = useState({
     name: "",
     phone: "",
+    email: "",
+    address: "",
     reason: "",
     age: "",
     weight: "",
@@ -66,6 +70,8 @@ export function AddPatientModal({
     setForm({
       name: "",
       phone: "",
+      email: "",
+      address: "",
       reason: "",
       age: "",
       weight: "",
@@ -106,6 +112,8 @@ export function AddPatientModal({
       ...current,
       name: match.name,
       phone: match.phone,
+      email: match.email ?? "",
+      address: match.address ?? "",
       reason: match.reason,
       age: "",
       weight: "",
@@ -159,6 +167,7 @@ export function AddPatientModal({
     const weight = form.weight.trim() ? Number(form.weight) : null;
     const rawTemperature = form.temperature.trim() ? Number(form.temperature) : null;
     const rawHeight = form.height.trim() ? Number(form.height) : null;
+    const normalizedEmail = form.email.trim().toLowerCase();
 
     if (digits.length !== 10) {
       setError("Phone number must be exactly 10 digits.");
@@ -172,6 +181,11 @@ export function AddPatientModal({
 
     if (!form.reason.trim()) {
       setError("Reason for visit is required.");
+      return;
+    }
+
+    if (normalizedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setError("Enter a valid email address.");
       return;
     }
 
@@ -235,6 +249,8 @@ export function AddPatientModal({
         existingPatientId: selectedExistingMatchId || undefined,
         name: form.name,
         phone: form.phone,
+        email: normalizedEmail,
+        address: form.address.trim(),
         reason: form.reason,
         age,
         weight,
@@ -264,7 +280,7 @@ export function AddPatientModal({
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-sky-100/60 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-[32px] border-2 border-sky-300 bg-white shadow-[0_20px_60px_rgba(125,211,252,0.22)]">
+      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[32px] border-2 border-sky-300 bg-white shadow-[0_20px_60px_rgba(125,211,252,0.22)]">
         <div className="flex items-center justify-between border-b border-sky-100 px-6 py-5">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Add Patient</h2>
@@ -327,37 +343,68 @@ export function AddPatientModal({
             </select>
           </label>
 
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-800">Name</span>
-            <input
-              required
-              value={form.name}
-              onChange={(event) => {
-                setError("");
-                setSelectedExistingMatchId("");
-                setForm((current) => ({ ...current, name: event.target.value }));
-              }}
-              className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
-              placeholder="Patient full name"
-            />
-          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-800">Name</span>
+              <input
+                required
+                value={form.name}
+                onChange={(event) => {
+                  setError("");
+                  setSelectedExistingMatchId("");
+                  setForm((current) => ({ ...current, name: event.target.value }));
+                }}
+                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                placeholder="Patient full name"
+              />
+            </label>
 
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-800">Phone</span>
-            <input
-              required
-              value={form.phone}
-              onChange={(event) => {
-                setError("");
-                setSelectedExistingMatchId("");
-                const digits = getPhoneDigits(event.target.value).slice(0, 10);
-                setSearchPhone(digits);
-                setForm((current) => ({ ...current, phone: digits }));
-              }}
-              className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
-              placeholder="10-digit phone number"
-            />
-          </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-800">Phone</span>
+              <input
+                required
+                value={form.phone}
+                onChange={(event) => {
+                  setError("");
+                  setSelectedExistingMatchId("");
+                  const digits = getPhoneDigits(event.target.value).slice(0, 10);
+                  setSearchPhone(digits);
+                  setForm((current) => ({ ...current, phone: digits }));
+                }}
+                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                placeholder="10-digit phone number"
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-800">Email</span>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(event) => {
+                  setError("");
+                  setForm((current) => ({ ...current, email: event.target.value }));
+                }}
+                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                placeholder="patient@example.com"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-800">Address</span>
+              <input
+                value={form.address}
+                onChange={(event) => {
+                  setError("");
+                  setForm((current) => ({ ...current, address: event.target.value }));
+                }}
+                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                placeholder="Street, locality"
+              />
+            </label>
+          </div>
 
           {existingMatches.length ? (
             <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4">

@@ -7,7 +7,7 @@ export type LetterFormState = {
   subject: string;
   content: string;
   generated: string;
-  recipient: string;
+  recipient_email: string;
 };
 
 interface SettingsDrawerLetterPanelProps {
@@ -71,9 +71,15 @@ export function SettingsDrawerLetterPanel({
               className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
             />
           </label>
-          <div className="rounded-2xl border border-sky-100 bg-sky-50/30 px-4 py-3 text-sm leading-6 text-slate-600">
-            ClinicOS does not send letters directly yet. Generate the draft, preview the PDF, then copy the text to share it from your usual email or messaging workflow.
-          </div>
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700">Recipient Email</span>
+            <input
+              type="email"
+              value={letterForm.recipient_email}
+              onChange={(event) => onChange({ recipient_email: event.target.value })}
+              className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+            />
+          </label>
         </div>
 
         {letterError ? <p className="mt-4 text-sm font-medium text-rose-600">{letterError}</p> : null}
@@ -101,7 +107,7 @@ export function SettingsDrawerLetterPanel({
             onClick={onSend}
             className="rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
           >
-            {isSendingLetter ? "Copying..." : "Copy Text"}
+            {isSendingLetter ? "Sending..." : "Send Email"}
           </button>
         </div>
       </form>

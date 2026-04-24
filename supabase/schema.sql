@@ -11,6 +11,8 @@ create table if not exists public.patients (
   org_id uuid not null references public.organizations(id) on delete cascade,
   name text not null,
   phone text not null,
+  email text not null default '',
+  address text not null default '',
   reason text not null,
   age integer,
   weight double precision,
@@ -56,6 +58,9 @@ create table if not exists public.clinic_settings (
   clinic_address text not null default '',
   clinic_phone text not null default '',
   doctor_name text not null default '',
+  sender_name text not null default '',
+  sender_email text not null default '',
+  sender_email_app_password text,
   custom_header text not null default '',
   custom_footer text not null default '',
   document_template_name text,
@@ -160,6 +165,8 @@ create table if not exists public.appointments (
   org_id uuid not null references public.organizations(id) on delete cascade,
   name text not null,
   phone text not null,
+  email text not null default '',
+  address text not null default '',
   reason text not null,
   age integer,
   weight double precision,
@@ -178,6 +185,8 @@ create table if not exists public.patient_visits (
   patient_id uuid not null references public.patients(id) on delete cascade,
   name text not null,
   phone text not null,
+  email text not null default '',
+  address text not null default '',
   reason text not null,
   age integer,
   weight double precision,
@@ -196,6 +205,12 @@ add column if not exists billed boolean not null default false;
 
 alter table public.patients
 add column if not exists last_visit_at timestamptz not null default now();
+
+alter table public.patients
+add column if not exists email text not null default '';
+
+alter table public.patients
+add column if not exists address text not null default '';
 
 update public.patients
 set last_visit_at = created_at
@@ -239,6 +254,15 @@ add column if not exists name text not null default '';
 
 alter table public.clinic_settings
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;
+
+alter table public.clinic_settings
+add column if not exists sender_name text not null default '';
+
+alter table public.clinic_settings
+add column if not exists sender_email text not null default '';
+
+alter table public.clinic_settings
+add column if not exists sender_email_app_password text;
 
 alter table public.clinic_settings
 add column if not exists document_template_name text;
@@ -348,6 +372,18 @@ add column if not exists checked_in_patient_id uuid references public.patients(i
 alter table public.appointments
 add column if not exists checked_in_at timestamptz;
 
+alter table public.appointments
+add column if not exists email text not null default '';
+
+alter table public.appointments
+add column if not exists address text not null default '';
+
+alter table public.patient_visits
+add column if not exists email text not null default '';
+
+alter table public.patient_visits
+add column if not exists address text not null default '';
+
 create unique index if not exists clinic_settings_org_id_key on public.clinic_settings (org_id);
 create index if not exists patients_org_status_idx on public.patients (org_id, status, created_at desc);
 create index if not exists patients_org_last_visit_idx on public.patients (org_id, last_visit_at desc);
@@ -409,6 +445,8 @@ begin
     set
       name = v_appointment.name,
       phone = v_appointment.phone,
+      email = v_appointment.email,
+      address = v_appointment.address,
       reason = v_appointment.reason,
       age = v_appointment.age,
       weight = v_appointment.weight,
@@ -424,6 +462,8 @@ begin
       org_id,
       name,
       phone,
+      email,
+      address,
       reason,
       age,
       weight,
@@ -437,6 +477,8 @@ begin
       p_org_id,
       v_appointment.name,
       v_appointment.phone,
+      v_appointment.email,
+      v_appointment.address,
       v_appointment.reason,
       v_appointment.age,
       v_appointment.weight,
@@ -454,6 +496,8 @@ begin
     patient_id,
     name,
     phone,
+    email,
+    address,
     reason,
     age,
     weight,
@@ -467,6 +511,8 @@ begin
     v_patient.id,
     v_appointment.name,
     v_appointment.phone,
+    v_appointment.email,
+    v_appointment.address,
     v_appointment.reason,
     v_appointment.age,
     v_appointment.weight,

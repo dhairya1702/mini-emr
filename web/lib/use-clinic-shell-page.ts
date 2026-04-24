@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
-import { AuditEvent, AuthUser, CatalogItem, ClinicSettings, Invoice } from "@/lib/types";
+import { AuditEvent, AuthUser, CatalogItem, ClinicSettings, ClinicSettingsUpdatePayload, Invoice } from "@/lib/types";
 
 const BOOTSTRAP_TIMEOUT_MS = 20000;
 const BOOTSTRAP_RETRY_DELAY_MS = 400;
@@ -222,7 +222,7 @@ export function useClinicShellPage<T>({
   }, [router]);
 
   const handleSaveClinicSettings = useCallback(async (
-    payload: Omit<ClinicSettings, "id" | "org_id" | "updated_at">,
+    payload: ClinicSettingsUpdatePayload,
   ) => {
     const saved = await api.updateClinicSettings(payload);
     setClinicSettings(saved);
@@ -288,12 +288,12 @@ export function useClinicShellPage<T>({
     return response.content;
   }, []);
 
-  const handleSendLetter = useCallback(async (payload: { recipient: string; content: string }) => {
+  const handleSendLetter = useCallback(async (payload: { recipient_email: string; subject: string; content: string }) => {
     const response = await api.sendLetter(payload);
     return response.message;
   }, []);
 
-  const handleSendInvoice = useCallback(async (payload: { invoice_id: string; recipient: string }) => {
+  const handleSendInvoice = useCallback(async (payload: { invoice_id: string; recipient_email: string }) => {
     const response = await api.sendInvoice(payload);
     return response.message;
   }, []);

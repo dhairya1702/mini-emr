@@ -4,6 +4,8 @@ export interface Patient {
   id: string;
   name: string;
   phone: string;
+  email: string;
+  address: string;
   reason: string;
   age: number | null;
   weight: number | null;
@@ -19,6 +21,8 @@ export interface PatientMatch {
   id: string;
   name: string;
   phone: string;
+  email: string;
+  address: string;
   reason: string;
   age: number | null;
   weight: number | null;
@@ -35,6 +39,8 @@ export interface PatientVisit {
   patient_id: string;
   name: string;
   phone: string;
+  email: string;
+  address: string;
   reason: string;
   age: number | null;
   weight: number | null;
@@ -55,6 +61,8 @@ export interface Appointment {
   org_id: string;
   name: string;
   phone: string;
+  email: string;
+  address: string;
   reason: string;
   age: number | null;
   weight: number | null;
@@ -230,6 +238,9 @@ export interface ClinicSettings {
   clinic_address: string;
   clinic_phone: string;
   doctor_name: string;
+  sender_name: string;
+  sender_email: string;
+  email_configured: boolean;
   custom_header: string;
   custom_footer: string;
   document_template_name: string | null;
@@ -311,12 +322,14 @@ export interface InvoiceCreatePayload {
 
 export interface SendInvoicePayload {
   invoice_id: string;
-  recipient: string;
+  recipient_email: string;
 }
 
 export interface AppointmentCreatePayload {
   name: string;
   phone: string;
+  email: string;
+  address: string;
   reason: string;
   age: number | null;
   weight: number | null;
@@ -349,6 +362,8 @@ export interface FollowUpUpdatePayload {
 export interface PatientInput {
   name: string;
   phone: string;
+  email: string;
+  address: string;
   reason: string;
   age: number | null;
   weight: number | null;
@@ -370,14 +385,15 @@ export interface GenerateLetterPdfPayload {
 }
 
 export interface SendLetterPayload {
-  recipient: string;
+  recipient_email: string;
+  subject: string;
   content: string;
 }
 
 export interface SendNotePayload {
   note_id: string;
   patient_id: string;
-  phone: string;
+  recipient_email: string;
 }
 
 export interface ClinicSettingsUpdatePayload {
@@ -385,6 +401,10 @@ export interface ClinicSettingsUpdatePayload {
   clinic_address: string;
   clinic_phone: string;
   doctor_name: string;
+  sender_name: string;
+  sender_email: string;
+  sender_email_app_password?: string;
+  email_configured: boolean;
   custom_header: string;
   custom_footer: string;
   document_template_name: string | null;

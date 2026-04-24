@@ -29,7 +29,7 @@ import { SettingsDrawerAppointmentsPanel } from "@/components/settings-drawer-ap
 import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/settings-drawer-inventory-panel";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
 import { api } from "@/lib/api";
-import { Appointment, AuditEvent, AuthUser, CatalogItem, ClinicSettings, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
+import { Appointment, AuditEvent, AuthUser, CatalogItem, ClinicSettings, ClinicSettingsUpdatePayload, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
 function createId() {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
@@ -56,7 +56,7 @@ interface SettingsDrawerProps {
   onLoadCatalogItems: () => Promise<CatalogItem[]>;
   onClose: () => void;
   onSaveClinic: (
-    payload: Omit<ClinicSettings, "id" | "org_id" | "updated_at">,
+    payload: ClinicSettingsUpdatePayload,
   ) => Promise<ClinicSettings | void>;
   onClinicSettingsChange?: (settings: ClinicSettings) => void;
   onAddUser: (payload: { identifier: string; password: string }) => Promise<void>;
@@ -73,7 +73,7 @@ interface SettingsDrawerProps {
   onDeleteCatalogItem: (itemId: string) => Promise<void>;
   onGenerateLetter: (payload: { to: string; subject: string; content: string }) => Promise<string>;
   onGenerateLetterPdf: (payload: { content: string }) => Promise<Blob>;
-  onSendLetter: (payload: { recipient: string; content: string }) => Promise<string>;
+  onSendLetter: (payload: { recipient_email: string; subject: string; content: string }) => Promise<string>;
   onCreateInvoice: (payload: {
     patient_id: string;
     items: Array<{
@@ -87,7 +87,7 @@ interface SettingsDrawerProps {
     amount_paid?: number | null;
   }) => Promise<Invoice>;
   onGenerateInvoicePdf: (invoiceId: string) => Promise<Blob>;
-  onSendInvoice: (payload: { invoice_id: string; recipient: string }) => Promise<string>;
+  onSendInvoice: (payload: { invoice_id: string; recipient_email: string }) => Promise<string>;
   onExportPatientsCsv: () => Promise<Blob>;
   onExportVisitsCsv: () => Promise<Blob>;
   onExportInvoicesCsv: () => Promise<Blob>;
@@ -111,7 +111,7 @@ const emptyLetterForm = {
   subject: "",
   content: "",
   generated: "",
-  recipient: "",
+  recipient_email: "",
 };
 
 type ClinicFormState = {
@@ -119,6 +119,10 @@ type ClinicFormState = {
   clinic_address: string;
   clinic_phone: string;
   doctor_name: string;
+  sender_name: string;
+  sender_email: string;
+  sender_email_app_password: string;
+  email_configured: boolean;
   custom_header: string;
   custom_footer: string;
   document_template_name: string | null;
@@ -387,6 +391,10 @@ function createClinicFormState(settings?: ClinicSettings | null): ClinicFormStat
     clinic_address: settings?.clinic_address ?? "",
     clinic_phone: settings?.clinic_phone ?? "",
     doctor_name: settings?.doctor_name ?? "",
+    sender_name: settings?.sender_name ?? "",
+    sender_email: settings?.sender_email ?? "",
+    sender_email_app_password: "",
+    email_configured: settings?.email_configured ?? false,
     custom_header: settings?.custom_header ?? "",
     custom_footer: settings?.custom_footer ?? "",
     document_template_name: settings?.document_template_name ?? null,
@@ -754,6 +762,10 @@ export function SettingsDrawer({
       setError("Clinic name is required.");
       return;
     }
+    if (form.sender_email.trim() && !form.sender_email.includes("@")) {
+      setError("Sender email must be a valid email address.");
+      return;
+    }
 
     const margins = {
       top: Number(form.document_template_margin_top),
@@ -770,11 +782,14 @@ export function SettingsDrawer({
     setError("");
     setSaveStatus("");
     try {
-      const saved = await onSaveClinic({
+      const clinicPayload: ClinicSettingsUpdatePayload = {
         clinic_name: form.clinic_name.trim(),
         clinic_address: form.clinic_address.trim(),
         clinic_phone: form.clinic_phone.trim(),
         doctor_name: form.doctor_name.trim(),
+        sender_name: form.sender_name.trim(),
+        sender_email: form.sender_email.trim(),
+        email_configured: form.email_configured,
         custom_header: form.custom_header.trim(),
         custom_footer: form.custom_footer.trim(),
         document_template_name: form.document_template_name,
@@ -786,7 +801,11 @@ export function SettingsDrawer({
         document_template_margin_right: margins.right,
         document_template_margin_bottom: margins.bottom,
         document_template_margin_left: margins.left,
-      });
+      };
+      if (form.sender_email_app_password.trim()) {
+        clinicPayload.sender_email_app_password = form.sender_email_app_password.trim();
+      }
+      const saved = await onSaveClinic(clinicPayload);
       if (saved) {
         onClinicSettingsChange?.(saved);
         setForm(createClinicFormState(saved));
@@ -1038,17 +1057,25 @@ export function SettingsDrawer({
 
   async function handleSendLetter() {
     if (!letterForm.generated.trim()) {
-      setLetterError("Generate the letter before copying.");
+      setLetterError("Generate the letter before sending.");
+      return;
+    }
+    if (!letterForm.recipient_email.trim()) {
+      setLetterError("Recipient email is required.");
       return;
     }
     setIsSendingLetter(true);
     setLetterError("");
     setLetterStatus("");
     try {
-      await navigator.clipboard.writeText(letterForm.generated);
-      setLetterStatus("Letter copied. Share it outside ClinicOS.");
+      const message = await onSendLetter({
+        recipient_email: letterForm.recipient_email.trim(),
+        subject: letterForm.subject.trim(),
+        content: letterForm.generated.trim(),
+      });
+      setLetterStatus(message);
     } catch (sendError) {
-      setLetterError(sendError instanceof Error ? sendError.message : "Failed to copy letter.");
+      setLetterError(sendError instanceof Error ? sendError.message : "Failed to send letter.");
     } finally {
       setIsSendingLetter(false);
     }
@@ -1163,6 +1190,10 @@ export function SettingsDrawer({
       setBillingError("Select a done patient to bill.");
       return;
     }
+    if (!selectedBillingPatient.email.trim()) {
+      setBillingError("This patient does not have an email address saved.");
+      return;
+    }
     if (!invoiceItems.length) {
       setBillingError("Add at least one service or medicine.");
       return;
@@ -1191,7 +1222,7 @@ export function SettingsDrawer({
       }
       const message = await onSendInvoice({
         invoice_id: invoice.id,
-        recipient: selectedBillingPatient.phone,
+        recipient_email: selectedBillingPatient.email,
       });
       setBillingStatus(message);
       onBillingComplete(selectedBillingPatient.id);
@@ -1287,6 +1318,65 @@ export function SettingsDrawer({
                   className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
                 />
               </label>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-3xl">
+                <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Email Sending</p>
+                <h3 className="mt-2 text-xl font-semibold text-slate-900">Clinic Gmail sender</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Use the clinic or doctor Gmail account that should appear as the sender. This is the Gmail identity patients will see when notes are emailed.
+                </p>
+              </div>
+              <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
+                {form.email_configured ? "Configured" : "Not configured"}
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-4">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Sender Name</span>
+                <input
+                  value={form.sender_name}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, sender_name: event.target.value }))
+                  }
+                  placeholder="Dr Sharma Clinic"
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Sender Gmail</span>
+                <input
+                  type="email"
+                  value={form.sender_email}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, sender_email: event.target.value }))
+                  }
+                  placeholder="clinicname@gmail.com"
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Gmail App Password</span>
+                <input
+                  type="password"
+                  value={form.sender_email_app_password}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, sender_email_app_password: event.target.value }))
+                  }
+                  placeholder={form.email_configured ? "Leave blank to keep current app password" : "16-character Gmail app password"}
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                />
+              </label>
+
+              <p className="text-xs leading-6 text-slate-500">
+                Turn on 2-Step Verification for the Gmail account, create an App Password in Google Account settings, and paste it here. Leave this field blank on future saves if the password has not changed.
+              </p>
             </div>
           </section>
 
@@ -1569,6 +1659,15 @@ export function SettingsDrawer({
                 />
               </label>
               <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Recipient Email</span>
+                <input
+                  type="email"
+                  value={letterForm.recipient_email}
+                  onChange={(event) => setLetterForm((current) => ({ ...current, recipient_email: event.target.value }))}
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                />
+              </label>
+              <label className="block">
                 <span className="mb-2 block text-sm font-medium text-slate-700">Content</span>
                 <textarea
                   rows={7}
@@ -1607,7 +1706,7 @@ export function SettingsDrawer({
                 onClick={() => void handleSendLetter()}
                 className="rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
               >
-                {isSendingLetter ? "Copying..." : "Copy Text"}
+                {isSendingLetter ? "Sending..." : "Send Email"}
               </button>
             </div>
           </form>

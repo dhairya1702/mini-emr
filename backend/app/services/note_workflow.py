@@ -1,7 +1,10 @@
+from datetime import datetime
+
 from fastapi import HTTPException
 
 from app.clinic_context import build_clinic_context, build_measurements_context, build_patient_context
 from app.db import SupabaseRepository
+from app.formatting import format_display_datetime
 from app.schemas import (
     FinalizeNoteRequest,
     GenerateNoteRequest,
@@ -15,6 +18,8 @@ from app.schemas import (
 from app.services.anthropic_service import generate_clinic_letter, generate_soap_note
 from app.services.audit_service import get_actor_name, write_audit_event
 from app.services.auth_flow import enforce_rate_limit
+from app.services.email_service import send_clinic_email_message
+from app.services.pdf_service import build_letter_pdf, build_note_pdf
 
 
 async def generate_note_workflow(
@@ -129,6 +134,41 @@ async def generate_letter_content(
     )
 
 
+async def send_letter_workflow(
+    repo: SupabaseRepository,
+    current_user: UserOut,
+    *,
+    recipient_email: str,
+    subject: str,
+    content: str,
+) -> SendNoteResponse:
+    normalized_email = recipient_email.strip()
+    if "@" not in normalized_email:
+        raise HTTPException(status_code=400, detail="Enter a valid recipient email.")
+    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
+    generated_on = datetime.now().strftime("%b %d, %Y")
+    pdf_bytes = build_letter_pdf(
+        clinic=clinic_settings,
+        letter_content=content.strip(),
+        generated_on=generated_on,
+    )
+    try:
+        await send_clinic_email_message(
+            clinic_settings=clinic_settings,
+            recipient=normalized_email,
+            subject=subject.strip(),
+            text_content=content.strip(),
+            attachments=[("clinic_letter.pdf", pdf_bytes, "application/pdf")],
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return SendNoteResponse(
+        success=True,
+        message=f"Letter emailed to {normalized_email} from {clinic_name}.",
+    )
+
+
 async def finalize_note_workflow(
     repo: SupabaseRepository,
     current_user: UserOut,
@@ -158,14 +198,50 @@ async def send_note_workflow(
     current_user: UserOut,
     payload: SendNoteRequest,
 ) -> SendNoteResponse:
+    recipient_email = payload.recipient_email.strip()
+    if "@" not in recipient_email:
+        raise HTTPException(status_code=400, detail="Enter a valid recipient email.")
     note = await repo.get_note(str(current_user.org_id), str(payload.note_id))
     if str(note["patient_id"]) != str(payload.patient_id):
         raise HTTPException(status_code=400, detail="Note does not belong to that patient.")
+    patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
+    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    finalized_note = note if note.get("status") in {"final", "sent"} else await repo.finalize_note(
+        str(current_user.org_id),
+        str(payload.note_id),
+    )
+    snapshot_content = str(finalized_note.get("snapshot_content") or finalized_note.get("content") or "").strip()
+    if not snapshot_content:
+        raise HTTPException(status_code=400, detail="Saved note content is empty.")
+    generated_on = format_display_datetime(finalized_note.get("finalized_at") or finalized_note.get("created_at") or datetime.now())
+    pdf_bytes = build_note_pdf(
+        patient={**patient, **clinic_settings},
+        note_content=snapshot_content,
+        generated_on=generated_on,
+    )
+    patient_name = str(patient.get("name") or "").strip() or "Patient"
+    clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
+    subject = f"{clinic_name} consultation note for {patient_name}"
+    try:
+        await send_clinic_email_message(
+            clinic_settings=clinic_settings,
+            recipient=recipient_email,
+            subject=subject,
+            text_content=(
+                f"Consultation note for {patient_name} is attached as a PDF.\n\n"
+                f"Sent from {clinic_name}."
+            ),
+            attachments=[
+                (f"{patient_name.replace(' ', '_') or 'patient'}_consultation_note.pdf", pdf_bytes, "application/pdf"),
+            ],
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     sent_note = await repo.mark_note_sent(
         str(current_user.org_id),
         str(payload.note_id),
         sent_by=str(current_user.id),
-        sent_to=payload.phone,
+        sent_to=recipient_email,
     )
     await write_audit_event(
         repo,
@@ -173,14 +249,14 @@ async def send_note_workflow(
         entity_type="note",
         entity_id=str(payload.note_id),
         action="consultation_note_shared",
-        summary=f"Shared consultation note v{sent_note.get('version_number', 1)} with {payload.phone}.",
+        summary=f"Shared consultation note v{sent_note.get('version_number', 1)} with {recipient_email}.",
         metadata={
             "patient_id": str(payload.patient_id),
-            "recipient": payload.phone,
+            "recipient": recipient_email,
             "sent_at": sent_note.get("sent_at"),
             "sent_by": str(current_user.id),
             "sent_by_name": get_actor_name(current_user),
-            "sent_to": payload.phone,
+            "sent_to": recipient_email,
             "version_number": sent_note.get("version_number", 1),
             "root_note_id": sent_note.get("root_note_id"),
             "amended_from_note_id": sent_note.get("amended_from_note_id"),
@@ -188,5 +264,5 @@ async def send_note_workflow(
     )
     return SendNoteResponse(
         success=True,
-        message=f"Saved note locked and ready to share with {payload.phone}.",
+        message=f"Consultation note emailed to {recipient_email}.",
     )

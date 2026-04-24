@@ -154,6 +154,8 @@ export default function HistoryPage() {
     payload: {
       name: string;
       phone: string;
+      email: string;
+      address: string;
       reason: string;
       age: number;
       weight: number;

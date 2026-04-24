@@ -7,6 +7,7 @@ from pypdf import PdfWriter
 
 from test_app import auth_headers, client, register
 from app.services.pdf_service import _page_size_for_template
+from app.services import note_workflow
 
 
 def test_clinic_settings_document_template_upload_download_and_remove(client):
@@ -195,3 +196,67 @@ def test_saved_clinic_template_offsets_are_used_for_note_pdf_generation(client, 
     assert isinstance(rendered_patient, dict)
     assert rendered_patient["document_template_margin_top"] == 200
     assert rendered_patient["document_template_notes_enabled"] is True
+
+
+def test_clinic_email_sender_settings_are_saved_without_returning_app_password(client):
+    test_client, repo = client
+    session = register(test_client, identifier="settings-email@clinic.com", clinic_name="Mail Clinic")
+    headers = auth_headers(session["token"])
+    org_id = session["user"]["org_id"]
+
+    response = test_client.put(
+        "/settings/clinic",
+        headers=headers,
+        json={
+            "clinic_name": "Mail Clinic",
+            "sender_name": "Dr Sharma Clinic",
+            "sender_email": "drsharma@gmail.com",
+            "sender_email_app_password": "abcd efgh ijkl mnop",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["sender_name"] == "Dr Sharma Clinic"
+    assert body["sender_email"] == "drsharma@gmail.com"
+    assert body["email_configured"] is True
+    assert "sender_email_app_password" not in body
+    assert repo.clinic_settings[org_id]["sender_email_app_password"] == "abcd efgh ijkl mnop"
+
+
+def test_send_letter_emails_generated_content(client, monkeypatch):
+    test_client, _repo = client
+    session = register(test_client, identifier="settings-send-letter@clinic.com", clinic_name="Letter Send Clinic")
+    headers = auth_headers(session["token"])
+    sent_messages: list[dict[str, object]] = []
+
+    async def fake_send_clinic_email_message(**kwargs):
+        sent_messages.append(kwargs)
+
+    monkeypatch.setattr(note_workflow, "send_clinic_email_message", fake_send_clinic_email_message)
+
+    saved = test_client.put(
+        "/settings/clinic",
+        headers=headers,
+        json={
+            "clinic_name": "Letter Send Clinic",
+            "sender_name": "Letter Send Clinic",
+            "sender_email": "letters@gmail.com",
+            "sender_email_app_password": "abcd efgh ijkl mnop",
+        },
+    )
+    assert saved.status_code == 200
+
+    response = test_client.post(
+        "/send-letter",
+        headers=headers,
+        json={
+            "recipient_email": "patient@example.com",
+            "subject": "Medical Certificate",
+            "content": "This is to certify that the patient attended the clinic.",
+        },
+    )
+
+    assert response.status_code == 200
+    assert sent_messages
+    assert sent_messages[0]["recipient"] == "patient@example.com"

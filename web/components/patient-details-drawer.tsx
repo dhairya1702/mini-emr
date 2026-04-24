@@ -12,6 +12,8 @@ interface PatientDetailsDrawerProps {
   onSave: (payloadPatientId: string, payload: {
     name: string;
     phone: string;
+    email: string;
+    address: string;
     reason: string;
     age: number;
     weight: number;
@@ -29,6 +31,8 @@ export function PatientDetailsDrawer({
   const [form, setForm] = useState({
     name: "",
     phone: "",
+    email: "",
+    address: "",
     reason: "",
     age: "",
     weight: "",
@@ -50,6 +54,8 @@ export function PatientDetailsDrawer({
     setForm({
       name: patient.name,
       phone: patient.phone,
+      email: patient.email ?? "",
+      address: patient.address ?? "",
       reason: patient.reason,
       age: patient.age?.toString() ?? "",
       weight: patient.weight?.toString() ?? "",
@@ -170,6 +176,7 @@ export function PatientDetailsDrawer({
     const weight = Number(form.weight);
     const temperature = Number(form.temperature);
     const height = form.height.trim() ? Number(form.height) : null;
+    const normalizedEmail = form.email.trim().toLowerCase();
 
     if (!form.name.trim()) {
       setError("Name is required.");
@@ -183,6 +190,11 @@ export function PatientDetailsDrawer({
 
     if (!form.reason.trim()) {
       setError("Reason for visit is required.");
+      return;
+    }
+
+    if (normalizedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setError("Enter a valid email address.");
       return;
     }
 
@@ -212,6 +224,8 @@ export function PatientDetailsDrawer({
       await onSave(patient.id, {
         name: form.name.trim(),
         phone: form.phone.trim(),
+        email: normalizedEmail,
+        address: form.address.trim(),
         reason: form.reason.trim(),
         age,
         weight,
@@ -342,6 +356,31 @@ export function PatientDetailsDrawer({
                       onChange={(event) => {
                         setError("");
                         setForm((current) => ({ ...current, phone: event.target.value }));
+                      }}
+                      className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-medium text-slate-700">Email</span>
+                    <input
+                      type="email"
+                      value={form.email}
+                      onChange={(event) => {
+                        setError("");
+                        setForm((current) => ({ ...current, email: event.target.value }));
+                      }}
+                      className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+
+                  <label className="block sm:col-span-2">
+                    <span className="text-sm font-medium text-slate-700">Address</span>
+                    <input
+                      value={form.address}
+                      onChange={(event) => {
+                        setError("");
+                        setForm((current) => ({ ...current, address: event.target.value }));
                       }}
                       className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
                     />
