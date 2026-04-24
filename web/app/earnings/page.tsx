@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Download, ReceiptIndianRupee, Wallet } from "lucide-react";
+import { CalendarDays, Download, ReceiptIndianRupee, Search } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { SettingsDrawer } from "@/components/settings-drawer";
@@ -42,6 +42,8 @@ export default function EarningsPage() {
   const [exportStatus, setExportStatus] = useState("");
   const [exportError, setExportError] = useState("");
   const [isExporting, setIsExporting] = useState("");
+  const [invoiceSearch, setInvoiceSearch] = useState("");
+  const [openingInvoiceId, setOpeningInvoiceId] = useState("");
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(async () => {
     const [dataInvoices, historyPatients] = await Promise.all([
@@ -107,6 +109,16 @@ export default function EarningsPage() {
         .sort((left, right) => (right.paid_at || right.created_at).localeCompare(left.paid_at || left.created_at)),
     [invoices],
   );
+
+  const filteredPaidInvoices = useMemo(() => {
+    const query = invoiceSearch.trim().toLowerCase();
+    if (!query) {
+      return paidInvoices;
+    }
+    return paidInvoices.filter((invoice) =>
+      (patientNames[invoice.patient_id] || "Patient").toLowerCase().includes(query),
+    );
+  }, [invoiceSearch, paidInvoices, patientNames]);
 
   const chartData = useMemo(() => {
     const now = new Date();
@@ -200,10 +212,10 @@ export default function EarningsPage() {
 
   const chartGeometry = useMemo(() => {
     const width = 920;
-    const height = 260;
+    const height = 220;
     const paddingX = 24;
-    const paddingTop = 18;
-    const paddingBottom = 42;
+    const paddingTop = 14;
+    const paddingBottom = 34;
     const innerWidth = width - paddingX * 2;
     const innerHeight = height - paddingTop - paddingBottom;
     const maxValue = Math.max(...chartData.points.map((point) => point.total), 0);
@@ -241,21 +253,18 @@ export default function EarningsPage() {
     let today = 0;
     let week = 0;
     let month = 0;
-    let total = 0;
-
     for (const invoice of paidInvoices) {
       const sourceDate = new Date(invoice.paid_at || invoice.created_at);
       const dayStart = new Date(sourceDate.getFullYear(), sourceDate.getMonth(), sourceDate.getDate()).toISOString();
       const weekStart = startOfWeek(sourceDate).toISOString();
       const monthStart = startOfMonth(sourceDate).toISOString();
 
-      total += invoice.total;
       if (dayStart === todayKey) today += invoice.total;
       if (weekStart === weekKey) week += invoice.total;
       if (monthStart === monthKey) month += invoice.total;
     }
 
-    return { today, week, month, total };
+    return { today, week, month };
   }, [paidInvoices]);
 
   async function handleCreateInvoice(payload: {
@@ -297,6 +306,20 @@ export default function EarningsPage() {
       setExportError(loadError instanceof Error ? loadError.message : `Failed to export ${kind}.`);
     } finally {
       setIsExporting("");
+    }
+  }
+
+  async function handleOpenInvoice(invoiceId: string) {
+    setOpeningInvoiceId(invoiceId);
+    try {
+      const blob = await api.generateInvoicePdf(invoiceId);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (openError) {
+      setExportError(openError instanceof Error ? openError.message : "Failed to open invoice.");
+    } finally {
+      setOpeningInvoiceId("");
     }
   }
 
@@ -370,44 +393,37 @@ export default function EarningsPage() {
           </div>
         ) : null}
 
-        <section className="grid gap-4 lg:grid-cols-4">
-          <div className="rounded-[28px] border border-sky-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.14)]">
-            <div className="flex items-center gap-3 text-sky-700">
-              <CalendarDays className="h-5 w-5" />
-              <p className="text-sm font-medium">Today</p>
+        <section className="grid gap-4 lg:grid-cols-3">
+          <div className="rounded-[24px] border border-sky-100 bg-white/95 px-4 py-3.5 shadow-[0_16px_44px_rgba(125,211,252,0.12)]">
+            <div className="flex items-center gap-2.5 text-sky-700">
+              <CalendarDays className="h-4.5 w-4.5" />
+              <p className="text-xs font-medium uppercase tracking-[0.16em]">Today</p>
             </div>
-            <p className="mt-4 text-3xl font-semibold text-slate-900">{formatCurrency(summary.today)}</p>
+            <p className="mt-2 text-[1.45rem] font-semibold leading-none text-slate-900">{formatCurrency(summary.today)}</p>
           </div>
-          <div className="rounded-[28px] border border-sky-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.14)]">
-            <div className="flex items-center gap-3 text-sky-700">
-              <CalendarDays className="h-5 w-5" />
-              <p className="text-sm font-medium">This Week</p>
+          <div className="rounded-[24px] border border-sky-100 bg-white/95 px-4 py-3.5 shadow-[0_16px_44px_rgba(125,211,252,0.12)]">
+            <div className="flex items-center gap-2.5 text-sky-700">
+              <CalendarDays className="h-4.5 w-4.5" />
+              <p className="text-xs font-medium uppercase tracking-[0.16em]">This Week</p>
             </div>
-            <p className="mt-4 text-3xl font-semibold text-slate-900">{formatCurrency(summary.week)}</p>
+            <p className="mt-2 text-[1.45rem] font-semibold leading-none text-slate-900">{formatCurrency(summary.week)}</p>
           </div>
-          <div className="rounded-[28px] border border-sky-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.14)]">
-            <div className="flex items-center gap-3 text-sky-700">
-              <CalendarDays className="h-5 w-5" />
-              <p className="text-sm font-medium">This Month</p>
+          <div className="rounded-[24px] border border-sky-100 bg-white/95 px-4 py-3.5 shadow-[0_16px_44px_rgba(125,211,252,0.12)]">
+            <div className="flex items-center gap-2.5 text-sky-700">
+              <CalendarDays className="h-4.5 w-4.5" />
+              <p className="text-xs font-medium uppercase tracking-[0.16em]">This Month</p>
             </div>
-            <p className="mt-4 text-3xl font-semibold text-slate-900">{formatCurrency(summary.month)}</p>
-          </div>
-          <div className="rounded-[28px] border border-emerald-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.14)]">
-            <div className="flex items-center gap-3 text-emerald-700">
-              <Wallet className="h-5 w-5" />
-              <p className="text-sm font-medium">Total Earnings</p>
-            </div>
-            <p className="mt-4 text-3xl font-semibold text-slate-900">{formatCurrency(summary.total)}</p>
+            <p className="mt-2 text-[1.45rem] font-semibold leading-none text-slate-900">{formatCurrency(summary.month)}</p>
           </div>
         </section>
 
-        <section className="mt-6 space-y-4">
+        <section className="mt-5 space-y-4">
           <div className="rounded-[32px] border border-sky-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Earnings</p>
-                <h2 className="mt-2 text-2xl font-semibold text-slate-900">Collection graph</h2>
-                <p className="mt-2 text-sm text-slate-500">{chartData.title} · {chartData.subtitle}</p>
+                <h2 className="mt-2 text-xl font-semibold text-slate-900">Collection graph</h2>
+                <p className="mt-1.5 text-sm text-slate-500">{chartData.title} · {chartData.subtitle}</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {(["week", "month", "year"] as GroupMode[]).map((option) => (
@@ -427,12 +443,12 @@ export default function EarningsPage() {
               </div>
             </div>
 
-            <div className="mt-6 rounded-[28px] border border-sky-100 bg-[linear-gradient(180deg,rgba(240,249,255,0.9),rgba(255,255,255,1))] p-4">
+            <div className="mt-5 rounded-[28px] border border-sky-100 bg-[linear-gradient(180deg,rgba(240,249,255,0.9),rgba(255,255,255,1))] p-4">
               {paidInvoices.length ? (
                 <div>
-                  <div className="mb-4 flex items-center justify-between gap-4">
+                  <div className="mb-3 flex items-center justify-between gap-4">
                     <p className="text-sm font-medium text-slate-600">Collected amount</p>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-xs text-slate-500">
                       Peak {formatCurrency(Math.max(...chartData.points.map((point) => point.total), 0))}
                     </p>
                   </div>
@@ -440,7 +456,7 @@ export default function EarningsPage() {
                   <div className="overflow-x-auto">
                     <svg
                       viewBox={`0 0 ${chartGeometry.width} ${chartGeometry.height}`}
-                      className="min-w-[760px]"
+                      className="min-w-[720px]"
                       role="img"
                       aria-label="Collections chart"
                     >
@@ -454,7 +470,7 @@ export default function EarningsPage() {
                             stroke="rgba(148,163,184,0.18)"
                             strokeDasharray="4 6"
                           />
-                          <text x={chartGeometry.paddingX} y={tick.y - 6} fontSize="11" fill="#64748b">
+                          <text x={chartGeometry.paddingX} y={tick.y - 5} fontSize="10" fill="#64748b">
                             {formatCurrency(tick.value)}
                           </text>
                         </g>
@@ -465,15 +481,15 @@ export default function EarningsPage() {
                         d={chartGeometry.linePath}
                         fill="none"
                         stroke="#38bdf8"
-                        strokeWidth="4"
+                        strokeWidth="3.5"
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       />
 
                       {chartGeometry.points.map((point) => (
                         <g key={point.key}>
-                          <circle cx={point.x} cy={point.y} r="5" fill="#ffffff" stroke="#0ea5e9" strokeWidth="3" />
-                          <text x={point.x} y={chartGeometry.height - 12} textAnchor="middle" fontSize="11" fill="#64748b">
+                          <circle cx={point.x} cy={point.y} r="4.5" fill="#ffffff" stroke="#0ea5e9" strokeWidth="2.5" />
+                          <text x={point.x} y={chartGeometry.height - 10} textAnchor="middle" fontSize="10" fill="#64748b">
                             {point.label}
                           </text>
                         </g>
@@ -489,7 +505,7 @@ export default function EarningsPage() {
                       .map((point) => (
                         <div key={point.key} className="rounded-[20px] border border-sky-100 bg-white/85 px-4 py-3">
                           <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{point.fullLabel}</p>
-                          <p className="mt-2 text-lg font-semibold text-slate-900">{formatCurrency(point.total)}</p>
+                          <p className="mt-1.5 text-base font-semibold text-slate-900">{formatCurrency(point.total)}</p>
                           <p className="mt-1 text-xs text-slate-500">
                             {point.invoiceCount} paid invoice{point.invoiceCount === 1 ? "" : "s"}
                           </p>
@@ -506,38 +522,71 @@ export default function EarningsPage() {
           </div>
 
           <div className="rounded-[32px] border border-sky-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
-            <div className="flex items-center gap-3">
-              <ReceiptIndianRupee className="h-5 w-5 text-sky-700" />
-              <div>
-                <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Recent Bills</p>
-                <h2 className="mt-1 text-xl font-semibold text-slate-900">Latest paid invoices</h2>
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div className="flex items-center gap-3">
+                <ReceiptIndianRupee className="h-5 w-5 text-sky-700" />
+                <div>
+                  <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Recent Bills</p>
+                  <h2 className="mt-1 text-lg font-semibold text-slate-900">Latest paid invoices</h2>
+                </div>
               </div>
+              <label className="relative block w-full md:w-[320px]">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={invoiceSearch}
+                  onChange={(event) => setInvoiceSearch(event.target.value)}
+                  placeholder="Search patient"
+                  className="h-11 w-full rounded-full border border-sky-200 bg-sky-50/70 pl-10 pr-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-sky-300 focus:bg-white"
+                />
+              </label>
             </div>
 
-            <div className="mt-6 space-y-3">
-              {paidInvoices.length ? paidInvoices.slice(0, 10).map((invoice) => (
-                <div key={invoice.id} className="rounded-[24px] border border-sky-100 bg-sky-50/30 p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">
-                        {patientNames[invoice.patient_id] || "Patient"}
+            <div className="mt-5 overflow-hidden rounded-[26px] border border-sky-100">
+              {filteredPaidInvoices.length ? (
+                <div>
+                  <div className="grid grid-cols-4 gap-6 bg-sky-50/80 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    <p>Patient</p>
+                    <p>Items</p>
+                    <p>Paid On</p>
+                    <p className="text-right">Amount</p>
+                  </div>
+                  {filteredPaidInvoices.slice(0, 12).map((invoice, index) => (
+                    <button
+                      key={invoice.id}
+                      type="button"
+                      onClick={() => void handleOpenInvoice(invoice.id)}
+                      disabled={openingInvoiceId === invoice.id}
+                      className={`grid w-full grid-cols-4 items-center gap-6 px-5 py-3.5 text-left transition hover:bg-sky-50 disabled:cursor-wait disabled:opacity-70 ${
+                        index === 0 ? "border-t border-sky-100" : "border-t border-sky-100"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-900">
+                          {patientNames[invoice.patient_id] || "Patient"}
+                        </p>
+                      </div>
+                      <p className="text-sm text-slate-600">
+                        {invoice.items.length} item{invoice.items.length === 1 ? "" : "s"}
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Paid on {new Date(invoice.paid_at || invoice.created_at).toLocaleString([], {
+                      <p className="text-sm text-slate-600">
+                        {new Date(invoice.paid_at || invoice.created_at).toLocaleString([], {
                           month: "short",
                           day: "numeric",
                           hour: "numeric",
                           minute: "2-digit",
                         })}
                       </p>
-                      <p className="mt-2 text-xs text-slate-500">
-                        {invoice.items.length} item{invoice.items.length === 1 ? "" : "s"}
+                      <p className="text-right text-base font-semibold text-slate-900">
+                        {openingInvoiceId === invoice.id ? "Opening..." : formatCurrency(invoice.total)}
                       </p>
-                    </div>
-                    <p className="text-lg font-semibold text-slate-900">{formatCurrency(invoice.total)}</p>
-                  </div>
+                    </button>
+                  ))}
                 </div>
-              )) : (
+              ) : paidInvoices.length ? (
+                <div className="rounded-[28px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-16 text-center text-sm text-slate-500">
+                  No paid invoices match that patient.
+                </div>
+              ) : (
                 <div className="rounded-[28px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-16 text-center text-sm text-slate-500">
                   No earnings data yet.
                 </div>
