@@ -32,6 +32,8 @@ async def generate_note_workflow(
     measurements_context = build_measurements_context(payload)
 
     content = await generate_soap_note(
+        repo,
+        str(current_user.org_id),
         symptoms=payload.symptoms,
         diagnosis=payload.diagnosis,
         medications=payload.medications,
@@ -118,6 +120,8 @@ async def generate_letter_content(
     clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
     clinic_context = build_clinic_context(clinic_settings)
     return await generate_clinic_letter(
+        repo,
+        str(current_user.org_id),
         to=to,
         subject=subject,
         content=content,

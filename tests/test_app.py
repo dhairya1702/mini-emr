@@ -110,6 +110,7 @@ class FakeRepo:
         self.follow_ups: dict[str, dict] = {}
         self.appointments: dict[str, dict] = {}
         self.audit_events: dict[str, dict] = {}
+        self.ai_usage_events: dict[str, dict] = {}
 
     async def create_organization(self, clinic_name: str) -> dict:
         org_id = str(uuid4())
@@ -151,6 +152,37 @@ class FakeRepo:
         ]
         rows.sort(key=lambda row: row["created_at"], reverse=True)
         return rows[:limit]
+
+    async def create_ai_usage_event(
+        self,
+        *,
+        org_id: str,
+        provider: str,
+        model: str,
+        feature: str,
+        input_tokens: int,
+        output_tokens: int,
+        cache_creation_input_tokens: int = 0,
+        cache_read_input_tokens: int = 0,
+        metadata: dict | None = None,
+    ) -> dict:
+        usage_id = str(uuid4())
+        row = {
+            "id": usage_id,
+            "org_id": org_id,
+            "provider": provider,
+            "model": model,
+            "feature": feature,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cache_creation_input_tokens": cache_creation_input_tokens,
+            "cache_read_input_tokens": cache_read_input_tokens,
+            "total_tokens": input_tokens + output_tokens + cache_creation_input_tokens + cache_read_input_tokens,
+            "metadata": metadata or {},
+            "created_at": _now(),
+        }
+        self.ai_usage_events[usage_id] = row
+        return row
 
     async def create_clinic_settings(self, org_id: str, payload) -> dict:
         settings_id = str(uuid4())

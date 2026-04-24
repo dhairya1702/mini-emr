@@ -3,6 +3,8 @@ import asyncio
 from anthropic import Anthropic
 
 from app.config import get_settings
+from app.db import SupabaseRepository
+from app.services.ai_usage_service import record_anthropic_usage
 
 
 def build_fallback_note(
@@ -54,6 +56,8 @@ def build_fallback_letter(
 
 
 async def generate_soap_note(
+    repo: SupabaseRepository,
+    org_id: str,
     symptoms: str,
     diagnosis: str,
     medications: str,
@@ -132,6 +136,15 @@ Structured measurements:
     except Exception:
         return build_fallback_note(symptoms, diagnosis, medications, notes, patient_context)
 
+    await record_anthropic_usage(
+        repo,
+        org_id=org_id,
+        model=settings.anthropic_model,
+        feature="consultation_note",
+        response=response,
+        metadata={"has_patient_context": bool(patient_context), "has_measurements_context": bool(measurements_context)},
+    )
+
     blocks = [block.text for block in response.content if getattr(block, "type", "") == "text"]
     return "\n".join(blocks).strip() or build_fallback_note(
         symptoms,
@@ -144,6 +157,8 @@ Structured measurements:
 
 
 async def generate_clinic_letter(
+    repo: SupabaseRepository,
+    org_id: str,
     to: str,
     subject: str,
     content: str,
@@ -194,6 +209,15 @@ Content instructions:
         )
     except Exception:
         return build_fallback_letter(to, subject, content, clinic_context)
+
+    await record_anthropic_usage(
+        repo,
+        org_id=org_id,
+        model=settings.anthropic_model,
+        feature="clinic_letter",
+        response=response,
+        metadata={"has_clinic_context": bool(clinic_context), "recipient": to.strip()},
+    )
 
     blocks = [block.text for block in response.content if getattr(block, "type", "") == "text"]
     return "\n".join(blocks).strip() or build_fallback_letter(to, subject, content, clinic_context)

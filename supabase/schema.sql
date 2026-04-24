@@ -125,6 +125,24 @@ create table if not exists public.audit_events (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.ai_usage_events (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  provider text not null,
+  model text not null,
+  feature text not null,
+  input_tokens integer not null default 0,
+  output_tokens integer not null default 0,
+  cache_creation_input_tokens integer not null default 0,
+  cache_read_input_tokens integer not null default 0,
+  total_tokens integer not null default 0,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists ai_usage_events_org_id_created_at_idx
+  on public.ai_usage_events(org_id, created_at desc);
+
 create table if not exists public.follow_ups (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
@@ -257,6 +275,36 @@ add column if not exists document_template_margin_left double precision not null
 
 alter table public.catalog_items
 add column if not exists track_inventory boolean not null default false;
+
+alter table public.ai_usage_events
+add column if not exists org_id uuid references public.organizations(id) on delete cascade;
+
+alter table public.ai_usage_events
+add column if not exists provider text not null default 'anthropic';
+
+alter table public.ai_usage_events
+add column if not exists model text not null default '';
+
+alter table public.ai_usage_events
+add column if not exists feature text not null default '';
+
+alter table public.ai_usage_events
+add column if not exists input_tokens integer not null default 0;
+
+alter table public.ai_usage_events
+add column if not exists output_tokens integer not null default 0;
+
+alter table public.ai_usage_events
+add column if not exists cache_creation_input_tokens integer not null default 0;
+
+alter table public.ai_usage_events
+add column if not exists cache_read_input_tokens integer not null default 0;
+
+alter table public.ai_usage_events
+add column if not exists total_tokens integer not null default 0;
+
+alter table public.ai_usage_events
+add column if not exists metadata jsonb not null default '{}'::jsonb;
 
 alter table public.catalog_items
 add column if not exists stock_quantity double precision not null default 0;

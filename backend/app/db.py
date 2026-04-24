@@ -6,6 +6,7 @@ import warnings
 
 from app.config import get_settings
 from app.repositories import (
+    AIUsageRepositoryMixin,
     AuditRepositoryMixin,
     AuthSettingsRepositoryMixin,
     BillingRepositoryMixin,
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
 
 
 class SupabaseRepository(
+    AIUsageRepositoryMixin,
     AuditRepositoryMixin,
     AuthSettingsRepositoryMixin,
     PatientFlowRepositoryMixin,
