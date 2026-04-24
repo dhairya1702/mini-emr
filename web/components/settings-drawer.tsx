@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, startTransition, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
@@ -26,7 +27,6 @@ import {
 import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
 import { SettingsDrawerAppointmentsPanel } from "@/components/settings-drawer-appointments-panel";
 import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/settings-drawer-inventory-panel";
-import { SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-panel";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
 import { api } from "@/lib/api";
 import { Appointment, AuditEvent, AuthUser, CatalogItem, ClinicSettings, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
@@ -132,6 +132,251 @@ type ClinicFormState = {
   document_template_margin_left: string;
 };
 
+const PREVIEW_PAGE_WIDTH = 595;
+const PREVIEW_PAGE_HEIGHT = 842;
+
+function normalizePreviewMargin(value: string) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 54;
+  }
+  return parsed;
+}
+
+function previewInsetStyles(form: ClinicFormState) {
+  const top = (normalizePreviewMargin(form.document_template_margin_top) / PREVIEW_PAGE_HEIGHT) * 100;
+  const right = (normalizePreviewMargin(form.document_template_margin_right) / PREVIEW_PAGE_WIDTH) * 100;
+  const bottom = (normalizePreviewMargin(form.document_template_margin_bottom) / PREVIEW_PAGE_HEIGHT) * 100;
+  const left = (normalizePreviewMargin(form.document_template_margin_left) / PREVIEW_PAGE_WIDTH) * 100;
+
+  return {
+    top: `${Math.min(top, 40)}%`,
+    right: `${Math.min(right, 30)}%`,
+    bottom: `${Math.min(bottom, 25)}%`,
+    left: `${Math.min(left, 30)}%`,
+  };
+}
+
+function ClinicDocumentPreview({
+  form,
+  templatePreviewUrl,
+  templatePreviewMimeType,
+  isTemplatePreviewLoading,
+}: {
+  form: ClinicFormState;
+  templatePreviewUrl: string;
+  templatePreviewMimeType: string;
+  isTemplatePreviewLoading: boolean;
+}) {
+  const hasTemplate = Boolean(form.document_template_name || form.document_template_url);
+  const contentInsets = previewInsetStyles(form);
+  const isPdf = templatePreviewMimeType === "application/pdf";
+  const pdfPreviewSrc = templatePreviewUrl
+    ? `${templatePreviewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`
+    : "";
+
+  return (
+    <div className="rounded-[32px] border border-sky-200 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Live Preview</p>
+          <h3 className="mt-2 text-xl font-semibold text-slate-900">
+            {hasTemplate ? "Template fit preview" : "Fallback paper preview"}
+          </h3>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+            {hasTemplate
+              ? "The highlighted frame shows where generated content is allowed to sit on top of the uploaded page."
+              : "Without a template, generated documents fall back to your custom header and footer. The sample page reflects that layout."}
+          </p>
+        </div>
+        <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
+          {hasTemplate ? "Template mode" : "Header/footer mode"}
+        </div>
+      </div>
+
+      <div className="mt-5 rounded-[28px] border border-sky-100 bg-[linear-gradient(180deg,#eff6ff_0%,#f8fbff_100%)] p-4">
+        <div className="mx-auto aspect-[595/842] w-full max-w-[620px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.16)]">
+          <div className="relative h-full w-full bg-white">
+            {hasTemplate ? (
+              <>
+                {templatePreviewUrl ? (
+                  isPdf ? (
+                    <iframe
+                      title="Clinic template preview"
+                      src={pdfPreviewSrc}
+                      className="pointer-events-none absolute inset-0 h-full w-full border-0"
+                    />
+                  ) : (
+                    <Image
+                      src={templatePreviewUrl}
+                      alt="Clinic template preview"
+                      fill
+                      unoptimized
+                      className="pointer-events-none object-contain"
+                    />
+                  )
+                ) : (
+                  <div className="flex h-full items-center justify-center bg-slate-100 text-sm text-slate-500">
+                    {isTemplatePreviewLoading ? "Loading template preview..." : "Template preview unavailable."}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex h-full flex-col bg-white">
+                <div className="border-b border-slate-200 px-10 pb-5 pt-10">
+                  <p className="text-2xl font-semibold text-slate-900">
+                    {form.clinic_name.trim() || "Clinic Name"}
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">
+                    {(form.custom_header.trim() || form.clinic_address.trim() || "Custom header preview")}
+                  </p>
+                </div>
+                <div className="flex-1 px-10 py-8 text-slate-800">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Consultation Note</p>
+                  <div className="mt-5 space-y-4 text-sm leading-6">
+                    <p><span className="font-semibold">Patient:</span> Sample Patient</p>
+                    <p><span className="font-semibold">Reason:</span> Follow-up review and treatment summary.</p>
+                    <p>
+                      Presenting complaint: Sample content appears here so the clinic can judge line width, top spacing,
+                      and where body copy begins.
+                    </p>
+                    <p>
+                      Treatment: Demonstration text continues across a few lines to make the page rhythm obvious before
+                      saving settings.
+                    </p>
+                  </div>
+                </div>
+                <div className="border-t border-slate-200 px-10 py-5 text-xs leading-5 text-slate-500">
+                  {form.custom_footer.trim() || "Custom footer preview"}
+                </div>
+              </div>
+            )}
+
+            <div className="pointer-events-none absolute inset-0">
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(248,250,252,0.04),rgba(14,165,233,0.04))]" />
+              <div
+                className="absolute rounded-[18px] border-2 border-dashed border-sky-500 bg-sky-400/8 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)]"
+                style={contentInsets}
+              >
+                <div className="absolute left-4 top-4 rounded-full bg-sky-600 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
+                  Content area
+                </div>
+                <div className="flex h-full flex-col justify-start gap-3 p-6 pt-14 text-[11px] leading-5 text-slate-800">
+                  <p className="font-semibold text-slate-900">Name: Sample Patient</p>
+                  <p>Reason for Visit: Layout alignment preview for generated note content.</p>
+                  <p>
+                    Presenting Complaint: This sample block helps you judge where text starts and how close it sits to
+                    the branded art or letterhead.
+                  </p>
+                  <p>Treatment: Adjust top/right/bottom/left offsets until this frame sits comfortably inside your paper.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["Top", form.document_template_margin_top],
+            ["Right", form.document_template_margin_right],
+            ["Bottom", form.document_template_margin_bottom],
+            ["Left", form.document_template_margin_left],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-2xl border border-sky-100 bg-white/85 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">{value || "0"}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LetterDocumentPreview({
+  letterForm,
+  clinicForm,
+  templatePreviewUrl,
+  templatePreviewMimeType,
+  isTemplatePreviewLoading,
+  letterPreviewUrl,
+}: {
+  letterForm: typeof emptyLetterForm;
+  clinicForm: ClinicFormState;
+  templatePreviewUrl: string;
+  templatePreviewMimeType: string;
+  isTemplatePreviewLoading: boolean;
+  letterPreviewUrl: string;
+}) {
+  const hasRenderedPreview = Boolean(letterPreviewUrl);
+  const hasTemplate = Boolean(clinicForm.document_template_name || clinicForm.document_template_url);
+  const previewUrl = hasRenderedPreview ? letterPreviewUrl : templatePreviewUrl;
+  const previewMimeType = hasRenderedPreview ? "application/pdf" : templatePreviewMimeType;
+  const isPdf = previewMimeType === "application/pdf";
+  const iframeSrc = previewUrl ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH` : "";
+
+  return (
+    <div className="rounded-[32px] border border-sky-200 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Letter Preview</p>
+          <h3 className="mt-2 text-xl font-semibold text-slate-900">
+            {hasRenderedPreview ? "Generated PDF preview" : hasTemplate ? "Template paper preview" : "Fallback paper preview"}
+          </h3>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+            {hasRenderedPreview
+              ? "This panel shows the generated letter PDF inside the same workspace."
+              : hasTemplate
+                ? "The uploaded clinic paper is shown here before generation. Click Preview PDF after generating the letter to fill it."
+                : "No template is uploaded, so the preview starts with the fallback clinic letter layout."}
+          </p>
+        </div>
+        <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
+          {hasRenderedPreview ? "PDF ready" : hasTemplate ? "Template only" : "Fallback paper"}
+        </div>
+      </div>
+
+      <div className="mt-5 rounded-[28px] border border-sky-100 bg-[linear-gradient(180deg,#eff6ff_0%,#f8fbff_100%)] p-4">
+        <div className="mx-auto aspect-[595/842] w-full max-w-[620px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.16)]">
+          <div className="relative h-full w-full bg-white">
+            {previewUrl ? (
+              isPdf ? (
+                <iframe title="Generated letter preview" src={iframeSrc} className="pointer-events-none absolute inset-0 h-full w-full border-0" />
+              ) : (
+                <Image src={previewUrl} alt="Clinic paper preview" fill unoptimized className="pointer-events-none object-contain" />
+              )
+            ) : hasTemplate ? (
+              <div className="flex h-full items-center justify-center bg-slate-100 text-sm text-slate-500">
+                {isTemplatePreviewLoading ? "Loading template preview..." : "Template preview unavailable."}
+              </div>
+            ) : (
+              <div className="flex h-full flex-col bg-white">
+                <div className="border-b border-slate-200 px-10 pb-5 pt-10">
+                  <p className="text-2xl font-semibold text-slate-900">{clinicForm.clinic_name.trim() || "Clinic Name"}</p>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">
+                    {clinicForm.custom_header.trim() || clinicForm.clinic_address.trim() || "Custom header preview"}
+                  </p>
+                </div>
+                <div className="flex-1 px-10 py-8 text-slate-800">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Clinic Letter</p>
+                  <div className="mt-6 space-y-4 text-sm leading-6">
+                    <p><span className="font-semibold">To:</span> {letterForm.to.trim() || "Recipient name"}</p>
+                    <p><span className="font-semibold">Subject:</span> {letterForm.subject.trim() || "Letter subject"}</p>
+                    <p>{letterForm.generated.trim() || letterForm.content.trim() || "Generated letter content will appear here after you click Generate Letter and then Preview PDF."}</p>
+                  </div>
+                </div>
+                <div className="border-t border-slate-200 px-10 py-5 text-xs leading-5 text-slate-500">
+                  {clinicForm.custom_footer.trim() || "Custom footer preview"}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function toMarginInput(value?: number | null) {
   return Number.isFinite(value) ? String(value) : "54";
 }
@@ -192,12 +437,17 @@ export function SettingsDrawer({
   const [activeTab, setActiveTab] = useState<SettingsTab>("clinic");
   const [form, setForm] = useState<ClinicFormState>(() => createClinicFormState());
   const [error, setError] = useState("");
+  const [saveStatus, setSaveStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [templateError, setTemplateError] = useState("");
   const [templateStatus, setTemplateStatus] = useState("");
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
   const [isRemovingTemplate, setIsRemovingTemplate] = useState(false);
   const [isOpeningTemplate, setIsOpeningTemplate] = useState(false);
+  const [templatePreviewUrl, setTemplatePreviewUrl] = useState("");
+  const [templatePreviewMimeType, setTemplatePreviewMimeType] = useState("");
+  const [isTemplatePreviewLoading, setIsTemplatePreviewLoading] = useState(false);
+  const [letterPdfPreviewUrl, setLetterPdfPreviewUrl] = useState("");
 
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [userForm, setUserForm] = useState<UserFormState>({ identifier: "", password: "" });
@@ -295,9 +545,30 @@ export function SettingsDrawer({
     }
     setForm(createClinicFormState(settings));
     setError("");
+    setSaveStatus("");
     setTemplateError("");
     setTemplateStatus("");
   }, [settings]);
+
+  useEffect(() => {
+    if (!templatePreviewUrl) {
+      return;
+    }
+
+    return () => {
+      URL.revokeObjectURL(templatePreviewUrl);
+    };
+  }, [templatePreviewUrl]);
+
+  useEffect(() => {
+    if (!letterPdfPreviewUrl) {
+      return;
+    }
+
+    return () => {
+      URL.revokeObjectURL(letterPdfPreviewUrl);
+    };
+  }, [letterPdfPreviewUrl]);
 
   useEffect(() => {
     if (!selectedBillingPatientId && patients[0]) {
@@ -312,6 +583,7 @@ export function SettingsDrawer({
     setLetterForm(emptyLetterForm);
     setLetterError("");
     setLetterStatus("");
+    setLetterPdfPreviewUrl("");
   }, [open]);
 
   useEffect(() => {
@@ -425,6 +697,53 @@ export function SettingsDrawer({
     }
   }, [activeTab, open]);
 
+  useEffect(() => {
+    const shouldLoadPreview =
+      open &&
+      (activeTab === "clinic" || activeTab === "letter") &&
+      Boolean(form.document_template_url || form.document_template_name);
+
+    if (!shouldLoadPreview) {
+      setIsTemplatePreviewLoading(false);
+      if (!form.document_template_url && !form.document_template_name) {
+        setTemplatePreviewUrl("");
+        setTemplatePreviewMimeType("");
+      }
+      return;
+    }
+
+    let active = true;
+    setIsTemplatePreviewLoading(true);
+    void api.downloadClinicDocumentTemplate()
+      .then((blob) => {
+        if (!active) {
+          return;
+        }
+        const objectUrl = URL.createObjectURL(blob);
+        setTemplatePreviewUrl(objectUrl);
+        setTemplatePreviewMimeType(blob.type || "");
+      })
+      .catch((previewError) => {
+        if (!active) {
+          return;
+        }
+        setTemplatePreviewUrl("");
+        setTemplatePreviewMimeType("");
+        setTemplateError(
+          previewError instanceof Error ? previewError.message : "Failed to load document preview.",
+        );
+      })
+      .finally(() => {
+        if (active) {
+          setIsTemplatePreviewLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeTab, form.document_template_name, form.document_template_url, open]);
+
   if (!open) {
     return null;
   }
@@ -449,6 +768,7 @@ export function SettingsDrawer({
 
     setIsSaving(true);
     setError("");
+    setSaveStatus("");
     try {
       const saved = await onSaveClinic({
         clinic_name: form.clinic_name.trim(),
@@ -471,6 +791,7 @@ export function SettingsDrawer({
         onClinicSettingsChange?.(saved);
         setForm(createClinicFormState(saved));
       }
+      setSaveStatus("Clinic settings saved.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to save settings.");
     } finally {
@@ -679,6 +1000,7 @@ export function SettingsDrawer({
 
     setIsGeneratingLetter(true);
     try {
+      setLetterPdfPreviewUrl("");
       const generated = await onGenerateLetter({
         to: letterForm.to.trim(),
         subject: letterForm.subject.trim(),
@@ -705,10 +1027,8 @@ export function SettingsDrawer({
     try {
       const blob = await onGenerateLetterPdf({ content: letterForm.generated });
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
-
+      setLetterPdfPreviewUrl(url);
       setLetterStatus("Letter PDF ready.");
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (pdfError) {
       setLetterError(pdfError instanceof Error ? pdfError.message : "Failed to prepare letter PDF.");
     } finally {
@@ -911,53 +1231,66 @@ export function SettingsDrawer({
     const hasDocumentTemplate = Boolean(form.document_template_name || form.document_template_url);
 
     return (
-      <form className="space-y-4" onSubmit={handleClinicSave}>
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">Clinic Name</span>
-          <input
-            value={form.clinic_name}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, clinic_name: event.target.value }))
-            }
-            className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-          />
-        </label>
+      <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.82fr)_minmax(520px,1.18fr)]">
+        <form className="space-y-4" onSubmit={handleClinicSave}>
+          <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+            <div className="max-w-3xl">
+              <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Clinic Workspace</p>
+              <h3 className="mt-2 text-xl font-semibold text-slate-900">Branding, document paper, and fit controls</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Configure the clinic identity on the left and use the live page preview on the right to tune where generated content sits.
+              </p>
+            </div>
 
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">Doctor Name</span>
-          <input
-            value={form.doctor_name}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, doctor_name: event.target.value }))
-            }
-            className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-          />
-        </label>
+            <div className="mt-6 grid gap-4">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Clinic Name</span>
+                <input
+                  value={form.clinic_name}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, clinic_name: event.target.value }))
+                  }
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                />
+              </label>
 
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">Address</span>
-          <textarea
-            rows={3}
-            value={form.clinic_address}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, clinic_address: event.target.value }))
-            }
-            className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-          />
-        </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Doctor Name</span>
+                <input
+                  value={form.doctor_name}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, doctor_name: event.target.value }))
+                  }
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                />
+              </label>
 
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">Clinic Phone</span>
-          <input
-            value={form.clinic_phone}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, clinic_phone: event.target.value }))
-            }
-            className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-          />
-        </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Address</span>
+                <textarea
+                  rows={3}
+                  value={form.clinic_address}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, clinic_address: event.target.value }))
+                  }
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                />
+              </label>
 
-        <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Clinic Phone</span>
+                <input
+                  value={form.clinic_phone}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, clinic_phone: event.target.value }))
+                  }
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-2xl">
               <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Document Template</p>
@@ -1032,35 +1365,15 @@ export function SettingsDrawer({
             {templateStatus ? <p className="mt-4 text-sm font-medium text-emerald-700">{templateStatus}</p> : null}
           </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            {[
-              {
-                key: "document_template_notes_enabled" as const,
-                label: "Use for notes",
-                description: "Generated consultation PDFs use the uploaded clinic paper.",
-              },
-              {
-                key: "document_template_letters_enabled" as const,
-                label: "Use for letters",
-                description: "Generated letters use the uploaded clinic paper.",
-              },
-              {
-                key: "document_template_invoices_enabled" as const,
-                label: "Use for invoices",
-                description: "Invoices use the uploaded clinic paper.",
-              },
-            ].map((item) => (
-              <label
-                key={item.key}
-                className={`rounded-[24px] border p-4 transition ${
-                  hasDocumentTemplate ? "border-sky-100 bg-sky-50/30" : "border-slate-200 bg-slate-50/70"
-                }`}
-              >
-                <span className="flex items-start justify-between gap-3">
-                  <span>
-                    <span className="block text-sm font-semibold text-slate-900">{item.label}</span>
-                    <span className="mt-2 block text-sm leading-6 text-slate-600">{item.description}</span>
-                  </span>
+          <div className="mt-6 rounded-[24px] border border-sky-100 bg-sky-50/30 p-4">
+            <p className="text-sm font-semibold text-slate-900">Use for</p>
+            <div className="mt-4 flex flex-wrap gap-5">
+              {[
+                { key: "document_template_notes_enabled" as const, label: "Notes" },
+                { key: "document_template_letters_enabled" as const, label: "Letters" },
+                { key: "document_template_invoices_enabled" as const, label: "Invoices" },
+              ].map((item) => (
+                <label key={item.key} className="inline-flex items-center gap-3 text-sm font-medium text-slate-800">
                   <input
                     type="checkbox"
                     checked={form[item.key]}
@@ -1068,11 +1381,12 @@ export function SettingsDrawer({
                     onChange={(event) =>
                       setForm((current) => ({ ...current, [item.key]: event.target.checked }))
                     }
-                    className="mt-1 h-4 w-4 rounded border-sky-300 text-sky-500 focus:ring-sky-400"
+                    className="h-4 w-4 rounded border-sky-300 text-sky-500 focus:ring-sky-400"
                   />
-                </span>
-              </label>
-            ))}
+                  <span>{item.label}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           <div className="mt-6">
@@ -1096,6 +1410,7 @@ export function SettingsDrawer({
                   <input
                     type="number"
                     min="0"
+                    max="288"
                     step="0.1"
                     value={form[item.key]}
                     disabled={!hasDocumentTemplate}
@@ -1108,50 +1423,65 @@ export function SettingsDrawer({
               ))}
             </div>
           </div>
-        </section>
+          </section>
 
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">Custom Header</span>
-          <span className="mb-2 block text-xs text-slate-500">
-            Fallback header when no document template is uploaded or the document type toggle is off.
-          </span>
-          <textarea
-            rows={2}
-            value={form.custom_header}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, custom_header: event.target.value }))
-            }
-            className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+          <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+            <div className="grid gap-4">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Custom Header</span>
+                <span className="mb-2 block text-xs text-slate-500">
+                  Fallback header when no document template is uploaded or the document type toggle is off.
+                </span>
+                <textarea
+                  rows={2}
+                  value={form.custom_header}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, custom_header: event.target.value }))
+                  }
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Custom Footer</span>
+                <span className="mb-2 block text-xs text-slate-500">
+                  Fallback footer when no document template is uploaded or the document type toggle is off.
+                </span>
+                <textarea
+                  rows={3}
+                  value={form.custom_footer}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, custom_footer: event.target.value }))
+                  }
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                />
+              </label>
+            </div>
+          </section>
+
+          {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
+          {saveStatus ? <p className="text-sm font-medium text-emerald-700">{saveStatus}</p> : null}
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+            >
+              {isSaving ? "Saving..." : "Save Clinic Details"}
+            </button>
+          </div>
+        </form>
+
+        <div className="xl:sticky xl:top-0 xl:self-start">
+          <ClinicDocumentPreview
+            form={form}
+            templatePreviewUrl={templatePreviewUrl}
+            templatePreviewMimeType={templatePreviewMimeType}
+            isTemplatePreviewLoading={isTemplatePreviewLoading}
           />
-        </label>
-
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">Custom Footer</span>
-          <span className="mb-2 block text-xs text-slate-500">
-            Fallback footer when no document template is uploaded or the document type toggle is off.
-          </span>
-          <textarea
-            rows={3}
-            value={form.custom_footer}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, custom_footer: event.target.value }))
-            }
-            className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-          />
-        </label>
-
-        {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
-
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
-          >
-            {isSaving ? "Saving..." : "Save Clinic Details"}
-          </button>
         </div>
-      </form>
+      </div>
     );
   }
 
@@ -1210,18 +1540,103 @@ export function SettingsDrawer({
 
   function renderLetterTab() {
     return (
-      <SettingsDrawerLetterPanel
-        letterForm={letterForm}
-        letterError={letterError}
-        letterStatus={letterStatus}
-        isGeneratingLetter={isGeneratingLetter}
-        isPreparingLetterPdf={isPreparingLetterPdf}
-        isSendingLetter={isSendingLetter}
-        onSubmit={handleGenerateLetter}
-        onChange={(patch) => setLetterForm((current) => ({ ...current, ...patch }))}
-        onPreviewPdf={handleLetterPdf}
-        onSend={handleSendLetter}
-      />
+      <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.82fr)_minmax(520px,1.18fr)]">
+        <div className="space-y-4">
+          <form className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]" onSubmit={handleGenerateLetter}>
+            <div className="mb-4">
+              <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Letter Workspace</p>
+              <h3 className="mt-2 text-xl font-semibold text-slate-900">Generate a clinic letter and preview it inline</h3>
+              <p className="mt-2 text-sm leading-7 text-slate-600">
+                The right side starts with the clinic paper only. After you generate the draft and click Preview PDF, the rendered letter appears there.
+              </p>
+            </div>
+
+            <div className="grid gap-4">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">To</span>
+                <input
+                  value={letterForm.to}
+                  onChange={(event) => setLetterForm((current) => ({ ...current, to: event.target.value }))}
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Subject</span>
+                <input
+                  value={letterForm.subject}
+                  onChange={(event) => setLetterForm((current) => ({ ...current, subject: event.target.value }))}
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Content</span>
+                <textarea
+                  rows={7}
+                  value={letterForm.content}
+                  onChange={(event) => setLetterForm((current) => ({ ...current, content: event.target.value }))}
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                />
+              </label>
+              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 px-4 py-3 text-sm leading-6 text-slate-600">
+                Generate the draft first. `Preview PDF` renders it into the live panel on the right using the saved clinic template or fallback branding.
+              </div>
+            </div>
+
+            {letterError ? <p className="mt-4 text-sm font-medium text-rose-600">{letterError}</p> : null}
+            {letterStatus ? <p className="mt-4 text-sm font-medium text-emerald-700">{letterStatus}</p> : null}
+
+            <div className="mt-5 flex flex-wrap justify-end gap-3">
+              <button
+                type="submit"
+                disabled={isGeneratingLetter}
+                className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+              >
+                {isGeneratingLetter ? "Generating..." : "Generate Letter"}
+              </button>
+              <button
+                type="button"
+                disabled={isPreparingLetterPdf}
+                onClick={() => void handleLetterPdf()}
+                className="rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+              >
+                {isPreparingLetterPdf ? "Rendering..." : "Preview PDF"}
+              </button>
+              <button
+                type="button"
+                disabled={isSendingLetter}
+                onClick={() => void handleSendLetter()}
+                className="rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+              >
+                {isSendingLetter ? "Copying..." : "Copy Text"}
+              </button>
+            </div>
+          </form>
+
+          <div className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+            <div className="mb-4">
+              <h3 className="text-base font-semibold text-slate-900">Generated Draft</h3>
+              <p className="mt-2 text-sm leading-7 text-slate-600">Edit the generated content before rendering the PDF preview.</p>
+            </div>
+            <textarea
+              rows={18}
+              value={letterForm.generated}
+              onChange={(event) => setLetterForm((current) => ({ ...current, generated: event.target.value }))}
+              className="w-full rounded-2xl border border-sky-200 bg-sky-50/30 px-4 py-3 text-sm leading-7 text-slate-800 outline-none transition focus:border-sky-400"
+            />
+          </div>
+        </div>
+
+        <div className="xl:sticky xl:top-0 xl:self-start">
+          <LetterDocumentPreview
+            letterForm={letterForm}
+            clinicForm={form}
+            templatePreviewUrl={templatePreviewUrl}
+            templatePreviewMimeType={templatePreviewMimeType}
+            isTemplatePreviewLoading={isTemplatePreviewLoading}
+            letterPreviewUrl={letterPdfPreviewUrl}
+          />
+        </div>
+      </div>
     );
   }
 
@@ -1420,6 +1835,8 @@ export function SettingsDrawer({
     return renderSimplePanel(item.title, item.text);
   }
 
+  const isWorkspaceTab = activeTab === "clinic" || activeTab === "letter";
+
   return (
     <div className="fixed inset-0 z-40">
       <button
@@ -1428,7 +1845,11 @@ export function SettingsDrawer({
         onClick={onClose}
         className="absolute inset-0 bg-sky-950/10 backdrop-blur-[1px]"
       />
-      <aside className="absolute inset-y-0 left-0 w-full max-w-6xl border-r-2 border-sky-300 bg-white shadow-[0_20px_60px_rgba(125,211,252,0.2)]">
+      <aside
+        className={`absolute left-0 w-full border-r-2 border-sky-300 bg-white shadow-[0_20px_60px_rgba(125,211,252,0.2)] ${
+          isWorkspaceTab ? "inset-0" : "inset-y-0 max-w-6xl"
+        }`}
+      >
         <div className="grid h-full md:grid-cols-[220px_1fr]">
           <div className="border-b border-r border-sky-100 bg-sky-50/40 p-4 md:border-b-0">
             <div className="mb-5 flex items-center justify-between">
@@ -1481,7 +1902,7 @@ export function SettingsDrawer({
             </nav>
           </div>
 
-          <div className="overflow-y-auto p-5 sm:p-6">
+          <div className={`overflow-y-auto ${isWorkspaceTab ? "p-6 xl:p-8" : "p-5 sm:p-6"}`}>
             <div className="mb-6">
               <p className="text-sm uppercase tracking-[0.2em] text-slate-500">{activeTab}</p>
             </div>

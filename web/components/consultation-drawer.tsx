@@ -337,7 +337,7 @@ export function ConsultationDrawer({
         ? "Finalized"
         : noteStatus === "draft"
           ? "Draft"
-          : "No note yet";
+          : null;
 
   return (
     <aside className="fixed inset-y-0 right-0 z-30 w-full max-w-2xl border-l-2 border-sky-300 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.2)] sm:p-6">
@@ -623,9 +623,11 @@ export function ConsultationDrawer({
                 <span className="text-sm font-medium text-slate-900">Generated Note</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-600">
-                  {lifecycleLabel}
-                </span>
+                {lifecycleLabel ? (
+                  <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-600">
+                    {lifecycleLabel}
+                  </span>
+                ) : null}
                 <button
                   type="submit"
                   disabled={isGenerating}

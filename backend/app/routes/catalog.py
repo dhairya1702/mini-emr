@@ -3,7 +3,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.auth import require_admin
 from app.db import SupabaseRepository, get_repository
 from app.schemas import CatalogItemCreate, CatalogItemOut, CatalogStockUpdate, UserOut
-from app.services.audit_service import write_audit_event
+from app.services.catalog_workflow import (
+    create_catalog_item_workflow,
+    delete_catalog_item_workflow,
+    update_catalog_stock_workflow,
+)
 
 
 router = APIRouter()
@@ -24,8 +28,10 @@ async def create_catalog_item(
     current_user: UserOut = Depends(require_admin),
     repo: SupabaseRepository = Depends(get_repository),
 ) -> CatalogItemOut:
-    created = await repo.create_catalog_item(str(current_user.org_id), payload)
-    return CatalogItemOut(**created)
+    try:
+        return await create_catalog_item_workflow(repo, current_user, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.patch("/catalog/{item_id}/stock", response_model=CatalogItemOut)
@@ -36,23 +42,7 @@ async def update_catalog_stock(
     repo: SupabaseRepository = Depends(get_repository),
 ) -> CatalogItemOut:
     try:
-        updated = await repo.update_catalog_stock(str(current_user.org_id), item_id, payload)
-        await write_audit_event(
-            repo,
-            current_user,
-            entity_type="catalog_item",
-            entity_id=item_id,
-            action="catalog_stock_adjusted",
-            summary=f"Adjusted stock for {updated['name']} by {payload.delta:g}.",
-            metadata={
-                "catalog_item_id": item_id,
-                "item_name": updated.get("name"),
-                "delta": payload.delta,
-                "stock_quantity": updated.get("stock_quantity"),
-                "adjustment_source": "manual",
-            },
-        )
-        return CatalogItemOut(**updated)
+        return await update_catalog_stock_workflow(repo, current_user, item_id, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -63,4 +53,7 @@ async def delete_catalog_item(
     current_user: UserOut = Depends(require_admin),
     repo: SupabaseRepository = Depends(get_repository),
 ) -> None:
-    await repo.delete_catalog_item(str(current_user.org_id), item_id)
+    try:
+        await delete_catalog_item_workflow(repo, current_user, item_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

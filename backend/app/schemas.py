@@ -374,10 +374,10 @@ class ClinicSettingsUpdate(BaseModel):
     document_template_notes_enabled: bool | None = None
     document_template_letters_enabled: bool | None = None
     document_template_invoices_enabled: bool | None = None
-    document_template_margin_top: float | None = Field(default=None, ge=0, le=144)
-    document_template_margin_right: float | None = Field(default=None, ge=0, le=144)
-    document_template_margin_bottom: float | None = Field(default=None, ge=0, le=144)
-    document_template_margin_left: float | None = Field(default=None, ge=0, le=144)
+    document_template_margin_top: float | None = Field(default=None, ge=0, le=288)
+    document_template_margin_right: float | None = Field(default=None, ge=0, le=288)
+    document_template_margin_bottom: float | None = Field(default=None, ge=0, le=288)
+    document_template_margin_left: float | None = Field(default=None, ge=0, le=288)
 
 
 class ClinicSettingsOut(BaseModel):

@@ -1,6 +1,8 @@
-from functools import lru_cache
+from __future__ import annotations
 
-from supabase import Client, create_client
+from functools import lru_cache
+from typing import TYPE_CHECKING
+import warnings
 
 from app.config import get_settings
 from app.repositories import (
@@ -11,6 +13,9 @@ from app.repositories import (
     PatientFlowRepositoryMixin,
     RecordsRepositoryMixin,
 )
+
+if TYPE_CHECKING:
+    from supabase._sync.client import SyncClient as Client
 
 
 class SupabaseRepository(
@@ -24,6 +29,14 @@ class SupabaseRepository(
         settings = get_settings()
         if not settings.supabase_url or not settings.supabase_service_role_key:
             raise RuntimeError("Supabase environment variables are not configured.")
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="The `gotrue` package is deprecated.*",
+                category=DeprecationWarning,
+            )
+            from supabase._sync.client import create_client
+
         self.client: Client = create_client(settings.supabase_url, settings.supabase_service_role_key)
 
 

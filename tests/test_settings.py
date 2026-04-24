@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from base64 import b64encode
+from io import BytesIO
 
 from pypdf import PdfWriter
 
@@ -128,7 +129,6 @@ def test_generate_letter_pdf_uses_template_when_letter_template_is_configured(cl
 def test_pdf_template_page_size_is_read_from_uploaded_pdf():
     writer = PdfWriter()
     writer.add_blank_page(width=612, height=792)
-    from io import BytesIO
 
     buffer = BytesIO()
     writer.write(buffer)
@@ -137,3 +137,61 @@ def test_pdf_template_page_size_is_read_from_uploaded_pdf():
 
     assert width == 612
     assert height == 792
+
+
+def test_saved_clinic_template_offsets_are_used_for_note_pdf_generation(client, monkeypatch):
+    test_client, repo = client
+    session = register(test_client, identifier="settings-note-template@clinic.com", clinic_name="Note Template Clinic")
+    headers = auth_headers(session["token"])
+    org_id = session["user"]["org_id"]
+
+    update = test_client.put(
+        "/settings/clinic",
+        headers=headers,
+        json={
+            "clinic_name": "Note Template Clinic",
+            "document_template_notes_enabled": True,
+            "document_template_margin_top": 200,
+            "document_template_margin_right": 54,
+            "document_template_margin_bottom": 54,
+            "document_template_margin_left": 54,
+        },
+    )
+    assert update.status_code == 200
+    assert repo.clinic_settings[org_id]["document_template_margin_top"] == 200
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Template Patient",
+            "phone": "5550107878",
+            "reason": "Review",
+            "age": 26,
+            "weight": 62,
+            "height": 168,
+            "temperature": 98.7,
+        },
+        headers=headers,
+    ).json()
+
+    captured: dict[str, object] = {}
+
+    def fake_build_note_pdf(*, patient, note_content, generated_on):  # type: ignore[no-redef]
+        captured["patient"] = patient
+        captured["note_content"] = note_content
+        captured["generated_on"] = generated_on
+        return b"%PDF-1.4 test"
+
+    monkeypatch.setattr("app.routes.notes.build_note_pdf", fake_build_note_pdf)
+
+    response = test_client.post(
+        "/generate-note-pdf",
+        headers=headers,
+        json={"patient_id": patient["id"], "content": "Presenting Complaint: Saved offset check"},
+    )
+
+    assert response.status_code == 200
+    rendered_patient = captured["patient"]
+    assert isinstance(rendered_patient, dict)
+    assert rendered_patient["document_template_margin_top"] == 200
+    assert rendered_patient["document_template_notes_enabled"] is True

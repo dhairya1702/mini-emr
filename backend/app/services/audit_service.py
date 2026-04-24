@@ -216,3 +216,69 @@ async def record_invoice_shared(
             "balance_due": balance_due,
         },
     )
+
+
+async def record_catalog_item_created(
+    repo: SupabaseRepository,
+    current_user: UserOut,
+    item: dict,
+) -> None:
+    await write_audit_event(
+        repo,
+        current_user,
+        entity_type="catalog_item",
+        entity_id=str(item["id"]),
+        action="catalog_item_created",
+        summary=f"Created catalog item {item['name']}.",
+        metadata={
+            "item_name": item.get("name"),
+            "item_type": item.get("item_type"),
+            "track_inventory": item.get("track_inventory"),
+            "stock_quantity": item.get("stock_quantity"),
+        },
+    )
+
+
+async def record_catalog_stock_adjusted(
+    repo: SupabaseRepository,
+    current_user: UserOut,
+    item: dict,
+    *,
+    delta: float,
+) -> None:
+    await write_audit_event(
+        repo,
+        current_user,
+        entity_type="catalog_item",
+        entity_id=str(item["id"]),
+        action="catalog_stock_adjusted",
+        summary=f"Adjusted stock for {item['name']} by {delta:g}.",
+        metadata={
+            "catalog_item_id": str(item["id"]),
+            "item_name": item.get("name"),
+            "delta": delta,
+            "stock_quantity": item.get("stock_quantity"),
+            "adjustment_source": "manual",
+        },
+    )
+
+
+async def record_catalog_item_deleted(
+    repo: SupabaseRepository,
+    current_user: UserOut,
+    item: dict,
+) -> None:
+    await write_audit_event(
+        repo,
+        current_user,
+        entity_type="catalog_item",
+        entity_id=str(item["id"]),
+        action="catalog_item_deleted",
+        summary=f"Deleted catalog item {item['name']}.",
+        metadata={
+            "item_name": item.get("name"),
+            "item_type": item.get("item_type"),
+            "track_inventory": item.get("track_inventory"),
+            "stock_quantity": item.get("stock_quantity"),
+        },
+    )

@@ -37,6 +37,16 @@ cp .env.example .env
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
+## Run both servers
+
+From the project root:
+
+```bash
+./dev.sh
+```
+
+This starts the backend on `http://127.0.0.1:8001` and the frontend dev server from `web/`. Press `Ctrl+C` once to stop both.
+
 ## Environment
 
 Frontend:

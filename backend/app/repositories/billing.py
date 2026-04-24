@@ -33,6 +33,11 @@ class BillingRepositoryMixin(BaseSupabaseRepository):
             .data[0]
         )
 
+    async def get_catalog_item(self, org_id: str, item_id: str) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            lambda: self.client.table("catalog_items").select("*").eq("org_id", org_id).eq("id", item_id).single().execute().data
+        )
+
     async def update_catalog_stock(self, org_id: str, item_id: str, payload: CatalogStockUpdate) -> dict[str, Any]:
         def _update() -> dict[str, Any]:
             if payload.delta == 0:

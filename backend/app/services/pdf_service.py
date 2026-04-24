@@ -30,6 +30,11 @@ TEMPLATE_LABELS = {
     "letter": "clinic letter",
     "invoice": "invoice",
 }
+TEMPLATE_MIN_TOP_CLEARANCE = {
+    "note": 2.6 * inch,
+    "letter": 2.3 * inch,
+    "invoice": 2.3 * inch,
+}
 
 
 class TemplateConfigurationError(ValueError):
@@ -111,7 +116,7 @@ def _clamp_margin(value: Any) -> float:
         margin = float(value)
     except (TypeError, ValueError):
         return DEFAULT_MARGIN
-    return max(0.0, min(margin, 144.0))
+    return max(0.0, min(margin, 288.0))
 
 
 def _content_bounds(
@@ -227,6 +232,11 @@ def _draw_template_heading(
     return top_y - 24
 
 
+def _template_content_start_y(top_y: float, page_height: float, document_kind: str) -> float:
+    safe_top_y = page_height - TEMPLATE_MIN_TOP_CLEARANCE[document_kind]
+    return min(top_y, safe_top_y)
+
+
 DETAIL_LABELS = {
     "Name",
     "Phone",
@@ -327,7 +337,7 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
 
     if use_template:
         _start_page(pdf, template, width, height)
-        y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Consultation Note", generated_on)
+        y = _template_content_start_y(top_y, height, "note")
     else:
         pdf.setFillColor(HexColor("#0f172a"))
         pdf.setFont("Helvetica-Bold", 18)
@@ -380,7 +390,7 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
             pdf.showPage()
             if use_template:
                 _start_page(pdf, template, width, height)
-                y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Consultation Note", generated_on)
+                y = _template_content_start_y(top_y, height, "note")
             else:
                 y = height - 0.75 * inch
                 pdf.setFillColor(HexColor("#1e293b"))
@@ -413,7 +423,7 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
                 pdf.showPage()
                 if use_template:
                     _start_page(pdf, template, width, height)
-                    y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Consultation Note", generated_on)
+                    y = _template_content_start_y(top_y, height, "note")
                 else:
                     y = height - 0.75 * inch
                     pdf.setFont("Helvetica", 11)
@@ -453,7 +463,7 @@ def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: 
 
     if use_template:
         _start_page(pdf, template, width, height)
-        y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Clinic Letter", generated_on)
+        y = _template_content_start_y(top_y, height, "letter")
     else:
         pdf.setFillColor(HexColor("#0f172a"))
         pdf.setFont("Helvetica-Bold", 18)
@@ -502,7 +512,7 @@ def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: 
                 pdf.showPage()
                 if use_template:
                     _start_page(pdf, template, width, height)
-                    y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Clinic Letter", generated_on)
+                    y = _template_content_start_y(top_y, height, "letter")
                 else:
                     y = height - 0.75 * inch
                     pdf.setFont("Helvetica", 11)
@@ -547,7 +557,7 @@ def build_invoice_pdf(
 
     if use_template:
         _start_page(pdf, template, width, height)
-        y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Clinic Invoice", generated_on)
+        y = _template_content_start_y(top_y, height, "invoice")
     else:
         pdf.setFillColor(HexColor("#0f172a"))
         pdf.setFont("Helvetica-Bold", 18)
@@ -602,7 +612,7 @@ def build_invoice_pdf(
             pdf.showPage()
             if use_template:
                 _start_page(pdf, template, width, height)
-                y = _draw_template_heading(pdf, margin_x, top_y, max_width, "Clinic Invoice", generated_on)
+                y = _template_content_start_y(top_y, height, "invoice")
             else:
                 y = height - 0.9 * inch
                 pdf.setFont("Helvetica", 10)

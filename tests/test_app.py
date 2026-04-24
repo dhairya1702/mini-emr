@@ -613,6 +613,12 @@ class FakeRepo:
     async def list_catalog_items(self, org_id: str) -> list[dict]:
         return [item for item in self.catalog_items.values() if item["org_id"] == org_id]
 
+    async def get_catalog_item(self, org_id: str, item_id: str) -> dict:
+        item = self.catalog_items[item_id]
+        if item["org_id"] != org_id:
+            raise ValueError("Inventory item not found for this organization.")
+        return item
+
     async def update_catalog_stock(self, org_id: str, item_id: str, payload) -> dict:
         item = self.catalog_items[item_id]
         if item["org_id"] != org_id:

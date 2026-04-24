@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from supabase import Client
-
 from app.schemas import PatientCreate, PatientVisitCreate
 
 
@@ -14,7 +12,7 @@ class DuplicateCheckInCandidateError(ValueError):
 
 
 class BaseSupabaseRepository:
-    client: Client
+    client: Any
 
 
 def display_name(row: dict[str, Any]) -> str:
@@ -91,7 +89,7 @@ def visit_payload(payload: PatientCreate | PatientVisitCreate) -> dict[str, Any]
     }
 
 
-def find_check_in_matches(client: Client, org_id: str, appointment_id: str) -> list[dict[str, Any]]:
+def find_check_in_matches(client: Any, org_id: str, appointment_id: str) -> list[dict[str, Any]]:
     appointment = (
         client.table("appointments")
         .select("*")
