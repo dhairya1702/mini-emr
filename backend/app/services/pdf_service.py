@@ -39,6 +39,7 @@ SIGNATURE_MAX_WIDTH = 2.0 * inch
 SIGNATURE_MAX_HEIGHT = 0.8 * inch
 ASSET_PREVIEW_MAX_HEIGHT = 7.0 * inch
 SUPPORTED_NOTE_ASSET_IMAGE_PREFIX = "image/"
+SUPPORTED_NOTE_ASSET_PDF_TYPE = "application/pdf"
 
 
 class TemplateConfigurationError(ValueError):
@@ -464,6 +465,74 @@ def _build_note_asset_pdf(
     return buffer.getvalue()
 
 
+def _build_note_pdf_attachment_pdf(
+    asset: dict[str, Any],
+    *,
+    index: int,
+    width: float,
+    height: float,
+    template: tuple[str, bytes] | None,
+    use_template: bool,
+    margin_x: float,
+    top_y: float,
+    max_width: float,
+    bottom_limit: float,
+) -> bytes | None:
+    content_type = str(asset.get("content_type") or "").strip().lower()
+    if content_type != SUPPORTED_NOTE_ASSET_PDF_TYPE or PdfReader is None or PdfWriter is None:
+        return None
+
+    try:
+        raw_bytes = base64.b64decode(str(asset.get("data_base64") or ""), validate=True)
+        attachment_reader = PdfReader(BytesIO(raw_bytes))
+    except Exception:
+        return None
+    if not attachment_reader.pages:
+        return None
+
+    intro_buffer = BytesIO()
+    pdf = canvas.Canvas(intro_buffer, pagesize=(width, height))
+    if use_template:
+        _start_page(pdf, template, width, height)
+        y = _template_content_start_y(top_y, height, "note")
+    else:
+        y = height - DEFAULT_MARGIN
+        pdf.setFillColor(HexColor("#0f172a"))
+
+    asset_name = str(asset.get("name") or f"attachment-{index}.pdf").strip() or f"attachment-{index}.pdf"
+    pdf.setFillColor(HexColor("#0f172a"))
+    pdf.setFont("Helvetica-Bold", 13)
+    pdf.drawString(margin_x, y, "Consultation Attachment PDF")
+    y -= 24
+    pdf.setFont("Helvetica", 10)
+    pdf.setFillColor(HexColor("#475569"))
+    pdf.drawString(margin_x, y, asset_name)
+    y -= 18
+    pdf.drawString(margin_x, y, f"Attached PDF pages: {len(attachment_reader.pages)}")
+    y -= 28
+    pdf.setStrokeColor(HexColor("#dbeafe"))
+    pdf.roundRect(margin_x, bottom_limit, max_width, max(180, y - bottom_limit), 16, fill=0, stroke=1)
+    pdf.setFillColor(HexColor("#1e293b"))
+    pdf.setFont("Helvetica", 11)
+    pdf.drawString(margin_x + 18, y - 8, "The following pages are part of the uploaded consultation attachment.")
+    pdf.save()
+    intro_buffer.seek(0)
+
+    intro_pdf = intro_buffer.getvalue()
+    intro_pdf = _apply_pdf_template(intro_pdf, template) if use_template else intro_pdf
+
+    writer = PdfWriter()
+    intro_reader = PdfReader(BytesIO(intro_pdf))
+    for page in intro_reader.pages:
+        writer.add_page(page)
+    for page in attachment_reader.pages:
+        writer.add_page(page)
+
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
 def _build_note_assets_pdf(
     assets: list[dict[str, Any]],
     *,
@@ -479,26 +548,42 @@ def _build_note_assets_pdf(
     if not assets:
         return None
 
-    image_assets = [
+    supported_assets = [
         asset for asset in assets
         if str(asset.get("content_type") or "").strip().lower().startswith(SUPPORTED_NOTE_ASSET_IMAGE_PREFIX)
+        or str(asset.get("content_type") or "").strip().lower() == SUPPORTED_NOTE_ASSET_PDF_TYPE
     ]
-    if not image_assets:
+    if not supported_assets:
         return None
     combined_pdf: bytes | None = None
-    for index, asset in enumerate(image_assets, start=1):
-        asset_pdf = _build_note_asset_pdf(
-            asset,
-            index=index,
-            width=width,
-            height=height,
-            template=template,
-            use_template=use_template,
-            margin_x=margin_x,
-            top_y=top_y,
-            max_width=max_width,
-            bottom_limit=bottom_limit,
-        )
+    for index, asset in enumerate(supported_assets, start=1):
+        content_type = str(asset.get("content_type") or "").strip().lower()
+        if content_type == SUPPORTED_NOTE_ASSET_PDF_TYPE:
+            asset_pdf = _build_note_pdf_attachment_pdf(
+                asset,
+                index=index,
+                width=width,
+                height=height,
+                template=template,
+                use_template=use_template,
+                margin_x=margin_x,
+                top_y=top_y,
+                max_width=max_width,
+                bottom_limit=bottom_limit,
+            )
+        else:
+            asset_pdf = _build_note_asset_pdf(
+                asset,
+                index=index,
+                width=width,
+                height=height,
+                template=template,
+                use_template=use_template,
+                margin_x=margin_x,
+                top_y=top_y,
+                max_width=max_width,
+                bottom_limit=bottom_limit,
+            )
         if not asset_pdf:
             continue
         combined_pdf = asset_pdf if combined_pdf is None else _append_pdf_bytes(combined_pdf, asset_pdf)
