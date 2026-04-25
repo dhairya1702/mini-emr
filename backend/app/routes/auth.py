@@ -13,6 +13,7 @@ from app.schemas import (
     UserOut,
     UserPasswordUpdate,
 )
+from app.services.signature_service import normalize_signature_image
 from app.services.user_workflow import build_user_out, login_user_workflow, register_user_workflow
 
 
@@ -98,8 +99,10 @@ async def upload_my_signature(
     if content_type not in {"image/jpeg", "image/png"}:
         raise HTTPException(status_code=400, detail="Signature must be a JPG or PNG file.")
     raw_bytes = await file.read()
-    if not raw_bytes:
-        raise HTTPException(status_code=400, detail="Signature file is empty.")
+    try:
+        raw_bytes, content_type = normalize_signature_image(raw_bytes, content_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     saved = await repo.set_user_signature(
         str(current_user.id),

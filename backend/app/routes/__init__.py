@@ -8,6 +8,7 @@ from app.routes.followups import router as followups_router
 from app.routes.health import router as health_router
 from app.routes.notes import router as notes_router
 from app.routes.patients import router as patients_router
+from app.routes.public import router as public_router
 from app.routes.settings import router as settings_router
 from app.routes.users import router as users_router
 
@@ -22,6 +23,7 @@ __all__ = [
     "health_router",
     "notes_router",
     "patients_router",
+    "public_router",
     "settings_router",
     "users_router",
 ]

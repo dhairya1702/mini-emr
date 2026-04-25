@@ -37,6 +37,7 @@ TEMPLATE_MIN_TOP_CLEARANCE = {
 }
 SIGNATURE_MAX_WIDTH = 2.0 * inch
 SIGNATURE_MAX_HEIGHT = 0.8 * inch
+ASSET_PREVIEW_MAX_HEIGHT = 7.0 * inch
 
 
 class TemplateConfigurationError(ValueError):
@@ -365,7 +366,7 @@ def _draw_detail_pair_row(
     right: tuple[str, str] | None,
     total_width: float,
 ) -> float:
-    gap = 24
+    gap = 28
     column_width = (total_width - gap) / 2
     left_end_y = _draw_label_value_line(pdf, x, y, left[0], left[1], column_width)
     right_end_y = y
@@ -378,10 +379,65 @@ def _draw_detail_pair_row(
             right[1],
             column_width,
         )
-    return min(left_end_y, right_end_y)
+    return min(left_end_y, right_end_y) - 4
 
 
-def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str) -> bytes:
+def _draw_note_assets(
+    pdf: canvas.Canvas,
+    assets: list[dict[str, Any]],
+    *,
+    width: float,
+    height: float,
+    template: tuple[str, bytes] | None,
+    use_template: bool,
+    margin_x: float,
+    top_y: float,
+    max_width: float,
+    bottom_limit: float,
+) -> None:
+    if not assets:
+        return
+
+    image_assets = [
+        asset for asset in assets
+        if str(asset.get("content_type") or "").strip().lower() in {"image/png", "image/jpeg"}
+    ]
+    if not image_assets:
+        return
+
+    for asset in image_assets:
+        pdf.showPage()
+        if use_template:
+            _start_page(pdf, template, width, height)
+            y = _template_content_start_y(top_y, height, "note")
+        else:
+            y = height - DEFAULT_MARGIN
+            pdf.setFillColor(HexColor("#0f172a"))
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawString(margin_x, y, str(asset.get("name") or "Consultation attachment"))
+        y -= 20
+
+        try:
+            raw_bytes = base64.b64decode(str(asset.get("data_base64") or ""), validate=True)
+        except Exception:
+            continue
+
+        image_reader = ImageReader(BytesIO(raw_bytes))
+        image_width = max_width
+        image_height = max(min(ASSET_PREVIEW_MAX_HEIGHT, y - bottom_limit), 72)
+        pdf.drawImage(
+            image_reader,
+            margin_x,
+            bottom_limit,
+            width=image_width,
+            height=image_height,
+            preserveAspectRatio=True,
+            mask="auto",
+            anchor="n",
+        )
+
+
+def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str, assets: list[dict[str, Any]] | None = None) -> bytes:
     template = _resolve_template(patient, "note")
     width, height = _page_size_for_template(template)
     buffer = BytesIO()
@@ -419,7 +475,7 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
         pdf.setFont("Helvetica", 10)
         pdf.drawString(right_x + label_width, top_y, generated_on)
 
-        y = top_y - (58 if custom_header.strip() else 42)
+        y = top_y - (64 if custom_header.strip() else 48)
 
     detail_lines = [
         ("Name", patient.get("name", "Not recorded")),
@@ -442,7 +498,7 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
         right = detail_lines[index + 1] if index + 1 < len(detail_lines) else None
         y = _draw_detail_pair_row(pdf, margin_x, y, left, right, max_width)
 
-    y -= 6
+    y -= 14
     raw_lines = _extract_note_body(note_content).splitlines()
 
     for line in raw_lines:
@@ -472,7 +528,7 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
             if label in SECTION_LABELS and value == "":
                 pdf.setFont("Helvetica-Bold", 11)
                 pdf.drawString(margin_x, y, f"{label}:")
-                y -= 18
+                y -= 22
                 continue
 
         wrapped_lines = _wrap_text(stripped, "Helvetica", 11, max_width)
@@ -489,9 +545,23 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
                     pdf.setFont("Helvetica", 11)
                     pdf.setFillColor(HexColor("#1e293b"))
             pdf.drawString(margin_x, y, wrapped)
-            y -= 16
+            y -= 18
+
+        y -= 4
 
     _draw_doctor_signature(pdf, patient, width=width, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y)
+    _draw_note_assets(
+        pdf,
+        assets or [],
+        width=width,
+        height=height,
+        template=template,
+        use_template=use_template,
+        margin_x=margin_x,
+        top_y=top_y,
+        max_width=max_width,
+        bottom_limit=bottom_limit,
+    )
 
     if custom_footer.strip() and not use_template:
         footer_y = 0.55 * inch
@@ -551,7 +621,7 @@ def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: 
         pdf.setFont("Helvetica", 10)
         pdf.drawString(right_x + label_width, top_y, generated_on)
 
-        y = top_y - (70 if custom_header.strip() else 44)
+        y = top_y - (78 if custom_header.strip() else 52)
 
     pdf.setFont("Helvetica", 11)
     pdf.setFillColor(HexColor("#1e293b"))
@@ -580,9 +650,11 @@ def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: 
                     pdf.setFont("Helvetica", 11)
                     pdf.setFillColor(HexColor("#1e293b"))
             pdf.drawString(margin_x, y, wrapped)
-            y -= 16
+            y -= 18
 
-    _draw_doctor_signature(pdf, clinic, width=width, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y)
+        y -= 4
+
+    _draw_doctor_signature(pdf, clinic, width=width, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y - 8)
 
     if custom_footer.strip() and not use_template:
         footer_y = 0.55 * inch
@@ -643,7 +715,7 @@ def build_invoice_pdf(
         pdf.setFont("Helvetica", 10)
         pdf.drawString(right_x + label_width, top_y, generated_on)
 
-        y = top_y - (58 if custom_header.strip() else 42)
+        y = top_y - (66 if custom_header.strip() else 48)
 
     details = [
         ("Patient", patient.get("name", "Not recorded")),
@@ -659,7 +731,7 @@ def build_invoice_pdf(
         right = details[index + 1] if index + 1 < len(details) else None
         y = _draw_detail_pair_row(pdf, margin_x, y, left, right, max_width)
 
-    y -= 8
+    y -= 14
     pdf.setFillColor(HexColor("#e0f2fe"))
     pdf.roundRect(margin_x, y - 24, max_width, 24, 8, fill=1, stroke=0)
     pdf.setFillColor(HexColor("#0f172a"))
@@ -668,7 +740,7 @@ def build_invoice_pdf(
     pdf.drawString(margin_x + max_width - 170, y - 16, "Qty")
     pdf.drawString(margin_x + max_width - 110, y - 16, "Price")
     pdf.drawString(margin_x + max_width - 50, y - 16, "Total")
-    y -= 34
+    y -= 40
 
     pdf.setFont("Helvetica", 10)
     for item in invoice.get("items", []):
@@ -685,13 +757,13 @@ def build_invoice_pdf(
         pdf.drawRightString(margin_x + max_width - 145, y, str(item.get("quantity", "")))
         pdf.drawRightString(margin_x + max_width - 80, y, f"{float(item.get('unit_price', 0)):.2f}")
         pdf.drawRightString(margin_x + max_width - 10, y, f"{float(item.get('line_total', 0)):.2f}")
-        y -= 18
+        y -= 22
 
-    y -= 8
+    y -= 14
     pdf.setFont("Helvetica-Bold", 11)
     pdf.drawRightString(margin_x + max_width - 80, y, "Subtotal")
     pdf.drawRightString(margin_x + max_width - 10, y, f"{float(invoice.get('subtotal', 0)):.2f}")
-    y -= 18
+    y -= 22
     pdf.drawRightString(margin_x + max_width - 80, y, "Total")
     pdf.drawRightString(margin_x + max_width - 10, y, f"{float(invoice.get('total', 0)):.2f}")
 

@@ -105,12 +105,22 @@ export interface ConsultationNote {
   root_note_id: string | null;
   amended_from_note_id: string | null;
   snapshot_content: string | null;
+  asset_payload?: NoteAsset[];
+  snapshot_asset_payload?: NoteAsset[];
   finalized_at: string | null;
   sent_at: string | null;
   sent_by: string | null;
   sent_by_name?: string | null;
   sent_to: string | null;
   created_at: string;
+}
+
+export interface NoteAsset {
+  id: string;
+  kind: "attachment" | "drawing";
+  name: string;
+  content_type: string;
+  data_base64: string;
 }
 
 export interface AuditEvent {
@@ -154,6 +164,7 @@ export interface GenerateNotePayload {
   blood_sugar?: number | null;
   test_scores?: TestScoreEntry[];
   eye_exam?: EyeExamEntry[];
+  assets?: NoteAsset[];
 }
 
 export interface GenerateNoteResponse {
@@ -166,6 +177,13 @@ export interface GenerateLetterPayload {
   to: string;
   subject: string;
   content: string;
+}
+
+export interface GeneratePdfPayload {
+  note_id?: string;
+  patient_id: string;
+  content: string;
+  assets?: NoteAsset[];
 }
 
 export interface GenerateLetterResponse {
@@ -393,11 +411,6 @@ export interface PatientInput {
 
 export interface FinalizeNotePayload {
   note_id: string;
-}
-
-export interface GeneratePdfPayload {
-  patient_id: string;
-  content: string;
 }
 
 export interface GenerateLetterPdfPayload {

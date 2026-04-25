@@ -1,9 +1,10 @@
 "use client";
 
-import { Fragment, FormEvent, useEffect, useMemo, useState } from "react";
-import { CalendarPlus2, Eye, FileText, Mail, Sparkles, X } from "lucide-react";
+import { ChangeEvent, Fragment, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CalendarPlus2, Eye, Eraser, FileText, Image as ImageIcon, Mail, Paperclip, PenLine, Sparkles, Undo2, X } from "lucide-react";
+import Image from "next/image";
 
-import { CatalogItem, EyeExamEntry, Patient, TestScoreEntry } from "@/lib/types";
+import { CatalogItem, EyeExamEntry, NoteAsset, Patient, TestScoreEntry } from "@/lib/types";
 import { api } from "@/lib/api";
 
 function createId() {
@@ -12,6 +13,10 @@ function createId() {
   }
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
+
+const MAX_ATTACHMENT_SIZE_BYTES = 6 * 1024 * 1024;
+const MAX_ATTACHMENT_COUNT = 6;
+const SUPPORTED_ATTACHMENT_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 
 interface ConsultationDrawerProps {
   patient: Patient | null;
@@ -34,9 +39,22 @@ interface ConsultationDrawerProps {
     blood_sugar?: number | null;
     test_scores?: TestScoreEntry[];
     eye_exam?: EyeExamEntry[];
+    assets?: NoteAsset[];
   }) => Promise<{ content: string; noteId?: string | null; status?: "draft" | "final" | "sent" | null }>;
-  onGeneratePdf: (payload: { note_id?: string; patient_id: string; content: string }) => Promise<Blob>;
+  onGeneratePdf: (payload: { note_id?: string; patient_id: string; content: string; assets?: NoteAsset[] }) => Promise<Blob>;
   onSend: (payload: { note_id: string; patient_id: string; recipient_email: string }) => Promise<string>;
+}
+
+function fileToBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      resolve(result.split(",", 2)[1] || "");
+    };
+    reader.onerror = () => reject(new Error("Failed to read file."));
+    reader.readAsDataURL(file);
+  });
 }
 
 function createEmptyForm() {
@@ -58,6 +76,7 @@ function createEmptyForm() {
     followUpDate: "",
     followUpNotes: "",
     generatedNote: "",
+    assets: [] as NoteAsset[],
   };
 }
 
@@ -144,6 +163,11 @@ export function ConsultationDrawer({
   const [noteStatus, setNoteStatus] = useState<"draft" | "final" | "sent" | "">("");
   const [isSent, setIsSent] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState("");
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [drawingMode, setDrawingMode] = useState<"draw" | "erase">("draw");
+  const [brushSize, setBrushSize] = useState(3);
+  const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawingHistoryRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (!patient) {
@@ -158,7 +182,7 @@ export function ConsultationDrawer({
     setIsCompleting(false);
     setIsSending(false);
     setMedicineSearch(cachedWorkspace?.medicineSearch ?? "");
-    setForm(cachedWorkspace?.form ?? createEmptyForm());
+    setForm(cachedWorkspace?.form ? { ...createEmptyForm(), ...cachedWorkspace.form } : createEmptyForm());
     setOpenSections(
       cachedWorkspace?.openSections ?? {
         vitals: false,
@@ -189,7 +213,11 @@ export function ConsultationDrawer({
           setNoteStatus(latestNote.status);
           setHasGeneratedNote(Boolean((latestNote.content || "").trim()));
           if (!cachedWorkspace?.form.generatedNote.trim()) {
-            setForm((current) => ({ ...current, generatedNote: latestNote.content || "" }));
+            setForm((current) => ({
+              ...current,
+              generatedNote: latestNote.content || "",
+              assets: (latestNote.snapshot_asset_payload || latestNote.asset_payload || []) as NoteAsset[],
+            }));
           }
         }
       })
@@ -250,6 +278,14 @@ export function ConsultationDrawer({
       return item.name.toLowerCase().includes(query) || item.unit.toLowerCase().includes(query);
     });
   }, [medicineItems, medicineSearch]);
+  const attachmentAssets = useMemo(
+    () => form.assets.filter((asset) => asset.kind === "attachment"),
+    [form.assets],
+  );
+  const drawingAsset = useMemo(
+    () => form.assets.find((asset) => asset.kind === "drawing") ?? null,
+    [form.assets],
+  );
   const medicationPlan = useMemo(() => {
     const manualPlan = form.medications.trim();
     const selectedPlan = selectedMedicines.length
@@ -261,6 +297,23 @@ export function ConsultationDrawer({
 
     return [manualPlan, selectedPlan].filter(Boolean).join("\n\n");
   }, [form.medications, selectedMedicines]);
+
+  useEffect(() => {
+    const canvas = drawingCanvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) {
+      return;
+    }
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    if (!drawingAsset) {
+      return;
+    }
+    const image = new Image();
+    image.onload = () => {
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    };
+    image.src = `data:${drawingAsset.content_type};base64,${drawingAsset.data_base64}`;
+  }, [drawingAsset]);
 
   if (!patient) {
     return null;
@@ -292,6 +345,7 @@ export function ConsultationDrawer({
         eye_exam: form.eyeExam.filter((entry) =>
           entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim(),
         ),
+        assets: form.assets,
       });
       setForm((current) => ({ ...current, generatedNote: generated.content }));
       setHasGeneratedNote(true);
@@ -354,6 +408,7 @@ export function ConsultationDrawer({
         note_id: currentNoteId && (noteStatus === "final" || noteStatus === "sent") ? currentNoteId : undefined,
         patient_id: currentPatient.id,
         content: form.generatedNote,
+        assets: form.assets,
       });
       const url = URL.createObjectURL(blob);
 
@@ -438,6 +493,151 @@ export function ConsultationDrawer({
 
   function toggleSection(section: keyof typeof openSections) {
     setOpenSections((current) => ({ ...current, [section]: !current[section] }));
+  }
+
+  async function handleAttachmentSelect(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) {
+      return;
+    }
+    if (attachmentAssets.length + files.length > MAX_ATTACHMENT_COUNT) {
+      setStatusMessage(`You can keep up to ${MAX_ATTACHMENT_COUNT} consultation attachments.`);
+      event.target.value = "";
+      return;
+    }
+    try {
+      for (const file of files) {
+        if (!SUPPORTED_ATTACHMENT_TYPES.has(file.type || "")) {
+          throw new Error("Only JPG, PNG, and PDF files are supported.");
+        }
+        if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+          throw new Error("Each attachment must be 6 MB or smaller.");
+        }
+      }
+      const nextAssets = await Promise.all(
+        files.map(async (file) => ({
+          id: createId(),
+          kind: "attachment" as const,
+          name: file.name,
+          content_type: file.type || "application/octet-stream",
+          data_base64: await fileToBase64(file),
+        })),
+      );
+      setForm((current) => ({
+        ...current,
+        assets: [...current.assets.filter((asset) => asset.kind !== "attachment"), ...nextAssets],
+      }));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Failed to attach file.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function removeAsset(assetId: string) {
+    setForm((current) => ({ ...current, assets: current.assets.filter((asset) => asset.id !== assetId) }));
+  }
+
+  function beginDrawing(event: PointerEvent<HTMLCanvasElement>) {
+    const canvas = drawingCanvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) {
+      return;
+    }
+    drawingHistoryRef.current = [...drawingHistoryRef.current, canvas.toDataURL("image/png")].slice(-12);
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    context.globalCompositeOperation = drawingMode === "erase" ? "destination-out" : "source-over";
+    context.strokeStyle = "#0f172a";
+    context.lineWidth = drawingMode === "erase" ? brushSize * 4 : brushSize;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.beginPath();
+    context.moveTo((event.clientX - rect.left) * scaleX, (event.clientY - rect.top) * scaleY);
+    setIsDrawing(true);
+  }
+
+  function continueDrawing(event: PointerEvent<HTMLCanvasElement>) {
+    if (!isDrawing) {
+      return;
+    }
+    const canvas = drawingCanvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) {
+      return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    context.lineTo((event.clientX - rect.left) * scaleX, (event.clientY - rect.top) * scaleY);
+    context.stroke();
+  }
+
+  function finishDrawing() {
+    if (!isDrawing) {
+      return;
+    }
+    setIsDrawing(false);
+    const canvas = drawingCanvasRef.current;
+    if (!canvas) {
+      return;
+    }
+    const dataUrl = canvas.toDataURL("image/png");
+    const dataBase64 = dataUrl.split(",", 2)[1] || "";
+    setForm((current) => ({
+      ...current,
+      assets: [
+        ...current.assets.filter((asset) => asset.kind !== "drawing"),
+        {
+          id: current.assets.find((asset) => asset.kind === "drawing")?.id || createId(),
+          kind: "drawing",
+          name: "consultation-drawing.png",
+          content_type: "image/png",
+          data_base64: dataBase64,
+        },
+      ],
+    }));
+  }
+
+  function clearDrawing() {
+    const canvas = drawingCanvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (canvas && context) {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    setForm((current) => ({ ...current, assets: current.assets.filter((asset) => asset.kind !== "drawing") }));
+    drawingHistoryRef.current = [];
+  }
+
+  function undoDrawing() {
+    const canvas = drawingCanvasRef.current;
+    const context = canvas?.getContext("2d");
+    const previous = drawingHistoryRef.current.pop();
+    if (!canvas || !context || !previous) {
+      return;
+    }
+    const image = new Image();
+    image.onload = () => {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/png");
+      const dataBase64 = dataUrl.split(",", 2)[1] || "";
+      setForm((current) => ({
+        ...current,
+        assets: [
+          ...current.assets.filter((asset) => asset.kind !== "drawing"),
+          {
+            id: current.assets.find((asset) => asset.kind === "drawing")?.id || createId(),
+            kind: "drawing",
+            name: "consultation-drawing.png",
+            content_type: "image/png",
+            data_base64: dataBase64,
+          },
+        ],
+      }));
+    };
+    image.src = previous;
   }
 
   const hasVitals =
@@ -574,6 +774,133 @@ export function ConsultationDrawer({
                 placeholder="Exam findings, vitals, advice, follow-up"
               />
             </label>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              <div className="rounded-[28px] border border-sky-200 bg-white p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Attachments</p>
+                    <p className="mt-1 text-xs text-slate-500">Upload JPG, PNG, or PDF files. Images are appended to the PDF, PDFs are emailed as attachments.</p>
+                  </div>
+                  <label className="rounded-full border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 transition hover:bg-sky-100">
+                    Add files
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      multiple
+                      onChange={handleAttachmentSelect}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                <div className="space-y-2">
+                  {attachmentAssets.length ? attachmentAssets.map((asset) => (
+                    <div key={asset.id} className="flex items-center justify-between gap-3 rounded-[18px] border border-sky-100 bg-sky-50/40 px-3 py-2">
+                      <div className="flex min-w-0 items-center gap-3">
+                        {asset.content_type.startsWith("image/") ? (
+                          <Image
+                            src={`data:${asset.content_type};base64,${asset.data_base64}`}
+                            alt={asset.name}
+                            width={48}
+                            height={48}
+                            className="h-12 w-12 rounded-xl border border-sky-100 object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-sky-100 bg-white text-slate-500">
+                            <Paperclip className="h-4 w-4" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-900">{asset.name}</p>
+                          <p className="text-xs text-slate-500">{asset.content_type}</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeAsset(asset.id)}
+                        className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-white"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )) : (
+                    <p className="rounded-[18px] border border-dashed border-sky-200 bg-sky-50/20 px-4 py-5 text-sm text-slate-500">
+                      No consultation attachments yet.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-sky-200 bg-white p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Drawing</p>
+                    <p className="mt-1 text-xs text-slate-500">Sketch findings, markings, or procedure notes.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDrawingMode("draw")}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${drawingMode === "draw" ? "border-sky-300 bg-sky-100 text-sky-800" : "border-sky-200 bg-white text-slate-700 hover:bg-sky-50"}`}
+                    >
+                      <PenLine className="mr-1 inline h-3.5 w-3.5" />
+                      Draw
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDrawingMode("erase")}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${drawingMode === "erase" ? "border-sky-300 bg-sky-100 text-sky-800" : "border-sky-200 bg-white text-slate-700 hover:bg-sky-50"}`}
+                    >
+                      <Eraser className="mr-1 inline h-3.5 w-3.5" />
+                      Erase
+                    </button>
+                    <button
+                      type="button"
+                      onClick={undoDrawing}
+                      className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50"
+                    >
+                      <Undo2 className="mr-1 inline h-3.5 w-3.5" />
+                      Undo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearDrawing}
+                      className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div className="mb-3 flex items-center gap-3">
+                  <span className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Brush</span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={12}
+                    value={brushSize}
+                    onChange={(event) => setBrushSize(Number(event.target.value))}
+                    className="w-36 accent-sky-500"
+                  />
+                  <span className="text-xs text-slate-500">{brushSize}px</span>
+                </div>
+                <canvas
+                  ref={drawingCanvasRef}
+                  width={560}
+                  height={240}
+                  onPointerDown={beginDrawing}
+                  onPointerMove={continueDrawing}
+                  onPointerUp={finishDrawing}
+                  onPointerLeave={finishDrawing}
+                  className="h-[220px] w-full rounded-[20px] border border-sky-100 bg-sky-50/30"
+                />
+                {drawingAsset ? (
+                  <div className="mt-3 flex items-center gap-2 rounded-[18px] border border-sky-100 bg-sky-50/40 px-3 py-2 text-xs text-slate-600">
+                    <ImageIcon className="h-4 w-4 text-sky-600" />
+                    Drawing will be appended as an extra page in the generated consultation PDF.
+                  </div>
+                ) : null}
+              </div>
+            </div>
 
             <div className="flex flex-wrap gap-2">
               {sectionSuggestions.map((section) => (

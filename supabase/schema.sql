@@ -34,6 +34,8 @@ create table if not exists public.notes (
   root_note_id uuid references public.notes(id) on delete set null,
   amended_from_note_id uuid references public.notes(id) on delete set null,
   snapshot_content text,
+  asset_payload jsonb not null default '[]'::jsonb,
+  snapshot_asset_payload jsonb not null default '[]'::jsonb,
   finalized_at timestamptz,
   sent_at timestamptz,
   sent_by uuid references public.clinic_users(id) on delete set null,
@@ -163,6 +165,7 @@ create table if not exists public.follow_ups (
   notes text not null default '',
   status text not null default 'scheduled' check (status in ('scheduled', 'completed', 'cancelled')),
   completed_at timestamptz,
+  reminder_sent_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -244,6 +247,12 @@ alter table public.notes
 add column if not exists snapshot_content text;
 
 alter table public.notes
+add column if not exists asset_payload jsonb not null default '[]'::jsonb;
+
+alter table public.notes
+add column if not exists snapshot_asset_payload jsonb not null default '[]'::jsonb;
+
+alter table public.notes
 add column if not exists finalized_at timestamptz;
 
 alter table public.notes
@@ -254,6 +263,9 @@ add column if not exists sent_to text;
 
 alter table public.clinic_users
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;
+
+alter table public.follow_ups
+add column if not exists reminder_sent_at timestamptz;
 
 alter table public.clinic_users
 add column if not exists name text not null default '';

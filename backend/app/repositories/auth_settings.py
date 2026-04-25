@@ -48,6 +48,12 @@ def _hidden_clinic_template_defaults() -> dict[str, Any]:
 
 
 class AuthSettingsRepositoryMixin(BaseSupabaseRepository):
+    async def list_organization_ids(self) -> list[str]:
+        rows = await asyncio.to_thread(
+            lambda: self.client.table("organizations").select("id").execute().data
+        )
+        return [str(row["id"]) for row in rows]
+
     async def create_organization(self, clinic_name: str) -> dict[str, Any]:
         return await asyncio.to_thread(
             lambda: self.client.table("organizations")

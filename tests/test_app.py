@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import ModuleType
 from types import SimpleNamespace
@@ -82,9 +82,11 @@ sys.modules.setdefault("reportlab.pdfgen", reportlab_pdfgen_module)
 sys.modules.setdefault("reportlab.pdfgen.canvas", reportlab_canvas_module)
 
 from app import auth as auth_module
+from app import config as config_module
 from app import main as main_module
 from app.main import app
 from app.db import DuplicateCheckInCandidateError, get_repository
+from app.services import followup_booking_service as followup_booking_service_module
 
 
 def _now() -> datetime:
@@ -117,6 +119,9 @@ class FakeRepo:
         organization = {"id": org_id, "name": clinic_name.strip(), "created_at": _now()}
         self.organizations[org_id] = organization
         return organization
+
+    async def list_organization_ids(self) -> list[str]:
+        return list(self.organizations.keys())
 
     async def create_audit_event(
         self,
@@ -609,6 +614,7 @@ class FakeRepo:
             org_id,
             str(payload.patient_id),
             payload.content,
+            asset_payload=getattr(payload, "asset_payload", []),
             version_number=1,
             root_note_id=None,
             amended_from_note_id=None,
@@ -620,6 +626,7 @@ class FakeRepo:
         patient_id: str,
         content: str,
         *,
+        asset_payload: list[dict],
         version_number: int,
         root_note_id: str | None,
         amended_from_note_id: str | None,
@@ -630,11 +637,13 @@ class FakeRepo:
             "org_id": org_id,
             "patient_id": patient_id,
             "content": content,
+            "asset_payload": asset_payload,
             "status": "draft",
             "version_number": version_number,
             "root_note_id": root_note_id,
             "amended_from_note_id": amended_from_note_id,
             "snapshot_content": None,
+            "snapshot_asset_payload": [],
             "finalized_at": None,
             "sent_at": None,
             "sent_by": None,
@@ -644,11 +653,13 @@ class FakeRepo:
         self.notes[note_id] = note
         return note
 
-    async def update_note_draft(self, org_id: str, note_id: str, content: str) -> dict:
+    async def update_note_draft(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None) -> dict:
         note = await self.get_note(org_id, note_id)
         if note["status"] != "draft":
             raise ValueError("Only draft notes can be updated.")
         note["content"] = content
+        if asset_payload is not None:
+            note["asset_payload"] = asset_payload
         return note
 
     async def get_note(self, org_id: str, note_id: str) -> dict:
@@ -665,10 +676,11 @@ class FakeRepo:
             return note
         note["status"] = "final"
         note["snapshot_content"] = note["content"]
+        note["snapshot_asset_payload"] = note.get("asset_payload") or []
         note["finalized_at"] = _now()
         return note
 
-    async def create_note_amendment(self, org_id: str, note_id: str, content: str) -> dict:
+    async def create_note_amendment(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None) -> dict:
         note = await self.get_note(org_id, note_id)
         related = [
             entry for entry in self.notes.values()
@@ -681,6 +693,7 @@ class FakeRepo:
             org_id,
             note["patient_id"],
             content,
+            asset_payload=asset_payload or note.get("asset_payload") or [],
             version_number=next_version,
             root_note_id=str(note.get("root_note_id") or note["id"]),
             amended_from_note_id=note_id,
@@ -699,6 +712,7 @@ class FakeRepo:
         if note["sent_at"] is None:
             note["status"] = "sent"
             note["snapshot_content"] = note["snapshot_content"] or note["content"]
+            note["snapshot_asset_payload"] = note.get("snapshot_asset_payload") or note.get("asset_payload") or []
             note["sent_at"] = _now()
             note["sent_by"] = sent_by
             note["sent_to"] = sent_to
@@ -876,6 +890,7 @@ class FakeRepo:
             "notes": payload.notes,
             "status": "scheduled",
             "completed_at": None,
+            "reminder_sent_at": None,
             "created_at": _now(),
         }
         self.follow_ups[follow_up_id] = row
@@ -912,10 +927,28 @@ class FakeRepo:
         if "status" in updates:
             follow_up["status"] = updates["status"]
             follow_up["completed_at"] = _now() if updates["status"] == "completed" else None
+            if updates["status"] == "scheduled":
+                follow_up["reminder_sent_at"] = None
         if "scheduled_for" in updates:
             follow_up["scheduled_for"] = updates["scheduled_for"]
         if "notes" in updates:
             follow_up["notes"] = updates["notes"]
+        return follow_up
+
+    async def list_due_follow_ups(self, org_id: str, due_before_iso: str) -> list[dict]:
+        return [
+            follow_up for follow_up in self.follow_ups.values()
+            if follow_up["org_id"] == org_id
+            and follow_up["status"] == "scheduled"
+            and follow_up["reminder_sent_at"] is None
+            and str(follow_up["scheduled_for"]) <= due_before_iso
+        ]
+
+    async def mark_follow_up_reminder_sent(self, org_id: str, follow_up_id: str) -> dict:
+        follow_up = self.follow_ups[follow_up_id]
+        if follow_up["org_id"] != org_id:
+            raise ValueError("Follow-up not found for this organization.")
+        follow_up["reminder_sent_at"] = _now()
         return follow_up
 
 
@@ -933,6 +966,20 @@ def client(monkeypatch: pytest.MonkeyPatch):
         auth_module,
         "get_settings",
         lambda: SimpleNamespace(auth_secret="test-secret", supabase_service_role_key=""),
+    )
+    monkeypatch.setattr(
+        config_module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            auth_secret="test-secret",
+            supabase_service_role_key="",
+            app_origin="http://127.0.0.1:3000",
+        ),
+    )
+    monkeypatch.setattr(
+        followup_booking_service_module,
+        "get_settings",
+        lambda: SimpleNamespace(auth_secret="test-secret"),
     )
     app.dependency_overrides[get_repository] = lambda: repo
     with TestClient(app) as test_client:
@@ -959,3 +1006,62 @@ def register(client: TestClient, *, identifier: str, clinic_name: str) -> dict:
 
 def auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="booking@example.com", clinic_name="Booking Clinic")
+    token = session["token"]
+
+    patient_response = test_client.post(
+        "/patients",
+        headers=auth_headers(token),
+        json={
+            "name": "Booking Patient",
+            "phone": "5550102222",
+            "email": "patient@example.com",
+            "address": "123 Main Street",
+            "reason": "Review visit",
+            "age": 29,
+            "weight": 67,
+            "height": 172,
+            "temperature": 98.6,
+        },
+    )
+    assert patient_response.status_code == 201
+    patient = patient_response.json()
+
+    scheduled_for = (datetime.now(UTC).replace(microsecond=0) + timedelta(days=2)).isoformat()
+    follow_up_response = test_client.post(
+        f"/patients/{patient['id']}/follow-ups",
+        headers=auth_headers(token),
+        json={"scheduled_for": scheduled_for, "notes": "Return for blood pressure review"},
+    )
+    assert follow_up_response.status_code == 201
+    follow_up = follow_up_response.json()
+
+    booking_token = followup_booking_service_module.create_follow_up_booking_token(
+        org_id=session["user"]["org_id"],
+        patient_id=patient["id"],
+        follow_up_id=follow_up["id"],
+    )
+    context_response = test_client.get(f"/public/follow-up-booking?token={booking_token}")
+    assert context_response.status_code == 200
+    assert context_response.json()["patient_name"] == "Booking Patient"
+
+    rescheduled_for = (datetime.now(UTC).replace(microsecond=0) + timedelta(days=4)).isoformat()
+    book_response = test_client.post(
+        "/public/follow-up-booking",
+        json={"token": booking_token, "scheduled_for": rescheduled_for},
+    )
+    assert book_response.status_code == 204
+
+    follow_ups_response = test_client.get("/follow-ups", headers=auth_headers(token))
+    assert follow_ups_response.status_code == 200
+    refreshed_follow_up = follow_ups_response.json()[0]
+    assert datetime.fromisoformat(refreshed_follow_up["scheduled_for"].replace("Z", "+00:00")) == datetime.fromisoformat(rescheduled_for)
+
+    appointments_response = test_client.get("/appointments", headers=auth_headers(token))
+    assert appointments_response.status_code == 200
+    assert len(appointments_response.json()) == 1
+    assert appointments_response.json()[0]["reason"] == "Follow-up: Review visit"

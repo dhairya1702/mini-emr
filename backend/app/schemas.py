@@ -151,6 +151,7 @@ class PatientVisitCreate(BaseModel):
 class NoteCreate(BaseModel):
     patient_id: UUID
     content: str = Field(min_length=1)
+    asset_payload: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class NoteOut(BaseModel):
@@ -162,6 +163,8 @@ class NoteOut(BaseModel):
     root_note_id: UUID | None = None
     amended_from_note_id: UUID | None = None
     snapshot_content: str | None = None
+    asset_payload: list[dict[str, Any]] = Field(default_factory=list)
+    snapshot_asset_payload: list[dict[str, Any]] = Field(default_factory=list)
     finalized_at: datetime | None = None
     sent_at: datetime | None = None
     sent_by: UUID | None = None
@@ -227,7 +230,31 @@ class FollowUpOut(BaseModel):
     notes: str
     status: FollowUpStatus
     completed_at: datetime | None = None
+    reminder_sent_at: datetime | None = None
     created_at: datetime
+
+
+class FollowUpBookingContextOut(BaseModel):
+    follow_up_id: UUID
+    patient_name: str
+    clinic_name: str
+    scheduled_for: datetime
+    notes: str
+    booking_token: str
+    suggested_slots: list[datetime] = Field(default_factory=list)
+
+
+class FollowUpBookingRequest(BaseModel):
+    token: str = Field(min_length=20)
+    scheduled_for: datetime
+
+
+class NoteAssetInput(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    kind: Literal["attachment", "drawing"]
+    name: str = Field(min_length=1, max_length=160)
+    content_type: str = Field(min_length=3, max_length=120)
+    data_base64: str = Field(min_length=8)
 
 
 class TestScoreEntry(BaseModel):
@@ -257,6 +284,7 @@ class GenerateNoteRequest(BaseModel):
     blood_sugar: float | None = Field(default=None, ge=20, le=1000)
     test_scores: list[TestScoreEntry] = Field(default_factory=list)
     eye_exam: list[EyeExamEntry] = Field(default_factory=list)
+    assets: list[NoteAssetInput] = Field(default_factory=list)
 
 
 class GenerateNoteResponse(BaseModel):
@@ -282,6 +310,7 @@ class GenerateLetterResponse(BaseModel):
 class GeneratePdfRequest(BaseModel):
     patient_id: UUID
     content: str = Field(min_length=1)
+    assets: list[NoteAssetInput] = Field(default_factory=list)
 
 
 class GenerateLetterPdfRequest(BaseModel):

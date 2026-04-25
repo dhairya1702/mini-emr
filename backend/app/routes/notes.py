@@ -122,6 +122,7 @@ async def generate_note_pdf(
             patient={**patient, **clinic_settings},
             note_content=payload.content,
             generated_on=generated_on,
+            assets=[asset.model_dump() for asset in payload.assets],
         )
         filename = f"{patient['name'].strip().replace(' ', '_') or 'patient'}_note.pdf"
         return StreamingResponse(
@@ -153,6 +154,7 @@ async def generate_saved_note_pdf(
             patient={**patient, **clinic_settings},
             note_content=snapshot_content,
             generated_on=generated_on,
+            assets=note.get("snapshot_asset_payload") or note.get("asset_payload") or [],
         )
         filename = f"{patient['name'].strip().replace(' ', '_') or 'patient'}_note_snapshot.pdf"
         return StreamingResponse(

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.db import SupabaseRepository, get_repository
 from app.schemas import FollowUpCreate, FollowUpOut, FollowUpStatus, FollowUpUpdate, UserOut
-from app.services.followup_workflow import create_follow_up_workflow, update_follow_up_workflow
+from app.services.followup_workflow import create_follow_up_workflow, send_due_follow_up_emails_workflow, update_follow_up_workflow
 
 
 router = APIRouter()
@@ -32,6 +32,7 @@ async def list_follow_ups(
     repo: SupabaseRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[FollowUpOut]:
+    await send_due_follow_up_emails_workflow(repo, current_user)
     follow_ups = await repo.list_follow_ups(str(current_user.org_id), status=status, query=q, limit=limit)
     return [FollowUpOut(**follow_up) for follow_up in follow_ups]
 

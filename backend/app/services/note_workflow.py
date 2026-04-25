@@ -22,6 +22,25 @@ from app.services.email_service import send_clinic_email_message
 from app.services.pdf_service import build_letter_pdf, build_note_pdf
 
 
+def _serialize_assets(payload_assets) -> list[dict]:
+    return [asset.model_dump() for asset in payload_assets]
+
+
+def _email_attachments_from_assets(assets: list[dict]) -> list[tuple[str, bytes, str]]:
+    import base64
+
+    attachments: list[tuple[str, bytes, str]] = []
+    for asset in assets:
+        try:
+            raw = base64.b64decode(str(asset.get("data_base64") or ""), validate=True)
+        except Exception:
+            continue
+        filename = str(asset.get("name") or "attachment").strip() or "attachment"
+        mime_type = str(asset.get("content_type") or "application/octet-stream").strip() or "application/octet-stream"
+        attachments.append((filename, raw, mime_type))
+    return attachments
+
+
 async def generate_note_workflow(
     repo: SupabaseRepository,
     current_user: UserOut,
@@ -57,6 +76,7 @@ async def generate_note_workflow(
         measurements_context=measurements_context,
     )
     note = None
+    asset_payload = _serialize_assets(payload.assets)
     if payload.patient_id:
         patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
         if payload.note_id:
@@ -64,7 +84,7 @@ async def generate_note_workflow(
             if str(existing_note["patient_id"]) != str(payload.patient_id):
                 raise HTTPException(status_code=400, detail="Note does not belong to that patient.")
             if existing_note.get("status") == "draft":
-                note = await repo.update_note_draft(str(current_user.org_id), str(payload.note_id), content)
+                note = await repo.update_note_draft(str(current_user.org_id), str(payload.note_id), content, asset_payload)
                 await write_audit_event(
                     repo,
                     current_user,
@@ -77,10 +97,11 @@ async def generate_note_workflow(
                         "patient_name": patient_name,
                         "status": note.get("status"),
                         "version_number": note.get("version_number", 1),
+                        "asset_count": len(asset_payload),
                     },
                 )
             else:
-                note = await repo.create_note_amendment(str(current_user.org_id), str(payload.note_id), content)
+                note = await repo.create_note_amendment(str(current_user.org_id), str(payload.note_id), content, asset_payload)
                 await write_audit_event(
                     repo,
                     current_user,
@@ -95,12 +116,13 @@ async def generate_note_workflow(
                         "version_number": note.get("version_number", 1),
                         "amended_from_note_id": note.get("amended_from_note_id"),
                         "root_note_id": note.get("root_note_id"),
+                        "asset_count": len(asset_payload),
                     },
                 )
         else:
             note = await repo.create_note(
                 str(current_user.org_id),
-                NoteCreate(patient_id=payload.patient_id, content=content),
+                NoteCreate(patient_id=payload.patient_id, content=content, asset_payload=asset_payload),
             )
             await write_audit_event(
                 repo,
@@ -114,6 +136,7 @@ async def generate_note_workflow(
                     "patient_name": patient_name,
                     "status": note.get("status"),
                     "version_number": note.get("version_number", 1),
+                    "asset_count": len(asset_payload),
                 },
             )
     return GenerateNoteResponse(
@@ -254,10 +277,14 @@ async def send_note_workflow(
         patient={**patient, **clinic_settings},
         note_content=snapshot_content,
         generated_on=generated_on,
+        assets=finalized_note.get("snapshot_asset_payload") or finalized_note.get("asset_payload") or [],
     )
     patient_name = str(patient.get("name") or "").strip() or "Patient"
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
     subject = f"{clinic_name} consultation note for {patient_name}"
+    email_attachments = _email_attachments_from_assets(
+        finalized_note.get("snapshot_asset_payload") or finalized_note.get("asset_payload") or []
+    )
     try:
         await send_clinic_email_message(
             clinic_settings=clinic_settings,
@@ -269,7 +296,7 @@ async def send_note_workflow(
             ),
             attachments=[
                 (f"{patient_name.replace(' ', '_') or 'patient'}_consultation_note.pdf", pdf_bytes, "application/pdf"),
-            ],
+            ] + email_attachments,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

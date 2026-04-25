@@ -20,11 +20,13 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
                     "org_id": org_id,
                     "patient_id": str(payload.patient_id),
                     "content": payload.content,
+                    "asset_payload": payload.asset_payload,
                     "status": "draft",
                     "version_number": version_number,
                     "root_note_id": root_note_id,
                     "amended_from_note_id": amended_from_note_id,
                     "snapshot_content": None,
+                    "snapshot_asset_payload": [],
                     "finalized_at": None,
                     "sent_at": None,
                     "sent_by": None,
@@ -35,14 +37,19 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
             .data[0]
         )
 
-    async def update_note_draft(self, org_id: str, note_id: str, content: str) -> dict[str, Any]:
+    async def update_note_draft(self, org_id: str, note_id: str, content: str, asset_payload: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         def _update() -> dict[str, Any]:
             note = self.client.table("notes").select("*").eq("org_id", org_id).eq("id", note_id).single().execute().data
             if not note:
                 raise ValueError("Note not found for this organization.")
             if note.get("status") != "draft":
                 raise ValueError("Only draft notes can be updated.")
-            updated = self.client.table("notes").update({"content": content}).eq("org_id", org_id).eq("id", note_id).execute().data
+            updated = self.client.table("notes").update(
+                {
+                    "content": content,
+                    "asset_payload": asset_payload if asset_payload is not None else note.get("asset_payload") or [],
+                }
+            ).eq("org_id", org_id).eq("id", note_id).execute().data
             if not updated:
                 raise ValueError("Failed to update note draft.")
             return updated[0]
@@ -69,6 +76,7 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
                     {
                         "status": "final",
                         "snapshot_content": note.get("content") or "",
+                        "snapshot_asset_payload": note.get("asset_payload") or [],
                         "finalized_at": datetime.now(UTC).isoformat(),
                     }
                 )
@@ -83,7 +91,7 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
 
         return await asyncio.to_thread(_finalize)
 
-    async def create_note_amendment(self, org_id: str, note_id: str, content: str) -> dict[str, Any]:
+    async def create_note_amendment(self, org_id: str, note_id: str, content: str, asset_payload: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         note = await self.get_note(org_id, note_id)
         patient_notes = await self.list_notes_for_patient(org_id, str(note["patient_id"]))
         root_note_id = str(note.get("root_note_id") or note["id"])
@@ -93,7 +101,7 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
         next_version = max(int(entry.get("version_number") or 1) for entry in existing_versions) + 1
         return await self.create_note(
             org_id,
-            NoteCreate(patient_id=note["patient_id"], content=content),
+            NoteCreate(patient_id=note["patient_id"], content=content, asset_payload=asset_payload or note.get("asset_payload") or []),
             version_number=next_version,
             root_note_id=root_note_id,
             amended_from_note_id=str(note["id"]),
@@ -125,6 +133,7 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
                     {
                         "status": "sent",
                         "snapshot_content": note.get("snapshot_content") or note.get("content") or "",
+                        "snapshot_asset_payload": note.get("snapshot_asset_payload") or note.get("asset_payload") or [],
                         "sent_at": datetime.now(UTC).isoformat(),
                         "sent_by": sent_by,
                         "sent_to": sent_to,
@@ -156,6 +165,7 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
                         "scheduled_for": payload.scheduled_for.isoformat(),
                         "notes": payload.notes.strip(),
                         "status": "scheduled",
+                        "reminder_sent_at": None,
                     }
                 )
                 .execute()
@@ -201,6 +211,35 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
             .data
         )
 
+    async def list_due_follow_ups(self, org_id: str, due_before_iso: str) -> list[dict[str, Any]]:
+        return await asyncio.to_thread(
+            lambda: self.client.table("follow_ups")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("status", "scheduled")
+            .is_("reminder_sent_at", "null")
+            .lte("scheduled_for", due_before_iso)
+            .order("scheduled_for", desc=False)
+            .execute()
+            .data
+        )
+
+    async def mark_follow_up_reminder_sent(self, org_id: str, follow_up_id: str) -> dict[str, Any]:
+        def _mark() -> dict[str, Any]:
+            updated = (
+                self.client.table("follow_ups")
+                .update({"reminder_sent_at": datetime.now(UTC).isoformat()})
+                .eq("org_id", org_id)
+                .eq("id", follow_up_id)
+                .execute()
+                .data
+            )
+            if not updated:
+                raise ValueError("Failed to mark follow-up reminder as sent.")
+            return updated[0]
+
+        return await asyncio.to_thread(_mark)
+
     async def update_follow_up(self, org_id: str, follow_up_id: str, payload: FollowUpUpdate) -> dict[str, Any]:
         def _update() -> dict[str, Any]:
             existing = self.client.table("follow_ups").select("*").eq("org_id", org_id).eq("id", follow_up_id).single().execute().data
@@ -217,6 +256,8 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
                     update_payload["completed_at"] = datetime.now(UTC).isoformat()
                 elif payload.status in {"scheduled", "cancelled"}:
                     update_payload["completed_at"] = None
+                    if payload.status == "scheduled":
+                        update_payload["reminder_sent_at"] = None
             if not update_payload:
                 raise ValueError("No follow-up updates provided.")
             return (
