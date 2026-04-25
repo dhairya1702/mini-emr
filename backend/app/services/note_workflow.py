@@ -26,21 +26,6 @@ def _serialize_assets(payload_assets) -> list[dict]:
     return [asset.model_dump() for asset in payload_assets]
 
 
-def _email_attachments_from_assets(assets: list[dict]) -> list[tuple[str, bytes, str]]:
-    import base64
-
-    attachments: list[tuple[str, bytes, str]] = []
-    for asset in assets:
-        try:
-            raw = base64.b64decode(str(asset.get("data_base64") or ""), validate=True)
-        except Exception:
-            continue
-        filename = str(asset.get("name") or "attachment").strip() or "attachment"
-        mime_type = str(asset.get("content_type") or "application/octet-stream").strip() or "application/octet-stream"
-        attachments.append((filename, raw, mime_type))
-    return attachments
-
-
 async def generate_note_workflow(
     repo: SupabaseRepository,
     current_user: UserOut,
@@ -282,9 +267,6 @@ async def send_note_workflow(
     patient_name = str(patient.get("name") or "").strip() or "Patient"
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
     subject = f"{clinic_name} consultation note for {patient_name}"
-    email_attachments = _email_attachments_from_assets(
-        finalized_note.get("snapshot_asset_payload") or finalized_note.get("asset_payload") or []
-    )
     try:
         await send_clinic_email_message(
             clinic_settings=clinic_settings,
@@ -296,7 +278,7 @@ async def send_note_workflow(
             ),
             attachments=[
                 (f"{patient_name.replace(' ', '_') or 'patient'}_consultation_note.pdf", pdf_bytes, "application/pdf"),
-            ] + email_attachments,
+            ],
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

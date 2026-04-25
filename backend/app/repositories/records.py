@@ -76,7 +76,6 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
                     {
                         "status": "final",
                         "snapshot_content": note.get("content") or "",
-                        "snapshot_asset_payload": note.get("asset_payload") or [],
                         "finalized_at": datetime.now(UTC).isoformat(),
                     }
                 )
@@ -133,7 +132,6 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
                     {
                         "status": "sent",
                         "snapshot_content": note.get("snapshot_content") or note.get("content") or "",
-                        "snapshot_asset_payload": note.get("snapshot_asset_payload") or note.get("asset_payload") or [],
                         "sent_at": datetime.now(UTC).isoformat(),
                         "sent_by": sent_by,
                         "sent_to": sent_to,

@@ -38,6 +38,7 @@ TEMPLATE_MIN_TOP_CLEARANCE = {
 SIGNATURE_MAX_WIDTH = 2.0 * inch
 SIGNATURE_MAX_HEIGHT = 0.8 * inch
 ASSET_PREVIEW_MAX_HEIGHT = 7.0 * inch
+SUPPORTED_NOTE_ASSET_IMAGE_PREFIX = "image/"
 
 
 class TemplateConfigurationError(ValueError):
@@ -216,6 +217,23 @@ def _apply_pdf_template(base_pdf: bytes, template: tuple[str, bytes] | None) -> 
     return output.getvalue()
 
 
+def _append_pdf_bytes(primary_pdf: bytes, secondary_pdf: bytes | None) -> bytes:
+    if not secondary_pdf:
+        return primary_pdf
+    if PdfReader is None or PdfWriter is None:
+        return primary_pdf
+
+    writer = PdfWriter()
+    for source in (primary_pdf, secondary_pdf):
+        reader = PdfReader(BytesIO(source))
+        for page in reader.pages:
+            writer.add_page(page)
+
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
 def _start_page(
     pdf: canvas.Canvas,
     template: tuple[str, bytes] | None,
@@ -382,8 +400,71 @@ def _draw_detail_pair_row(
     return min(left_end_y, right_end_y) - 4
 
 
-def _draw_note_assets(
-    pdf: canvas.Canvas,
+def _build_note_asset_pdf(
+    asset: dict[str, Any],
+    *,
+    index: int,
+    width: float,
+    height: float,
+    template: tuple[str, bytes] | None,
+    use_template: bool,
+    margin_x: float,
+    top_y: float,
+    max_width: float,
+    bottom_limit: float,
+) -> bytes | None:
+    content_type = str(asset.get("content_type") or "").strip().lower()
+    if not content_type.startswith(SUPPORTED_NOTE_ASSET_IMAGE_PREFIX):
+        return None
+
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=(width, height))
+    if use_template:
+        _start_page(pdf, template, width, height)
+        y = _template_content_start_y(top_y, height, "note")
+    else:
+        y = height - DEFAULT_MARGIN
+        pdf.setFillColor(HexColor("#0f172a"))
+
+    asset_kind = str(asset.get("kind") or "attachment").strip().lower()
+    asset_title = "Consultation Drawing" if asset_kind == "drawing" else "Consultation Attachment"
+
+    pdf.setFillColor(HexColor("#0f172a"))
+    pdf.setFont("Helvetica-Bold", 13)
+    pdf.drawString(margin_x, y, asset_title)
+    y -= 24
+    pdf.setFont("Helvetica", 10)
+    pdf.setFillColor(HexColor("#475569"))
+    pdf.drawString(margin_x, y, f"Asset page {index}")
+    y -= 28
+
+    try:
+        raw_bytes = base64.b64decode(str(asset.get("data_base64") or ""), validate=True)
+    except Exception:
+        return None
+
+    image_reader = ImageReader(BytesIO(raw_bytes))
+    frame_top = y - 10
+    frame_height = max(min(ASSET_PREVIEW_MAX_HEIGHT, frame_top - bottom_limit), 180)
+    frame_bottom = max(bottom_limit, frame_top - frame_height)
+    pdf.setStrokeColor(HexColor("#dbeafe"))
+    pdf.roundRect(margin_x, frame_bottom, max_width, frame_height, 16, fill=0, stroke=1)
+    pdf.drawImage(
+        image_reader,
+        margin_x,
+        frame_bottom,
+        width=max_width,
+        height=frame_height,
+        preserveAspectRatio=True,
+        mask="auto",
+    )
+
+    pdf.save()
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def _build_note_assets_pdf(
     assets: list[dict[str, Any]],
     *,
     width: float,
@@ -394,47 +475,34 @@ def _draw_note_assets(
     top_y: float,
     max_width: float,
     bottom_limit: float,
-) -> None:
+) -> bytes | None:
     if not assets:
-        return
+        return None
 
     image_assets = [
         asset for asset in assets
-        if str(asset.get("content_type") or "").strip().lower() in {"image/png", "image/jpeg"}
+        if str(asset.get("content_type") or "").strip().lower().startswith(SUPPORTED_NOTE_ASSET_IMAGE_PREFIX)
     ]
     if not image_assets:
-        return
-
-    for asset in image_assets:
-        pdf.showPage()
-        if use_template:
-            _start_page(pdf, template, width, height)
-            y = _template_content_start_y(top_y, height, "note")
-        else:
-            y = height - DEFAULT_MARGIN
-            pdf.setFillColor(HexColor("#0f172a"))
-        pdf.setFont("Helvetica-Bold", 12)
-        pdf.drawString(margin_x, y, str(asset.get("name") or "Consultation attachment"))
-        y -= 20
-
-        try:
-            raw_bytes = base64.b64decode(str(asset.get("data_base64") or ""), validate=True)
-        except Exception:
-            continue
-
-        image_reader = ImageReader(BytesIO(raw_bytes))
-        image_width = max_width
-        image_height = max(min(ASSET_PREVIEW_MAX_HEIGHT, y - bottom_limit), 72)
-        pdf.drawImage(
-            image_reader,
-            margin_x,
-            bottom_limit,
-            width=image_width,
-            height=image_height,
-            preserveAspectRatio=True,
-            mask="auto",
-            anchor="n",
+        return None
+    combined_pdf: bytes | None = None
+    for index, asset in enumerate(image_assets, start=1):
+        asset_pdf = _build_note_asset_pdf(
+            asset,
+            index=index,
+            width=width,
+            height=height,
+            template=template,
+            use_template=use_template,
+            margin_x=margin_x,
+            top_y=top_y,
+            max_width=max_width,
+            bottom_limit=bottom_limit,
         )
+        if not asset_pdf:
+            continue
+        combined_pdf = asset_pdf if combined_pdf is None else _append_pdf_bytes(combined_pdf, asset_pdf)
+    return combined_pdf
 
 
 def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str, assets: list[dict[str, Any]] | None = None) -> bytes:
@@ -550,18 +618,6 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
         y -= 4
 
     _draw_doctor_signature(pdf, patient, width=width, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y)
-    _draw_note_assets(
-        pdf,
-        assets or [],
-        width=width,
-        height=height,
-        template=template,
-        use_template=use_template,
-        margin_x=margin_x,
-        top_y=top_y,
-        max_width=max_width,
-        bottom_limit=bottom_limit,
-    )
 
     if custom_footer.strip() and not use_template:
         footer_y = 0.55 * inch
@@ -577,7 +633,21 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
 
     pdf.save()
     buffer.seek(0)
-    return _apply_pdf_template(buffer.getvalue(), template)
+    base_pdf = _apply_pdf_template(buffer.getvalue(), template)
+    assets_pdf = _build_note_assets_pdf(
+        assets or [],
+        width=width,
+        height=height,
+        template=template,
+        use_template=use_template,
+        margin_x=margin_x,
+        top_y=top_y,
+        max_width=max_width,
+        bottom_limit=bottom_limit,
+    )
+    if assets_pdf:
+        assets_pdf = _apply_pdf_template(assets_pdf, template)
+    return _append_pdf_bytes(base_pdf, assets_pdf)
 
 
 def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: str) -> bytes:

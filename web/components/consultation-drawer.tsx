@@ -2,7 +2,7 @@
 
 import { ChangeEvent, Fragment, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarPlus2, Eye, Eraser, FileText, Image as ImageIcon, Mail, Paperclip, PenLine, Sparkles, Undo2, X } from "lucide-react";
-import Image from "next/image";
+import NextImage from "next/image";
 
 import { CatalogItem, EyeExamEntry, NoteAsset, Patient, TestScoreEntry } from "@/lib/types";
 import { api } from "@/lib/api";
@@ -16,7 +16,7 @@ function createId() {
 
 const MAX_ATTACHMENT_SIZE_BYTES = 6 * 1024 * 1024;
 const MAX_ATTACHMENT_COUNT = 6;
-const SUPPORTED_ATTACHMENT_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
+const SUPPORTED_ATTACHMENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
 
 interface ConsultationDrawerProps {
   patient: Patient | null;
@@ -308,7 +308,7 @@ export function ConsultationDrawer({
     if (!drawingAsset) {
       return;
     }
-    const image = new Image();
+    const image = new window.Image();
     image.onload = () => {
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
     };
@@ -617,7 +617,7 @@ export function ConsultationDrawer({
     if (!canvas || !context || !previous) {
       return;
     }
-    const image = new Image();
+    const image = new window.Image();
     image.onload = () => {
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
@@ -798,7 +798,7 @@ export function ConsultationDrawer({
                     <div key={asset.id} className="flex items-center justify-between gap-3 rounded-[18px] border border-sky-100 bg-sky-50/40 px-3 py-2">
                       <div className="flex min-w-0 items-center gap-3">
                         {asset.content_type.startsWith("image/") ? (
-                          <Image
+                          <NextImage
                             src={`data:${asset.content_type};base64,${asset.data_base64}`}
                             alt={asset.name}
                             width={48}
