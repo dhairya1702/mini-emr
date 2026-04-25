@@ -476,25 +476,41 @@ export function ConsultationDrawer({
       : noteStatus === "final"
         ? "Finalized"
         : noteStatus === "draft"
-          ? "Draft"
+        ? "Draft"
           : null;
+  const patientSnapshot = [
+    { label: "Age", value: currentPatient.age !== null ? String(currentPatient.age) : "-" },
+    { label: "Temp", value: currentPatient.temperature !== null ? `${currentPatient.temperature} F` : "-" },
+    { label: "Weight", value: currentPatient.weight !== null ? `${currentPatient.weight} kg` : "-" },
+    { label: "Height", value: currentPatient.height !== null ? `${currentPatient.height} cm` : "-" },
+  ];
+  const vitalsCards = [
+    { label: "BP", value: hasVitals ? `${form.bloodPressureSystolic || "-"} / ${form.bloodPressureDiastolic || "-"}` : "-" },
+    { label: "Pulse", value: form.pulse || "-" },
+    { label: "SpO2", value: form.spo2 ? `${form.spo2}%` : "-" },
+    { label: "Sugar", value: form.bloodSugar || "-" },
+  ];
 
   return (
-    <aside className="fixed inset-y-0 right-0 z-30 w-full max-w-2xl border-l-2 border-sky-300 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.2)] sm:max-w-4xl lg:max-w-6xl xl:max-w-[94vw] sm:p-6">
+    <aside className="fixed inset-0 z-30 w-screen border-l-2 border-sky-300 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.2)] sm:p-6">
       <div className="flex h-full flex-col">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <p className="text-sm uppercase tracking-[0.24em] text-slate-600">Consultation</p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-900">{currentPatient.name}</h2>
+            <h2 className="mt-2 text-3xl font-semibold text-slate-900">{currentPatient.name}</h2>
             <p className="mt-2 text-sm text-slate-700">
               {currentPatient.phone} · {currentPatient.reason}
             </p>
-            <p className="mt-2 text-sm font-medium text-slate-700">
-              Age {currentPatient.age ?? "-"} · Temp{" "}
-              {currentPatient.temperature !== null ? `${currentPatient.temperature} F` : "-"} · Weight{" "}
-              {currentPatient.weight !== null ? `${currentPatient.weight} kg` : "-"} · Height{" "}
-              {currentPatient.height !== null ? `${currentPatient.height} cm` : "-"}
-            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {patientSnapshot.map((entry) => (
+                <span
+                  key={entry.label}
+                  className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-slate-700"
+                >
+                  {entry.label} {entry.value}
+                </span>
+              ))}
+            </div>
           </div>
           <button
             type="button"
@@ -505,147 +521,79 @@ export function ConsultationDrawer({
           </button>
         </div>
 
-        <form className="flex-1 space-y-4 overflow-y-auto pr-1" onSubmit={handleGenerate}>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Symptoms</span>
-            <textarea
-              rows={4}
-              value={form.symptoms}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, symptoms: event.target.value }))
-              }
-              className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-              placeholder="Chief complaints, duration, key context"
-            />
-          </label>
+        <form className="grid flex-1 gap-5 overflow-y-auto pr-1 xl:grid-cols-[minmax(0,1.7fr)_360px]" onSubmit={handleGenerate}>
+          <div className="space-y-4">
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Symptoms</span>
+              <textarea
+                rows={4}
+                value={form.symptoms}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, symptoms: event.target.value }))
+                }
+                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                placeholder="Chief complaints, duration, key context"
+              />
+            </label>
 
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Diagnosis</span>
-            <input
-              value={form.diagnosis}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, diagnosis: event.target.value }))
-              }
-              className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-              placeholder="Provisional or confirmed diagnosis"
-            />
-          </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Diagnosis</span>
+              <input
+                value={form.diagnosis}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, diagnosis: event.target.value }))
+                }
+                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                placeholder="Provisional or confirmed diagnosis"
+              />
+            </label>
 
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Medications</span>
-            <textarea
-              rows={3}
-              value={form.medications}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, medications: event.target.value }))
-              }
-              className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-              placeholder="Prescriptions, dosage, duration"
-            />
-            <p className="mt-2 text-xs text-slate-500">
-              Inventory picks are appended when you generate the note, so the same medicines can reappear in billing.
-            </p>
-          </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Medications</span>
+              <textarea
+                rows={4}
+                value={form.medications}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, medications: event.target.value }))
+                }
+                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                placeholder="Prescriptions, dosage, duration"
+              />
+              <p className="mt-2 text-xs text-slate-500">
+                Selected inventory medicines are forced into the treatment section of the generated note.
+              </p>
+            </label>
 
-          <div className="rounded-[28px] border border-emerald-200 bg-emerald-50/50 p-4">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-slate-900">Medicine Inventory</p>
-                <p className="mt-1 text-xs text-slate-500">Search the catalog and add medicines to the consultation plan.</p>
-              </div>
-              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-medium text-emerald-700">
-                {selectedMedicines.length} selected
-              </span>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Clinical Notes</span>
+              <textarea
+                rows={4}
+                value={form.notes}
+                onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                placeholder="Exam findings, vitals, advice, follow-up"
+              />
+            </label>
+
+            <div className="flex flex-wrap gap-2">
+              {sectionSuggestions.map((section) => (
+                <button
+                  key={section.key}
+                  type="button"
+                  onClick={() => toggleSection(section.key)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                    section.active
+                      ? "border-sky-300 bg-sky-100 text-sky-800"
+                      : "border-sky-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
+                  }`}
+                >
+                  {section.active ? `${section.label} Added` : `+ ${section.label}`}
+                </button>
+              ))}
             </div>
-            <input
-              value={medicineSearch}
-              onChange={(event) => setMedicineSearch(event.target.value)}
-              placeholder="Search medicines by name or unit"
-              className="w-full rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
-            />
-            {selectedMedicines.length ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {selectedMedicines.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => toggleMedicine(item.id)}
-                    className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-emerald-50"
-                  >
-                    {formatMedicineLabel(item)}
-                    <X className="h-3 w-3" />
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
-              {filteredMedicineItems.length ? (
-                filteredMedicineItems.slice(0, 12).map((item) => {
-                  const active = selectedMedicineIds.includes(item.id);
-                  const outOfStock = item.track_inventory && item.stock_quantity <= 0;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => toggleMedicine(item.id)}
-                      disabled={outOfStock}
-                      className={`flex w-full items-center justify-between gap-3 rounded-[22px] border px-4 py-3 text-left transition ${
-                        active
-                          ? "border-emerald-300 bg-emerald-100 text-emerald-900"
-                          : "border-emerald-100 bg-white text-slate-700 hover:bg-emerald-50"
-                      } disabled:cursor-not-allowed disabled:opacity-50`}
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-slate-900">{item.name}</p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {item.default_price.toFixed(2)}{item.unit ? ` · ${item.unit}` : ""}
-                          {item.track_inventory ? ` · Stock ${item.stock_quantity}` : ""}
-                        </p>
-                      </div>
-                      <span className="rounded-full border border-emerald-200 px-3 py-1 text-xs font-medium">
-                        {active ? "Selected" : outOfStock ? "Out of stock" : "Add"}
-                      </span>
-                    </button>
-                  );
-                })
-              ) : (
-                <p className="rounded-[22px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">
-                  No medicines match this search.
-                </p>
-              )}
-            </div>
-          </div>
 
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Clinical Notes</span>
-            <textarea
-              rows={4}
-              value={form.notes}
-              onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-              className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-              placeholder="Exam findings, vitals, advice, follow-up"
-            />
-          </label>
-
-          <div className="flex flex-wrap gap-2">
-            {sectionSuggestions.map((section) => (
-              <button
-                key={section.key}
-                type="button"
-                onClick={() => toggleSection(section.key)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                  section.active
-                    ? "border-sky-300 bg-sky-100 text-sky-800"
-                    : "border-sky-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
-                }`}
-              >
-                {section.active ? `${section.label} Added` : `+ ${section.label}`}
-              </button>
-            ))}
-          </div>
-
-          {openSections.vitals ? (
-            <div className="rounded-[28px] border border-sky-200 bg-white p-4">
+            {openSections.vitals ? (
+              <div className="rounded-[28px] border border-sky-200 bg-white p-4">
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-slate-900">Vitals & Measurements</p>
@@ -717,11 +665,11 @@ export function ConsultationDrawer({
                   />
                 </label>
               </div>
-            </div>
-          ) : null}
+              </div>
+            ) : null}
 
-          {openSections.testScores ? (
-            <div className="rounded-[28px] border border-sky-200 bg-white p-4">
+            {openSections.testScores ? (
+              <div className="rounded-[28px] border border-sky-200 bg-white p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-slate-900">Test Scores</p>
@@ -769,11 +717,11 @@ export function ConsultationDrawer({
                   </div>
                 ))}
               </div>
-            </div>
-          ) : null}
+              </div>
+            ) : null}
 
-          {openSections.eyeExam ? (
-            <div className="rounded-[28px] border border-sky-200 bg-white p-4">
+            {openSections.eyeExam ? (
+              <div className="rounded-[28px] border border-sky-200 bg-white p-4">
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-slate-900">Eye Exam</p>
@@ -825,52 +773,162 @@ export function ConsultationDrawer({
                   </Fragment>
                 ))}
               </div>
-            </div>
-          ) : null}
+              </div>
+            ) : null}
 
-          <div className="rounded-[28px] border border-sky-200 bg-sky-50/50 p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-sky-600" />
-                <span className="text-sm font-medium text-slate-900">Generated Note</span>
+            <div className="rounded-[28px] border border-sky-200 bg-sky-50/50 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-sky-600" />
+                  <span className="text-sm font-medium text-slate-900">Generated Note</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {lifecycleLabel ? (
+                    <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-600">
+                      {lifecycleLabel}
+                    </span>
+                  ) : null}
+                  <button
+                    type="submit"
+                    disabled={isGenerating}
+                    className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {isGenerating ? "Generating..." : noteStatus === "draft" ? "Refresh Draft" : "Generate Note"}
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                {lifecycleLabel ? (
-                  <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-600">
-                    {lifecycleLabel}
-                  </span>
-                ) : null}
-                <button
-                  type="submit"
-                  disabled={isGenerating}
-                  className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  {isGenerating ? "Generating..." : noteStatus === "draft" ? "Refresh Draft" : "Generate Note"}
-                </button>
-              </div>
+              <textarea
+                rows={14}
+                value={form.generatedNote}
+                readOnly
+                className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-sky-400"
+                placeholder="Saved SOAP note will appear here"
+              />
+              <p className="mt-2 text-xs text-slate-500">
+                Saved notes are read-only. Generate again from the consultation fields if you need a different note.
+                {noteStatus === "draft" ? " Sending will lock the current saved version automatically." : ""}
+                {isSent ? " This note has been sent and is locked." : ""}
+              </p>
             </div>
-            <textarea
-              rows={12}
-              value={form.generatedNote}
-              readOnly
-              className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-sky-400"
-              placeholder="Saved SOAP note will appear here"
-            />
-            <p className="mt-2 text-xs text-slate-500">
-              Saved notes are read-only. Generate again from the consultation fields if you need a different note.
-              {noteStatus === "draft" ? " Sending will lock the current saved version automatically." : ""}
-              {isSent ? " This note has been sent and is locked." : ""}
-            </p>
           </div>
-        </form>
+          <div className="space-y-4 xl:sticky xl:top-0 xl:self-start">
+            <div className="rounded-[28px] border border-sky-200 bg-sky-50/40 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Patient Snapshot</p>
+                  <p className="mt-1 text-xs text-slate-500">Quick clinical context while you write.</p>
+                </div>
+                <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
+                  {currentPatient.phone}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {vitalsCards.map((entry) => (
+                  <div key={entry.label} className="rounded-[20px] border border-sky-100 bg-white px-4 py-3">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">{entry.label}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{entry.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-        <div className="mt-5 border-t border-sky-200 pt-4">
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-slate-700">{statusMessage || "Ready to generate and send."}</p>
-            <div className="flex flex-col gap-3">
-              {isFollowUpOpen ? (
-                <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
+            <div className="rounded-[28px] border border-emerald-200 bg-emerald-50/50 p-4">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Medicines & Suggestions</p>
+                  <p className="mt-1 text-xs text-slate-500">Pick from inventory and the treatment section will include them.</p>
+                </div>
+                <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-medium text-emerald-700">
+                  {selectedMedicines.length} selected
+                </span>
+              </div>
+              <input
+                value={medicineSearch}
+                onChange={(event) => setMedicineSearch(event.target.value)}
+                placeholder="Search medicines by name or unit"
+                className="w-full rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
+              />
+              {selectedMedicines.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedMedicines.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => toggleMedicine(item.id)}
+                      className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-emerald-50"
+                    >
+                      {formatMedicineLabel(item)}
+                      <X className="h-3 w-3" />
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <div className="mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1">
+                {filteredMedicineItems.length ? (
+                  filteredMedicineItems.slice(0, 12).map((item) => {
+                    const active = selectedMedicineIds.includes(item.id);
+                    const outOfStock = item.track_inventory && item.stock_quantity <= 0;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => toggleMedicine(item.id)}
+                        disabled={outOfStock}
+                        className={`flex w-full items-center justify-between gap-3 rounded-[22px] border px-4 py-3 text-left transition ${
+                          active
+                            ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                            : "border-emerald-100 bg-white text-slate-700 hover:bg-emerald-50"
+                        } disabled:cursor-not-allowed disabled:opacity-50`}
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">{item.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {item.default_price.toFixed(2)}{item.unit ? ` · ${item.unit}` : ""}
+                            {item.track_inventory ? ` · Stock ${item.stock_quantity}` : ""}
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-emerald-200 px-3 py-1 text-xs font-medium">
+                          {active ? "Selected" : outOfStock ? "Out of stock" : "Add"}
+                        </span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="rounded-[22px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">
+                    No medicines match this search.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-sky-200 bg-white p-4">
+              <p className="text-sm font-medium text-slate-900">Structured Add-ons</p>
+              <p className="mt-1 text-xs text-slate-500">Turn on the extra clinical tables only when you need them.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {sectionSuggestions.map((section) => (
+                  <button
+                    key={section.key}
+                    type="button"
+                    onClick={() => toggleSection(section.key)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                      section.active
+                        ? "border-sky-300 bg-sky-100 text-sky-800"
+                        : "border-sky-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
+                    }`}
+                  >
+                    {section.active ? `${section.label} Added` : `+ ${section.label}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-sky-200 pt-4">
+              <div className="flex flex-col gap-4">
+                <p className="text-sm text-slate-700">{statusMessage || "Ready to generate and send."}</p>
+                <div className="flex flex-col gap-3">
+                  {isFollowUpOpen ? (
+                    <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
                   <div className="grid gap-3 md:grid-cols-[220px_1fr]">
                     <label className="block">
                       <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Date</span>
@@ -895,61 +953,65 @@ export function ConsultationDrawer({
                       />
                     </label>
                   </div>
+                    </div>
+                  ) : null}
+                  <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+                        Recipient email
+                      </span>
+                      <input
+                        type="email"
+                        value={recipientEmail}
+                        onChange={(event) => setRecipientEmail(event.target.value)}
+                        placeholder="patient@example.com"
+                        className="w-full rounded-2xl border border-sky-100 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                      />
+                    </label>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <button
+                      type="button"
+                      disabled={isSending || !currentNoteId || isSent || !recipientEmail.trim()}
+                      onClick={handleSend}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                    >
+                      <Mail className="h-4 w-4" />
+                      {isSending ? "Sending..." : isSent ? "Sent and Locked" : "Send Email"}
+                    </button>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <button
+                        type="button"
+                        disabled={isCompleting || noteStatus === "draft" || !currentNoteId}
+                        onClick={handleDone}
+                        className="inline-flex items-center justify-center gap-2 rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                      >
+                        {isCompleting ? "Moving..." : "Done"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isGeneratingPdf || !currentNoteId}
+                        onClick={() => handlePdf("preview")}
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                      >
+                        <Eye className="h-4 w-4" />
+                        {isGeneratingPdf ? "Preparing..." : "Preview"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsFollowUpOpen((current) => !current)}
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                      >
+                        <CalendarPlus2 className="h-4 w-4" />
+                        {isFollowUpOpen ? "Hide Follow-up" : "Follow-up"}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              ) : null}
-              <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
-                <label className="block">
-                  <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
-                    Recipient email
-                  </span>
-                  <input
-                    type="email"
-                    value={recipientEmail}
-                    onChange={(event) => setRecipientEmail(event.target.value)}
-                    placeholder="patient@example.com"
-                    className="w-full rounded-2xl border border-sky-100 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-400"
-                  />
-                </label>
               </div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
-              <button
-                type="button"
-                disabled={isCompleting || noteStatus === "draft" || !currentNoteId}
-                onClick={handleDone}
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
-              >
-                {isCompleting ? "Moving..." : "Done"}
-              </button>
-              <button
-                type="button"
-                disabled={isGeneratingPdf || !currentNoteId}
-                onClick={() => handlePdf("preview")}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-              >
-                <Eye className="h-4 w-4" />
-                {isGeneratingPdf ? "Preparing..." : "Preview"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsFollowUpOpen((current) => !current)}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-              >
-                <CalendarPlus2 className="h-4 w-4" />
-                {isFollowUpOpen ? "Hide Follow-up" : "Follow-up"}
-              </button>
-              <button
-                type="button"
-                disabled={isSending || !currentNoteId || isSent || !recipientEmail.trim()}
-                onClick={handleSend}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-              >
-                <Mail className="h-4 w-4" />
-                {isSending ? "Sending..." : isSent ? "Sent and Locked" : "Send Email"}
-              </button>
-            </div>
             </div>
           </div>
-        </div>
+        </form>
       </div>
     </aside>
   );

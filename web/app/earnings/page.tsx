@@ -44,6 +44,7 @@ export default function EarningsPage() {
   const [isExporting, setIsExporting] = useState("");
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const [openingInvoiceId, setOpeningInvoiceId] = useState("");
+  const [hoveredChartPointKey, setHoveredChartPointKey] = useState<string | null>(null);
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(async () => {
     const [dataInvoices, historyPatients] = await Promise.all([
@@ -213,17 +214,18 @@ export default function EarningsPage() {
   const chartGeometry = useMemo(() => {
     const width = 920;
     const height = 220;
-    const paddingX = 24;
-    const paddingTop = 14;
-    const paddingBottom = 34;
-    const innerWidth = width - paddingX * 2;
+    const paddingLeft = 58;
+    const paddingRight = 18;
+    const paddingTop = 18;
+    const paddingBottom = 36;
+    const innerWidth = width - paddingLeft - paddingRight;
     const innerHeight = height - paddingTop - paddingBottom;
     const maxValue = Math.max(...chartData.points.map((point) => point.total), 0);
     const safeMax = maxValue > 0 ? maxValue : 1;
     const stepX = chartData.points.length > 1 ? innerWidth / (chartData.points.length - 1) : 0;
 
     const points = chartData.points.map((point, index) => {
-      const x = paddingX + stepX * index;
+      const x = paddingLeft + stepX * index;
       const y = paddingTop + innerHeight - (point.total / safeMax) * innerHeight;
       return { ...point, x, y };
     });
@@ -241,8 +243,26 @@ export default function EarningsPage() {
       return { value, y };
     });
 
-    return { width, height, paddingX, paddingTop, paddingBottom, innerHeight, points, linePath, areaPath, yTicks };
+    return {
+      width,
+      height,
+      paddingLeft,
+      paddingRight,
+      paddingTop,
+      paddingBottom,
+      innerHeight,
+      points,
+      linePath,
+      areaPath,
+      yTicks,
+      baselineY: paddingTop + innerHeight,
+    };
   }, [chartData]);
+
+  const hoveredChartPoint = useMemo(
+    () => chartGeometry.points.find((point) => point.key === hoveredChartPointKey) ?? null,
+    [chartGeometry.points, hoveredChartPointKey],
+  );
 
   const summary = useMemo(() => {
     const now = new Date();
@@ -453,24 +473,58 @@ export default function EarningsPage() {
                     </p>
                   </div>
 
-                  <div className="overflow-x-auto">
+                  <div className="relative overflow-x-auto">
+                    {hoveredChartPoint ? (
+                      <div
+                        className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-[18px] border border-sky-200 bg-white/95 px-3 py-2 shadow-[0_14px_34px_rgba(125,211,252,0.22)]"
+                        style={{
+                          left: `${(hoveredChartPoint.x / chartGeometry.width) * 100}%`,
+                          top: `${Math.max(0, (hoveredChartPoint.y / chartGeometry.height) * 100 - 16)}%`,
+                        }}
+                      >
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          {hoveredChartPoint.fullLabel}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-slate-900">
+                          {formatCurrency(hoveredChartPoint.total)}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {hoveredChartPoint.invoiceCount} paid invoice{hoveredChartPoint.invoiceCount === 1 ? "" : "s"}
+                        </p>
+                      </div>
+                    ) : null}
                     <svg
                       viewBox={`0 0 ${chartGeometry.width} ${chartGeometry.height}`}
                       className="min-w-[720px]"
                       role="img"
                       aria-label="Collections chart"
                     >
+                      <line
+                        x1={chartGeometry.paddingLeft}
+                        y1={chartGeometry.paddingTop}
+                        x2={chartGeometry.paddingLeft}
+                        y2={chartGeometry.baselineY}
+                        stroke="rgba(148,163,184,0.28)"
+                      />
+                      <line
+                        x1={chartGeometry.paddingLeft}
+                        y1={chartGeometry.baselineY}
+                        x2={chartGeometry.width - chartGeometry.paddingRight}
+                        y2={chartGeometry.baselineY}
+                        stroke="rgba(148,163,184,0.28)"
+                      />
+
                       {chartGeometry.yTicks.map((tick) => (
                         <g key={`${tick.value}-${tick.y}`}>
                           <line
-                            x1={chartGeometry.paddingX}
+                            x1={chartGeometry.paddingLeft}
                             y1={tick.y}
-                            x2={chartGeometry.width - chartGeometry.paddingX}
+                            x2={chartGeometry.width - chartGeometry.paddingRight}
                             y2={tick.y}
                             stroke="rgba(148,163,184,0.18)"
                             strokeDasharray="4 6"
                           />
-                          <text x={chartGeometry.paddingX} y={tick.y - 5} fontSize="10" fill="#64748b">
+                          <text x={chartGeometry.paddingLeft - 8} y={tick.y + 4} textAnchor="end" fontSize="10" fill="#64748b">
                             {formatCurrency(tick.value)}
                           </text>
                         </g>
@@ -487,30 +541,31 @@ export default function EarningsPage() {
                       />
 
                       {chartGeometry.points.map((point) => (
-                        <g key={point.key}>
-                          <circle cx={point.x} cy={point.y} r="4.5" fill="#ffffff" stroke="#0ea5e9" strokeWidth="2.5" />
+                        <g
+                          key={point.key}
+                          onMouseEnter={() => setHoveredChartPointKey(point.key)}
+                          onMouseLeave={() => setHoveredChartPointKey((current) => (current === point.key ? null : current))}
+                        >
+                          <circle
+                            cx={point.x}
+                            cy={point.y}
+                            r="10"
+                            fill="transparent"
+                          />
+                          <circle
+                            cx={point.x}
+                            cy={point.y}
+                            r={hoveredChartPointKey === point.key ? "6" : "4.5"}
+                            fill="#ffffff"
+                            stroke="#0ea5e9"
+                            strokeWidth={hoveredChartPointKey === point.key ? "3" : "2.5"}
+                          />
                           <text x={point.x} y={chartGeometry.height - 10} textAnchor="middle" fontSize="10" fill="#64748b">
                             {point.label}
                           </text>
                         </g>
                       ))}
                     </svg>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-3">
-                    {chartData.points
-                      .filter((point) => point.total > 0)
-                      .slice(-3)
-                      .reverse()
-                      .map((point) => (
-                        <div key={point.key} className="rounded-[20px] border border-sky-100 bg-white/85 px-4 py-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{point.fullLabel}</p>
-                          <p className="mt-1.5 text-base font-semibold text-slate-900">{formatCurrency(point.total)}</p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {point.invoiceCount} paid invoice{point.invoiceCount === 1 ? "" : "s"}
-                          </p>
-                        </div>
-                      ))}
                   </div>
                 </div>
               ) : (

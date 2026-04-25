@@ -53,8 +53,6 @@ export function SettingsDrawerBillingPanel({
   patients,
   selectedBillingPatientId,
   selectedBillingPatient,
-  serviceItems,
-  medicineItems,
   invoiceItems,
   invoiceSubtotal,
   amountPaid,
@@ -71,7 +69,6 @@ export function SettingsDrawerBillingPanel({
   customItemQuantity,
   customItemUnitPrice,
   onSelectPatient,
-  onAddCatalogItem,
   onCustomItemLabelChange,
   onCustomItemQuantityChange,
   onCustomItemUnitPriceChange,
@@ -116,116 +113,31 @@ export function SettingsDrawerBillingPanel({
 
       <div className="space-y-4">
         <div className="rounded-[28px] border border-sky-200 bg-white p-5">
-          <div className="flex items-start justify-between gap-4">
+          <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h3 className="text-base font-semibold text-slate-900">
-                {selectedBillingPatient ? `Billing for ${selectedBillingPatient.name}` : "Billing"}
+                {selectedBillingPatient ? `Invoice Items for ${selectedBillingPatient.name}` : "Invoice Items"}
               </h3>
             </div>
-            <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
-              {paymentStatus.charAt(0).toUpperCase() + paymentStatus.slice(1)}
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {(["paid", "partial", "unpaid"] as PaymentStatus[]).map((status) => (
-              <button
-                key={status}
-                type="button"
-                onClick={() => onPaymentStatusChange(status)}
-                className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-                  paymentStatus === status
-                    ? "border-sky-300 bg-sky-100 text-sky-800"
-                    : "border-sky-200 bg-white text-slate-700 hover:bg-sky-50"
-                }`}
-              >
-                {status.charAt(0).toUpperCase() + status.slice(1)}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-5 grid gap-4 xl:grid-cols-2">
-            <div className="xl:col-span-2 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
-                <label className="flex-1">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Item</span>
-                  <input
-                    value={customItemLabel}
-                    onChange={(event) => onCustomItemLabelChange(event.target.value)}
-                    placeholder="e.g. Procedure charge, dressing, emergency fee"
-                    className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
-                  />
-                </label>
-                <label>
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Qty</span>
-                  <input
-                    value={customItemQuantity}
-                    inputMode="decimal"
-                    onChange={(event) => onCustomItemQuantityChange(event.target.value)}
-                    className="w-24 rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
-                  />
-                </label>
-                <label>
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Price</span>
-                  <input
-                    value={customItemUnitPrice}
-                    inputMode="decimal"
-                    onChange={(event) => onCustomItemUnitPriceChange(event.target.value)}
-                    className="w-32 rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
-                  />
-                </label>
+            <div className="flex flex-wrap items-center gap-2">
+              {(["paid", "partial", "unpaid"] as PaymentStatus[]).map((status) => (
                 <button
+                  key={status}
                   type="button"
-                  onClick={onAddCustomItem}
-                  className="rounded-full bg-sky-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-sky-600"
+                  onClick={() => onPaymentStatusChange(status)}
+                  className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                    paymentStatus === status
+                      ? "border-sky-300 bg-sky-100 text-sky-800"
+                      : "border-sky-200 bg-white text-slate-700 hover:bg-sky-50"
+                  }`}
                 >
-                  Add
+                  {status.charAt(0).toUpperCase() + status.slice(1)}
                 </button>
-              </div>
+              ))}
+              <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
+                {invoiceItems.length} item{invoiceItems.length === 1 ? "" : "s"}
+              </span>
             </div>
-            <div>
-              <p className="mb-3 text-sm font-semibold text-slate-800">Services</p>
-              <div className="flex flex-wrap gap-2">
-                {serviceItems.length ? serviceItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => onAddCatalogItem(item)}
-                    disabled={item.track_inventory && item.stock_quantity <= 0}
-                    className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-slate-700 transition hover:bg-sky-100"
-                  >
-                    {item.name} · {item.default_price.toFixed(2)}
-                    {item.track_inventory ? ` · Stock ${item.stock_quantity}` : ""}
-                  </button>
-                )) : <p className="text-sm text-slate-600">No services in inventory.</p>}
-              </div>
-            </div>
-            <div>
-              <p className="mb-3 text-sm font-semibold text-slate-800">Medicines</p>
-              <div className="flex flex-wrap gap-2">
-                {medicineItems.length ? medicineItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => onAddCatalogItem(item)}
-                    disabled={item.track_inventory && item.stock_quantity <= 0}
-                    className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:bg-sky-50"
-                  >
-                    {item.name} · {item.default_price.toFixed(2)}
-                    {item.track_inventory ? ` · Stock ${item.stock_quantity}` : ""}
-                  </button>
-                )) : <p className="text-sm text-slate-600">No medicines in inventory.</p>}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-[28px] border border-sky-200 bg-white p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-base font-semibold text-slate-900">Invoice Items</h3>
-            <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
-              {invoiceItems.length} item{invoiceItems.length === 1 ? "" : "s"}
-            </span>
           </div>
 
           <div className="space-y-3">
@@ -256,6 +168,45 @@ export function SettingsDrawerBillingPanel({
                 </button>
               </div>
             )) : <p className="text-sm text-slate-600">Add services or medicines from the inventory to start billing.</p>}
+          </div>
+
+          <div className="mt-5 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+              <label className="flex-1">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Item</span>
+                <input
+                  value={customItemLabel}
+                  onChange={(event) => onCustomItemLabelChange(event.target.value)}
+                  placeholder="e.g. Procedure charge, dressing, emergency fee"
+                  className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                />
+              </label>
+              <label>
+                <span className="mb-2 block text-sm font-medium text-slate-700">Qty</span>
+                <input
+                  value={customItemQuantity}
+                  inputMode="decimal"
+                  onChange={(event) => onCustomItemQuantityChange(event.target.value)}
+                  className="w-24 rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                />
+              </label>
+              <label>
+                <span className="mb-2 block text-sm font-medium text-slate-700">Price</span>
+                <input
+                  value={customItemUnitPrice}
+                  inputMode="decimal"
+                  onChange={(event) => onCustomItemUnitPriceChange(event.target.value)}
+                  className="w-32 rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={onAddCustomItem}
+                className="rounded-full bg-sky-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-sky-600"
+              >
+                Add
+              </button>
+            </div>
           </div>
 
           <div className="mt-5 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">

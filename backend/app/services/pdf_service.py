@@ -268,14 +268,14 @@ def _draw_doctor_signature(
         y = max(y, bottom_limit + 28)
         pdf.setFillColor(HexColor("#1e293b"))
         pdf.setFont("Helvetica-Bold", 10)
-        pdf.drawRightString(width - margin_x, y, doctor_name)
+        pdf.drawString(margin_x, y, doctor_name)
         return
 
     _, raw_bytes = signature
     doctor_name = str(data.get("doctor_name") or "").strip()
     image_width = min(SIGNATURE_MAX_WIDTH, max_width * 0.45)
     image_height = SIGNATURE_MAX_HEIGHT
-    x = width - margin_x - image_width
+    x = margin_x
     image_y = max(y - image_height, bottom_limit + 18)
     pdf.drawImage(
         ImageReader(BytesIO(raw_bytes)),
@@ -289,7 +289,7 @@ def _draw_doctor_signature(
     if doctor_name:
         pdf.setFillColor(HexColor("#1e293b"))
         pdf.setFont("Helvetica-Bold", 10)
-        pdf.drawRightString(width - margin_x, image_y - 12, doctor_name)
+        pdf.drawString(margin_x, image_y - 12, doctor_name)
 
 
 def _template_content_start_y(top_y: float, page_height: float, document_kind: str) -> float:

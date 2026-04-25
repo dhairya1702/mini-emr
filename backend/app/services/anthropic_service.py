@@ -1,4 +1,5 @@
 import asyncio
+from collections import OrderedDict
 
 from anthropic import Anthropic
 
@@ -27,6 +28,78 @@ def build_fallback_note(
         f"Treatment:\n{medications or 'Medication plan was not documented.'}\n\n"
         "Follow-up Advice:\nReturn for reassessment if symptoms worsen or fail to improve."
     )
+
+
+SECTION_ORDER = [
+    "Presenting Complaint",
+    "Diagnosis",
+    "Clinical Notes",
+    "Treatment",
+    "Follow-up Advice",
+]
+
+
+def _normalize_multiline_text(value: str) -> str:
+    return "\n".join(line.rstrip() for line in value.strip().splitlines()).strip()
+
+
+def _normalize_note_content(
+    note_text: str,
+    symptoms: str,
+    diagnosis: str,
+    medications: str,
+    notes: str,
+    patient_context: str = "",
+    measurements_context: str = "",
+) -> str:
+    header_lines: list[str] = []
+    sections: OrderedDict[str, list[str]] = OrderedDict((label, []) for label in SECTION_ORDER)
+    current_section: str | None = None
+
+    for raw_line in note_text.splitlines():
+        stripped = raw_line.strip()
+        matched_section = None
+        for label in SECTION_ORDER:
+            prefix = f"{label}:"
+            if stripped.startswith(prefix):
+                matched_section = label
+                remainder = stripped[len(prefix):].strip()
+                current_section = label
+                if remainder:
+                    sections[label].append(remainder)
+                break
+        else:
+            if current_section:
+                sections[current_section].append(raw_line.rstrip())
+            elif stripped or header_lines:
+                header_lines.append(raw_line.rstrip())
+
+        if matched_section:
+            continue
+
+    clinical_notes = notes.strip() or "No additional findings were documented during this consultation."
+    if measurements_context.strip():
+        clinical_notes = f"{measurements_context.strip()}\n{clinical_notes}".strip()
+
+    fallbacks = {
+        "Presenting Complaint": symptoms.strip() or "Symptoms not fully documented.",
+        "Diagnosis": diagnosis.strip() or "Clinical impression is still under evaluation.",
+        "Clinical Notes": clinical_notes,
+        "Treatment": medications.strip() or "Medication plan was not documented.",
+        "Follow-up Advice": "Return for reassessment if symptoms worsen or fail to improve.",
+    }
+
+    normalized_sections = []
+    for label in SECTION_ORDER:
+        existing = _normalize_multiline_text("\n".join(line for line in sections[label] if line.strip()))
+        content = existing or fallbacks[label]
+        normalized_sections.append(f"{label}:\n{content}")
+
+    header = _normalize_multiline_text("\n".join(header_lines))
+    if not header and patient_context.strip():
+        header = _normalize_multiline_text(patient_context)
+
+    return "\n\n".join(([header] if header else []) + normalized_sections).strip()
 
 
 def build_fallback_letter(
@@ -146,7 +219,16 @@ Structured measurements:
     )
 
     blocks = [block.text for block in response.content if getattr(block, "type", "") == "text"]
-    return "\n".join(blocks).strip() or build_fallback_note(
+    generated_text = "\n".join(blocks).strip() or build_fallback_note(
+        symptoms,
+        diagnosis,
+        medications,
+        notes,
+        patient_context,
+        measurements_context,
+    )
+    return _normalize_note_content(
+        generated_text,
         symptoms,
         diagnosis,
         medications,

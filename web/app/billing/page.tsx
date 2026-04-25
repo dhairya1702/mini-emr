@@ -31,6 +31,54 @@ function extractMedicineSuggestions(note: ConsultationNote | null, medicineItems
   return medicineItems.filter((item) => normalizedText.includes(item.name.toLowerCase()));
 }
 
+function buildAutoDraftInvoiceItems(
+  patient: Patient | null,
+  note: ConsultationNote | null,
+  serviceItems: CatalogItem[],
+  medicineItems: CatalogItem[],
+) {
+  if (!patient) {
+    return [];
+  }
+
+  const items: DraftInvoiceItem[] = [];
+  const consultationService =
+    serviceItems.find((item) => /\bconsult/i.test(item.name)) ?? null;
+
+  items.push(
+    consultationService
+      ? {
+          id: createId(),
+          catalog_item_id: consultationService.id,
+          item_type: consultationService.item_type,
+          label: consultationService.name,
+          quantity: 1,
+          unit_price: consultationService.default_price,
+        }
+      : {
+          id: createId(),
+          catalog_item_id: null,
+          item_type: "service",
+          label: "Consultation",
+          quantity: 1,
+          unit_price: 0,
+        },
+  );
+
+  for (const medicine of extractMedicineSuggestions(note, medicineItems)) {
+    items.push({
+      id: createId(),
+      catalog_item_id: medicine.id,
+      item_type: medicine.item_type,
+      label: medicine.name,
+      quantity: 1,
+      unit_price: medicine.default_price,
+    });
+  }
+
+  return items;
+}
+
 export default function BillingPage() {
   const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -47,7 +95,6 @@ export default function BillingPage() {
   const [isPreparingInvoicePdf, setIsPreparingInvoicePdf] = useState(false);
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
   const [selectedPatientNotes, setSelectedPatientNotes] = useState<ConsultationNote[]>([]);
-  const [isLoadingConsultationSuggestions, setIsLoadingConsultationSuggestions] = useState(false);
   const [customItemLabel, setCustomItemLabel] = useState("");
   const [customItemQuantity, setCustomItemQuantity] = useState("1");
   const [customItemUnitPrice, setCustomItemUnitPrice] = useState("");
@@ -129,9 +176,9 @@ export default function BillingPage() {
   const serviceItems = useMemo(() => catalogItems.filter((item) => item.item_type === "service"), [catalogItems]);
   const medicineItems = useMemo(() => catalogItems.filter((item) => item.item_type === "medicine"), [catalogItems]);
   const latestConsultationNote = useMemo(() => selectedPatientNotes[0] ?? null, [selectedPatientNotes]);
-  const suggestedMedicines = useMemo(
-    () => extractMedicineSuggestions(latestConsultationNote, medicineItems),
-    [latestConsultationNote, medicineItems],
+  const autoDraftInvoiceItems = useMemo(
+    () => buildAutoDraftInvoiceItems(selectedBillingPatient, latestConsultationNote, serviceItems, medicineItems),
+    [latestConsultationNote, medicineItems, selectedBillingPatient, serviceItems],
   );
 
   useEffect(() => {
@@ -141,7 +188,6 @@ export default function BillingPage() {
     }
 
     let active = true;
-    setIsLoadingConsultationSuggestions(true);
     void api.listPatientNotes(selectedBillingPatientId)
       .then((notes) => {
         if (!active) {
@@ -156,17 +202,27 @@ export default function BillingPage() {
         setSelectedPatientNotes([]);
         setBillingStatus("");
         setBillingError(error instanceof Error ? error.message : "Failed to load consultation notes.");
-      })
-      .finally(() => {
-        if (active) {
-          setIsLoadingConsultationSuggestions(false);
-        }
       });
 
     return () => {
       active = false;
     };
   }, [selectedBillingPatientId]);
+
+  useEffect(() => {
+    if (!selectedBillingPatientId) {
+      return;
+    }
+    setInvoiceItems(autoDraftInvoiceItems);
+    setSavedInvoice(null);
+    setBillingError("");
+    setBillingStatus(
+      autoDraftInvoiceItems.length
+        ? `Added consultation and ${Math.max(autoDraftInvoiceItems.length - 1, 0)} medicine item${Math.max(autoDraftInvoiceItems.length - 1, 0) === 1 ? "" : "s"} from the latest consultation.`
+        : "",
+    );
+    setAmountPaidInput("");
+  }, [autoDraftInvoiceItems, selectedBillingPatientId]);
 
   function addCatalogItemToInvoice(item: typeof catalogItems[number]) {
     if (item.track_inventory && item.stock_quantity <= 0) {
@@ -394,41 +450,6 @@ export default function BillingPage() {
           onPreviewPdf={handleInvoicePdf}
           onSendInvoice={handleShareInvoice}
         />
-        <section className="mt-4 rounded-[28px] border border-emerald-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900">Consultation medicine suggestions</h2>
-              <p className="mt-2 text-sm text-slate-600">
-                {selectedBillingPatient
-                  ? `Pulled from the latest consultation note for ${selectedBillingPatient.name}.`
-                  : "Select a patient to see prescription suggestions."}
-              </p>
-            </div>
-            <div className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700">
-              {isLoadingConsultationSuggestions ? "Loading notes..." : `${suggestedMedicines.length} suggestion${suggestedMedicines.length === 1 ? "" : "s"}`}
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {suggestedMedicines.length ? suggestedMedicines.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => addCatalogItemToInvoice(item)}
-                disabled={item.track_inventory && item.stock_quantity <= 0}
-                className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-slate-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {item.name} · {item.default_price.toFixed(2)}
-                {item.track_inventory ? ` · Stock ${item.stock_quantity}` : ""}
-              </button>
-            )) : (
-              <p className="text-sm text-slate-600">
-                {selectedBillingPatient
-                  ? "No medicine names from the latest consultation note matched your inventory."
-                  : "No patient selected."}
-              </p>
-            )}
-          </div>
-        </section>
         <section className="mt-4 rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
