@@ -73,7 +73,7 @@ interface SettingsDrawerProps {
   }) => Promise<void>;
   onAdjustCatalogStock: (itemId: string, delta: number) => Promise<void>;
   onDeleteCatalogItem: (itemId: string) => Promise<void>;
-  onUpdateUserRole?: (userId: string, role: "admin" | "staff") => Promise<void>;
+  onUpdateUserRole?: (userId: string, role: "admin" | "staff") => Promise<AuthUser>;
   onDeleteUser?: (userId: string) => Promise<void>;
   onUploadUserSignature?: (userId: string, file: File) => Promise<void>;
   onRemoveUserSignature?: (userId: string) => Promise<void>;
@@ -446,6 +446,7 @@ export function SettingsDrawer({
   onUpdateAppointment,
   onUpdateFollowUp,
   onBillingComplete,
+  onUpdateUserRole,
   onDeleteUser,
 }: SettingsDrawerProps) {
   const router = useRouter();
@@ -508,6 +509,9 @@ export function SettingsDrawer({
   const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("paid");
   const [amountPaidInput, setAmountPaidInput] = useState("");
+  const [customItemLabel, setCustomItemLabel] = useState("");
+  const [customItemQuantity, setCustomItemQuantity] = useState("1");
+  const [customItemUnitPrice, setCustomItemUnitPrice] = useState("");
   const [isExporting, setIsExporting] = useState("");
   const [exportStatus, setExportStatus] = useState("");
   const [exportError, setExportError] = useState("");
@@ -1126,6 +1130,43 @@ export function SettingsDrawer({
     setSavedInvoice(null);
   }
 
+  function addCustomInvoiceItem() {
+    const label = customItemLabel.trim();
+    const quantity = Number(customItemQuantity);
+    const unitPrice = Number(customItemUnitPrice);
+
+    if (!label) {
+      setBillingError("Enter a label for the custom item.");
+      return;
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setBillingError("Custom item quantity must be greater than zero.");
+      return;
+    }
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      setBillingError("Custom item price must be zero or more.");
+      return;
+    }
+
+    setInvoiceItems((current) => [
+      ...current,
+      {
+        id: createId(),
+        catalog_item_id: null,
+        item_type: "service",
+        label,
+        quantity,
+        unit_price: unitPrice,
+      },
+    ]);
+    setCustomItemLabel("");
+    setCustomItemQuantity("1");
+    setCustomItemUnitPrice("");
+    setBillingStatus("");
+    setBillingError("");
+    setSavedInvoice(null);
+  }
+
   async function handleCreateBill() {
     if (!selectedBillingPatient) {
       setBillingError("Select a done patient to bill.");
@@ -1634,7 +1675,11 @@ export function SettingsDrawer({
         }}
         onSubmit={handleAddUser}
         onUserFormChange={(patch) => setUserForm((current) => ({ ...current, ...patch }))}
-        onUpdateUserRole={onUpdateUserRole ?? (async () => {})}
+        onUpdateUserRole={onUpdateUserRole ?? (async (userId: string, role: "admin" | "staff") => {
+          void userId;
+          void role;
+          throw new Error("User role updates are unavailable.");
+        })}
         onDeleteUser={onDeleteUser ?? (async () => {})}
       />
     );
@@ -1700,6 +1745,9 @@ export function SettingsDrawer({
         isPreparingInvoicePdf={isPreparingInvoicePdf}
         isSendingInvoice={isSendingInvoice}
         savedInvoice={savedInvoice}
+        customItemLabel={customItemLabel}
+        customItemQuantity={customItemQuantity}
+        customItemUnitPrice={customItemUnitPrice}
         onSelectPatient={(patientId) => {
           setSelectedBillingPatientId(patientId);
           setInvoiceItems([]);
@@ -1709,6 +1757,10 @@ export function SettingsDrawer({
           setAmountPaidInput("");
         }}
         onAddCatalogItem={addCatalogItemToInvoice}
+        onCustomItemLabelChange={setCustomItemLabel}
+        onCustomItemQuantityChange={setCustomItemQuantity}
+        onCustomItemUnitPriceChange={setCustomItemUnitPrice}
+        onAddCustomItem={addCustomInvoiceItem}
         onUpdateInvoiceItem={updateInvoiceItem}
         onRemoveInvoiceItem={removeInvoiceItem}
         onCreateBill={handleCreateBill}

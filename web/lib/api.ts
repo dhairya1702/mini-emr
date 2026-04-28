@@ -30,6 +30,7 @@ import {
   Patient,
   PatientInput,
   PatientMatch,
+  PatientUpdatePayload,
   PatientVisit,
   PatientTimelineEvent,
   PatientStatus,
@@ -438,10 +439,7 @@ export const api = {
     }),
   updatePatient: (
     patientId: string,
-    payload: Pick<
-      Patient,
-      "name" | "phone" | "email" | "address" | "reason" | "age" | "weight" | "height" | "temperature"
-    >,
+    payload: PatientUpdatePayload,
   ) =>
     request<Patient>(`/patients/${patientId}`, {
       method: "PATCH",

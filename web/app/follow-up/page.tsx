@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { Calendar, CheckCircle2, Clock3, RefreshCw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
@@ -41,7 +41,7 @@ function formatDateTime(value: string) {
   }).format(date);
 }
 
-export default function FollowUpBookingPage() {
+function FollowUpBookingPageContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token") || "";
 
@@ -279,5 +279,23 @@ export default function FollowUpBookingPage() {
         ) : null}
       </div>
     </main>
+  );
+}
+
+export default function FollowUpBookingPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-[linear-gradient(180deg,#eaf6ff_0%,#f8fcff_45%,#fefefe_100%)] px-4 py-10 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-3xl rounded-[36px] border border-sky-100 bg-white/95 p-7 shadow-[0_25px_80px_rgba(125,211,252,0.14)] sm:p-10">
+            <div className="rounded-[28px] border border-sky-100 bg-sky-50/70 px-5 py-6 text-sm text-slate-600">
+              Loading booking details...
+            </div>
+          </div>
+        </main>
+      }
+    >
+      <FollowUpBookingPageContent />
+    </Suspense>
   );
 }

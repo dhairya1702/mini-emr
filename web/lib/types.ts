@@ -409,6 +409,20 @@ export interface PatientInput {
   temperature: number | null;
 }
 
+export interface PatientUpdatePayload {
+  status?: PatientStatus;
+  billed?: boolean;
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  reason?: string;
+  age?: number | null;
+  weight?: number | null;
+  height?: number | null;
+  temperature?: number | null;
+}
+
 export interface FinalizeNotePayload {
   note_id: string;
 }

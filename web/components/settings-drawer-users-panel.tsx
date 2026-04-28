@@ -32,7 +32,7 @@ interface SettingsDrawerUsersPanelProps {
   onToggleAddUser: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
   onUserFormChange: (patch: Partial<UserFormState>) => void;
-  onUpdateUserRole: (userId: string, role: UserRole) => Promise<void>;
+  onUpdateUserRole: (userId: string, role: UserRole) => Promise<AuthUser>;
   onDeleteUser: (userId: string) => Promise<void>;
 }
 
