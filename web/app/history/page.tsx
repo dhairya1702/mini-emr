@@ -252,7 +252,7 @@ export default function HistoryPage() {
               >
                 <option value="all">All visits</option>
                 <option value="waiting">Waiting</option>
-                <option value="consultation">In consultation</option>
+                <option value="consultation">Consultation</option>
                 <option value="done">Billing</option>
                 <option value="billed">Billed</option>
               </select>

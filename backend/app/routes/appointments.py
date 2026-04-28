@@ -1,3 +1,5 @@
+from datetime import UTC, date, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_user
@@ -17,6 +19,7 @@ from app.services.appointment_workflow import (
     create_appointment_workflow,
     update_appointment_workflow,
 )
+from app.services.followup_workflow import _as_utc_minute, expire_stale_schedule_workflow
 
 
 router = APIRouter()
@@ -38,11 +41,19 @@ async def create_appointment(
 async def list_appointments(
     status: AppointmentStatus | None = Query(default=None),
     q: str | None = Query(default=None, max_length=120),
+    scheduled_date: date | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=500),
     repo: SupabaseRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[AppointmentOut]:
+    await expire_stale_schedule_workflow(repo, str(current_user.org_id))
     appointments = await repo.list_appointments(str(current_user.org_id), status=status, query=q, limit=limit)
+    effective_date = scheduled_date or datetime.now(UTC).date()
+    appointments = [
+        appointment
+        for appointment in appointments
+        if _as_utc_minute(appointment["scheduled_for"]).date() == effective_date
+    ]
     return [AppointmentOut(**appointment) for appointment in appointments]
 
 

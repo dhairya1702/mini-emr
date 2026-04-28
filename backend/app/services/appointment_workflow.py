@@ -7,6 +7,7 @@ from app.services.audit_service import (
     record_appointment_created,
     record_appointment_updated,
 )
+from app.services.followup_workflow import expire_stale_schedule_workflow
 
 
 async def create_appointment_workflow(
@@ -25,6 +26,7 @@ async def check_in_appointment_workflow(
     appointment_id: str,
     payload: AppointmentCheckInRequest | None = None,
 ) -> PatientOut:
+    await expire_stale_schedule_workflow(repo, str(current_user.org_id))
     try:
         _appointment, patient = await repo.check_in_appointment(
             str(current_user.org_id),
@@ -50,6 +52,7 @@ async def update_appointment_workflow(
     appointment_id: str,
     payload: AppointmentUpdate,
 ) -> AppointmentOut:
+    await expire_stale_schedule_workflow(repo, str(current_user.org_id))
     updated = await repo.update_appointment(str(current_user.org_id), appointment_id, payload)
     changed_fields = sorted(payload.model_dump(exclude_none=True).keys())
     await record_appointment_updated(repo, current_user, updated, changed_fields)

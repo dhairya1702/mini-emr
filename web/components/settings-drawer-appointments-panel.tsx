@@ -25,6 +25,24 @@ type AppointmentView = "appointments" | "followUps";
 type AppointmentFilter = "all" | "scheduled" | "checked_in" | "cancelled";
 type FollowUpFilter = "all" | "scheduled" | "completed" | "cancelled";
 
+function getTodayIsoDate() {
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function toLocalIsoDate(value: string) {
+  const date = new Date(value);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 export function SettingsDrawerAppointmentsPanel({
   onCheckInAppointment,
   onUpdateAppointment,
@@ -32,12 +50,15 @@ export function SettingsDrawerAppointmentsPanel({
 }: SettingsDrawerAppointmentsPanelProps) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
-  const [activeView, setActiveView] = useState<AppointmentView>("followUps");
+  const [activeView, setActiveView] = useState<AppointmentView>("appointments");
   const [appointmentFilter, setAppointmentFilter] = useState<AppointmentFilter>("all");
   const [followUpFilter, setFollowUpFilter] = useState<FollowUpFilter>("all");
   const [appointmentQuery, setAppointmentQuery] = useState("");
   const [followUpQuery, setFollowUpQuery] = useState("");
+  const [selectedDate, setSelectedDate] = useState(() => getTodayIsoDate());
   const [checkingInId, setCheckingInId] = useState("");
+  const [expandedAppointmentId, setExpandedAppointmentId] = useState("");
+  const [expandedFollowUpId, setExpandedFollowUpId] = useState("");
   const [editingAppointmentId, setEditingAppointmentId] = useState("");
   const [rescheduleDate, setRescheduleDate] = useState("");
   const [rescheduleTime, setRescheduleTime] = useState("");
@@ -54,6 +75,7 @@ export function SettingsDrawerAppointmentsPanel({
     appointmentName: string;
     matches: PatientMatch[];
   } | null>(null);
+  const todayIsoDate = getTodayIsoDate();
 
   useEffect(() => {
     let active = true;
@@ -65,17 +87,29 @@ export function SettingsDrawerAppointmentsPanel({
           ? api.listAppointments({
               status: appointmentFilter === "all" ? undefined : appointmentFilter,
               q: appointmentQuery.trim() || undefined,
+              scheduled_date: selectedDate,
             }).then((rows) => {
               if (active) {
-                setAppointments(rows);
+                setAppointments(
+                  rows.filter((appointment) => {
+                    const scheduledDate = toLocalIsoDate(appointment.scheduled_for);
+                    return scheduledDate >= todayIsoDate && scheduledDate === selectedDate;
+                  }),
+                );
               }
             })
           : api.listFollowUps({
               status: followUpFilter === "all" ? undefined : followUpFilter,
               q: followUpQuery.trim() || undefined,
+              scheduled_date: selectedDate,
             }).then((rows) => {
               if (active) {
-                setFollowUps(rows);
+                setFollowUps(
+                  rows.filter((followUp) => {
+                    const scheduledDate = toLocalIsoDate(followUp.scheduled_for);
+                    return scheduledDate >= todayIsoDate && scheduledDate === selectedDate;
+                  }),
+                );
               }
             });
 
@@ -95,7 +129,7 @@ export function SettingsDrawerAppointmentsPanel({
       window.clearTimeout(timeoutId);
       setIsLoading(false);
     };
-  }, [activeView, appointmentFilter, appointmentQuery, followUpFilter, followUpQuery]);
+  }, [activeView, appointmentFilter, appointmentQuery, followUpFilter, followUpQuery, selectedDate, todayIsoDate]);
 
   function formatDateTime(value: string) {
     return new Date(value).toLocaleString([], {
@@ -186,6 +220,15 @@ export function SettingsDrawerAppointmentsPanel({
     setStatusMessage("");
   }
 
+  function toggleAppointmentActions(appointment: Appointment) {
+    if (appointment.status !== "scheduled") {
+      return;
+    }
+    setStatusMessage("");
+    setEditingAppointmentId((current) => (current === appointment.id ? "" : current));
+    setExpandedAppointmentId((current) => (current === appointment.id ? "" : appointment.id));
+  }
+
   async function handleSaveReschedule(appointmentId: string) {
     if (!rescheduleDate || !rescheduleTime) {
       setStatusMessage("Choose a date and time to reschedule.");
@@ -201,6 +244,7 @@ export function SettingsDrawerAppointmentsPanel({
         current.map((appointment) => (appointment.id === appointmentId ? updated : appointment)),
       );
       setEditingAppointmentId("");
+      setExpandedAppointmentId("");
       setStatusMessage("Appointment rescheduled.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to reschedule appointment.");
@@ -224,6 +268,15 @@ export function SettingsDrawerAppointmentsPanel({
     setStatusMessage("");
   }
 
+  function toggleFollowUpActions(followUp: FollowUp) {
+    if (followUp.status !== "scheduled") {
+      return;
+    }
+    setStatusMessage("");
+    setEditingFollowUpId((current) => (current === followUp.id ? "" : current));
+    setExpandedFollowUpId((current) => (current === followUp.id ? "" : followUp.id));
+  }
+
   async function handleSaveFollowUp(followUpId: string) {
     if (!followUpDate || !followUpTime) {
       setStatusMessage("Choose a date and time for the follow-up.");
@@ -241,6 +294,7 @@ export function SettingsDrawerAppointmentsPanel({
         current.map((followUp) => (followUp.id === followUpId ? updated : followUp)),
       );
       setEditingFollowUpId("");
+      setExpandedFollowUpId("");
       setStatusMessage("Follow-up updated.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to update follow-up.");
@@ -262,6 +316,9 @@ export function SettingsDrawerAppointmentsPanel({
       );
       if (editingFollowUpId === followUpId) {
         setEditingFollowUpId("");
+      }
+      if (expandedFollowUpId === followUpId) {
+        setExpandedFollowUpId("");
       }
       setStatusMessage(
         status === "completed"
@@ -287,6 +344,9 @@ export function SettingsDrawerAppointmentsPanel({
       );
       if (editingAppointmentId === appointmentId) {
         setEditingAppointmentId("");
+      }
+      if (expandedAppointmentId === appointmentId) {
+        setExpandedAppointmentId("");
       }
       setStatusMessage("Appointment cancelled.");
     } catch (error) {
@@ -412,6 +472,13 @@ export function SettingsDrawerAppointmentsPanel({
                 placeholder="Search patient, phone, or reason"
                 className="min-w-[260px] rounded-full border border-sky-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-400"
               />
+              <input
+                type="date"
+                value={selectedDate}
+                min={todayIsoDate}
+                onChange={(event) => setSelectedDate(event.target.value)}
+                className="rounded-full border border-sky-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+              />
               {(["all", "scheduled", "checked_in", "cancelled"] as AppointmentFilter[]).map((filter) => (
                 <button
                   key={filter}
@@ -436,13 +503,31 @@ export function SettingsDrawerAppointmentsPanel({
                       <th className="px-4 py-3 text-left font-semibold">Appointment For</th>
                       <th className="px-4 py-3 text-left font-semibold">Reason</th>
                       <th className="px-4 py-3 text-left font-semibold">Status</th>
-                      <th className="px-4 py-3 text-left font-semibold">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white">
                     {appointments.map((appointment) => (
                       <Fragment key={appointment.id}>
-                        <tr className="border-t border-sky-100 first:border-t-0">
+                        <tr
+                          role={appointment.status === "scheduled" ? "button" : undefined}
+                          tabIndex={appointment.status === "scheduled" ? 0 : undefined}
+                          aria-expanded={appointment.status === "scheduled" ? expandedAppointmentId === appointment.id : undefined}
+                          onClick={() => toggleAppointmentActions(appointment)}
+                          onKeyDown={(event) => {
+                            if (appointment.status !== "scheduled") {
+                              return;
+                            }
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              toggleAppointmentActions(appointment);
+                            }
+                          }}
+                          className={`border-t border-sky-100 first:border-t-0 ${
+                            appointment.status === "scheduled"
+                              ? "cursor-pointer transition hover:bg-sky-50/60 focus:outline-none focus-visible:bg-sky-50/60"
+                              : ""
+                          }`}
+                        >
                           <td className="px-4 py-3 text-slate-800">
                             <div className="font-medium">{appointment.name}</div>
                             <div className="mt-1 text-xs text-slate-500">{appointment.phone}</div>
@@ -456,43 +541,52 @@ export function SettingsDrawerAppointmentsPanel({
                               {formatStatusLabel(appointment.status)}
                             </span>
                           </td>
-                          <td className="px-4 py-3">
-                            {appointment.status === "scheduled" ? (
+                        </tr>
+                        {expandedAppointmentId === appointment.id && appointment.status === "scheduled" ? (
+                          <tr className="border-t border-sky-100 bg-sky-50/40">
+                            <td colSpan={4} className="px-4 py-4">
                               <div className="flex flex-wrap items-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => handleStartCheckIn(appointment)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void handleStartCheckIn(appointment);
+                                  }}
                                   disabled={checkingInId === appointment.id || savingAppointmentId === appointment.id}
-                                  className="inline-flex items-center justify-center rounded-full border border-sky-200 bg-sky-50 p-2 text-sky-700 transition hover:bg-sky-100 disabled:opacity-60"
-                                  aria-label={`Add ${appointment.name} to queue`}
+                                  className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-sky-700 transition hover:bg-sky-100 disabled:opacity-60"
                                 >
                                   <Plus className="h-4 w-4" />
+                                  Move to Queue
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => startReschedule(appointment)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    startReschedule(appointment);
+                                  }}
                                   disabled={savingAppointmentId === appointment.id}
-                                  className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-60"
+                                  className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-60"
                                 >
-                                  Edit
+                                  Reschedule
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleCancelAppointment(appointment.id)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void handleCancelAppointment(appointment.id);
+                                  }}
                                   disabled={savingAppointmentId === appointment.id}
-                                  className="rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                                  className="rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
                                 >
                                   Cancel
                                 </button>
                               </div>
-                            ) : (
-                              <span className="text-xs text-slate-500">No actions</span>
-                            )}
-                          </td>
-                        </tr>
+                            </td>
+                          </tr>
+                        ) : null}
                         {editingAppointmentId === appointment.id && appointment.status === "scheduled" ? (
                           <tr className="border-t border-sky-100 bg-sky-50/40">
-                            <td colSpan={5} className="px-4 py-4">
+                            <td colSpan={4} className="px-4 py-4">
                               <div className="flex flex-col gap-3 md:flex-row md:items-end">
                                 <label className="block">
                                   <span className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-slate-500">New Date</span>
@@ -527,7 +621,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     disabled={savingAppointmentId === appointment.id}
                                     className="rounded-full border border-sky-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white disabled:opacity-60"
                                   >
-                                    Close
+                                    Hide
                                   </button>
                                 </div>
                               </div>
@@ -554,6 +648,13 @@ export function SettingsDrawerAppointmentsPanel({
                 placeholder="Search patient or follow-up notes"
                 className="min-w-[260px] rounded-full border border-sky-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-400"
               />
+              <input
+                type="date"
+                value={selectedDate}
+                min={todayIsoDate}
+                onChange={(event) => setSelectedDate(event.target.value)}
+                className="rounded-full border border-sky-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+              />
               {(["all", "scheduled", "completed", "cancelled"] as FollowUpFilter[]).map((filter) => (
                 <button
                   key={filter}
@@ -578,13 +679,31 @@ export function SettingsDrawerAppointmentsPanel({
                       <th className="px-4 py-3 text-left font-semibold">Follow-Up For</th>
                       <th className="px-4 py-3 text-left font-semibold">Notes</th>
                       <th className="px-4 py-3 text-left font-semibold">Status</th>
-                      <th className="px-4 py-3 text-left font-semibold">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white">
                     {followUps.map((followUp) => (
                       <Fragment key={followUp.id}>
-                        <tr className="border-t border-sky-100 first:border-t-0">
+                        <tr
+                          role={followUp.status === "scheduled" ? "button" : undefined}
+                          tabIndex={followUp.status === "scheduled" ? 0 : undefined}
+                          aria-expanded={followUp.status === "scheduled" ? expandedFollowUpId === followUp.id : undefined}
+                          onClick={() => toggleFollowUpActions(followUp)}
+                          onKeyDown={(event) => {
+                            if (followUp.status !== "scheduled") {
+                              return;
+                            }
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              toggleFollowUpActions(followUp);
+                            }
+                          }}
+                          className={`border-t border-sky-100 first:border-t-0 ${
+                            followUp.status === "scheduled"
+                              ? "cursor-pointer transition hover:bg-sky-50/60 focus:outline-none focus-visible:bg-sky-50/60"
+                              : ""
+                          }`}
+                        >
                           <td className="px-4 py-3 text-slate-800">
                             {followUp.patient_name || "Patient"}
                           </td>
@@ -595,42 +714,51 @@ export function SettingsDrawerAppointmentsPanel({
                               {formatStatusLabel(followUp.status)}
                             </span>
                           </td>
-                          <td className="px-4 py-3">
-                            {followUp.status === "scheduled" ? (
+                        </tr>
+                        {expandedFollowUpId === followUp.id && followUp.status === "scheduled" ? (
+                          <tr className="border-t border-sky-100 bg-sky-50/40">
+                            <td colSpan={4} className="px-4 py-4">
                               <div className="flex flex-wrap items-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => startFollowUpEdit(followUp)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    startFollowUpEdit(followUp);
+                                  }}
                                   disabled={savingAppointmentId === followUp.id}
-                                  className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-60"
+                                  className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-60"
                                 >
-                                  Edit
+                                  Reschedule
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleUpdateFollowUpStatus(followUp.id, "completed")}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void handleUpdateFollowUpStatus(followUp.id, "completed");
+                                  }}
                                   disabled={savingAppointmentId === followUp.id}
-                                  className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60"
+                                  className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60"
                                 >
                                   Complete
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleUpdateFollowUpStatus(followUp.id, "cancelled")}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void handleUpdateFollowUpStatus(followUp.id, "cancelled");
+                                  }}
                                   disabled={savingAppointmentId === followUp.id}
-                                  className="rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                                  className="rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
                                 >
                                   Cancel
                                 </button>
                               </div>
-                            ) : (
-                              <span className="text-xs text-slate-500">No actions</span>
-                            )}
-                          </td>
-                        </tr>
+                            </td>
+                          </tr>
+                        ) : null}
                         {editingFollowUpId === followUp.id && followUp.status === "scheduled" ? (
                           <tr className="border-t border-sky-100 bg-sky-50/40">
-                            <td colSpan={5} className="px-4 py-4">
+                            <td colSpan={4} className="px-4 py-4">
                               <div className="grid gap-3 md:grid-cols-[220px_180px_1fr_auto] md:items-end">
                                 <label className="block">
                                   <span className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-slate-500">New Date</span>
@@ -673,7 +801,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     disabled={savingAppointmentId === followUp.id}
                                     className="rounded-full border border-sky-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white disabled:opacity-60"
                                   >
-                                    Close
+                                    Hide
                                   </button>
                                 </div>
                               </div>

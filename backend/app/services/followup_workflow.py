@@ -1,6 +1,4 @@
 from datetime import UTC, datetime
-from uuid import UUID
-
 from fastapi import HTTPException
 
 from app.config import get_settings
@@ -8,12 +6,25 @@ from app.db import SupabaseRepository
 from app.formatting import format_display_datetime
 from app.schemas import AppointmentCreate, FollowUpCreate, FollowUpOut, FollowUpUpdate, UserOut
 from app.services.audit_service import record_follow_up_created, record_follow_up_updated
-from app.services.appointment_workflow import create_appointment_workflow
 from app.services.followup_booking_service import create_follow_up_booking_token, decode_follow_up_booking_token
 from app.services.email_service import send_clinic_email_message
 
 FOLLOW_UP_SUGGESTION_HOURS = (10, 12, 16, 18)
 FOLLOW_UP_SUGGESTION_DAYS = 7
+
+
+def _start_of_today_utc() -> datetime:
+    return datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _as_utc_minute(value: object) -> datetime:
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo:
+        return parsed.astimezone(UTC).replace(second=0, microsecond=0)
+    return parsed.replace(tzinfo=UTC, second=0, microsecond=0)
 
 
 def _follow_up_email_parts(*, clinic_name: str, patient_name: str, scheduled_for: str, notes: str, clinic_phone: str, booking_link: str) -> tuple[str, str]:
@@ -33,9 +44,7 @@ def _follow_up_email_parts(*, clinic_name: str, patient_name: str, scheduled_for
 async def _suggest_follow_up_slots(repo: SupabaseRepository, org_id: str) -> list[datetime]:
     scheduled_appointments = await repo.list_appointments(org_id, status="scheduled", limit=500)
     occupied = {
-        appointment["scheduled_for"].astimezone(UTC).replace(second=0, microsecond=0)
-        if getattr(appointment["scheduled_for"], "tzinfo", None)
-        else appointment["scheduled_for"].replace(tzinfo=UTC, second=0, microsecond=0)
+        _as_utc_minute(appointment["scheduled_for"])
         for appointment in scheduled_appointments
     }
     suggestions: list[datetime] = []
@@ -54,6 +63,12 @@ async def _suggest_follow_up_slots(repo: SupabaseRepository, org_id: str) -> lis
             if len(suggestions) >= 10:
                 return suggestions
     return suggestions
+
+
+async def expire_stale_schedule_workflow(repo: SupabaseRepository, org_id: str) -> None:
+    stale_before = _start_of_today_utc().isoformat()
+    await repo.cancel_expired_appointments(org_id, stale_before)
+    await repo.cancel_expired_follow_ups(org_id, stale_before)
 
 
 async def _send_follow_up_email_if_needed(repo: SupabaseRepository, current_user: UserOut, follow_up: dict) -> None:
@@ -94,6 +109,7 @@ async def send_due_follow_up_emails_workflow(
     repo: SupabaseRepository,
     current_user: UserOut,
 ) -> None:
+    await expire_stale_schedule_workflow(repo, str(current_user.org_id))
     due_follow_ups = await repo.list_due_follow_ups(str(current_user.org_id), datetime.now(UTC).isoformat())
     for follow_up in due_follow_ups:
         await _send_follow_up_email_if_needed(repo, current_user, follow_up)
@@ -107,6 +123,7 @@ async def get_follow_up_booking_context_workflow(
     org_id = str(payload["org_id"])
     patient_id = str(payload["patient_id"])
     follow_up_id = str(payload["follow_up_id"])
+    await expire_stale_schedule_workflow(repo, org_id)
     follow_up = next((item for item in await repo.list_follow_ups_for_patient(org_id, patient_id) if str(item["id"]) == follow_up_id), None)
     if not follow_up:
         raise HTTPException(status_code=404, detail="Follow-up not found.")
@@ -130,18 +147,9 @@ async def self_book_follow_up_workflow(
     if scheduled_for < datetime.now(UTC):
         raise HTTPException(status_code=400, detail="Follow-up time must be in the future.")
     patient = await repo.get_patient(org_id, patient_id)
-    pseudo_user = UserOut.model_construct(
-        id=UUID("00000000-0000-0000-0000-000000000001"),
-        org_id=UUID(org_id),
-        identifier="followup-booking",
-        name=str(clinic_settings.get("doctor_name") or "Clinic Team"),
-        role="admin",
-        created_at=datetime.now(UTC),
-    )
-    await repo.update_follow_up(org_id, follow_up_id, FollowUpUpdate(scheduled_for=scheduled_for, status="scheduled"))
-    await create_appointment_workflow(
-        repo,
-        pseudo_user,
+    await repo.update_follow_up(org_id, follow_up_id, FollowUpUpdate(scheduled_for=scheduled_for, status="completed"))
+    created = await repo.create_appointment(
+        org_id,
         AppointmentCreate(
             name=str(patient.get("name") or "").strip(),
             phone=str(patient.get("phone") or "").strip(),
@@ -154,6 +162,21 @@ async def self_book_follow_up_workflow(
             temperature=patient.get("temperature"),
             scheduled_for=scheduled_for,
         ),
+    )
+    actor_name = str(clinic_settings.get("doctor_name") or clinic_settings.get("clinic_name") or "Clinic Team").strip() or "Clinic Team"
+    await repo.create_audit_event(
+        org_id=org_id,
+        actor_user_id=None,
+        actor_name=actor_name,
+        entity_type="appointment",
+        entity_id=str(created["id"]),
+        action="appointment_created",
+        summary=f"Booked appointment for {created['name']} on {created['scheduled_for']}.",
+        metadata={
+            "patient_name": created.get("name"),
+            "status": created.get("status"),
+            "source": "public_follow_up_booking",
+        },
     )
 
 
@@ -190,7 +213,7 @@ async def update_follow_up_workflow(
     follow_up_id: str,
     payload: FollowUpUpdate,
 ) -> FollowUpOut:
-    await send_due_follow_up_emails_workflow(repo, current_user)
+    await expire_stale_schedule_workflow(repo, str(current_user.org_id))
     updated = await repo.update_follow_up(str(current_user.org_id), follow_up_id, payload)
     changed_fields = sorted(payload.model_dump(exclude_none=True).keys())
     await record_follow_up_updated(repo, current_user, updated, changed_fields)

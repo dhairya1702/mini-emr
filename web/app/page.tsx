@@ -473,7 +473,7 @@ export default function HomePage() {
             canAdvance={() => currentUser?.role === "admin"}
           />
           <PatientColumn
-            title="In Consultation"
+            title="Consultation"
             status="consultation"
             patients={groupedPatients.consultation}
             onOpen={handleOpenPatient}

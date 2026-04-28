@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from test_app import auth_headers, client, register
+
+
+def _future_iso(*, days: int = 1, hour: int = 9, minute: int = 0) -> str:
+    scheduled_for = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(days=days)
+    scheduled_for = scheduled_for.replace(hour=hour, minute=minute)
+    return scheduled_for.isoformat()
 
 
 def test_appointment_can_be_created_listed_and_checked_into_queue(client):
@@ -14,7 +22,7 @@ def test_appointment_can_be_created_listed_and_checked_into_queue(client):
             "name": "Booked Patient",
             "phone": "5550107070",
             "reason": "Vision review",
-            "scheduled_for": "2026-04-12T09:15:00+00:00",
+            "scheduled_for": _future_iso(days=1, hour=9, minute=15),
         },
         headers=headers,
     )
@@ -22,7 +30,10 @@ def test_appointment_can_be_created_listed_and_checked_into_queue(client):
     appointment = create_appointment.json()
     assert appointment["status"] == "scheduled"
 
-    list_appointments = test_client.get("/appointments", headers=headers)
+    list_appointments = test_client.get(
+        f"/appointments?scheduled_date={datetime.fromisoformat(appointment['scheduled_for']).date().isoformat()}",
+        headers=headers,
+    )
     assert list_appointments.status_code == 200
     assert len(list_appointments.json()) == 1
 
@@ -35,7 +46,10 @@ def test_appointment_can_be_created_listed_and_checked_into_queue(client):
     assert patient["status"] == "waiting"
     assert patient["name"] == "Booked Patient"
 
-    updated_appointments = test_client.get("/appointments", headers=headers)
+    updated_appointments = test_client.get(
+        f"/appointments?scheduled_date={datetime.fromisoformat(appointment['scheduled_for']).date().isoformat()}",
+        headers=headers,
+    )
     assert updated_appointments.status_code == 200
     assert updated_appointments.json()[0]["status"] == "checked_in"
 
@@ -78,7 +92,7 @@ def test_appointment_check_in_preview_returns_active_phone_matches(client):
             "name": "Booked Patient",
             "phone": "5550109090",
             "reason": "Repeat visit",
-            "scheduled_for": "2026-04-12T11:30:00+00:00",
+            "scheduled_for": _future_iso(days=1, hour=11, minute=30),
         },
         headers=headers,
     ).json()
@@ -117,7 +131,7 @@ def test_appointment_check_in_requires_explicit_choice_when_phone_has_active_mat
             "name": "Booked Patient",
             "phone": "5550191919",
             "reason": "Repeat visit",
-            "scheduled_for": "2026-04-18T11:30:00+00:00",
+            "scheduled_for": _future_iso(days=2, hour=11, minute=30),
         },
         headers=headers,
     ).json()
@@ -132,7 +146,10 @@ def test_appointment_check_in_requires_explicit_choice_when_phone_has_active_mat
     assert len(detail["matches"]) == 1
     assert detail["matches"][0]["id"] == existing["id"]
 
-    updated_appointments = test_client.get("/appointments", headers=headers)
+    updated_appointments = test_client.get(
+        f"/appointments?scheduled_date={datetime.fromisoformat(appointment['scheduled_for']).date().isoformat()}",
+        headers=headers,
+    )
     assert updated_appointments.status_code == 200
     assert updated_appointments.json()[0]["status"] == "scheduled"
     assert updated_appointments.json()[0]["checked_in_patient_id"] is None
@@ -166,7 +183,7 @@ def test_appointment_check_in_can_link_existing_active_patient(client):
             "name": "Booked Patient",
             "phone": "5550109999",
             "reason": "Same visit duplicate",
-            "scheduled_for": "2026-04-12T12:00:00+00:00",
+            "scheduled_for": _future_iso(days=1, hour=12, minute=0),
         },
         headers=headers,
     ).json()
@@ -183,7 +200,10 @@ def test_appointment_check_in_can_link_existing_active_patient(client):
     assert patients.status_code == 200
     assert len(patients.json()) == 1
 
-    updated_appointments = test_client.get("/appointments", headers=headers)
+    updated_appointments = test_client.get(
+        f"/appointments?scheduled_date={datetime.fromisoformat(appointment['scheduled_for']).date().isoformat()}",
+        headers=headers,
+    )
     assert updated_appointments.status_code == 200
     assert updated_appointments.json()[0]["checked_in_patient_id"] == patient["id"]
 
@@ -215,7 +235,7 @@ def test_appointment_check_in_can_force_new_patient_with_existing_phone(client):
             "age": 11,
             "weight": 34,
             "temperature": 98.7,
-            "scheduled_for": "2026-04-18T09:30:00+00:00",
+            "scheduled_for": _future_iso(days=2, hour=9, minute=30),
         },
         headers=headers,
     ).json()
@@ -278,7 +298,7 @@ def test_patient_lookup_returns_family_cluster_after_reusing_and_adding_under_sa
             "age": 8,
             "weight": 28,
             "temperature": 99.0,
-            "scheduled_for": "2026-04-18T10:30:00+00:00",
+            "scheduled_for": _future_iso(days=2, hour=10, minute=30),
         },
         headers=headers,
     ).json()
@@ -324,18 +344,19 @@ def test_appointment_can_be_rescheduled_and_cancelled(client):
             "name": "Booked Patient",
             "phone": "5550108080",
             "reason": "Review",
-            "scheduled_for": "2026-04-12T09:15:00+00:00",
+            "scheduled_for": _future_iso(days=1, hour=9, minute=15),
         },
         headers=headers,
     ).json()
 
+    rescheduled_for = _future_iso(days=1, hour=11, minute=45)
     rescheduled = test_client.patch(
         f"/appointments/{appointment['id']}",
-        json={"scheduled_for": "2026-04-12T11:45:00+00:00"},
+        json={"scheduled_for": rescheduled_for},
         headers=headers,
     )
     assert rescheduled.status_code == 200
-    assert rescheduled.json()["scheduled_for"].startswith("2026-04-12T11:45:00")
+    assert rescheduled.json()["scheduled_for"].startswith(rescheduled_for[:19])
 
     cancelled = test_client.patch(
         f"/appointments/{appointment['id']}",

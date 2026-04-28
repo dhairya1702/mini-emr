@@ -14,7 +14,8 @@ from app.schemas import (
     UserPasswordUpdate,
 )
 from app.services.signature_service import normalize_signature_image
-from app.services.user_workflow import build_user_out, login_user_workflow, register_user_workflow
+from app.services.user_workflow import login_user_workflow, register_user_workflow
+from app.services.user_workflow import build_user_out
 
 
 router = APIRouter()

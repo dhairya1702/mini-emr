@@ -86,6 +86,7 @@ from app import config as config_module
 from app import main as main_module
 from app.main import app
 from app.db import DuplicateCheckInCandidateError, get_repository
+from app.services.followup_workflow import _as_utc_minute
 from app.services import followup_booking_service as followup_booking_service_module
 
 
@@ -438,6 +439,17 @@ class FakeRepo:
                 or normalized_query in appointment["reason"].lower()
             ]
         return rows[:limit]
+
+    async def cancel_expired_appointments(self, org_id: str, stale_before_iso: str) -> int:
+        stale_before = datetime.fromisoformat(stale_before_iso.replace("Z", "+00:00"))
+        cancelled = 0
+        for appointment in self.appointments.values():
+            scheduled_for = appointment["scheduled_for"]
+            normalized = scheduled_for if isinstance(scheduled_for, datetime) else datetime.fromisoformat(str(scheduled_for).replace("Z", "+00:00"))
+            if appointment["org_id"] == org_id and appointment["status"] == "scheduled" and normalized < stale_before:
+                appointment["status"] = "cancelled"
+                cancelled += 1
+        return cancelled
 
     async def list_appointments_for_patient(self, org_id: str, patient_id: str) -> list[dict]:
         return [
@@ -911,6 +923,18 @@ class FakeRepo:
             rows.append({**follow_up, "patient_name": patient_name})
         return rows[:limit]
 
+    async def cancel_expired_follow_ups(self, org_id: str, stale_before_iso: str) -> int:
+        stale_before = datetime.fromisoformat(stale_before_iso.replace("Z", "+00:00"))
+        cancelled = 0
+        for follow_up in self.follow_ups.values():
+            scheduled_for = follow_up["scheduled_for"]
+            normalized = scheduled_for if isinstance(scheduled_for, datetime) else datetime.fromisoformat(str(scheduled_for).replace("Z", "+00:00"))
+            if follow_up["org_id"] == org_id and follow_up["status"] == "scheduled" and normalized < stale_before:
+                follow_up["status"] = "cancelled"
+                follow_up["completed_at"] = None
+                cancelled += 1
+        return cancelled
+
     async def list_follow_ups_for_patient(self, org_id: str, patient_id: str) -> list[dict]:
         return [
             follow_up for follow_up in self.follow_ups.values()
@@ -1009,7 +1033,7 @@ def auth_headers(token: str) -> dict[str, str]:
 
 
 def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
-    test_client, _repo = client
+    test_client, repo = client
     session = register(test_client, identifier="booking@example.com", clinic_name="Booking Clinic")
     token = session["token"]
 
@@ -1056,12 +1080,134 @@ def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
     )
     assert book_response.status_code == 204
 
-    follow_ups_response = test_client.get("/follow-ups", headers=auth_headers(token))
+    reused_response = test_client.get(f"/public/follow-up-booking?token={booking_token}")
+    assert reused_response.status_code == 400
+
+    follow_ups_response = test_client.get(
+        f"/follow-ups?scheduled_date={datetime.fromisoformat(rescheduled_for).date().isoformat()}",
+        headers=auth_headers(token),
+    )
     assert follow_ups_response.status_code == 200
     refreshed_follow_up = follow_ups_response.json()[0]
     assert datetime.fromisoformat(refreshed_follow_up["scheduled_for"].replace("Z", "+00:00")) == datetime.fromisoformat(rescheduled_for)
+    assert refreshed_follow_up["status"] == "completed"
 
-    appointments_response = test_client.get("/appointments", headers=auth_headers(token))
+    appointments_response = test_client.get(
+        f"/appointments?scheduled_date={datetime.fromisoformat(rescheduled_for).date().isoformat()}",
+        headers=auth_headers(token),
+    )
     assert appointments_response.status_code == 200
     assert len(appointments_response.json()) == 1
     assert appointments_response.json()[0]["reason"] == "Follow-up: Review visit"
+
+    appointment_events = [event for event in repo.audit_events.values() if event["entity_type"] == "appointment"]
+    assert len(appointment_events) == 1
+    assert appointment_events[0]["actor_user_id"] is None
+    assert appointment_events[0]["metadata"]["source"] == "public_follow_up_booking"
+
+
+def test_follow_up_slot_normalizer_accepts_iso_strings() -> None:
+    normalized = _as_utc_minute("2026-04-10T10:30:45+00:00")
+
+    assert normalized == datetime(2026, 4, 10, 10, 30, tzinfo=UTC)
+
+
+def test_schedule_lists_auto_cancel_expired_items(client):
+    test_client, repo = client
+    session = register(test_client, identifier="cleanup@example.com", clinic_name="Cleanup Clinic")
+    token = session["token"]
+
+    patient_response = test_client.post(
+        "/patients",
+        headers=auth_headers(token),
+        json={
+            "name": "Cleanup Patient",
+            "phone": "5550103333",
+            "email": "cleanup@example.com",
+            "address": "123 Main Street",
+            "reason": "Review visit",
+            "age": 41,
+            "weight": 72,
+            "height": 168,
+            "temperature": 98.4,
+        },
+    )
+    assert patient_response.status_code == 201
+    patient = patient_response.json()
+
+    yesterday = datetime.now(UTC).replace(microsecond=0) - timedelta(days=1)
+    tomorrow = datetime.now(UTC).replace(microsecond=0) + timedelta(days=1)
+
+    old_appointment = test_client.post(
+        "/appointments",
+        headers=auth_headers(token),
+        json={
+            "name": "Old Appointment",
+            "phone": "5550103333",
+            "email": "cleanup@example.com",
+            "address": "123 Main Street",
+            "reason": "Old appointment",
+            "age": 41,
+            "weight": 72,
+            "height": 168,
+            "temperature": 98.4,
+            "scheduled_for": yesterday.isoformat(),
+        },
+    )
+    assert old_appointment.status_code == 201
+    old_appointment_body = old_appointment.json()
+
+    future_appointment = test_client.post(
+        "/appointments",
+        headers=auth_headers(token),
+        json={
+            "name": "Future Appointment",
+            "phone": "5550103333",
+            "email": "cleanup@example.com",
+            "address": "123 Main Street",
+            "reason": "Future appointment",
+            "age": 41,
+            "weight": 72,
+            "height": 168,
+            "temperature": 98.4,
+            "scheduled_for": tomorrow.isoformat(),
+        },
+    )
+    assert future_appointment.status_code == 201
+    future_appointment_body = future_appointment.json()
+
+    old_follow_up = test_client.post(
+        f"/patients/{patient['id']}/follow-ups",
+        headers=auth_headers(token),
+        json={"scheduled_for": yesterday.isoformat(), "notes": "Old follow-up"},
+    )
+    assert old_follow_up.status_code == 201
+    old_follow_up_body = old_follow_up.json()
+
+    future_follow_up = test_client.post(
+        f"/patients/{patient['id']}/follow-ups",
+        headers=auth_headers(token),
+        json={"scheduled_for": tomorrow.isoformat(), "notes": "Future follow-up"},
+    )
+    assert future_follow_up.status_code == 201
+    future_follow_up_body = future_follow_up.json()
+
+    appointments_response = test_client.get(
+        f"/appointments?scheduled_date={tomorrow.date().isoformat()}",
+        headers=auth_headers(token),
+    )
+    assert appointments_response.status_code == 200
+    appointment_ids = {row["id"] for row in appointments_response.json()}
+    assert future_appointment_body["id"] in appointment_ids
+    assert old_appointment_body["id"] not in appointment_ids
+    assert repo.appointments[old_appointment_body["id"]]["status"] == "cancelled"
+
+    follow_ups_response = test_client.get(
+        f"/follow-ups?scheduled_date={tomorrow.date().isoformat()}",
+        headers=auth_headers(token),
+    )
+    assert follow_ups_response.status_code == 200
+    follow_up_ids = {row["id"] for row in follow_ups_response.json()}
+    assert future_follow_up_body["id"] in follow_up_ids
+    assert old_follow_up_body["id"] not in follow_up_ids
+    assert repo.follow_ups[old_follow_up_body["id"]]["status"] == "cancelled"

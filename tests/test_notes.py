@@ -37,6 +37,15 @@ def test_sent_consultation_note_is_emailed_and_locked_to_saved_record(client, mo
             "diagnosis": "Migraine",
             "medications": "Paracetamol",
             "notes": "Hydrate well.",
+            "assets": [
+                {
+                    "id": "drawing-1",
+                    "kind": "drawing",
+                    "name": "consultation-drawing.png",
+                    "content_type": "image/png",
+                    "data_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnM6tAAAAAASUVORK5CYII=",
+                }
+            ],
         },
         headers=headers,
     )
@@ -57,6 +66,7 @@ def test_sent_consultation_note_is_emailed_and_locked_to_saved_record(client, mo
     assert first_sent_at is not None
     assert repo.notes[note_id]["status"] == "sent"
     assert repo.notes[note_id]["snapshot_content"]
+    assert repo.notes[note_id]["asset_payload"]
     assert len(sent_messages) == 1
     assert sent_messages[0]["recipient"] == "patient@example.com"
     assert sent_messages[0]["attachments"]

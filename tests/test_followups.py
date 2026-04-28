@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from test_app import auth_headers, client, register
+
+
+def _future_iso(*, days: int = 1, hour: int = 9, minute: int = 0) -> str:
+    scheduled_for = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(days=days)
+    scheduled_for = scheduled_for.replace(hour=hour, minute=minute)
+    return scheduled_for.isoformat()
 
 
 def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
@@ -24,7 +32,7 @@ def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
     create_follow_up = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
         json={
-            "scheduled_for": "2026-04-10T10:30:00+00:00",
+            "scheduled_for": _future_iso(days=1, hour=10, minute=30),
             "notes": "Review symptoms and blood pressure",
         },
         headers=auth_headers(session["token"]),
@@ -35,7 +43,7 @@ def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
     assert follow_up["notes"] == "Review symptoms and blood pressure"
 
     list_follow_ups = test_client.get(
-        "/follow-ups",
+        f"/follow-ups?scheduled_date={datetime.fromisoformat(follow_up['scheduled_for']).date().isoformat()}",
         headers=auth_headers(session["token"]),
     )
     assert list_follow_ups.status_code == 200
@@ -72,16 +80,17 @@ def test_follow_up_can_be_rescheduled_completed_and_cancelled(client):
     follow_up = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
         json={
-            "scheduled_for": "2026-04-15T09:00:00+00:00",
+            "scheduled_for": _future_iso(days=1, hour=9, minute=0),
             "notes": "Initial review",
         },
         headers=headers,
     ).json()
 
+    rescheduled_for = _future_iso(days=2, hour=10, minute=15)
     rescheduled = test_client.patch(
         f"/follow-ups/{follow_up['id']}",
         json={
-            "scheduled_for": "2026-04-16T10:15:00+00:00",
+            "scheduled_for": rescheduled_for,
             "notes": "Updated review",
         },
         headers=headers,
@@ -129,7 +138,7 @@ def test_patient_timeline_includes_follow_up_completion_event(client):
     follow_up = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
         json={
-            "scheduled_for": "2026-04-18T09:30:00+00:00",
+            "scheduled_for": _future_iso(days=2, hour=9, minute=30),
             "notes": "Review progress",
         },
         headers=headers,

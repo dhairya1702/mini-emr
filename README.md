@@ -61,7 +61,7 @@ Backend:
 - `ANTHROPIC_API_KEY=...`
 - `ANTHROPIC_MODEL=claude-sonnet-4-20250514`
 - `APP_ORIGIN=http://127.0.0.1:3000`
-- `FOLLOW_UP_REMINDER_RUNNER_ENABLED=true`
+- `FOLLOW_UP_REMINDER_RUNNER_ENABLED=false`
 - `FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300`
 
 ## Follow-up reminders
@@ -69,9 +69,9 @@ Backend:
 Two supported modes:
 
 - In-process runner:
-  leave `FOLLOW_UP_REMINDER_RUNNER_ENABLED=true` and the FastAPI app will sweep due follow-up reminders on an interval.
+  only enable `FOLLOW_UP_REMINDER_RUNNER_ENABLED=true` on one dedicated backend process if you intentionally want the web app process to send reminders.
 - Cron/job runner:
-  set `FOLLOW_UP_REMINDER_RUNNER_ENABLED=false` on the web process and run:
+  keep `FOLLOW_UP_REMINDER_RUNNER_ENABLED=false` on the web process and run:
 
 ```bash
 cd backend

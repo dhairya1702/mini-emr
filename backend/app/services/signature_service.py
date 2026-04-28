@@ -8,6 +8,19 @@ except Exception:  # pragma: no cover
     Image = None
 
 
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+JPEG_SIGNATURES = (b"\xff\xd8\xff",)
+
+
+def _looks_like_supported_image(raw_bytes: bytes, content_type: str) -> bool:
+    normalized = content_type.strip().lower()
+    if normalized == "image/png":
+        return raw_bytes.startswith(PNG_SIGNATURE)
+    if normalized == "image/jpeg":
+        return any(raw_bytes.startswith(signature) for signature in JPEG_SIGNATURES)
+    return False
+
+
 def normalize_signature_image(raw_bytes: bytes, content_type: str) -> tuple[bytes, str]:
     if not raw_bytes:
         raise ValueError("Signature file is empty.")
@@ -17,6 +30,8 @@ def normalize_signature_image(raw_bytes: bytes, content_type: str) -> tuple[byte
     try:
         image = Image.open(BytesIO(raw_bytes)).convert("RGBA")
     except Exception as exc:  # pragma: no cover
+        if _looks_like_supported_image(raw_bytes, content_type):
+            return raw_bytes, content_type
         raise ValueError("Signature image could not be processed.") from exc
 
     processed_pixels = []

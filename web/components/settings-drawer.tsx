@@ -1865,7 +1865,8 @@ export function SettingsDrawer({
     return renderSimplePanel(item.title, item.text);
   }
 
-  const isWorkspaceTab = activeTab === "clinic" || activeTab === "letter";
+  const isWorkspaceTab =
+    activeTab === "clinic" || activeTab === "letter" || activeTab === "appointments";
 
   return (
     <div className="fixed inset-0 z-40">

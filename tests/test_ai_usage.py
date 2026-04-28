@@ -66,7 +66,9 @@ async def test_generate_soap_note_records_org_ai_usage(monkeypatch):
         measurements_context="Temperature: 101 F",
     )
 
-    assert content == "Generated response"
+    assert "Presenting Complaint:" in content
+    assert "Fever" in content
+    assert "Diagnosis:" in content
     assert len(repo.events) == 1
     event = repo.events[0]
     assert event["org_id"] == "org-1"

@@ -131,6 +131,21 @@ class PatientFlowRepositoryMixin(BaseSupabaseRepository):
 
         return await asyncio.to_thread(_list)
 
+    async def cancel_expired_appointments(self, org_id: str, stale_before_iso: str) -> int:
+        def _cancel() -> int:
+            updated = (
+                self.client.table("appointments")
+                .update({"status": "cancelled"})
+                .eq("org_id", org_id)
+                .eq("status", "scheduled")
+                .lt("scheduled_for", stale_before_iso)
+                .execute()
+                .data
+            )
+            return len(updated or [])
+
+        return await asyncio.to_thread(_cancel)
+
     async def list_appointments_for_patient(self, org_id: str, patient_id: str) -> list[dict[str, Any]]:
         return await asyncio.to_thread(
             lambda: self.client.table("appointments")

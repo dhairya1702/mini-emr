@@ -3,6 +3,18 @@ from datetime import datetime
 from app.schemas import GenerateNoteRequest
 
 
+def _render_pipe_table(title: str, headers: list[str], rows: list[list[str]]) -> str:
+    if not rows:
+        return ""
+    table_lines = [
+        title,
+        " | ".join(headers),
+        " | ".join(["---"] * len(headers)),
+    ]
+    table_lines.extend(" | ".join(row) for row in rows)
+    return "\n".join(table_lines)
+
+
 def build_clinic_context(clinic_settings: dict) -> str:
     clinic_context_bits = [
         f"Clinic Name: {clinic_settings.get('clinic_name', 'ClinicOS') or 'ClinicOS'}",
@@ -35,35 +47,47 @@ def build_patient_context(patient: dict | None, *, generated_at: str | None = No
 
 def build_measurements_context(payload: GenerateNoteRequest) -> str:
     measurement_bits: list[str] = []
+    vital_rows: list[list[str]] = []
     if payload.blood_pressure_systolic is not None and payload.blood_pressure_diastolic is not None:
-        measurement_bits.append(
-            f"Blood Pressure: {payload.blood_pressure_systolic}/{payload.blood_pressure_diastolic} mmHg"
+        vital_rows.append(
+            ["Blood Pressure", f"{payload.blood_pressure_systolic}/{payload.blood_pressure_diastolic} mmHg"]
         )
     elif payload.blood_pressure_systolic is not None or payload.blood_pressure_diastolic is not None:
         bp_parts = [
             str(payload.blood_pressure_systolic) if payload.blood_pressure_systolic is not None else "?",
             str(payload.blood_pressure_diastolic) if payload.blood_pressure_diastolic is not None else "?",
         ]
-        measurement_bits.append(f"Blood Pressure: {'/'.join(bp_parts)} mmHg")
+        vital_rows.append(["Blood Pressure", f"{'/'.join(bp_parts)} mmHg"])
     if payload.pulse is not None:
-        measurement_bits.append(f"Pulse: {payload.pulse} bpm")
+        vital_rows.append(["Pulse", f"{payload.pulse} bpm"])
     if payload.spo2 is not None:
-        measurement_bits.append(f"SpO2: {payload.spo2}%")
+        vital_rows.append(["SpO2", f"{payload.spo2}%"])
     if payload.blood_sugar is not None:
-        measurement_bits.append(f"Blood Sugar: {payload.blood_sugar}")
+        vital_rows.append(["Blood Sugar", str(payload.blood_sugar)])
+    vitals_table = _render_pipe_table("Vitals Table:", ["Measurement", "Value"], vital_rows)
+    if vitals_table:
+        measurement_bits.append(vitals_table)
+    score_rows: list[list[str]] = []
     for score in payload.test_scores:
-        measurement_bits.append(f"{score.label}: {score.value}")
+        score_rows.append([score.label, score.value])
+    score_table = _render_pipe_table("Test Scores:", ["Test", "Result"], score_rows)
+    if score_table:
+        measurement_bits.append(score_table)
     if payload.eye_exam:
-        eye_exam_lines = ["Eye Exam:"]
+        eye_rows: list[list[str]] = []
         for entry in payload.eye_exam:
-            row_bits = [
-                f"Sphere {entry.sphere}" if entry.sphere else "",
-                f"Cylinder {entry.cylinder}" if entry.cylinder else "",
-                f"Axis {entry.axis}" if entry.axis else "",
-                f"Vision {entry.vision}" if entry.vision else "",
-            ]
-            eye_exam_lines.append(
-                f"- {entry.eye.title()} Eye: " + ", ".join(bit for bit in row_bits if bit)
+            if not (entry.sphere or entry.cylinder or entry.axis or entry.vision):
+                continue
+            eye_rows.append(
+                [
+                    entry.eye.title(),
+                    entry.sphere or "-",
+                    entry.cylinder or "-",
+                    entry.axis or "-",
+                    entry.vision or "-",
+                ]
             )
-        measurement_bits.append("\n".join(line for line in eye_exam_lines if line.strip()))
+        eye_table = _render_pipe_table("Eye Exam:", ["Eye", "Sphere", "Cylinder", "Axis", "Vision"], eye_rows)
+        if eye_table:
+            measurement_bits.append(eye_table)
     return "\n".join(bit for bit in measurement_bits if bit)

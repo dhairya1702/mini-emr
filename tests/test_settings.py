@@ -177,10 +177,11 @@ def test_saved_clinic_template_offsets_are_used_for_note_pdf_generation(client, 
 
     captured: dict[str, object] = {}
 
-    def fake_build_note_pdf(*, patient, note_content, generated_on):  # type: ignore[no-redef]
+    def fake_build_note_pdf(*, patient, note_content, generated_on, assets=None):  # type: ignore[no-redef]
         captured["patient"] = patient
         captured["note_content"] = note_content
         captured["generated_on"] = generated_on
+        captured["assets"] = assets
         return b"%PDF-1.4 test"
 
     monkeypatch.setattr("app.routes.notes.build_note_pdf", fake_build_note_pdf)
@@ -196,6 +197,7 @@ def test_saved_clinic_template_offsets_are_used_for_note_pdf_generation(client, 
     assert isinstance(rendered_patient, dict)
     assert rendered_patient["document_template_margin_top"] == 200
     assert rendered_patient["document_template_notes_enabled"] is True
+    assert captured["assets"] == []
 
 
 def test_clinic_email_sender_settings_are_saved_without_returning_app_password(client):

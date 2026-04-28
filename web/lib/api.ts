@@ -376,11 +376,13 @@ export const api = {
   listFollowUps: (params?: {
     status?: "scheduled" | "completed" | "cancelled";
     q?: string;
+    scheduled_date?: string;
     limit?: number;
   }) => request<FollowUp[]>(withQuery("/follow-ups", params ?? {})),
   listAppointments: (params?: {
     status?: "scheduled" | "checked_in" | "cancelled";
     q?: string;
+    scheduled_date?: string;
     limit?: number;
   }) => request<Appointment[]>(withQuery("/appointments", params ?? {})),
   createAppointment: (payload: AppointmentCreatePayload) =>

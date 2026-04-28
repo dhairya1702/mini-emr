@@ -252,9 +252,10 @@ def test_build_clinic_and_measurement_contexts_include_structured_fields() -> No
             eye_exam=[EyeExamEntry(eye="right", sphere="-1.25", cylinder="", axis="90", vision="6/6")],
         )
     )
-    assert "Blood Pressure: 120/80 mmHg" in measurements_context
-    assert "Vision: 20/20" in measurements_context
-    assert "Right Eye: Sphere -1.25, Axis 90, Vision 6/6" in measurements_context
+    assert "Vitals Table:" in measurements_context
+    assert "Blood Pressure | 120/80 mmHg" in measurements_context
+    assert "Vision | 20/20" in measurements_context
+    assert "Right | -1.25 | - | 90 | 6/6" in measurements_context
 
 
 def test_export_helpers_preserve_latest_visit_and_filter_date_ranges() -> None:

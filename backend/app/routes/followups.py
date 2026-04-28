@@ -1,9 +1,11 @@
+from datetime import UTC, date, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_user
 from app.db import SupabaseRepository, get_repository
 from app.schemas import FollowUpCreate, FollowUpOut, FollowUpStatus, FollowUpUpdate, UserOut
-from app.services.followup_workflow import create_follow_up_workflow, send_due_follow_up_emails_workflow, update_follow_up_workflow
+from app.services.followup_workflow import _as_utc_minute, create_follow_up_workflow, expire_stale_schedule_workflow, update_follow_up_workflow
 
 
 router = APIRouter()
@@ -28,12 +30,19 @@ async def create_follow_up(
 async def list_follow_ups(
     status: FollowUpStatus | None = Query(default=None),
     q: str | None = Query(default=None, max_length=120),
+    scheduled_date: date | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=500),
     repo: SupabaseRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[FollowUpOut]:
-    await send_due_follow_up_emails_workflow(repo, current_user)
+    await expire_stale_schedule_workflow(repo, str(current_user.org_id))
     follow_ups = await repo.list_follow_ups(str(current_user.org_id), status=status, query=q, limit=limit)
+    effective_date = scheduled_date or datetime.now(UTC).date()
+    follow_ups = [
+        follow_up
+        for follow_up in follow_ups
+        if _as_utc_minute(follow_up["scheduled_for"]).date() == effective_date
+    ]
     return [FollowUpOut(**follow_up) for follow_up in follow_ups]
 
 

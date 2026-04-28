@@ -18,6 +18,18 @@ const MAX_ATTACHMENT_SIZE_BYTES = 6 * 1024 * 1024;
 const MAX_ATTACHMENT_COUNT = 6;
 const SUPPORTED_ATTACHMENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
 
+type PrescriptionDraft = {
+  itemId: string;
+  name: string;
+  unit: string;
+  quantity: string;
+  duration: string;
+  notes: string;
+  morning: boolean;
+  afternoon: boolean;
+  night: boolean;
+};
+
 interface ConsultationDrawerProps {
   patient: Patient | null;
   onClose: () => void;
@@ -76,6 +88,7 @@ function createEmptyForm() {
     followUpDate: "",
     followUpNotes: "",
     generatedNote: "",
+    prescriptions: [] as PrescriptionDraft[],
     assets: [] as NoteAsset[],
   };
 }
@@ -130,9 +143,13 @@ function clearWorkspace(patientId: string) {
   window.localStorage.removeItem(workspaceKey(patientId));
 }
 
-function formatMedicineLabel(item: CatalogItem) {
-  const unit = item.unit.trim();
-  return unit ? `${item.name} (${unit})` : item.name;
+function prescriptionScheduleLabel(prescription: PrescriptionDraft) {
+  const parts = [
+    prescription.morning ? "Morning" : "",
+    prescription.afternoon ? "Afternoon" : "",
+    prescription.night ? "Night" : "",
+  ].filter(Boolean);
+  return parts.join(", ") || "As directed";
 }
 
 export function ConsultationDrawer({
@@ -190,7 +207,9 @@ export function ConsultationDrawer({
         eyeExam: false,
       },
     );
-    setSelectedMedicineIds(cachedWorkspace?.selectedMedicineIds ?? []);
+    setSelectedMedicineIds(
+      cachedWorkspace?.selectedMedicineIds ?? cachedWorkspace?.form.prescriptions.map((entry) => entry.itemId) ?? [],
+    );
     setIsFollowUpOpen(cachedWorkspace?.isFollowUpOpen ?? false);
     setHasGeneratedNote(cachedWorkspace?.hasGeneratedNote ?? false);
     setCurrentNoteId(cachedWorkspace?.currentNoteId ?? "");
@@ -265,10 +284,6 @@ export function ConsultationDrawer({
     selectedMedicineIds,
   ]);
 
-  const selectedMedicines = useMemo(
-    () => medicineItems.filter((item) => selectedMedicineIds.includes(item.id)),
-    [medicineItems, selectedMedicineIds],
-  );
   const filteredMedicineItems = useMemo(() => {
     const query = medicineSearch.trim().toLowerCase();
     return medicineItems.filter((item) => {
@@ -288,15 +303,22 @@ export function ConsultationDrawer({
   );
   const medicationPlan = useMemo(() => {
     const manualPlan = form.medications.trim();
-    const selectedPlan = selectedMedicines.length
+    const structuredPlan = form.prescriptions.length
       ? [
           "Prescribed medicines:",
-          ...selectedMedicines.map((item) => `- ${formatMedicineLabel(item)}`),
+          "Medicine | Quantity | Schedule | Duration | Notes",
+          "--- | --- | --- | --- | ---",
+          ...form.prescriptions.map((entry) => {
+            const quantity = entry.quantity.trim() || "-";
+            const duration = entry.duration.trim() || "-";
+            const notes = entry.notes.trim() || "-";
+            return `${entry.name} | ${quantity}${entry.unit ? ` ${entry.unit}` : ""} | ${prescriptionScheduleLabel(entry)} | ${duration} | ${notes}`;
+          }),
         ].join("\n")
       : "";
 
-    return [manualPlan, selectedPlan].filter(Boolean).join("\n\n");
-  }, [form.medications, selectedMedicines]);
+    return [manualPlan, structuredPlan].filter(Boolean).join("\n\n");
+  }, [form.medications, form.prescriptions]);
 
   useEffect(() => {
     const canvas = drawingCanvasRef.current;
@@ -486,9 +508,50 @@ export function ConsultationDrawer({
   }
 
   function toggleMedicine(itemId: string) {
+    const selectedItem = medicineItems.find((item) => item.id === itemId);
+    if (!selectedItem) {
+      return;
+    }
     setSelectedMedicineIds((current) =>
       current.includes(itemId) ? current.filter((selected) => selected !== itemId) : [...current, itemId],
     );
+    setForm((current) => {
+      const exists = current.prescriptions.some((entry) => entry.itemId === itemId);
+      return {
+        ...current,
+        prescriptions: exists
+          ? current.prescriptions.filter((entry) => entry.itemId !== itemId)
+          : [
+              ...current.prescriptions,
+              {
+                itemId,
+                name: selectedItem.name,
+                unit: selectedItem.unit,
+                quantity: "1",
+                duration: "",
+                notes: "",
+                morning: true,
+                afternoon: false,
+                night: false,
+              },
+            ],
+      };
+    });
+  }
+
+  function updatePrescription(itemId: string, patch: Partial<PrescriptionDraft>) {
+    setForm((current) => ({
+      ...current,
+      prescriptions: current.prescriptions.map((entry) => (entry.itemId === itemId ? { ...entry, ...patch } : entry)),
+    }));
+  }
+
+  function removePrescription(itemId: string) {
+    setSelectedMedicineIds((current) => current.filter((selected) => selected !== itemId));
+    setForm((current) => ({
+      ...current,
+      prescriptions: current.prescriptions.filter((entry) => entry.itemId !== itemId),
+    }));
   }
 
   function toggleSection(section: keyof typeof openSections) {
@@ -678,19 +741,12 @@ export function ConsultationDrawer({
         : noteStatus === "draft"
         ? "Draft"
           : null;
-  const patientSnapshot = [
+  const patientInfoChips = [
     { label: "Age", value: currentPatient.age !== null ? String(currentPatient.age) : "-" },
     { label: "Temp", value: currentPatient.temperature !== null ? `${currentPatient.temperature} F` : "-" },
     { label: "Weight", value: currentPatient.weight !== null ? `${currentPatient.weight} kg` : "-" },
     { label: "Height", value: currentPatient.height !== null ? `${currentPatient.height} cm` : "-" },
   ];
-  const vitalsCards = [
-    { label: "BP", value: hasVitals ? `${form.bloodPressureSystolic || "-"} / ${form.bloodPressureDiastolic || "-"}` : "-" },
-    { label: "Pulse", value: form.pulse || "-" },
-    { label: "SpO2", value: form.spo2 ? `${form.spo2}%` : "-" },
-    { label: "Sugar", value: form.bloodSugar || "-" },
-  ];
-
   return (
     <aside className="fixed inset-0 z-30 w-screen border-l-2 border-sky-300 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.2)] sm:p-6">
       <div className="flex h-full flex-col">
@@ -702,7 +758,7 @@ export function ConsultationDrawer({
               {currentPatient.phone} · {currentPatient.reason}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {patientSnapshot.map((entry) => (
+              {patientInfoChips.map((entry) => (
                 <span
                   key={entry.label}
                   className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-slate-700"
@@ -1141,22 +1197,70 @@ export function ConsultationDrawer({
           </div>
           <div className="space-y-4 xl:sticky xl:top-0 xl:self-start">
             <div className="rounded-[28px] border border-sky-200 bg-sky-50/40 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">Patient Snapshot</p>
-                  <p className="mt-1 text-xs text-slate-500">Quick clinical context while you write.</p>
-                </div>
-                <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
-                  {currentPatient.phone}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {vitalsCards.map((entry) => (
-                  <div key={entry.label} className="rounded-[20px] border border-sky-100 bg-white px-4 py-3">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">{entry.label}</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">{entry.value}</p>
+              <div className="rounded-[20px] border border-sky-100 bg-white p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Vitals For Note</p>
+                    <p className="mt-1 text-xs text-slate-500">Filled vitals are inserted as a structured table in the generated note.</p>
                   </div>
-                ))}
+                  {hasVitals ? (
+                    <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">
+                      Included
+                    </span>
+                  ) : null}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">BP Systolic</span>
+                    <input
+                      value={form.bloodPressureSystolic}
+                      inputMode="numeric"
+                      onChange={(event) => setForm((current) => ({ ...current, bloodPressureSystolic: event.target.value }))}
+                      placeholder="120"
+                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">BP Diastolic</span>
+                    <input
+                      value={form.bloodPressureDiastolic}
+                      inputMode="numeric"
+                      onChange={(event) => setForm((current) => ({ ...current, bloodPressureDiastolic: event.target.value }))}
+                      placeholder="80"
+                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Pulse</span>
+                    <input
+                      value={form.pulse}
+                      inputMode="numeric"
+                      onChange={(event) => setForm((current) => ({ ...current, pulse: event.target.value }))}
+                      placeholder="72"
+                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">SpO2</span>
+                    <input
+                      value={form.spo2}
+                      inputMode="numeric"
+                      onChange={(event) => setForm((current) => ({ ...current, spo2: event.target.value }))}
+                      placeholder="98"
+                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Blood Sugar</span>
+                    <input
+                      value={form.bloodSugar}
+                      inputMode="decimal"
+                      onChange={(event) => setForm((current) => ({ ...current, bloodSugar: event.target.value }))}
+                      placeholder="110"
+                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -1164,10 +1268,10 @@ export function ConsultationDrawer({
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-slate-900">Medicines & Suggestions</p>
-                  <p className="mt-1 text-xs text-slate-500">Pick from inventory and the treatment section will include them.</p>
+                  <p className="mt-1 text-xs text-slate-500">Pick from inventory, then fill quantity and schedule for the treatment table.</p>
                 </div>
                 <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-medium text-emerald-700">
-                  {selectedMedicines.length} selected
+                  {form.prescriptions.length} selected
                 </span>
               </div>
               <input
@@ -1176,18 +1280,77 @@ export function ConsultationDrawer({
                 placeholder="Search medicines by name or unit"
                 className="w-full rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
               />
-              {selectedMedicines.length ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {selectedMedicines.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => toggleMedicine(item.id)}
-                      className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-emerald-50"
-                    >
-                      {formatMedicineLabel(item)}
-                      <X className="h-3 w-3" />
-                    </button>
+              {form.prescriptions.length ? (
+                <div className="mt-3 space-y-3">
+                  {form.prescriptions.map((entry) => (
+                    <div key={entry.itemId} className="rounded-[22px] border border-emerald-100 bg-white p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">{entry.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">{entry.unit || "unit not set"}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removePrescription(entry.itemId)}
+                          className="rounded-full border border-emerald-200 p-2 text-slate-600 transition hover:bg-emerald-50"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <label className="block">
+                          <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Quantity</span>
+                          <input
+                            value={entry.quantity}
+                            inputMode="decimal"
+                            onChange={(event) => updatePrescription(entry.itemId, { quantity: event.target.value })}
+                            placeholder="10"
+                            className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Duration</span>
+                          <input
+                            value={entry.duration}
+                            onChange={(event) => updatePrescription(entry.itemId, { duration: event.target.value })}
+                            placeholder="5 days"
+                            className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                          />
+                        </label>
+                        <label className="block sm:col-span-2">
+                          <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Notes</span>
+                          <input
+                            value={entry.notes}
+                            onChange={(event) => updatePrescription(entry.itemId, { notes: event.target.value })}
+                            placeholder="After food, before sleep, PRN, etc."
+                            className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                          />
+                        </label>
+                      </div>
+                      <div className="mt-3">
+                        <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Schedule</p>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { key: "morning" as const, label: "Morning" },
+                            { key: "afternoon" as const, label: "Afternoon" },
+                            { key: "night" as const, label: "Night" },
+                          ].map((slot) => (
+                            <button
+                              key={slot.key}
+                              type="button"
+                              onClick={() => updatePrescription(entry.itemId, { [slot.key]: !entry[slot.key] })}
+                              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                entry[slot.key]
+                                  ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                                  : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
+                              }`}
+                            >
+                              {slot.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   ))}
                 </div>
               ) : null}
@@ -1256,30 +1419,30 @@ export function ConsultationDrawer({
                 <div className="flex flex-col gap-3">
                   {isFollowUpOpen ? (
                     <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
-                  <div className="grid gap-3 md:grid-cols-[220px_1fr]">
-                    <label className="block">
-                      <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Date</span>
-                      <input
-                        type="date"
-                        value={form.followUpDate}
-                        onChange={(event) =>
-                          setForm((current) => ({ ...current, followUpDate: event.target.value }))
-                        }
-                        className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Notes</span>
-                      <input
-                        value={form.followUpNotes}
-                        onChange={(event) =>
-                          setForm((current) => ({ ...current, followUpNotes: event.target.value }))
-                        }
-                        placeholder="Review symptoms, BP check, lab result review"
-                        className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                      />
-                    </label>
-                  </div>
+                      <div className="grid gap-3">
+                        <label className="block">
+                          <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Date</span>
+                          <input
+                            type="date"
+                            value={form.followUpDate}
+                            onChange={(event) =>
+                              setForm((current) => ({ ...current, followUpDate: event.target.value }))
+                            }
+                            className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Notes</span>
+                          <input
+                            value={form.followUpNotes}
+                            onChange={(event) =>
+                              setForm((current) => ({ ...current, followUpNotes: event.target.value }))
+                            }
+                            placeholder="Review symptoms, BP check, lab result review"
+                            className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                          />
+                        </label>
+                      </div>
                     </div>
                   ) : null}
                   <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
@@ -1301,7 +1464,7 @@ export function ConsultationDrawer({
                       type="button"
                       disabled={isSending || !currentNoteId || isSent || !recipientEmail.trim()}
                       onClick={handleSend}
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
                     >
                       <Mail className="h-4 w-4" />
                       {isSending ? "Sending..." : isSent ? "Sent and Locked" : "Send Email"}
@@ -1311,7 +1474,7 @@ export function ConsultationDrawer({
                         type="button"
                         disabled={isCompleting || noteStatus === "draft" || !currentNoteId}
                         onClick={handleDone}
-                        className="inline-flex items-center justify-center gap-2 rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                        className="inline-flex items-center justify-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
                       >
                         {isCompleting ? "Moving..." : "Done"}
                       </button>
@@ -1319,7 +1482,7 @@ export function ConsultationDrawer({
                         type="button"
                         disabled={isGeneratingPdf || !currentNoteId}
                         onClick={() => handlePdf("preview")}
-                        className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
                       >
                         <Eye className="h-4 w-4" />
                         {isGeneratingPdf ? "Preparing..." : "Preview"}
@@ -1327,10 +1490,10 @@ export function ConsultationDrawer({
                       <button
                         type="button"
                         onClick={() => setIsFollowUpOpen((current) => !current)}
-                        className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
                       >
                         <CalendarPlus2 className="h-4 w-4" />
-                        {isFollowUpOpen ? "Hide Follow-up" : "Follow-up"}
+                        {isFollowUpOpen ? "Hide" : "Follow-up"}
                       </button>
                     </div>
                   </div>

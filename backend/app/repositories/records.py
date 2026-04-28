@@ -209,6 +209,26 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
             .data
         )
 
+    async def cancel_expired_follow_ups(self, org_id: str, stale_before_iso: str) -> int:
+        def _cancel() -> int:
+            updated = (
+                self.client.table("follow_ups")
+                .update(
+                    {
+                        "status": "cancelled",
+                        "completed_at": None,
+                    }
+                )
+                .eq("org_id", org_id)
+                .eq("status", "scheduled")
+                .lt("scheduled_for", stale_before_iso)
+                .execute()
+                .data
+            )
+            return len(updated or [])
+
+        return await asyncio.to_thread(_cancel)
+
     async def list_due_follow_ups(self, org_id: str, due_before_iso: str) -> list[dict[str, Any]]:
         return await asyncio.to_thread(
             lambda: self.client.table("follow_ups")

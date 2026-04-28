@@ -16,12 +16,10 @@ def build_fallback_note(
     patient_context: str = "",
     measurements_context: str = "",
 ) -> str:
-    header = f"{patient_context}\n\n" if patient_context else ""
     clinical_notes = notes or "No additional findings were documented during this consultation."
     if measurements_context:
         clinical_notes = f"{measurements_context}\n{clinical_notes}".strip()
     return (
-        f"{header}"
         f"Presenting Complaint:\n{symptoms or 'Symptoms not fully documented.'}\n\n"
         f"Diagnosis:\n{diagnosis or 'Clinical impression is still under evaluation.'}\n\n"
         f"Clinical Notes:\n{clinical_notes}\n\n"
@@ -43,6 +41,57 @@ def _normalize_multiline_text(value: str) -> str:
     return "\n".join(line.rstrip() for line in value.strip().splitlines()).strip()
 
 
+def _normalize_section_candidate(raw_line: str) -> str:
+    stripped = raw_line.strip().strip("*").strip()
+    while stripped.startswith(("-", "*", "•")):
+        stripped = stripped[1:].strip()
+    return stripped
+
+
+def _match_section_label(raw_line: str) -> tuple[str, str] | None:
+    stripped = _normalize_section_candidate(raw_line)
+    if ":" not in stripped:
+        return None
+    label, remainder = stripped.split(":", 1)
+    normalized_label = label.strip()
+    if normalized_label not in SECTION_ORDER:
+        return None
+    return normalized_label, remainder.strip()
+
+
+def _extract_pipe_table_blocks(value: str) -> list[str]:
+    blocks: list[str] = []
+    current: list[str] = []
+    for raw_line in value.splitlines():
+        line = raw_line.rstrip()
+        if "|" in line:
+            current.append(line)
+            continue
+        if current:
+            blocks.append("\n".join(current).strip())
+            current = []
+    if current:
+        blocks.append("\n".join(current).strip())
+    return [block for block in blocks if block]
+
+
+def _strip_pipe_tables(value: str) -> str:
+    cleaned_lines: list[str] = []
+    skipping_table = False
+    for raw_line in value.splitlines():
+        stripped = raw_line.strip()
+        if "|" in stripped:
+            skipping_table = True
+            continue
+        if skipping_table and (not stripped or set(stripped) <= {"-", ":", " "}):
+            continue
+        skipping_table = False
+        if stripped in {"Vitals Table:", "Test Scores:", "Eye Exam:", "Prescribed medicines:"}:
+            continue
+        cleaned_lines.append(raw_line.rstrip())
+    return _normalize_multiline_text("\n".join(cleaned_lines))
+
+
 def _normalize_note_content(
     note_text: str,
     symptoms: str,
@@ -52,29 +101,21 @@ def _normalize_note_content(
     patient_context: str = "",
     measurements_context: str = "",
 ) -> str:
-    header_lines: list[str] = []
     sections: OrderedDict[str, list[str]] = OrderedDict((label, []) for label in SECTION_ORDER)
     current_section: str | None = None
 
     for raw_line in note_text.splitlines():
         stripped = raw_line.strip()
-        matched_section = None
-        for label in SECTION_ORDER:
-            prefix = f"{label}:"
-            if stripped.startswith(prefix):
-                matched_section = label
-                remainder = stripped[len(prefix):].strip()
-                current_section = label
-                if remainder:
-                    sections[label].append(remainder)
-                break
-        else:
-            if current_section:
-                sections[current_section].append(raw_line.rstrip())
-            elif stripped or header_lines:
-                header_lines.append(raw_line.rstrip())
+        matched = _match_section_label(raw_line)
+        if matched:
+            matched_section, remainder = matched
+            current_section = matched_section
+            if remainder:
+                sections[matched_section].append(remainder)
+        elif current_section:
+            sections[current_section].append(raw_line.rstrip())
 
-        if matched_section:
+        if matched:
             continue
 
     clinical_notes = notes.strip() or "No additional findings were documented during this consultation."
@@ -90,16 +131,22 @@ def _normalize_note_content(
     }
 
     normalized_sections = []
+    measurement_tables = _extract_pipe_table_blocks(measurements_context)
+    medication_tables = _extract_pipe_table_blocks(medications)
     for label in SECTION_ORDER:
-        existing = _normalize_multiline_text("\n".join(line for line in sections[label] if line.strip()))
+        existing = _strip_pipe_tables("\n".join(line for line in sections[label] if line.strip()))
         content = existing or fallbacks[label]
+        if label == "Clinical Notes" and measurement_tables:
+            missing = [table for table in measurement_tables if table not in content]
+            if missing:
+                content = "\n\n".join([*missing, content]).strip()
+        if label == "Treatment" and medication_tables:
+            missing = [table for table in medication_tables if table not in content]
+            if missing:
+                content = "\n\n".join([*missing, content]).strip()
         normalized_sections.append(f"{label}:\n{content}")
 
-    header = _normalize_multiline_text("\n".join(header_lines))
-    if not header and patient_context.strip():
-        header = _normalize_multiline_text(patient_context)
-
-    return "\n\n".join(([header] if header else []) + normalized_sections).strip()
+    return "\n\n".join(normalized_sections).strip()
 
 
 def build_fallback_letter(
@@ -147,17 +194,7 @@ async def generate_soap_note(
     client = Anthropic(api_key=settings.anthropic_api_key)
     prompt = f"""
 Write a detailed, clinic-ready consultation note in a clean structured format.
-The note should begin with patient details in this exact order, each on its own line:
-Name
-Phone
-Age
-Height
-Weight
-Temperature
-Reason for Visit
-Generated On
-
-After that, leave one blank line and write these exact section headings:
+Use these exact section headings in this order:
 Presenting Complaint:
 Diagnosis:
 Clinical Notes:
@@ -169,6 +206,8 @@ Make it specific and natural, for example phrasing like "The patient presents wi
 When details are missing, use neutral clinical wording and do not invent risky facts such as vitals, labs, or durations.
 Do not use SOAP headings.
 Keep the output plain text only.
+If the Structured measurements input includes pipe-delimited tables, preserve them in the Clinical Notes section before the prose notes.
+If the Medications input includes a pipe-delimited regimen table, preserve it in the Treatment section before any prose explanation.
 
 Patient context:
 {patient_context or 'Not provided'}
@@ -201,7 +240,8 @@ Structured measurements:
                 system=(
                     "You write polished outpatient consultation notes for small clinics. "
                     "Return only the final note text. "
-                    "Always place patient details first in the requested order, then the requested section headings."
+                    "Return only the five requested section headings and their content. "
+                    "Do not include patient demographics, phone numbers, ages, or any header block in the note body."
                 ),
                 messages=[{"role": "user", "content": prompt}],
             )

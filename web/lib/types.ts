@@ -180,7 +180,6 @@ export interface GenerateLetterPayload {
 }
 
 export interface GeneratePdfPayload {
-  note_id?: string;
   patient_id: string;
   content: string;
   assets?: NoteAsset[];
@@ -202,6 +201,7 @@ export interface FollowUp {
   notes: string;
   status: FollowUpStatus;
   completed_at: string | null;
+  reminder_sent_at: string | null;
   created_at: string;
 }
 

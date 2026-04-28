@@ -337,13 +337,349 @@ SECTION_LABELS = {
 }
 
 
+def _normalize_section_candidate(raw_line: str) -> str:
+    stripped = raw_line.strip().strip("*").strip()
+    while stripped.startswith(("-", "*", "•")):
+        stripped = stripped[1:].strip()
+    return stripped
+
+
+def _match_section_label(raw_line: str) -> tuple[str, str] | None:
+    stripped = _normalize_section_candidate(raw_line)
+    if ":" not in stripped:
+        return None
+    label, remainder = stripped.split(":", 1)
+    normalized_label = label.strip()
+    if normalized_label not in SECTION_LABELS:
+        return None
+    return normalized_label, remainder.strip()
+
+
 def _extract_note_body(note_content: str) -> str:
     lines = note_content.splitlines()
     for index, line in enumerate(lines):
-        stripped = line.strip()
-        if any(stripped.startswith(f"{label}:") for label in SECTION_LABELS):
+        if _match_section_label(line):
             return "\n".join(lines[index:]).strip()
     return note_content.strip()
+
+
+def _parse_note_sections(note_content: str) -> list[tuple[str, str]]:
+    sections: list[tuple[str, list[str]]] = []
+    current_label: str | None = None
+    current_lines: list[str] = []
+
+    for raw_line in _extract_note_body(note_content).splitlines():
+        matched = _match_section_label(raw_line)
+        if matched:
+            if current_label is not None:
+                sections.append((current_label, current_lines))
+            current_label, remainder = matched
+            current_lines = [remainder] if remainder else []
+            continue
+        if current_label is not None:
+            current_lines.append(raw_line.rstrip())
+
+    if current_label is not None:
+        sections.append((current_label, current_lines))
+
+    ordered_sections: list[tuple[str, str]] = []
+    by_label = {label: "\n".join(lines).strip() for label, lines in sections}
+    for label in ("Presenting Complaint", "Diagnosis", "Clinical Notes", "Treatment", "Follow-up Advice"):
+        if label in by_label:
+            ordered_sections.append((label, by_label[label]))
+    return ordered_sections
+
+
+def _parse_pipe_row(line: str) -> list[str]:
+    return [cell.strip() for cell in line.split("|")]
+
+
+def _is_pipe_separator_row(cells: list[str]) -> bool:
+    if not cells:
+        return False
+    return all(cell and set(cell) <= {"-", ":", " "} for cell in cells)
+
+
+def _split_text_and_tables(content: str) -> tuple[list[str], list[tuple[list[str], list[list[str]]]]]:
+    prose_lines: list[str] = []
+    tables: list[tuple[list[str], list[list[str]]]] = []
+    lines = content.splitlines()
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if "|" in stripped and index + 1 < len(lines):
+            header_cells = _parse_pipe_row(stripped)
+            separator_cells = _parse_pipe_row(lines[index + 1].strip())
+            if _is_pipe_separator_row(separator_cells) and len(header_cells) == len(separator_cells):
+                rows: list[list[str]] = []
+                index += 2
+                while index < len(lines):
+                    candidate = lines[index].strip()
+                    if not candidate or "|" not in candidate:
+                        break
+                    if index + 1 < len(lines):
+                        next_candidate = lines[index + 1].strip()
+                        parsed_candidate = _parse_pipe_row(candidate)
+                        parsed_next = _parse_pipe_row(next_candidate)
+                        if _is_pipe_separator_row(parsed_next) and len(parsed_candidate) == len(parsed_next):
+                            break
+                    rows.append(_parse_pipe_row(candidate))
+                    index += 1
+                tables.append((header_cells, rows))
+                continue
+        if stripped in {"Vitals Table:", "Test Scores:", "Eye Exam:", "Prescribed medicines:"}:
+            index += 1
+            continue
+        prose_lines.append(lines[index].rstrip())
+        index += 1
+    return prose_lines, tables
+
+
+def _classify_structured_tables(
+    note_sections: list[tuple[str, str]],
+) -> tuple[list[list[str]], tuple[list[str], list[list[str]]] | None, tuple[list[str], list[list[str]]] | None]:
+    vitals_rows: list[list[str]] = []
+    medicines_table: tuple[list[str], list[list[str]]] | None = None
+    eye_exam_table: tuple[list[str], list[list[str]]] | None = None
+
+    for _section_label, section_content in note_sections:
+        _prose_lines, tables = _split_text_and_tables(section_content)
+        for header_cells, body_rows in tables:
+            normalized_header = [cell.strip().lower() for cell in header_cells]
+            if normalized_header == ["measurement", "value"]:
+                vitals_rows = body_rows
+            elif normalized_header == ["medicine", "quantity", "schedule", "duration", "notes"]:
+                medicines_table = (header_cells, body_rows)
+            elif normalized_header == ["eye", "sphere", "cylinder", "axis", "vision"]:
+                eye_exam_table = (header_cells, body_rows)
+
+    return vitals_rows, medicines_table, eye_exam_table
+
+
+def _draw_vitals_grid(
+    pdf: canvas.Canvas,
+    x: float,
+    y: float,
+    max_width: float,
+    rows: list[list[str]],
+) -> float:
+    ordered = []
+    preferred = ["Blood Pressure", "Pulse", "SpO2", "Blood Sugar"]
+    row_map = {row[0]: row[1] if len(row) > 1 else "-" for row in rows if row}
+    for key in preferred:
+        if key in row_map:
+            ordered.append((key, row_map[key]))
+    for row in rows:
+        if not row:
+            continue
+        key = row[0]
+        if key not in preferred:
+            ordered.append((key, row[1] if len(row) > 1 else "-"))
+
+    if not ordered:
+        return y
+
+    cells: list[tuple[str, str]] = ordered[:4]
+    while len(cells) < 4:
+        cells.append(("-", "-"))
+
+    col_width = max_width / len(cells)
+    header_height = 30
+    value_height = 42
+    current_x = x
+
+    for label, _value in cells:
+        pdf.setStrokeColor(HexColor("#111827"))
+        pdf.setFillColor(HexColor("#ffffff"))
+        pdf.roundRect(current_x, y - header_height, col_width, header_height, 0, fill=1, stroke=1)
+        pdf.setFillColor(HexColor("#111827"))
+        pdf.setFont("Helvetica-Bold", 11)
+        header_lines = _wrap_text(label or "-", "Helvetica-Bold", 11, col_width - 12) or ["-"]
+        header_y = y - 18
+        for line in header_lines[:2]:
+            pdf.drawString(current_x + 6, header_y, line)
+            header_y -= 11
+        current_x += col_width
+
+    current_x = x
+    for _label, value in cells:
+        pdf.setStrokeColor(HexColor("#111827"))
+        pdf.setFillColor(HexColor("#ffffff"))
+        pdf.roundRect(current_x, y - header_height - value_height, col_width, value_height, 0, fill=1, stroke=1)
+        pdf.setFillColor(HexColor("#111827"))
+        pdf.setFont("Helvetica", 11)
+        value_lines = _wrap_text(value or "-", "Helvetica", 11, col_width - 12) or ["-"]
+        value_y = y - header_height - 18
+        for line in value_lines[:2]:
+            pdf.drawString(current_x + 6, value_y, line)
+            value_y -= 13
+        current_x += col_width
+
+    return y - header_height - value_height - 14
+
+
+def _build_structured_data_pdf(
+    *,
+    width: float,
+    height: float,
+    template: tuple[str, bytes] | None,
+    use_template: bool,
+    margin_x: float,
+    top_y: float,
+    max_width: float,
+    bottom_limit: float,
+    vitals_rows: list[list[str]],
+    eye_exam_table: tuple[list[str], list[list[str]]] | None,
+    medicines_table: tuple[list[str], list[list[str]]] | None,
+) -> bytes | None:
+    if not vitals_rows and not medicines_table and not eye_exam_table:
+        return None
+
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=(width, height))
+
+    def start_structured_page() -> float:
+        if use_template:
+            _start_page(pdf, template, width, height)
+            return _template_content_start_y(top_y, height, "note")
+        pdf.setFillColor(HexColor("#1e293b"))
+        return height - DEFAULT_MARGIN
+
+    y = start_structured_page()
+
+    if vitals_rows:
+        pdf.setFillColor(HexColor("#0f172a"))
+        pdf.setFont("Helvetica-Bold", 11)
+        pdf.drawString(margin_x, y, "Vitals")
+        y -= 18
+        y = _draw_vitals_grid(pdf, margin_x, y, max_width, vitals_rows)
+        y -= 10
+
+    if eye_exam_table:
+        header_cells, body_rows = eye_exam_table
+        estimated_rows = max(1, len(body_rows)) + 1
+        estimated_height = (estimated_rows * 28) + 40
+        if y - estimated_height < bottom_limit:
+            pdf.showPage()
+            y = start_structured_page()
+        pdf.setFillColor(HexColor("#0f172a"))
+        pdf.setFont("Helvetica-Bold", 11)
+        pdf.drawString(margin_x, y, "Eye Test")
+        y -= 18
+        y = _draw_pipe_table(
+            pdf,
+            margin_x,
+            y,
+            max_width,
+            header_cells,
+            body_rows,
+            bottom_limit=bottom_limit,
+            template=template,
+            use_template=use_template,
+            width=width,
+            height=height,
+            top_y=top_y,
+        )
+        y -= 10
+
+    if medicines_table:
+        header_cells, body_rows = medicines_table
+        estimated_rows = max(1, len(body_rows)) + 1
+        estimated_height = (estimated_rows * 28) + 40
+        if y - estimated_height < bottom_limit:
+            pdf.showPage()
+            y = start_structured_page()
+        pdf.setFillColor(HexColor("#0f172a"))
+        pdf.setFont("Helvetica-Bold", 11)
+        pdf.drawString(margin_x, y, "Medicines")
+        y -= 18
+        y = _draw_pipe_table(
+            pdf,
+            margin_x,
+            y,
+            max_width,
+            header_cells,
+            body_rows,
+            bottom_limit=bottom_limit,
+            template=template,
+            use_template=use_template,
+            width=width,
+            height=height,
+            top_y=top_y,
+        )
+
+    pdf.save()
+    buffer.seek(0)
+    structured_pdf = buffer.getvalue()
+    return _apply_pdf_template(structured_pdf, template) if use_template else structured_pdf
+
+
+def _draw_pipe_table(
+    pdf: canvas.Canvas,
+    x: float,
+    y: float,
+    max_width: float,
+    header_cells: list[str],
+    body_rows: list[list[str]],
+    *,
+    bottom_limit: float,
+    template: tuple[str, bytes] | None,
+    use_template: bool,
+    width: float,
+    height: float,
+    top_y: float,
+) -> float:
+    column_count = max(len(header_cells), *(len(row) for row in body_rows)) if body_rows else len(header_cells)
+    if column_count <= 0:
+        return y
+
+    rows = [header_cells] + [
+        row + [""] * (column_count - len(row))
+        for row in body_rows
+    ]
+    normalized_header = header_cells + [""] * (column_count - len(header_cells))
+    rows[0] = normalized_header
+    column_width = max_width / column_count
+    font_size = 10
+    padding_x = 6
+    padding_y = 6
+
+    def _new_page(current_y: float) -> float:
+        pdf.showPage()
+        if use_template:
+            _start_page(pdf, template, width, height)
+            return _template_content_start_y(top_y, height, "note")
+        pdf.setFillColor(HexColor("#1e293b"))
+        return height - 0.75 * inch
+
+    for row_index, row in enumerate(rows):
+        wrapped_cells = [
+            _wrap_text(cell or "-", "Helvetica-Bold" if row_index == 0 else "Helvetica", font_size, column_width - (padding_x * 2)) or ["-"]
+            for cell in row
+        ]
+        row_height = max(len(lines) for lines in wrapped_cells) * 14 + (padding_y * 2)
+        if y - row_height < bottom_limit:
+            y = _new_page(y)
+        current_x = x
+        for cell_index, cell_lines in enumerate(wrapped_cells):
+            pdf.setStrokeColor(HexColor("#cbd5e1"))
+            if row_index == 0:
+                pdf.setFillColor(HexColor("#e0f2fe"))
+                pdf.roundRect(current_x, y - row_height, column_width, row_height, 0, fill=1, stroke=1)
+                pdf.setFillColor(HexColor("#0f172a"))
+                pdf.setFont("Helvetica-Bold", font_size)
+            else:
+                pdf.setFillColor(HexColor("#ffffff"))
+                pdf.roundRect(current_x, y - row_height, column_width, row_height, 0, fill=1, stroke=1)
+                pdf.setFillColor(HexColor("#1e293b"))
+                pdf.setFont("Helvetica", font_size)
+            text_y = y - padding_y - 10
+            for line in cell_lines:
+                pdf.drawString(current_x + padding_x, text_y, line)
+                text_y -= 14
+            current_x += column_width
+        y -= row_height
+    return y - 12
 
 
 def _draw_label_value_line(
@@ -434,10 +770,7 @@ def _build_note_asset_pdf(
     pdf.setFont("Helvetica-Bold", 13)
     pdf.drawString(margin_x, y, asset_title)
     y -= 24
-    pdf.setFont("Helvetica", 10)
-    pdf.setFillColor(HexColor("#475569"))
-    pdf.drawString(margin_x, y, f"Asset page {index}")
-    y -= 28
+    y -= 10
 
     try:
         raw_bytes = base64.b64decode(str(asset.get("data_base64") or ""), validate=True)
@@ -462,7 +795,8 @@ def _build_note_asset_pdf(
 
     pdf.save()
     buffer.seek(0)
-    return buffer.getvalue()
+    asset_pdf = buffer.getvalue()
+    return _apply_pdf_template(asset_pdf, template) if use_template else asset_pdf
 
 
 def _build_note_pdf_attachment_pdf(
@@ -652,10 +986,11 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
         y = _draw_detail_pair_row(pdf, margin_x, y, left, right, max_width)
 
     y -= 14
-    raw_lines = _extract_note_body(note_content).splitlines()
+    note_sections = _parse_note_sections(note_content)
+    vitals_rows, medicines_table, eye_exam_table = _classify_structured_tables(note_sections)
 
-    for line in raw_lines:
-        if y < bottom_limit:
+    for section_label, section_content in note_sections:
+        if y < bottom_limit + 28:
             pdf.showPage()
             if use_template:
                 _start_page(pdf, template, width, height)
@@ -664,43 +999,36 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
                 y = height - 0.75 * inch
                 pdf.setFillColor(HexColor("#1e293b"))
 
-        stripped = line.strip()
-        if stripped == "":
-            y -= 10
-            continue
+        pdf.setFillColor(HexColor("#0f172a"))
+        pdf.setFont("Helvetica-Bold", 11)
+        pdf.drawString(margin_x, y, f"{section_label}:")
+        y -= 22
 
-        if ":" in stripped:
-            label, value = stripped.split(":", 1)
-            label = label.strip()
-            value = value.strip()
-
-            if label in DETAIL_LABELS:
-                y = _draw_label_value_line(pdf, margin_x, y, label, value or "Not recorded", max_width)
-                continue
-
-            if label in SECTION_LABELS and value == "":
-                pdf.setFont("Helvetica-Bold", 11)
-                pdf.drawString(margin_x, y, f"{label}:")
-                y -= 22
-                continue
-
-        wrapped_lines = _wrap_text(stripped, "Helvetica", 11, max_width)
+        prose_lines, _tables = _split_text_and_tables(section_content)
         pdf.setFont("Helvetica", 11)
         pdf.setFillColor(HexColor("#1e293b"))
-        for wrapped in wrapped_lines:
-            if y < bottom_limit:
-                pdf.showPage()
-                if use_template:
-                    _start_page(pdf, template, width, height)
-                    y = _template_content_start_y(top_y, height, "note")
-                else:
-                    y = height - 0.75 * inch
-                    pdf.setFont("Helvetica", 11)
-                    pdf.setFillColor(HexColor("#1e293b"))
-            pdf.drawString(margin_x, y, wrapped)
-            y -= 18
 
-        y -= 4
+        for raw_line in prose_lines:
+            stripped = raw_line.strip()
+            if stripped == "":
+                y -= 10
+                continue
+            wrapped_lines = _wrap_text(stripped, "Helvetica", 11, max_width)
+            for wrapped in wrapped_lines:
+                if y < bottom_limit:
+                    pdf.showPage()
+                    if use_template:
+                        _start_page(pdf, template, width, height)
+                        y = _template_content_start_y(top_y, height, "note")
+                    else:
+                        y = height - 0.75 * inch
+                        pdf.setFont("Helvetica", 11)
+                        pdf.setFillColor(HexColor("#1e293b"))
+                pdf.drawString(margin_x, y, wrapped)
+                y -= 18
+            y -= 4
+
+        y -= 10
 
     _draw_doctor_signature(pdf, patient, width=width, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y)
 
@@ -719,6 +1047,21 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
     pdf.save()
     buffer.seek(0)
     base_pdf = _apply_pdf_template(buffer.getvalue(), template)
+    structured_pdf = _build_structured_data_pdf(
+        width=width,
+        height=height,
+        template=template,
+        use_template=use_template,
+        margin_x=margin_x,
+        top_y=top_y,
+        max_width=max_width,
+        bottom_limit=bottom_limit,
+        vitals_rows=vitals_rows,
+        eye_exam_table=eye_exam_table,
+        medicines_table=medicines_table,
+    )
+    if structured_pdf:
+        base_pdf = _append_pdf_bytes(base_pdf, structured_pdf)
     assets_pdf = _build_note_assets_pdf(
         assets or [],
         width=width,
@@ -730,8 +1073,6 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
         max_width=max_width,
         bottom_limit=bottom_limit,
     )
-    if assets_pdf:
-        assets_pdf = _apply_pdf_template(assets_pdf, template)
     return _append_pdf_bytes(base_pdf, assets_pdf)
 
 
