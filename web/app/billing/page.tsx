@@ -10,6 +10,8 @@ import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
+const BILLING_REFRESH_INTERVAL_MS = 5000;
+
 function createId() {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
@@ -166,6 +168,56 @@ export default function BillingPage() {
       void loadCatalogItems();
     }
   }, [currentUser, isAuthReady, loadCatalogItems]);
+
+  useEffect(() => {
+    if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") {
+      return;
+    }
+
+    let active = true;
+
+    async function refreshBillingData() {
+      try {
+        const [nextPatients, nextInvoices] = await Promise.all([
+          api.listPatients(),
+          api.listInvoices(),
+        ]);
+        if (!active) {
+          return;
+        }
+        setPatients(nextPatients);
+        setInvoices(nextInvoices);
+      } catch {
+        // Keep the current billing workspace stable if a background refresh fails.
+      }
+    }
+
+    void refreshBillingData();
+
+    const intervalId = window.setInterval(() => {
+      void refreshBillingData();
+    }, BILLING_REFRESH_INTERVAL_MS);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshBillingData();
+      }
+    };
+
+    const handleFocus = () => {
+      void refreshBillingData();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [currentUser, isAuthReady, isRedirectingToLogin]);
 
   useEffect(() => {
     if (!selectedBillingPatientId && billablePatients[0]) {

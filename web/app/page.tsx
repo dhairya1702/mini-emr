@@ -14,6 +14,7 @@ import { Patient, PatientStatus, PatientTimelineEvent } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
 const queueOrderStorageKey = "clinic_queue_order_v1";
+const QUEUE_REFRESH_INTERVAL_MS = 5000;
 
 type QueueOrder = Record<PatientStatus, string[]>;
 
@@ -160,7 +161,7 @@ export default function HomePage() {
 
     const intervalId = window.setInterval(() => {
       void refreshPatients();
-    }, 15000);
+    }, QUEUE_REFRESH_INTERVAL_MS);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
