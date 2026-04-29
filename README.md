@@ -1,6 +1,6 @@
 # Clinic EMR
 
-Clinic-focused EMR covering queue management, appointments and check-in, patient timelines, follow-ups, billing and invoices, inventory, audit logs, clinic letters, and AI-assisted note workflows.
+Clinic-focused EMR covering queue management, appointments and check-in, patient timelines, follow-ups, billing and invoices, inventory, audit logs, clinic letters, AI-assisted note workflows, and a hidden superuser operations dashboard.
 
 ## Stack
 
@@ -61,6 +61,7 @@ Backend:
 - `ANTHROPIC_API_KEY=...`
 - `ANTHROPIC_MODEL=claude-sonnet-4-20250514`
 - `APP_ORIGIN=http://127.0.0.1:3000`
+- `SUPER_ADMIN_IDENTIFIERS=you@example.com` optional, comma-separated allowlist for the hidden `/superuser` dashboard
 - `FOLLOW_UP_REMINDER_RUNNER_ENABLED=false`
 - `FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300`
 
@@ -90,19 +91,23 @@ Example cron entry every 5 minutes:
 - All database access and AI provider access live in the backend.
 - Supabase credentials and Anthropic credentials are only used by the backend.
 - Sessions are custom backend-signed tokens with a 30-day TTL, returned in both cookies and `X-Session-Token` headers.
+- Authenticated API requests reissue fresh session headers, so the app behaves like a sliding session while the user is active.
 - The frontend mirrors session state in `localStorage` and refreshes/clears it based on `X-Session-Expires-At`, but the backend remains the source of truth.
 
 ## Product Surface
 
 - Queue and patient visit management
 - Appointment scheduling, duplicate preview, and atomic check-in
+- Clinic-configured booking hours and per-hour capacity for follow-up self-booking
 - Patient timelines combining visits, appointments, notes, invoices, and follow-ups
 - Draft, finalized, amended, and sent consultation notes
+- Per-user account details and per-user document signatures
 - Clinic letter generation and PDF rendering
 - Billing, invoice finalization, and invoice PDF export
 - Inventory and stock adjustment
 - Audit events and staff/user management
 - Org-scoped authentication with admin and staff roles
+- Hidden `/superuser` dashboard for platform org/user visibility and recent backend errors
 
 ## Database
 
@@ -118,7 +123,12 @@ If your database is already live, do not assume only `clinic_settings` and `clin
 - `invoices`
 - `invoice_items`
 - `audit_events`
+- `platform_errors`
 - note versioning and snapshot fields in `notes`
+- clinic scheduling fields in `clinic_settings`:
+  - `appointment_start_time`
+  - `appointment_end_time`
+  - `appointments_per_hour`
 
 ## Roles
 
@@ -133,6 +143,8 @@ If your database is already live, do not assume only `clinic_settings` and `clin
 - `GET /notes/{note_id}/pdf` renders a saved note snapshot.
 - If no Anthropic key is configured, the backend returns deterministic structured clinical text so setup and testing still work.
 - `POST /generate-letter` and `POST /generate-letter-pdf` use the same clinic branding settings as notes and invoices.
+- Generated note PDFs, saved note PDFs, generated letter PDFs, and sent letters all use the current logged-in user's name and signature when available.
+- Uploaded signatures are normalized into transparent PNGs before storage so document rendering can place them cleanly.
 
 ## Sharing And Billing
 
@@ -140,3 +152,15 @@ If your database is already live, do not assume only `clinic_settings` and `clin
 - `POST /send-letter` is the lightweight mock/share endpoint.
 - `POST /send-invoice` finalizes the invoice, records stock deductions for tracked items, and writes an audit event.
 - `GET /settings/clinic` and `PUT /settings/clinic` manage clinic branding, doctor details, and PDF header/footer text.
+- Medicine quantities in consultation treatment tables feed into billing quantities, and tracked inventory deductions happen from finalized invoice item quantities.
+
+## Superuser
+
+- The hidden superuser dashboard lives at `/superuser`.
+- It is not linked anywhere in the normal clinic UI.
+- Access is enforced server-side through `SUPER_ADMIN_IDENTIFIERS`.
+- It provides:
+  - organization summaries
+  - org-specific user lists and usage totals
+  - recent platform errors from `platform_errors`
+  - destructive delete actions for orgs and users

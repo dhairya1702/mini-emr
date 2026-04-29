@@ -9,6 +9,7 @@ This project is pilot-ready for a supervised clinic rollout. Use this file as th
   - `SUPABASE_SERVICE_ROLE_KEY`
   - `AUTH_SECRET`
   - `APP_ORIGIN`
+  - `SUPER_ADMIN_IDENTIFIERS` if you want the hidden `/superuser` dashboard enabled
   - `FOLLOW_UP_REMINDER_RUNNER_ENABLED`
   - `FOLLOW_UP_REMINDER_INTERVAL_SECONDS`
 - Confirm frontend env var is set:
@@ -16,6 +17,7 @@ This project is pilot-ready for a supervised clinic rollout. Use this file as th
 - Keep `AUTH_SECRET` fixed across deploys. Changing it invalidates all active sessions.
 - Apply the current database schema from [supabase/schema.sql](/Users/dhairyalalwani/PycharmProjects/mr/supabase/schema.sql).
 - Verify clinic sender settings with a real inbox if note, invoice, or follow-up emails are enabled.
+- Verify the logged-in user’s signature on the account page if notes or letters are expected to carry a personal signature.
 - Confirm Supabase backups are enabled and that you know the restore path in the Supabase dashboard.
 
 ## Post-Deploy Smoke Check
@@ -31,10 +33,12 @@ Run these checks after every deploy:
 7. Generate or send an invoice.
 8. Create or reschedule a follow-up.
 9. Open the audit page and confirm recent actions appear.
+10. If `SUPER_ADMIN_IDENTIFIERS` is enabled, open `/superuser` and confirm orgs and recent errors load.
 
 ## Daily Pilot Checks
 
 - Check backend logs for unhandled exceptions.
+- If `/superuser` is enabled, spot-check the Errors tab for recent entries in `platform_errors`.
 - Check clinic feedback for:
   - unexpected logouts
   - appointment check-in failures
@@ -70,6 +74,7 @@ Run these checks after every deploy:
 ### PDF Generation Fails
 
 - Check clinic document template settings.
+- Check the current user’s uploaded signature if the issue is signature placement or missing signature on notes/letters.
 - Verify the uploaded template still exists and is valid.
 - Re-test note, letter, or invoice generation directly in the app.
 
@@ -91,3 +96,4 @@ Run these checks after every deploy:
 - Stay reachable while the clinic is using the product.
 - Prefer small fixes over new feature work during the first pilot week.
 - If a production DB fix is needed, update [supabase/schema.sql](/Users/dhairyalalwani/PycharmProjects/mr/supabase/schema.sql) immediately so the repo stays authoritative.
+- If the fix involves org-level ops visibility, keep `/superuser` and `platform_errors` in sync with the deployed schema and env config.

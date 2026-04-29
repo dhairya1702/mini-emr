@@ -195,6 +195,7 @@ class PatientTimelineEvent(BaseModel):
     description: str
     entity_type: str | None = None
     entity_id: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class AuditEventOut(BaseModel):

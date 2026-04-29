@@ -9,6 +9,7 @@ interface PatientDetailsDrawerProps {
   patient: Patient | null;
   onClose: () => void;
   onLoadTimeline: (patientId: string) => Promise<PatientTimelineEvent[]>;
+  readOnly?: boolean;
   onSave: (payloadPatientId: string, payload: {
     name: string;
     phone: string;
@@ -22,10 +23,23 @@ interface PatientDetailsDrawerProps {
   }) => Promise<void>;
 }
 
+function detailText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function detailNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function detailItems(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+
 export function PatientDetailsDrawer({
   patient,
   onClose,
   onLoadTimeline,
+  readOnly = false,
   onSave,
 }: PatientDetailsDrawerProps) {
   const [form, setForm] = useState({
@@ -44,7 +58,7 @@ export function PatientDetailsDrawer({
   const [timeline, setTimeline] = useState<PatientTimelineEvent[]>([]);
   const [isTimelineLoading, setIsTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState("");
-  const [selectedVisitEventId, setSelectedVisitEventId] = useState("");
+  const [selectedEventId, setSelectedEventId] = useState("");
 
   useEffect(() => {
     if (!patient) {
@@ -70,7 +84,7 @@ export function PatientDetailsDrawer({
       setTimeline([]);
       setTimelineError("");
       setIsTimelineLoading(false);
-      setSelectedVisitEventId("");
+      setSelectedEventId("");
       return;
     }
 
@@ -86,15 +100,14 @@ export function PatientDetailsDrawer({
           return;
         }
         setTimeline(events);
-        const firstVisitEvent = events.find((event) => event.type === "visit_recorded");
-        setSelectedVisitEventId(firstVisitEvent?.id ?? "");
+        setSelectedEventId(events[0]?.id ?? "");
       } catch (loadError) {
         if (!active) {
           return;
         }
         setTimeline([]);
         setTimelineError(loadError instanceof Error ? loadError.message : "Failed to load timeline.");
-        setSelectedVisitEventId("");
+        setSelectedEventId("");
       } finally {
         if (active) {
           setIsTimelineLoading(false);
@@ -154,6 +167,8 @@ export function PatientDetailsDrawer({
 
   const lastVisitAt = formatDateTime(currentPatient.last_visit_at);
   const visitEvents = timeline.filter((event) => event.type === "visit_recorded");
+  const currentVisitEvent = visitEvents[0] ?? null;
+  const selectedEvent = timeline.find((event) => event.id === selectedEventId) ?? timeline[0] ?? null;
   const timelineGroups = timeline.reduce<Array<{ label: string; events: PatientTimelineEvent[] }>>((groups, event) => {
     const date = new Date(event.timestamp);
     const label = date.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" });
@@ -167,6 +182,9 @@ export function PatientDetailsDrawer({
   }, []);
 
   async function handleSave() {
+    if (readOnly) {
+      return;
+    }
     if (!patient) {
       return;
     }
@@ -290,11 +308,11 @@ export function PatientDetailsDrawer({
                             type="button"
                             onClick={() => {
                               if (event.type === "visit_recorded") {
-                                setSelectedVisitEventId(event.id);
+                                setSelectedEventId(event.id);
                               }
                             }}
                             className={`block w-full rounded-[22px] border px-3 py-3 text-left ${
-                              event.type === "visit_recorded" && event.id === selectedVisitEventId
+                              event.id === selectedEventId
                                 ? "border-sky-300 bg-white shadow-[0_14px_32px_rgba(125,211,252,0.18)]"
                                 : "border-sky-100 bg-white/90"
                             }`}
@@ -327,6 +345,184 @@ export function PatientDetailsDrawer({
 
           <section className="min-h-0 overflow-y-auto px-5 py-5 sm:px-7">
             <div className="mx-auto max-w-4xl space-y-5">
+              {!readOnly ? (
+                <div className="rounded-[28px] border border-sky-100 bg-white p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Selected event</p>
+                    <h4 className="mt-1 text-lg font-semibold text-slate-900">
+                      {selectedEvent ? selectedEvent.title : "Nothing selected"}
+                    </h4>
+                  </div>
+                  {selectedEvent ? (
+                    <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.14em] text-slate-600">
+                      {formatStatusLabel(selectedEvent.type)}
+                    </span>
+                  ) : null}
+                </div>
+
+                {selectedEvent ? (
+                  <div className="mt-5 space-y-4">
+                    <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-slate-900">{selectedEvent.title}</p>
+                        <p className="text-xs text-slate-500">{formatDateTime(selectedEvent.timestamp)}</p>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">{selectedEvent.description}</p>
+                    </div>
+
+                    {(() => {
+                      const details = (selectedEvent.details ?? {}) as Record<string, unknown>;
+
+                      if (selectedEvent.type === "visit_recorded") {
+                        return (
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {[
+                              ["Reason", detailText(details.reason) || "—"],
+                              ["Source", detailText(details.source) || "—"],
+                              ["Age", detailNumber(details.age) ?? "—"],
+                              ["Weight", detailNumber(details.weight) ? `${detailNumber(details.weight)} kg` : "—"],
+                              ["Height", detailNumber(details.height) ? `${detailNumber(details.height)} cm` : "—"],
+                              ["Temperature", detailNumber(details.temperature) ? `${detailNumber(details.temperature)} F` : "—"],
+                            ].map(([label, value]) => (
+                              <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                                <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      }
+
+                      if (selectedEvent.type === "consultation_note") {
+                        return (
+                          <div className="space-y-3">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {[
+                                ["Version", detailNumber(details.version_number) ?? "—"],
+                                ["Status", detailText(details.status).replaceAll("_", " ") || "—"],
+                                ["Recipient", detailText(details.sent_to) || "—"],
+                                ["Signed by", detailText(details.sent_by_name) || "—"],
+                              ].map(([label, value]) => (
+                                <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                                  <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="rounded-2xl border border-sky-100 bg-white p-4">
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Consultation content</p>
+                              <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                                {detailText(details.content) || detailText(details.excerpt) || "No note content available."}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (selectedEvent.type === "invoice_created" || selectedEvent.type === "bill_sent") {
+                        const items = detailItems(details.items) as Array<Record<string, unknown>>;
+                        return (
+                          <div className="space-y-3">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {[
+                                ["Payment status", detailText(details.payment_status) || "—"],
+                                ["Recipient", detailText(details.recipient) || "—"],
+                                ["Total", detailNumber(details.total) !== null ? `₹${detailNumber(details.total)}` : "—"],
+                                ["Paid", detailNumber(details.amount_paid) !== null ? `₹${detailNumber(details.amount_paid)}` : "—"],
+                                ["Due", detailNumber(details.balance_due) !== null ? `₹${detailNumber(details.balance_due)}` : "—"],
+                                ["Items", detailNumber(details.item_count) ?? items.length ?? "—"],
+                              ].map(([label, value]) => (
+                                <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                                  <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
+                                </div>
+                              ))}
+                            </div>
+                            {items.length ? (
+                              <div className="rounded-2xl border border-sky-100 bg-white p-4">
+                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Line items</p>
+                                <div className="mt-3 space-y-2">
+                                  {items.map((item, index) => (
+                                    <div key={`${selectedEvent.id}-item-${index}`} className="flex items-center justify-between rounded-xl bg-sky-50/40 px-3 py-2 text-sm text-slate-700">
+                                      <span>{detailText(item.label) || "Item"}</span>
+                                      <span>
+                                        {detailNumber(item.quantity) ?? 0} × ₹{detailNumber(item.unit_price) ?? 0}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      }
+
+                      if (selectedEvent.type === "follow_up_scheduled" || selectedEvent.type === "follow_up_completed") {
+                        return (
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {[
+                              ["Status", detailText(details.status).replaceAll("_", " ") || "—"],
+                              ["Scheduled for", detailText(details.scheduled_for) ? formatDateTime(detailText(details.scheduled_for)) : "—"],
+                              ["Completed at", detailText(details.completed_at) ? formatDateTime(detailText(details.completed_at)) : "—"],
+                              ["Notes", detailText(details.notes) || "—"],
+                            ].map(([label, value]) => (
+                              <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                                <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      }
+
+                      if (selectedEvent.type === "appointment_booked" || selectedEvent.type === "appointment_checked_in") {
+                        return (
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {[
+                              ["Status", detailText(details.status).replaceAll("_", " ") || "—"],
+                              ["Scheduled for", detailText(details.scheduled_for) ? formatDateTime(detailText(details.scheduled_for)) : "—"],
+                              ["Checked in", detailText(details.checked_in_at) ? formatDateTime(detailText(details.checked_in_at)) : "—"],
+                              ["Reason", detailText(details.reason) || "—"],
+                            ].map(([label, value]) => (
+                              <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                                <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      }
+
+                      if (selectedEvent.type === "patient_created") {
+                        return (
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {[
+                              ["Reason", detailText(details.reason) || "—"],
+                              ["Phone", detailText(details.phone) || "—"],
+                              ["Email", detailText(details.email) || "—"],
+                              ["Address", detailText(details.address) || "—"],
+                            ].map(([label, value]) => (
+                              <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                                <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      }
+
+                      return null;
+                    })()}
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-2xl border border-dashed border-sky-200 bg-sky-50/20 px-4 py-8 text-center text-sm text-slate-500">
+                    Select a timeline item to inspect its details.
+                  </div>
+                )}
+                </div>
+              ) : null}
+
               <div className="rounded-[28px] border border-sky-100 bg-white p-5">
                 <div className="flex items-center gap-3 text-slate-700">
                   <UserRound className="h-4 w-4 text-sky-600" />
@@ -337,115 +533,190 @@ export function PatientDetailsDrawer({
                 </div>
 
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                  <label className="block sm:col-span-2">
-                    <span className="text-sm font-medium text-slate-700">Name</span>
-                    <input
-                      value={form.name}
-                      onChange={(event) => {
-                        setError("");
-                        setForm((current) => ({ ...current, name: event.target.value }));
-                      }}
-                      className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
+                  {readOnly ? (
+                    <>
+                      <div className="sm:col-span-2">
+                        <p className="text-sm font-medium text-slate-700">Name</p>
+                        <div className="mt-2 rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800">{form.name || "—"}</div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">Phone</p>
+                        <div className="mt-2 rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800">{form.phone || "—"}</div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">Email</p>
+                        <div className="mt-2 rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800">{form.email || "—"}</div>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <p className="text-sm font-medium text-slate-700">Address</p>
+                        <div className="mt-2 rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800">{form.address || "—"}</div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">Age</p>
+                        <div className="mt-2 rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800">{form.age || "—"}</div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <label className="block sm:col-span-2">
+                        <span className="text-sm font-medium text-slate-700">Name</span>
+                        <input
+                          value={form.name}
+                          onChange={(event) => {
+                            setError("");
+                            setForm((current) => ({ ...current, name: event.target.value }));
+                          }}
+                          className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
+                        />
+                      </label>
 
-                  <label className="block">
-                    <span className="text-sm font-medium text-slate-700">Phone</span>
-                    <input
-                      value={form.phone}
-                      onChange={(event) => {
-                        setError("");
-                        setForm((current) => ({ ...current, phone: event.target.value }));
-                      }}
-                      className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
+                      <label className="block">
+                        <span className="text-sm font-medium text-slate-700">Phone</span>
+                        <input
+                          value={form.phone}
+                          onChange={(event) => {
+                            setError("");
+                            setForm((current) => ({ ...current, phone: event.target.value }));
+                          }}
+                          className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
+                        />
+                      </label>
 
-                  <label className="block">
-                    <span className="text-sm font-medium text-slate-700">Email</span>
-                    <input
-                      type="email"
-                      value={form.email}
-                      onChange={(event) => {
-                        setError("");
-                        setForm((current) => ({ ...current, email: event.target.value }));
-                      }}
-                      className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
+                      <label className="block">
+                        <span className="text-sm font-medium text-slate-700">Email</span>
+                        <input
+                          type="email"
+                          value={form.email}
+                          onChange={(event) => {
+                            setError("");
+                            setForm((current) => ({ ...current, email: event.target.value }));
+                          }}
+                          className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
+                        />
+                      </label>
 
-                  <label className="block sm:col-span-2">
-                    <span className="text-sm font-medium text-slate-700">Address</span>
-                    <input
-                      value={form.address}
-                      onChange={(event) => {
-                        setError("");
-                        setForm((current) => ({ ...current, address: event.target.value }));
-                      }}
-                      className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
+                      <label className="block sm:col-span-2">
+                        <span className="text-sm font-medium text-slate-700">Address</span>
+                        <input
+                          value={form.address}
+                          onChange={(event) => {
+                            setError("");
+                            setForm((current) => ({ ...current, address: event.target.value }));
+                          }}
+                          className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
+                        />
+                      </label>
 
-                  <label className="block">
-                    <span className="text-sm font-medium text-slate-700">Age</span>
-                    <input
-                      value={form.age}
-                      inputMode="numeric"
-                      onChange={(event) => {
-                        setError("");
-                        setForm((current) => ({ ...current, age: event.target.value }));
-                      }}
-                      className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
+                      <label className="block">
+                        <span className="text-sm font-medium text-slate-700">Age</span>
+                        <input
+                          value={form.age}
+                          inputMode="numeric"
+                          onChange={(event) => {
+                            setError("");
+                            setForm((current) => ({ ...current, age: event.target.value }));
+                          }}
+                          className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
+                        />
+                      </label>
+                    </>
+                  )}
                 </div>
               </div>
 
-              <div className="rounded-[28px] border border-sky-100 bg-white p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Visits</p>
-                    <h4 className="mt-1 text-lg font-semibold text-slate-900">Patient visit history</h4>
+              {readOnly ? (
+                <div className="rounded-[28px] border border-sky-100 bg-white p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Current Visit</p>
+                      <h4 className="mt-1 text-lg font-semibold text-slate-900">Latest recorded visit</h4>
+                    </div>
+                    {currentVisitEvent ? <p className="text-xs text-slate-500">{formatDateTime(currentVisitEvent.timestamp)}</p> : null}
                   </div>
-                  {isTimelineLoading ? <span className="text-xs text-slate-500">Loading...</span> : null}
-                </div>
 
-                {timelineError ? <p className="mt-4 text-sm text-rose-600">{timelineError}</p> : null}
-
-                <div className="mt-5 space-y-3">
-                  {visitEvents.length ? (
-                    visitEvents.map((event) => (
-                      <button
-                        key={event.id}
-                        type="button"
-                        onClick={() => setSelectedVisitEventId(event.id)}
-                        className={`block w-full rounded-[22px] border px-4 py-4 text-left ${
-                          event.id === selectedVisitEventId
-                            ? "border-sky-300 bg-white shadow-[0_14px_32px_rgba(125,211,252,0.18)]"
-                            : "border-sky-100 bg-sky-50/35"
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="rounded-full bg-white p-2 shadow-sm ring-1 ring-sky-100">
-                            {getTimelineIcon(event.type)}
+                  {currentVisitEvent ? (
+                    <div className="mt-5 space-y-4">
+                      <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+                        <p className="text-sm leading-6 text-slate-700">{currentVisitEvent.description}</p>
+                      </div>
+                      {(() => {
+                        const details = (currentVisitEvent.details ?? {}) as Record<string, unknown>;
+                        const ageValue = detailNumber(details.age) ?? currentPatient.age;
+                        const weightValue = detailNumber(details.weight) ?? currentPatient.weight;
+                        const heightValue = detailNumber(details.height) ?? currentPatient.height;
+                        const temperatureValue = detailNumber(details.temperature) ?? currentPatient.temperature;
+                        return (
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {[
+                              ["Reason", detailText(details.reason) || currentPatient.reason || "—"],
+                              ["Source", detailText(details.source) || "—"],
+                              ["Age", ageValue ?? "—"],
+                              ["Weight", weightValue ? `${weightValue} kg` : "—"],
+                              ["Height", heightValue ? `${heightValue} cm` : "—"],
+                              ["Temperature", temperatureValue ? `${temperatureValue} F` : "—"],
+                            ].map(([label, value]) => (
+                              <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                                <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
+                              </div>
+                            ))}
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <p className="text-sm font-semibold text-slate-900">{getEventTitle(event)}</p>
-                              <p className="text-xs text-slate-500">{formatDateTime(event.timestamp)}</p>
-                            </div>
-                            <p className="mt-2 text-sm leading-6 text-slate-600">{event.description}</p>
-                          </div>
-                        </div>
-                      </button>
-                    ))
-                  ) : !isTimelineLoading ? (
-                    <div className="rounded-2xl border border-dashed border-sky-200 bg-sky-50/20 px-4 py-8 text-center text-sm text-slate-500">
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="mt-5 rounded-2xl border border-dashed border-sky-200 bg-sky-50/20 px-4 py-8 text-center text-sm text-slate-500">
                       No visits recorded yet.
                     </div>
-                  ) : null}
+                  )}
                 </div>
-              </div>
+              ) : (
+                <div className="rounded-[28px] border border-sky-100 bg-white p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Visits</p>
+                      <h4 className="mt-1 text-lg font-semibold text-slate-900">Patient visit history</h4>
+                    </div>
+                    {isTimelineLoading ? <span className="text-xs text-slate-500">Loading...</span> : null}
+                  </div>
+
+                  {timelineError ? <p className="mt-4 text-sm text-rose-600">{timelineError}</p> : null}
+
+                  <div className="mt-5 space-y-3">
+                    {visitEvents.length ? (
+                      visitEvents.map((event) => (
+                        <button
+                          key={event.id}
+                          type="button"
+                          onClick={() => setSelectedEventId(event.id)}
+                          className={`block w-full rounded-[22px] border px-4 py-4 text-left ${
+                            event.id === selectedEventId
+                              ? "border-sky-300 bg-white shadow-[0_14px_32px_rgba(125,211,252,0.18)]"
+                              : "border-sky-100 bg-sky-50/35"
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="rounded-full bg-white p-2 shadow-sm ring-1 ring-sky-100">
+                              {getTimelineIcon(event.type)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-slate-900">{getEventTitle(event)}</p>
+                                <p className="text-xs text-slate-500">{formatDateTime(event.timestamp)}</p>
+                              </div>
+                              <p className="mt-2 text-sm leading-6 text-slate-600">{event.description}</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    ) : !isTimelineLoading ? (
+                      <div className="rounded-2xl border border-dashed border-sky-200 bg-sky-50/20 px-4 py-8 text-center text-sm text-slate-500">
+                        No visits recorded yet.
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         </div>
@@ -463,14 +734,16 @@ export function PatientDetailsDrawer({
             >
               Close
             </button>
-            <button
-              type="button"
-              disabled={isSaving}
-              onClick={handleSave}
-              className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
-            >
-              {isSaving ? "Saving..." : "Save Changes"}
-            </button>
+            {!readOnly ? (
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={handleSave}
+                className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+              >
+                {isSaving ? "Saving..." : "Save Changes"}
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

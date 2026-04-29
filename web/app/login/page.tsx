@@ -188,24 +188,27 @@ export default function LoginPage() {
               ClinicOS
             </div>
             <h1 className="mt-5 max-w-xl text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl">
-              Clinic workflow, notes, and queue control in one place.
+              AI scribe, revenue management, and modern clinic operations in one workspace.
             </h1>
             <p className="mt-5 max-w-lg text-base leading-8 text-slate-600">
-              Sign in to open your clinic workspace. Create Account provisions a new clinic
-              organization with its own admin, settings, patients, and staff list.
+              Sign in to manage patients, appointments, consultation notes, follow-ups, billing,
+              inventory, and reporting from a single clinic command center. Create Account provisions
+              a new clinic organization with its own admin workspace, settings, records, and staff access.
             </p>
 
             <div className="mt-10 grid gap-4 sm:grid-cols-2">
               <div className="rounded-[28px] border border-sky-100 bg-sky-50/70 p-5">
                 <p className="text-sm font-semibold text-slate-900">Admin access</p>
                 <p className="mt-2 text-sm leading-7 text-slate-600">
-                  Manage clinic details, queue operations, AI notes, and staff creation.
+                  Manage clinic settings, live operations, AI scribe notes, billing, revenue tracking,
+                  inventory, and staff accounts.
                 </p>
               </div>
               <div className="rounded-[28px] border border-sky-100 bg-white p-5">
                 <p className="text-sm font-semibold text-slate-900">Staff access</p>
                 <p className="mt-2 text-sm leading-7 text-slate-600">
-                  Join the clinic board with an admin-issued account and work patient flow.
+                  Join the clinic workspace with an admin-issued account and support patient intake,
+                  consultation workflow, notes, and follow-up coordination.
                 </p>
               </div>
             </div>

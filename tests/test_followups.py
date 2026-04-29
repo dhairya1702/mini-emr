@@ -54,8 +54,11 @@ def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
         headers=auth_headers(session["token"]),
     )
     assert timeline.status_code == 200
-    event_types = [event["type"] for event in timeline.json()]
+    timeline_events = timeline.json()
+    event_types = [event["type"] for event in timeline_events]
     assert "follow_up_scheduled" in event_types
+    scheduled = next(event for event in timeline_events if event["type"] == "follow_up_scheduled")
+    assert scheduled["details"]["notes"] == "Review symptoms and blood pressure"
 
 
 def test_follow_up_can_be_rescheduled_completed_and_cancelled(client):

@@ -94,6 +94,7 @@ export interface PatientTimelineEvent {
   description: string;
   entity_type?: string | null;
   entity_id?: string | null;
+  details?: Record<string, unknown>;
 }
 
 export interface ConsultationNote {

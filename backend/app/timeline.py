@@ -20,6 +20,19 @@ def build_patient_timeline(
             description=f"Record opened with {patient['reason']} as the visit reason.",
             entity_type="patient",
             entity_id=str(patient["id"]),
+            details={
+                "name": str(patient.get("name") or ""),
+                "phone": str(patient.get("phone") or ""),
+                "email": str(patient.get("email") or ""),
+                "address": str(patient.get("address") or ""),
+                "reason": str(patient.get("reason") or ""),
+                "age": patient.get("age"),
+                "weight": patient.get("weight"),
+                "height": patient.get("height"),
+                "temperature": patient.get("temperature"),
+                "status": str(patient.get("status") or ""),
+                "billed": bool(patient.get("billed") or False),
+            },
         )
     ]
 
@@ -33,6 +46,21 @@ def build_patient_timeline(
                 description=build_visit_description(visit),
                 entity_type="visit",
                 entity_id=str(visit["id"]),
+                details={
+                    "name": str(visit.get("name") or ""),
+                    "phone": str(visit.get("phone") or ""),
+                    "email": str(visit.get("email") or ""),
+                    "address": str(visit.get("address") or ""),
+                    "reason": str(visit.get("reason") or ""),
+                    "age": visit.get("age"),
+                    "weight": visit.get("weight"),
+                    "height": visit.get("height"),
+                    "temperature": visit.get("temperature"),
+                    "source": str(visit.get("source") or ""),
+                    "appointment_id": str(visit.get("appointment_id") or "") or None,
+                    "status": str(visit.get("status") or ""),
+                    "billed": bool(visit.get("billed") or False),
+                },
             )
         )
 
@@ -67,6 +95,16 @@ def build_patient_timeline(
                 ),
                 entity_type="note",
                 entity_id=str(note["id"]),
+                details={
+                    "version_number": version_number,
+                    "status": note_status,
+                    "content": str(note.get("snapshot_content") or note.get("content") or "").strip(),
+                    "excerpt": excerpt,
+                    "finalized_at": note.get("finalized_at"),
+                    "sent_at": note.get("sent_at"),
+                    "sent_to": str(note.get("sent_to") or ""),
+                    "sent_by_name": str(note.get("sent_by_name") or ""),
+                },
             )
         )
 
@@ -81,6 +119,15 @@ def build_patient_timeline(
                 description=f"Visit scheduled for {display_date}.",
                 entity_type="appointment",
                 entity_id=str(appointment["id"]),
+                details={
+                    "name": str(appointment.get("name") or ""),
+                    "phone": str(appointment.get("phone") or ""),
+                    "email": str(appointment.get("email") or ""),
+                    "address": str(appointment.get("address") or ""),
+                    "reason": str(appointment.get("reason") or ""),
+                    "scheduled_for": appointment.get("scheduled_for"),
+                    "status": str(appointment.get("status") or ""),
+                },
             )
         )
         if appointment.get("checked_in_at"):
@@ -93,6 +140,12 @@ def build_patient_timeline(
                     description="Patient moved from the schedule into the active queue.",
                     entity_type="appointment",
                     entity_id=str(appointment["id"]),
+                    details={
+                        "checked_in_at": appointment.get("checked_in_at"),
+                        "checked_in_patient_id": str(appointment.get("checked_in_patient_id") or "") or None,
+                        "scheduled_for": appointment.get("scheduled_for"),
+                        "status": str(appointment.get("status") or ""),
+                    },
                 )
             )
 
@@ -119,6 +172,19 @@ def build_patient_timeline(
                 ),
                 entity_type="invoice",
                 entity_id=str(invoice["id"]),
+                details={
+                    "patient_name": str(invoice.get("patient_name") or ""),
+                    "total": float(invoice.get("total", 0) or 0),
+                    "subtotal": float(invoice.get("subtotal", 0) or 0),
+                    "amount_paid": float(invoice.get("amount_paid", 0) or 0),
+                    "balance_due": float(invoice.get("balance_due", 0) or 0),
+                    "payment_status": payment_status,
+                    "item_count": item_count,
+                    "items": invoice.get("items", []),
+                    "completed_at": invoice.get("completed_at"),
+                    "completed_by_name": str(invoice.get("completed_by_name") or ""),
+                    "sent_at": invoice.get("sent_at"),
+                },
             )
         )
         if invoice.get("sent_at"):
@@ -136,6 +202,18 @@ def build_patient_timeline(
                     description=(" ".join(completion_bits) + f" {payment_summary}").strip(),
                     entity_type="invoice",
                     entity_id=str(invoice["id"]),
+                    details={
+                        "patient_name": str(invoice.get("patient_name") or ""),
+                        "recipient": str(invoice.get("sent_to") or ""),
+                        "total": float(invoice.get("total", 0) or 0),
+                        "amount_paid": float(invoice.get("amount_paid", 0) or 0),
+                        "balance_due": float(invoice.get("balance_due", 0) or 0),
+                        "payment_status": payment_status,
+                        "completed_at": invoice.get("completed_at"),
+                        "completed_by_name": str(invoice.get("completed_by_name") or ""),
+                        "sent_at": invoice.get("sent_at"),
+                        "items": invoice.get("items", []),
+                    },
                 )
             )
 
@@ -156,6 +234,12 @@ def build_patient_timeline(
                 description=description,
                 entity_type="follow_up",
                 entity_id=str(follow_up["id"]),
+                details={
+                    "scheduled_for": scheduled_for,
+                    "notes": str(follow_up.get("notes") or ""),
+                    "status": str(follow_up.get("status") or ""),
+                    "completed_at": follow_up.get("completed_at"),
+                },
             )
         )
         if follow_up.get("completed_at"):
@@ -170,6 +254,12 @@ def build_patient_timeline(
                     description=f"Follow-up marked complete on {completed_display_date}.",
                     entity_type="follow_up",
                     entity_id=str(follow_up["id"]),
+                    details={
+                        "scheduled_for": scheduled_for,
+                        "notes": str(follow_up.get("notes") or ""),
+                        "status": str(follow_up.get("status") or ""),
+                        "completed_at": completed_at,
+                    },
                 )
             )
 

@@ -64,12 +64,19 @@ def test_patient_timeline_includes_notes_and_billing_events(client, monkeypatch)
         headers=auth_headers(session["token"]),
     )
     assert timeline.status_code == 200
-    event_types = [event["type"] for event in timeline.json()]
+    timeline_events = timeline.json()
+    event_types = [event["type"] for event in timeline_events]
     assert "patient_created" in event_types
     assert "visit_recorded" in event_types
     assert "consultation_note" in event_types
     assert "invoice_created" in event_types
     assert "bill_sent" in event_types
+    invoice_created = next(event for event in timeline_events if event["type"] == "invoice_created")
+    assert invoice_created["details"]["total"] == 500.0
+    assert invoice_created["details"]["payment_status"] == "paid"
+    consultation_note = next(event for event in timeline_events if event["type"] == "consultation_note")
+    assert consultation_note["details"]["status"] == "draft"
+    assert "Viral fever" in consultation_note["details"]["content"]
 
 
 def test_existing_patient_can_record_a_new_visit_and_refresh_latest_snapshot(client):
@@ -118,8 +125,12 @@ def test_existing_patient_can_record_a_new_visit_and_refresh_latest_snapshot(cli
         headers=headers,
     )
     assert timeline.status_code == 200
-    event_types = [event["type"] for event in timeline.json()]
+    timeline_events = timeline.json()
+    event_types = [event["type"] for event in timeline_events]
     assert event_types.count("visit_recorded") == 2
+    visit_recorded = next(event for event in timeline_events if event["type"] == "visit_recorded")
+    assert visit_recorded["details"]["reason"] in {"Initial visit", "Review visit"}
+    assert "temperature" in visit_recorded["details"]
 
     audit_events = test_client.get("/audit-events", headers=headers)
     assert audit_events.status_code == 200

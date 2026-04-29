@@ -406,6 +406,7 @@ export default function HistoryPage() {
       <PatientDetailsDrawer
         patient={selectedPatient}
         onLoadTimeline={handleLoadPatientTimeline}
+        readOnly
         onSave={handleUpdatePatient}
         onClose={() => setSelectedPatient(null)}
       />

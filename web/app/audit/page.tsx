@@ -350,11 +350,6 @@ export default function AuditPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Summary</p>
               <p className="mt-2 text-sm leading-6 text-slate-700">{getAuditSummary(selectedEvent)}</p>
             </div>
-
-            <div className="mt-4 rounded-2xl border border-sky-100 bg-white p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Metadata</p>
-              <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words rounded-2xl bg-slate-50 p-4 text-xs leading-6 text-slate-700">{JSON.stringify(selectedEvent.metadata || {}, null, 2)}</pre>
-            </div>
           </div>
         </div>
       ) : null}
