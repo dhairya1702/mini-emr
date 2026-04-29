@@ -20,6 +20,7 @@ import {
   RefreshCw,
   Trash2,
   Upload,
+  User,
   UserPlus,
   X,
 } from "lucide-react";
@@ -559,6 +560,7 @@ export function SettingsDrawer({
     { href: "/history", label: "History", icon: History },
     { href: "/inventory", label: "Inventory", icon: Stethoscope },
     { href: "/users", label: "Users", icon: UserPlus },
+    { href: "/account", label: "Account", icon: User },
     { href: "/audit", label: "Audit", icon: Settings2 },
     { tab: "clinic" as SettingsTab, label: "Clinic", icon: Building2 },
     { tab: "letter" as SettingsTab, label: "Generate Letter", icon: FilePenLine },

@@ -41,6 +41,9 @@ import {
   SendLetterPayload,
   SendNotePayload,
   StaffUserCreatePayload,
+  SuperuserOrgDetail,
+  SuperuserOrgSummary,
+  PlatformError,
 } from "@/lib/types";
 
 const API_BASE_URL =
@@ -374,6 +377,17 @@ export const api = {
       method: "DELETE",
     }),
   listInvoices: () => request<Invoice[]>("/invoices"),
+  listSuperuserOrgs: () => request<SuperuserOrgSummary[]>("/superuser/orgs"),
+  getSuperuserOrgDetail: (orgId: string) => request<SuperuserOrgDetail>(`/superuser/orgs/${orgId}`),
+  listPlatformErrors: (limit = 100) => request<PlatformError[]>(withQuery("/superuser/errors", { limit })),
+  deleteSuperuserUser: (userId: string) =>
+    request<void>(`/superuser/users/${userId}`, {
+      method: "DELETE",
+    }),
+  deleteSuperuserOrg: (orgId: string) =>
+    request<void>(`/superuser/orgs/${orgId}`, {
+      method: "DELETE",
+    }),
   createInvoice: (payload: InvoiceCreatePayload) =>
     request<Invoice>("/invoices", {
       method: "POST",

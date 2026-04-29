@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import traceback
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from uuid import UUID
@@ -25,6 +26,7 @@ from app.routes import (
     patients_router,
     public_router,
     settings_router,
+    superuser_router,
     users_router,
 )
 from app.schemas import UserOut
@@ -95,7 +97,28 @@ app.add_middleware(
 
 @app.middleware("http")
 async def refresh_authenticated_session(request: Request, call_next):
-    response: Response = await call_next(request)
+    try:
+        response: Response = await call_next(request)
+    except Exception as exc:  # pragma: no cover
+        if request.url.path != "/health":
+            current_user = getattr(request.state, "current_user", None)
+            try:
+                repo = get_repository()
+                await repo.create_platform_error(
+                    org_id=str(current_user.org_id) if current_user is not None else None,
+                    user_id=str(current_user.id) if current_user is not None else None,
+                    identifier=current_user.identifier if current_user is not None else None,
+                    path=request.url.path,
+                    method=request.method,
+                    status_code=None,
+                    error_type=type(exc).__name__,
+                    message=str(exc),
+                    details=traceback.format_exc(),
+                    context={},
+                )
+            except Exception:
+                logger.exception("Failed to persist platform error for %s %s", request.method, request.url.path)
+        raise
     current_user = getattr(request.state, "current_user", None)
     if current_user is not None:
         issue_session_headers(
@@ -121,6 +144,7 @@ for router in (
     appointments_router,
     followups_router,
     public_router,
+    superuser_router,
     notes_router,
     billing_router,
 ):

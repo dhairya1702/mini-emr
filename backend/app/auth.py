@@ -174,3 +174,19 @@ async def require_admin(current_user: UserOut = Depends(get_current_user)) -> Us
     if current_user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required.")
     return current_user
+
+
+def _super_admin_identifiers() -> set[str]:
+    settings = get_settings()
+    raw = str(settings.super_admin_identifiers or "")
+    return {
+        identifier.strip().lower()
+        for identifier in raw.split(",")
+        if identifier.strip()
+    }
+
+
+async def require_super_admin(current_user: UserOut = Depends(get_current_user)) -> UserOut:
+    if current_user.identifier.strip().lower() not in _super_admin_identifiers():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superuser access required.")
+    return current_user

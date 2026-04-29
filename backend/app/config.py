@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-20250514"
     app_origin: str = "http://127.0.0.1:3000"
+    super_admin_identifiers: str = ""
     follow_up_reminder_runner_enabled: bool = False
     follow_up_reminder_interval_seconds: int = 300
 

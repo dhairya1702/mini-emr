@@ -5,6 +5,7 @@ from app.repositories.base import DuplicateCheckInCandidateError
 from app.repositories.billing import BillingRepositoryMixin
 from app.repositories.patient_flow import PatientFlowRepositoryMixin
 from app.repositories.records import RecordsRepositoryMixin
+from app.repositories.superuser import SuperuserRepositoryMixin
 
 __all__ = [
     "AIUsageRepositoryMixin",
@@ -14,4 +15,5 @@ __all__ = [
     "DuplicateCheckInCandidateError",
     "PatientFlowRepositoryMixin",
     "RecordsRepositoryMixin",
+    "SuperuserRepositoryMixin",
 ]

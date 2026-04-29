@@ -13,6 +13,7 @@ from app.repositories import (
     DuplicateCheckInCandidateError,
     PatientFlowRepositoryMixin,
     RecordsRepositoryMixin,
+    SuperuserRepositoryMixin,
 )
 
 if TYPE_CHECKING:
@@ -46,6 +47,7 @@ class SupabaseRepository(
     PatientFlowRepositoryMixin,
     RecordsRepositoryMixin,
     BillingRepositoryMixin,
+    SuperuserRepositoryMixin,
 ):
     def __init__(self) -> None:
         settings = get_settings()

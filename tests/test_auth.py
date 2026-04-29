@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from io import BytesIO
 from uuid import uuid4
 
 import pytest
+from PIL import Image, ImageDraw
 
 from test_app import auth_headers, auth_module, client, main_module, register
+from app.services.signature_service import normalize_signature_image
 
 
 def test_auth_me_reissues_session_headers(client):
@@ -164,3 +167,59 @@ def test_auth_me_can_manage_own_signature(client):
     removed = test_client.delete("/auth/me/signature", headers=headers)
     assert removed.status_code == 200
     assert removed.json()["doctor_signature_name"] is None
+
+
+def test_signature_cleanup_makes_background_transparent():
+    image = Image.new("RGBA", (120, 48), (246, 244, 238, 255))
+    draw = ImageDraw.Draw(image)
+    draw.line((12, 26, 48, 12), fill=(24, 24, 24, 255), width=4)
+    draw.line((48, 12, 80, 30), fill=(24, 24, 24, 255), width=4)
+    draw.line((80, 30, 108, 14), fill=(24, 24, 24, 255), width=4)
+
+    raw = BytesIO()
+    image.save(raw, format="PNG")
+
+    normalized_bytes, normalized_type = normalize_signature_image(raw.getvalue(), "image/png")
+
+    assert normalized_type == "image/png"
+    normalized = Image.open(BytesIO(normalized_bytes)).convert("RGBA")
+    assert normalized.getbbox() is not None
+
+    pixels = list(normalized.getdata())
+    transparent_pixels = sum(1 for pixel in pixels if pixel[3] == 0)
+    visible_pixels = sum(1 for pixel in pixels if pixel[3] > 0)
+
+    assert transparent_pixels > 0
+    assert visible_pixels > 0
+    assert pixels[0][3] == 0
+
+
+def test_signature_cleanup_removes_warm_paper_noise():
+    image = Image.new("RGBA", (140, 52), (248, 223, 92, 255))
+    draw = ImageDraw.Draw(image)
+
+    for x in range(0, 140, 3):
+        shade = 232 if (x // 3) % 2 == 0 else 242
+        draw.line((x, 0, x, 51), fill=(shade, 210, 84, 255), width=1)
+
+    draw.line((18, 29, 55, 13), fill=(18, 33, 138, 255), width=4)
+    draw.line((55, 13, 92, 31), fill=(18, 33, 138, 255), width=4)
+    draw.line((92, 31, 122, 17), fill=(18, 33, 138, 255), width=4)
+
+    raw = BytesIO()
+    image.save(raw, format="PNG")
+
+    normalized_bytes, _ = normalize_signature_image(raw.getvalue(), "image/png")
+    normalized = Image.open(BytesIO(normalized_bytes)).convert("RGBA")
+
+    transparent_pixels = 0
+    retained_warm_pixels = 0
+    for red, green, blue, alpha in normalized.getdata():
+        if alpha == 0:
+            transparent_pixels += 1
+            continue
+        if red > 180 and green > 150 and blue < 140:
+            retained_warm_pixels += 1
+
+    assert transparent_pixels > 0
+    assert retained_warm_pixels == 0

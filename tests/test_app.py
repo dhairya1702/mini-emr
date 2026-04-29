@@ -114,6 +114,7 @@ class FakeRepo:
         self.appointments: dict[str, dict] = {}
         self.audit_events: dict[str, dict] = {}
         self.ai_usage_events: dict[str, dict] = {}
+        self.platform_errors: dict[str, dict] = {}
 
     async def create_organization(self, clinic_name: str) -> dict:
         org_id = str(uuid4())
@@ -189,6 +190,97 @@ class FakeRepo:
         }
         self.ai_usage_events[usage_id] = row
         return row
+
+    async def list_all_organizations(self) -> list[dict]:
+        summaries = []
+        for org in self.organizations.values():
+            org_id = org["id"]
+            clinic_settings = self.clinic_settings.get(org_id, {})
+            users = [row for row in self.users.values() if row["org_id"] == org_id]
+            patients = [row for row in self.patients.values() if row["org_id"] == org_id]
+            notes = [row for row in self.notes.values() if row["org_id"] == org_id]
+            invoices = [row for row in self.invoices.values() if row["org_id"] == org_id]
+            follow_ups = [row for row in self.follow_ups.values() if row["org_id"] == org_id]
+            audit_events = [row for row in self.audit_events.values() if row["org_id"] == org_id]
+            usage_events = [row for row in self.ai_usage_events.values() if row["org_id"] == org_id]
+            last_activity = org["created_at"]
+            for collection in (users, patients, notes, invoices, follow_ups, audit_events):
+                for row in collection:
+                    candidate = row.get("last_visit_at") or row.get("scheduled_for") or row.get("created_at")
+                    if candidate and candidate > last_activity:
+                        last_activity = candidate
+            summaries.append(
+                {
+                    "org_id": org_id,
+                    "clinic_name": clinic_settings.get("clinic_name") or org["name"],
+                    "created_at": org["created_at"],
+                    "user_count": len(users),
+                    "patient_count": len(patients),
+                    "note_count": len(notes),
+                    "invoice_count": len(invoices),
+                    "follow_up_count": len(follow_ups),
+                    "total_tokens": sum(int(event.get("total_tokens") or 0) for event in usage_events),
+                    "last_activity_at": last_activity,
+                }
+            )
+        return summaries
+
+    async def list_users_for_org_any(self, org_id: str) -> list[dict]:
+        rows = [row for row in self.users.values() if row["org_id"] == org_id]
+        rows.sort(key=lambda row: row["created_at"])
+        return rows
+
+    async def list_ai_usage_events_for_org(self, org_id: str, limit: int = 100) -> list[dict]:
+        rows = [row for row in self.ai_usage_events.values() if row["org_id"] == org_id]
+        rows.sort(key=lambda row: row["created_at"], reverse=True)
+        return rows[:limit]
+
+    async def create_platform_error(
+        self,
+        *,
+        org_id: str | None,
+        user_id: str | None,
+        identifier: str | None,
+        path: str,
+        method: str,
+        status_code: int | None,
+        error_type: str,
+        message: str,
+        details: str = "",
+        context: dict | None = None,
+    ) -> dict:
+        error_id = str(uuid4())
+        row = {
+            "id": error_id,
+            "org_id": org_id,
+            "user_id": user_id,
+            "identifier": identifier or "",
+            "path": path,
+            "method": method,
+            "status_code": status_code,
+            "error_type": error_type,
+            "message": message,
+            "details": details,
+            "context": context or {},
+            "created_at": _now(),
+        }
+        if not hasattr(self, "platform_errors"):
+            self.platform_errors = {}
+        self.platform_errors[error_id] = row
+        return row
+
+    async def list_platform_errors(self, limit: int = 100, org_id: str | None = None) -> list[dict]:
+        rows = list(getattr(self, "platform_errors", {}).values())
+        if org_id:
+            rows = [row for row in rows if row["org_id"] == org_id]
+        rows.sort(key=lambda row: row["created_at"], reverse=True)
+        return rows[:limit]
+
+    async def delete_user_any(self, user_id: str) -> None:
+        self.users.pop(user_id, None)
+
+    async def delete_organization(self, org_id: str) -> None:
+        self.organizations.pop(org_id, None)
 
     async def create_clinic_settings(self, org_id: str, payload) -> dict:
         settings_id = str(uuid4())

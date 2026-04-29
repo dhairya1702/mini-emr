@@ -297,6 +297,57 @@ export interface AuthUser {
   created_at: string;
 }
 
+export interface SuperuserOrgSummary {
+  org_id: string;
+  clinic_name: string;
+  created_at: string;
+  user_count: number;
+  patient_count: number;
+  note_count: number;
+  invoice_count: number;
+  follow_up_count: number;
+  total_tokens: number;
+  last_activity_at: string | null;
+}
+
+export interface SuperuserOrgUser {
+  id: string;
+  org_id: string;
+  identifier: string;
+  name: string;
+  role: "admin" | "staff";
+  created_at: string;
+}
+
+export interface PlatformError {
+  id: string;
+  org_id: string | null;
+  user_id: string | null;
+  identifier: string;
+  path: string;
+  method: string;
+  status_code: number | null;
+  error_type: string;
+  message: string;
+  details: string;
+  context: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface SuperuserUsageSummary {
+  total_tokens: number;
+  total_requests: number;
+  by_feature: Record<string, number>;
+}
+
+export interface SuperuserOrgDetail {
+  summary: SuperuserOrgSummary;
+  users: SuperuserOrgUser[];
+  recent_errors: PlatformError[];
+  usage: SuperuserUsageSummary;
+  recent_audit_events: AuditEvent[];
+}
+
 export interface AccountUpdatePayload {
   name: string;
   doctor_dob?: string | null;

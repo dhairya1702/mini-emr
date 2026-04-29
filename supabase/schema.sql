@@ -159,6 +159,27 @@ create table if not exists public.ai_usage_events (
 create index if not exists ai_usage_events_org_id_created_at_idx
   on public.ai_usage_events(org_id, created_at desc);
 
+create table if not exists public.platform_errors (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid references public.organizations(id) on delete set null,
+  user_id uuid references public.clinic_users(id) on delete set null,
+  identifier text not null default '',
+  path text not null,
+  method text not null,
+  status_code integer,
+  error_type text not null,
+  message text not null,
+  details text not null default '',
+  context jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists platform_errors_created_at_idx
+  on public.platform_errors(created_at desc);
+
+create index if not exists platform_errors_org_id_created_at_idx
+  on public.platform_errors(org_id, created_at desc);
+
 create table if not exists public.follow_ups (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,

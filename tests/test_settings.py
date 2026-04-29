@@ -136,6 +136,42 @@ def test_generate_letter_pdf_uses_template_when_letter_template_is_configured(cl
     assert response.headers["content-type"] == "application/pdf"
 
 
+def test_generate_letter_pdf_uses_current_user_signature_context(client, monkeypatch):
+    test_client, repo = client
+    session = register(test_client, identifier="settings-letter-signature@clinic.com", clinic_name="Letter Signature Clinic")
+    headers = auth_headers(session["token"])
+    user_id = session["user"]["id"]
+
+    repo.users[user_id]["name"] = "Dr Letter Preview"
+    repo.users[user_id]["doctor_signature_name"] = "sig.png"
+    repo.users[user_id]["doctor_signature_content_type"] = "image/png"
+    repo.users[user_id]["doctor_signature_data_base64"] = "ZmFrZQ=="
+
+    captured: dict[str, object] = {}
+
+    def fake_build_letter_pdf(*, clinic, letter_content, generated_on):  # type: ignore[no-redef]
+        captured["clinic"] = clinic
+        captured["letter_content"] = letter_content
+        captured["generated_on"] = generated_on
+        return b"%PDF-1.4 test"
+
+    monkeypatch.setattr("app.routes.notes.build_letter_pdf", fake_build_letter_pdf)
+
+    response = test_client.post(
+        "/generate-letter-pdf",
+        headers=headers,
+        json={"content": "To: Patient\nSubject: Follow-up\nPlease review your medicines."},
+    )
+
+    assert response.status_code == 200
+    rendered_clinic = captured["clinic"]
+    assert isinstance(rendered_clinic, dict)
+    assert rendered_clinic["doctor_name"] == "Dr Letter Preview"
+    assert rendered_clinic["doctor_signature_name"] == "sig.png"
+    assert rendered_clinic["doctor_signature_content_type"] == "image/png"
+    assert rendered_clinic["doctor_signature_data_base64"] == "ZmFrZQ=="
+
+
 def test_pdf_template_page_size_is_read_from_uploaded_pdf():
     writer = PdfWriter()
     writer.add_blank_page(width=612, height=792)
@@ -154,6 +190,12 @@ def test_saved_clinic_template_offsets_are_used_for_note_pdf_generation(client, 
     session = register(test_client, identifier="settings-note-template@clinic.com", clinic_name="Note Template Clinic")
     headers = auth_headers(session["token"])
     org_id = session["user"]["org_id"]
+    user_id = session["user"]["id"]
+
+    repo.users[user_id]["name"] = "Dr Note Preview"
+    repo.users[user_id]["doctor_signature_name"] = "sig.png"
+    repo.users[user_id]["doctor_signature_content_type"] = "image/png"
+    repo.users[user_id]["doctor_signature_data_base64"] = "ZmFrZQ=="
 
     update = test_client.put(
         "/settings/clinic",
@@ -206,6 +248,10 @@ def test_saved_clinic_template_offsets_are_used_for_note_pdf_generation(client, 
     assert isinstance(rendered_patient, dict)
     assert rendered_patient["document_template_margin_top"] == 200
     assert rendered_patient["document_template_notes_enabled"] is True
+    assert rendered_patient["doctor_name"] == "Dr Note Preview"
+    assert rendered_patient["doctor_signature_name"] == "sig.png"
+    assert rendered_patient["doctor_signature_content_type"] == "image/png"
+    assert rendered_patient["doctor_signature_data_base64"] == "ZmFrZQ=="
     assert captured["assets"] == []
 
 
