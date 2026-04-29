@@ -30,6 +30,27 @@ type PrescriptionDraft = {
   night: boolean;
 };
 
+const PRESCRIPTION_NOTE_OPTIONS = [
+  "Before food",
+  "After food",
+  "PRN",
+];
+
+function normalizePrescriptionNotes(value: string) {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function togglePrescriptionNoteValue(currentValue: string, option: string) {
+  const current = normalizePrescriptionNotes(currentValue);
+  if (current.includes(option)) {
+    return current.filter((entry) => entry !== option).join(", ");
+  }
+  return [...current, option].join(", ");
+}
+
 interface ConsultationDrawerProps {
   patient: Patient | null;
   onClose: () => void;
@@ -312,7 +333,7 @@ export function ConsultationDrawer({
             const quantity = entry.quantity.trim() || "-";
             const duration = entry.duration.trim() || "-";
             const notes = entry.notes.trim() || "-";
-            return `${entry.name} | ${quantity}${entry.unit ? ` ${entry.unit}` : ""} | ${prescriptionScheduleLabel(entry)} | ${duration} | ${notes}`;
+            return `${entry.name} | ${quantity} | ${prescriptionScheduleLabel(entry)} | ${duration} | ${notes}`;
           }),
         ].join("\n")
       : "";
@@ -782,7 +803,7 @@ export function ConsultationDrawer({
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Symptoms</span>
               <textarea
-                rows={4}
+                rows={3}
                 value={form.symptoms}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, symptoms: event.target.value }))
@@ -807,7 +828,7 @@ export function ConsultationDrawer({
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Medications</span>
               <textarea
-                rows={4}
+                rows={3}
                 value={form.medications}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, medications: event.target.value }))
@@ -823,7 +844,7 @@ export function ConsultationDrawer({
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Clinical Notes</span>
               <textarea
-                rows={4}
+                rows={3}
                 value={form.notes}
                 onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
                 className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
@@ -1317,15 +1338,32 @@ export function ConsultationDrawer({
                             className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
                           />
                         </label>
-                        <label className="block sm:col-span-2">
-                          <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Notes</span>
-                          <input
-                            value={entry.notes}
-                            onChange={(event) => updatePrescription(entry.itemId, { notes: event.target.value })}
-                            placeholder="After food, before sleep, PRN, etc."
-                            className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
-                          />
-                        </label>
+                      </div>
+                      <div className="mt-3">
+                        <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Notes</p>
+                        <div className="flex flex-wrap gap-2">
+                          {PRESCRIPTION_NOTE_OPTIONS.map((option) => {
+                            const active = normalizePrescriptionNotes(entry.notes).includes(option);
+                            return (
+                              <button
+                                key={option}
+                                type="button"
+                                onClick={() =>
+                                  updatePrescription(entry.itemId, {
+                                    notes: togglePrescriptionNoteValue(entry.notes, option),
+                                  })
+                                }
+                                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                  active
+                                    ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                                    : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
+                                }`}
+                              >
+                                {option}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                       <div className="mt-3">
                         <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Schedule</p>
@@ -1469,31 +1507,33 @@ export function ConsultationDrawer({
                       <Mail className="h-4 w-4" />
                       {isSending ? "Sending..." : isSent ? "Sent and Locked" : "Send Email"}
                     </button>
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          disabled={isGeneratingPdf || !currentNoteId}
+                          onClick={() => handlePdf("preview")}
+                          className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                        >
+                          <Eye className="h-4 w-4" />
+                          {isGeneratingPdf ? "Preparing..." : "Preview"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsFollowUpOpen((current) => !current)}
+                          className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                        >
+                          <CalendarPlus2 className="h-4 w-4" />
+                          {isFollowUpOpen ? "Hide" : "Follow-up"}
+                        </button>
+                      </div>
                       <button
                         type="button"
                         disabled={isCompleting || noteStatus === "draft" || !currentNoteId}
                         onClick={handleDone}
-                        className="inline-flex items-center justify-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                        className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
                       >
                         {isCompleting ? "Moving..." : "Done"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isGeneratingPdf || !currentNoteId}
-                        onClick={() => handlePdf("preview")}
-                        className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-                      >
-                        <Eye className="h-4 w-4" />
-                        {isGeneratingPdf ? "Preparing..." : "Preview"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsFollowUpOpen((current) => !current)}
-                        className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-                      >
-                        <CalendarPlus2 className="h-4 w-4" />
-                        {isFollowUpOpen ? "Hide" : "Follow-up"}
                       </button>
                     </div>
                   </div>

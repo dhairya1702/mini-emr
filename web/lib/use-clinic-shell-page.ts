@@ -52,6 +52,7 @@ export function useClinicShellPage<T>({
     handleLogout: handleShellLogout,
     isAuthReady,
     isRedirectingToLogin,
+    refreshShell,
     redirectToLogin,
   } = shell;
   const canLoadPageDataRef = useRef(canLoadPageData);
@@ -99,7 +100,6 @@ export function useClinicShellPage<T>({
           } catch (loadError) {
             const message = loadError instanceof Error ? loadError.message : "Failed to load page.";
             const shouldRedirect =
-              message === "Authentication required." ||
               message === "Invalid token." ||
               message === "Token expired." ||
               message === "Session expired.";
@@ -111,11 +111,16 @@ export function useClinicShellPage<T>({
             const isRetryable =
               attempt < PAGE_LOAD_MAX_ATTEMPTS &&
               (message === "Request timed out. Check the backend and refresh." ||
-                message === "Failed to fetch");
+                message === "Failed to fetch" ||
+                message === "Server disconnected. Please try again." ||
+                message === "Authentication required.");
             if (!isRetryable) {
               throw loadError;
             }
 
+            if (message === "Authentication required.") {
+              await refreshShell();
+            }
             await delay(PAGE_LOAD_RETRY_DELAY_MS);
           }
         }
@@ -123,7 +128,6 @@ export function useClinicShellPage<T>({
         if (active) {
           const message = loadError instanceof Error ? loadError.message : "Failed to load page.";
           const shouldRedirect =
-            message === "Authentication required." ||
             message === "Invalid token." ||
             message === "Token expired." ||
             message === "Session expired.";
@@ -140,7 +144,7 @@ export function useClinicShellPage<T>({
     return () => {
       active = false;
     };
-  }, [currentUser, isAuthReady, isRedirectingToLogin, redirectToLogin]);
+  }, [currentUser, isAuthReady, isRedirectingToLogin, redirectToLogin, refreshShell]);
 
   const handleSaveClinicSettings = useCallback(async (
     payload: ClinicSettingsUpdatePayload,

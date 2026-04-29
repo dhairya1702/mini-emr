@@ -43,13 +43,20 @@ export default function LoginPage() {
           router.replace("/");
         }
       } catch (error) {
-        authStorage.clear();
-        if (
-          active &&
-          error instanceof Error &&
-          (error.message === SESSION_EXPIRED_MESSAGE || expiredReason)
-        ) {
-          setError(SESSION_EXPIRED_MESSAGE);
+        if (active && error instanceof Error) {
+          if (
+            error.message === SESSION_EXPIRED_MESSAGE ||
+            expiredReason
+          ) {
+            authStorage.clear();
+            setError(SESSION_EXPIRED_MESSAGE);
+          } else if (
+            error.message === "Invalid token." ||
+            error.message === "Token expired." ||
+            error.message === "Session expired."
+          ) {
+            authStorage.clear();
+          }
         }
       }
     }

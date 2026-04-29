@@ -85,7 +85,7 @@ def test_classify_structured_tables_reads_vitals_and_medicines_from_sections() -
     note_content = (
         "Presenting Complaint:\nFever.\n\n"
         "Clinical Notes:\nMeasurement | Value\n--- | ---\nBlood Pressure | 120/80 mmHg\nPulse | 71 bpm\nSpO2 | 98%\nBlood Sugar | 110.0\nEye | Sphere | Cylinder | Axis | Vision\n--- | --- | --- | --- | ---\nRight | -1.25 | -0.50 | 90 | 6/6\nLeft | -1.00 | -0.25 | 85 | 6/6\n\n"
-        "Treatment:\nMedicine | Quantity | Schedule | Duration | Notes\n--- | --- | --- | --- | ---\ndolo | 1 per tablet | Morning, Night | 5 | -\n"
+        "Treatment:\nMedicine | Quantity | Schedule | Duration | Notes\n--- | --- | --- | --- | ---\ndolo | 1 | Morning, Night | 5 | -\n"
     )
 
     note_sections = _parse_note_sections(note_content)

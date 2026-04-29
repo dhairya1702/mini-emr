@@ -325,23 +325,37 @@ export function AddPatientModal({
             <p className="text-sm text-slate-700">{searchFeedback}</p>
           ) : null}
 
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-800">Add As</span>
-            <select
-              value={form.entryType}
-              onChange={(event) => {
-                setError("");
-                setForm((current) => ({
-                  ...current,
-                  entryType: event.target.value as "queue" | "appointment",
-                }));
-              }}
-              className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-            >
-              <option value="queue">Queue Patient</option>
-              <option value="appointment">Appointment</option>
-            </select>
-          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium text-slate-800">Add As:</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {[
+                { value: "queue" as const, label: "Queue" },
+                { value: "appointment" as const, label: "Appointment" },
+              ].map((option) => {
+                const isActive = form.entryType === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      setError("");
+                      setForm((current) => ({
+                        ...current,
+                        entryType: option.value,
+                      }));
+                    }}
+                    className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                      isActive
+                        ? "border-sky-500 bg-sky-500 text-white"
+                        : "border-sky-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
@@ -599,13 +613,13 @@ export function AddPatientModal({
               <span className="mb-2 block text-sm font-medium text-slate-800">Reason for Visit</span>
             <textarea
               required
-              rows={4}
+              rows={2}
               value={form.reason}
               onChange={(event) => {
                 setError("");
                 setForm((current) => ({ ...current, reason: event.target.value }));
               }}
-              className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+              className="min-h-[88px] w-full resize-none rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
               placeholder="Short reason for visit"
             />
           </label>

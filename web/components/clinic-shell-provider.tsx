@@ -18,6 +18,8 @@ import { AuthUser, ClinicSettings } from "@/lib/types";
 
 const SESSION_EXPIRED_REDIRECT = "/login?reason=session-expired";
 const PUBLIC_PATHS = new Set(["/login", "/follow-up"]);
+const SHELL_LOAD_MAX_ATTEMPTS = 2;
+const SHELL_LOAD_RETRY_DELAY_MS = 350;
 
 type ClinicShellContextValue = {
   currentUser: AuthUser | null;
@@ -54,6 +56,10 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const [isRedirectingToLogin, setIsRedirectingToLogin] = useState(false);
   const hasBootstrappedRef = useRef(false);
   const bootstrapPromiseRef = useRef<Promise<void> | null>(null);
+
+  const delay = useCallback(async (ms: number) => {
+    await new Promise((resolve) => window.setTimeout(resolve, ms));
+  }, []);
 
   const redirectToLogin = useCallback((message: string) => {
     authStorage.clear();
@@ -106,36 +112,44 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
       setIsRedirectingToLogin(false);
       setIsAuthReady(false);
 
-      if (authStorage.clearExpiredSession()) {
-        redirectToLogin(SESSION_EXPIRED_MESSAGE);
-        return;
-      }
+      authStorage.clearExpiredSession();
 
-      if (!authStorage.getToken()) {
-        redirectToLogin("Authentication required.");
-        return;
-      }
-
-      try {
-        const [user, settings] = await Promise.all([
-          api.getCurrentUser(),
-          api.getClinicSettings(),
-        ]);
-        authStorage.setUser(user);
-        setCurrentUser(user);
-        setClinicSettings(settings);
-        setError("");
-        setIsRedirectingToLogin(false);
-        setIsAuthReady(true);
-        hasBootstrappedRef.current = true;
-      } catch (loadError) {
-        const message = loadError instanceof Error ? loadError.message : "Failed to load page.";
-        if (isSessionErrorMessage(message)) {
-          redirectToLogin(message);
+      for (let attempt = 1; attempt <= SHELL_LOAD_MAX_ATTEMPTS; attempt += 1) {
+        try {
+          const [user, settings] = await Promise.all([
+            api.getCurrentUser(),
+            api.getClinicSettings(),
+          ]);
+          authStorage.setUser(user);
+          setCurrentUser(user);
+          setClinicSettings(settings);
+          setError("");
+          setIsRedirectingToLogin(false);
+          setIsAuthReady(true);
+          hasBootstrappedRef.current = true;
+          return;
+        } catch (loadError) {
+          const message = loadError instanceof Error ? loadError.message : "Failed to load page.";
+          const isRetryable =
+            attempt < SHELL_LOAD_MAX_ATTEMPTS &&
+            (
+              message === "Authentication required." ||
+              message === "Failed to fetch" ||
+              message === "Server disconnected. Please try again." ||
+              message === "Request timed out. Check the backend and refresh."
+            );
+          if (isRetryable) {
+            await delay(SHELL_LOAD_RETRY_DELAY_MS);
+            continue;
+          }
+          if (isSessionErrorMessage(message)) {
+            redirectToLogin(message);
+            return;
+          }
+          setError(message);
+          setIsAuthReady(true);
           return;
         }
-        setError(message);
-        setIsAuthReady(true);
       }
     })();
 
@@ -145,7 +159,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
     } finally {
       bootstrapPromiseRef.current = null;
     }
-  }, [clinicSettings, currentUser, pathname, redirectToLogin]);
+  }, [clinicSettings, currentUser, delay, pathname, redirectToLogin]);
 
   useEffect(() => {
     void loadShell(false);

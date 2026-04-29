@@ -119,9 +119,11 @@ class BillingRepositoryMixin(BaseSupabaseRepository):
 
     async def get_invoice(self, org_id: str, invoice_id: str) -> dict[str, Any]:
         def _get() -> dict[str, Any]:
-            invoice = self.client.table("invoices").select("*").eq("org_id", org_id).eq("id", invoice_id).single().execute().data
-            items = (
-                self.client.table("invoice_items").select("*").eq("invoice_id", invoice_id).order("created_at", desc=False).execute().data
+            invoice = self.execute_with_retry(
+                lambda: self.client.table("invoices").select("*").eq("org_id", org_id).eq("id", invoice_id).single().execute().data
+            )
+            items = self.execute_with_retry(
+                lambda: self.client.table("invoice_items").select("*").eq("invoice_id", invoice_id).order("created_at", desc=False).execute().data
             )
             invoice["items"] = items
             return attach_invoice_balances(invoice)
@@ -130,24 +132,48 @@ class BillingRepositoryMixin(BaseSupabaseRepository):
 
     async def list_invoices(self, org_id: str) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
-            invoices = self.client.table("invoices").select("*").eq("org_id", org_id).order("created_at", desc=True).execute().data
-            for invoice in invoices:
-                invoice["items"] = (
-                    self.client.table("invoice_items").select("*").eq("invoice_id", invoice["id"]).order("created_at", desc=False).execute().data
+            invoices = self.execute_with_retry(
+                lambda: self.client.table("invoices").select("*").eq("org_id", org_id).order("created_at", desc=True).execute().data
+            )
+            invoice_ids = [invoice["id"] for invoice in invoices]
+            items_by_invoice_id: dict[str, list[dict[str, Any]]] = {str(invoice_id): [] for invoice_id in invoice_ids}
+            if invoice_ids:
+                invoice_items = self.execute_with_retry(
+                    lambda: self.client.table("invoice_items")
+                    .select("*")
+                    .in_("invoice_id", invoice_ids)
+                    .order("created_at", desc=False)
+                    .execute()
+                    .data
                 )
+                for item in invoice_items:
+                    items_by_invoice_id.setdefault(str(item["invoice_id"]), []).append(item)
+            for invoice in invoices:
+                invoice["items"] = items_by_invoice_id.get(str(invoice["id"]), [])
             return [attach_invoice_balances(invoice) for invoice in invoices]
 
         return await asyncio.to_thread(_list)
 
     async def list_invoices_for_patient(self, org_id: str, patient_id: str) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
-            invoices = (
-                self.client.table("invoices").select("*").eq("org_id", org_id).eq("patient_id", patient_id).order("created_at", desc=True).execute().data
+            invoices = self.execute_with_retry(
+                lambda: self.client.table("invoices").select("*").eq("org_id", org_id).eq("patient_id", patient_id).order("created_at", desc=True).execute().data
             )
-            for invoice in invoices:
-                invoice["items"] = (
-                    self.client.table("invoice_items").select("*").eq("invoice_id", invoice["id"]).order("created_at", desc=False).execute().data
+            invoice_ids = [invoice["id"] for invoice in invoices]
+            items_by_invoice_id: dict[str, list[dict[str, Any]]] = {str(invoice_id): [] for invoice_id in invoice_ids}
+            if invoice_ids:
+                invoice_items = self.execute_with_retry(
+                    lambda: self.client.table("invoice_items")
+                    .select("*")
+                    .in_("invoice_id", invoice_ids)
+                    .order("created_at", desc=False)
+                    .execute()
+                    .data
                 )
+                for item in invoice_items:
+                    items_by_invoice_id.setdefault(str(item["invoice_id"]), []).append(item)
+            for invoice in invoices:
+                invoice["items"] = items_by_invoice_id.get(str(invoice["id"]), [])
             return [attach_invoice_balances(invoice) for invoice in invoices]
 
         return await asyncio.to_thread(_list)

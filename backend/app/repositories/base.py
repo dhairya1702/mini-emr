@@ -1,8 +1,23 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
+import httpcore
+import httpx
+
 from app.schemas import PatientCreate, PatientVisitCreate
+
+
+RETRYABLE_TRANSPORT_EXCEPTIONS = (
+    httpcore.RemoteProtocolError,
+    httpx.RemoteProtocolError,
+    httpx.ReadError,
+    httpx.ReadTimeout,
+    httpx.ConnectError,
+)
+SUPABASE_RETRY_ATTEMPTS = 2
+SUPABASE_RETRY_DELAY_SECONDS = 0.15
 
 
 class DuplicateCheckInCandidateError(ValueError):
@@ -13,6 +28,20 @@ class DuplicateCheckInCandidateError(ValueError):
 
 class BaseSupabaseRepository:
     client: Any
+
+    def execute_with_retry(self, operation):
+        last_error: Exception | None = None
+        for attempt in range(1, SUPABASE_RETRY_ATTEMPTS + 1):
+            try:
+                return operation()
+            except RETRYABLE_TRANSPORT_EXCEPTIONS as exc:
+                last_error = exc
+                if attempt >= SUPABASE_RETRY_ATTEMPTS:
+                    raise
+                time.sleep(SUPABASE_RETRY_DELAY_SECONDS)
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Supabase operation failed without an exception.")
 
 
 def display_name(row: dict[str, Any]) -> str:

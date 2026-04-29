@@ -33,6 +33,63 @@ function extractMedicineSuggestions(note: ConsultationNote | null, medicineItems
   return medicineItems.filter((item) => normalizedText.includes(item.name.toLowerCase()));
 }
 
+function extractStructuredPrescriptionItems(
+  note: ConsultationNote | null,
+  medicineItems: CatalogItem[],
+): DraftInvoiceItem[] {
+  if (!note) {
+    return [];
+  }
+
+  const sourceText = `${note.snapshot_content || note.content || ""}`;
+  const lines = sourceText.split("\n");
+  const headerIndex = lines.findIndex((line) =>
+    line.trim().toLowerCase() === "medicine | quantity | schedule | duration | notes",
+  );
+  if (headerIndex === -1) {
+    return [];
+  }
+
+  const itemsByName = new Map(medicineItems.map((item) => [item.name.trim().toLowerCase(), item]));
+  const structuredItems: DraftInvoiceItem[] = [];
+
+  for (let index = headerIndex + 2; index < lines.length; index += 1) {
+    const rawLine = lines[index].trim();
+    if (!rawLine || !rawLine.includes("|")) {
+      break;
+    }
+
+    const columns = rawLine.split("|").map((column) => column.trim());
+    if (columns.length < 2) {
+      continue;
+    }
+
+    const label = columns[0];
+    const quantityText = columns[1] || "1";
+    const matchedMedicine = itemsByName.get(label.toLowerCase());
+    if (!matchedMedicine) {
+      continue;
+    }
+
+    const quantityMatch = quantityText.match(/(\d+(?:\.\d+)?)/);
+    const quantity = quantityMatch ? Number(quantityMatch[1]) : 1;
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      continue;
+    }
+
+    structuredItems.push({
+      id: createId(),
+      catalog_item_id: matchedMedicine.id,
+      item_type: matchedMedicine.item_type,
+      label: matchedMedicine.name,
+      quantity,
+      unit_price: matchedMedicine.default_price,
+    });
+  }
+
+  return structuredItems;
+}
+
 function buildAutoDraftInvoiceItems(
   patient: Patient | null,
   note: ConsultationNote | null,
@@ -44,6 +101,7 @@ function buildAutoDraftInvoiceItems(
   }
 
   const items: DraftInvoiceItem[] = [];
+  const structuredMedicineItems = extractStructuredPrescriptionItems(note, medicineItems);
   const consultationService =
     serviceItems.find((item) => /\bconsult/i.test(item.name)) ?? null;
 
@@ -67,14 +125,20 @@ function buildAutoDraftInvoiceItems(
         },
   );
 
-  for (const medicine of extractMedicineSuggestions(note, medicineItems)) {
+  const medicinesToBill = structuredMedicineItems.length
+    ? structuredMedicineItems
+    : extractMedicineSuggestions(note, medicineItems).map((medicine) => ({
+        id: createId(),
+        catalog_item_id: medicine.id,
+        item_type: medicine.item_type,
+        label: medicine.name,
+        quantity: 1,
+        unit_price: medicine.default_price,
+      }));
+
+  for (const medicine of medicinesToBill) {
     items.push({
-      id: createId(),
-      catalog_item_id: medicine.id,
-      item_type: medicine.item_type,
-      label: medicine.name,
-      quantity: 1,
-      unit_price: medicine.default_price,
+      ...medicine,
     });
   }
 

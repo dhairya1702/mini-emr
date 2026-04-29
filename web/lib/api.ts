@@ -46,6 +46,8 @@ import {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
 const REQUEST_TIMEOUT_MS = 15000;
+const SAFE_REQUEST_RETRY_ATTEMPTS = 2;
+const SAFE_REQUEST_RETRY_DELAY_MS = 350;
 const SESSION_TOKEN_HEADER = "x-session-token";
 const SESSION_EXPIRES_AT_HEADER = "x-session-expires-at";
 
@@ -63,13 +65,20 @@ function isSessionErrorMessage(message: string) {
   );
 }
 
+function shouldClearSessionOnError(message: string) {
+  return (
+    message === "Invalid token." ||
+    message === "Token expired." ||
+    message === "Session expired." ||
+    message === SESSION_EXPIRED_MESSAGE
+  );
+}
+
 function getActiveToken(path: string) {
   if (!shouldAttachAuth(path)) {
     return "";
   }
-  if (authStorage.clearExpiredSession()) {
-    throw new Error(SESSION_EXPIRED_MESSAGE);
-  }
+  authStorage.clearExpiredSession();
   return authStorage.getToken();
 }
 
@@ -103,6 +112,65 @@ function createTimeoutSignal() {
   };
 }
 
+function getRequestMethod(init?: RequestInit) {
+  return (init?.method || "GET").toUpperCase();
+}
+
+function canRetrySafely(init?: RequestInit) {
+  const method = getRequestMethod(init);
+  return method === "GET" || method === "HEAD";
+}
+
+async function delay(ms: number) {
+  await new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function performFetch(path: string, init: RequestInit | undefined, headers: Record<string, string>) {
+  const maxAttempts = canRetrySafely(init) ? SAFE_REQUEST_RETRY_ATTEMPTS : 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const timeout = typeof window !== "undefined" ? createTimeoutSignal() : null;
+    try {
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        ...init,
+        ...(timeout ? { signal: timeout.signal } : {}),
+        credentials: "include",
+        headers,
+        cache: "no-store",
+      });
+      timeout?.cleanup();
+
+      if (
+        attempt < maxAttempts &&
+        [502, 503, 504].includes(response.status)
+      ) {
+        await delay(SAFE_REQUEST_RETRY_DELAY_MS);
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      timeout?.cleanup();
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error("Request timed out. Check the backend and refresh.");
+      }
+
+      if (attempt < maxAttempts && error instanceof TypeError) {
+        await delay(SAFE_REQUEST_RETRY_DELAY_MS);
+        continue;
+      }
+
+      if (error instanceof TypeError) {
+        throw new Error("Server disconnected. Please try again.");
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error("Server disconnected. Please try again.");
+}
+
 function buildRequestHeaders(
   path: string,
   init?: RequestInit,
@@ -120,24 +188,7 @@ function buildRequestHeaders(
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const { token, headers } = buildRequestHeaders(path, init);
-  const timeout = typeof window !== "undefined" ? createTimeoutSignal() : null;
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      ...init,
-      ...(timeout ? { signal: timeout.signal } : {}),
-      credentials: "include",
-      headers,
-      cache: "no-store",
-    });
-  } catch (error) {
-    timeout?.cleanup();
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Request timed out. Check the backend and refresh.");
-    }
-    throw error;
-  }
-  timeout?.cleanup();
+  const response = await performFetch(path, init, headers);
   syncSessionFromResponse(response);
 
   if (!response.ok) {
@@ -174,7 +225,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
     if (isSessionErrorMessage(message)) {
       const currentToken = authStorage.getToken();
-      if (!currentToken || currentToken === token) {
+      if (shouldClearSessionOnError(message) && (!currentToken || currentToken === token)) {
         authStorage.clear();
       }
       if (message === "Token expired." || message === "Session expired.") {
@@ -194,24 +245,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
   const { token, headers } = buildRequestHeaders(path, init);
-  const timeout = typeof window !== "undefined" ? createTimeoutSignal() : null;
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      ...init,
-      ...(timeout ? { signal: timeout.signal } : {}),
-      credentials: "include",
-      headers,
-      cache: "no-store",
-    });
-  } catch (error) {
-    timeout?.cleanup();
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Request timed out. Check the backend and refresh.");
-    }
-    throw error;
-  }
-  timeout?.cleanup();
+  const response = await performFetch(path, init, headers);
   syncSessionFromResponse(response);
 
   if (!response.ok) {
@@ -219,7 +253,7 @@ async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
     const message = raw || "Request failed.";
     if (isSessionErrorMessage(message)) {
       const currentToken = authStorage.getToken();
-      if (!currentToken || currentToken === token) {
+      if (shouldClearSessionOnError(message) && (!currentToken || currentToken === token)) {
         authStorage.clear();
       }
       if (message === "Token expired." || message === "Session expired.") {
@@ -234,25 +268,7 @@ async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
 
 async function requestForm<T>(path: string, formData: FormData, init?: RequestInit): Promise<T> {
   const { token, headers } = buildRequestHeaders(path, init, { includeJsonContentType: false });
-  const timeout = typeof window !== "undefined" ? createTimeoutSignal() : null;
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      ...init,
-      ...(timeout ? { signal: timeout.signal } : {}),
-      body: formData,
-      credentials: "include",
-      headers,
-      cache: "no-store",
-    });
-  } catch (error) {
-    timeout?.cleanup();
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Request timed out. Check the backend and refresh.");
-    }
-    throw error;
-  }
-  timeout?.cleanup();
+  const response = await performFetch(path, { ...init, body: formData }, headers);
   syncSessionFromResponse(response);
 
   if (!response.ok) {
@@ -260,7 +276,7 @@ async function requestForm<T>(path: string, formData: FormData, init?: RequestIn
     const message = raw || "Request failed.";
     if (isSessionErrorMessage(message)) {
       const currentToken = authStorage.getToken();
-      if (!currentToken || currentToken === token) {
+      if (shouldClearSessionOnError(message) && (!currentToken || currentToken === token)) {
         authStorage.clear();
       }
       if (message === "Token expired." || message === "Session expired.") {
