@@ -4,15 +4,13 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { AppHeader } from "@/components/app-header";
-import { SettingsDrawer } from "@/components/settings-drawer";
+import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
 import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { Patient } from "@/lib/types";
 
 export default function UsersPage() {
   const router = useRouter();
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [userForm, setUserForm] = useState<UserFormState>({ identifier: "", password: "" });
@@ -20,9 +18,11 @@ export default function UsersPage() {
   const [userSuccess, setUserSuccess] = useState("");
   const [isAddingUser, setIsAddingUser] = useState(false);
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
-  const loadPageData = useCallback(() => api.listPatients(), []);
-  const onPageData = useCallback((data: Patient[]) => {
-    setPatients(data);
+  const loadPageData = useCallback(async () => null, []);
+  const onPageData = useCallback(() => undefined, []);
+  const loadBillablePatients = useCallback(async () => {
+    const patients = await api.listPatients();
+    return patients.filter((patient) => patient.status === "done" && !patient.billed);
   }, []);
   const {
     currentUser,
@@ -133,44 +133,48 @@ export default function UsersPage() {
           onDeleteUser={handleDeleteUser}
         />
       </div>
-      <SettingsDrawer
-        open={isSettingsOpen}
-        settings={clinicSettings}
-        currentUser={currentUser}
-        users={users}
-        onLoadUsers={loadUsers}
-        auditEvents={auditEvents}
-        onLoadAuditEvents={loadAuditEvents}
-        patients={patients.filter((patient) => patient.status === "done" && !patient.billed)}
-        catalogItems={catalogItems}
-        onLoadCatalogItems={loadCatalogItems}
-        onClose={() => setIsSettingsOpen(false)}
-        onSaveClinic={handleSaveClinicSettings}
-        onClinicSettingsChange={applyClinicSettings}
-        onAddUser={handleAddStaffUser}
-        onUpdateUserRole={handleUpdateUserRole}
-        onDeleteUser={handleDeleteUser}
-        onCreateCatalogItem={handleCreateCatalogItem}
-        onAdjustCatalogStock={handleAdjustCatalogStock}
-        onDeleteCatalogItem={handleDeleteCatalogItem}
-        onGenerateLetter={handleGenerateLetter}
-        onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
-        onSendLetter={handleSendLetter}
-        onCreateInvoice={handleCreateInvoice}
-        onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
-        onSendInvoice={handleSendInvoice}
-        onExportPatientsCsv={handleExportPatientsCsv}
-        onExportVisitsCsv={handleExportVisitsCsv}
-        onExportInvoicesCsv={handleExportInvoicesCsv}
-        onCheckInAppointment={async (appointmentId, options) => {
-          const checkedInPatient = options?.existingPatientId ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId) : await api.checkInAppointment(appointmentId, { force_new: options?.forceNew });
-          setPatients((current) => [checkedInPatient, ...current.filter((patient) => patient.id !== checkedInPatient.id)]);
-          return { id: appointmentId, checked_in_at: new Date().toISOString(), checked_in_patient_id: checkedInPatient.id };
-        }}
-        onUpdateAppointment={(appointmentId, payload) => api.updateAppointment(appointmentId, payload)}
-        onUpdateFollowUp={(followUpId, payload) => api.updateFollowUp(followUpId, payload)}
-        onBillingComplete={(patientId) => setPatients((current) => current.map((patient) => patient.id === patientId ? { ...patient, billed: true } : patient))}
-      />
+      {isSettingsOpen ? (
+        <LazySettingsDrawer
+          open={isSettingsOpen}
+          settings={clinicSettings}
+          currentUser={currentUser}
+          users={users}
+          onLoadUsers={loadUsers}
+          auditEvents={auditEvents}
+          onLoadAuditEvents={loadAuditEvents}
+          patients={[]}
+          onLoadBillingPatients={loadBillablePatients}
+          catalogItems={catalogItems}
+          onLoadCatalogItems={loadCatalogItems}
+          onClose={() => setIsSettingsOpen(false)}
+          onSaveClinic={handleSaveClinicSettings}
+          onClinicSettingsChange={applyClinicSettings}
+          onAddUser={handleAddStaffUser}
+          onUpdateUserRole={handleUpdateUserRole}
+          onDeleteUser={handleDeleteUser}
+          onCreateCatalogItem={handleCreateCatalogItem}
+          onAdjustCatalogStock={handleAdjustCatalogStock}
+          onDeleteCatalogItem={handleDeleteCatalogItem}
+          onGenerateLetter={handleGenerateLetter}
+          onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
+          onSendLetter={handleSendLetter}
+          onCreateInvoice={handleCreateInvoice}
+          onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
+          onSendInvoice={handleSendInvoice}
+          onExportPatientsCsv={handleExportPatientsCsv}
+          onExportVisitsCsv={handleExportVisitsCsv}
+          onExportInvoicesCsv={handleExportInvoicesCsv}
+          onCheckInAppointment={async (appointmentId, options) => {
+            const checkedInPatient = options?.existingPatientId
+              ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId)
+              : await api.checkInAppointment(appointmentId, { force_new: options?.forceNew });
+            return { id: appointmentId, checked_in_at: new Date().toISOString(), checked_in_patient_id: checkedInPatient.id };
+          }}
+          onUpdateAppointment={(appointmentId, payload) => api.updateAppointment(appointmentId, payload)}
+          onUpdateFollowUp={(followUpId, payload) => api.updateFollowUp(followUpId, payload)}
+          onBillingComplete={() => undefined}
+        />
+      ) : null}
     </main>
   );
 }

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { AppHeader } from "@/components/app-header";
+import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
-import { SettingsDrawer } from "@/components/settings-drawer";
 import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
@@ -546,42 +546,44 @@ export default function BillingPage() {
           </div>
         </section>
       </div>
-      <SettingsDrawer
-        open={isSettingsOpen}
-        settings={clinicSettings}
-        currentUser={currentUser}
-        users={users}
-        onLoadUsers={loadUsers}
-        auditEvents={auditEvents}
-        onLoadAuditEvents={loadAuditEvents}
-        patients={billablePatients}
-        catalogItems={catalogItems}
-        onLoadCatalogItems={loadCatalogItems}
-        onClose={() => setIsSettingsOpen(false)}
-        onSaveClinic={handleSaveClinicSettings}
-        onClinicSettingsChange={applyClinicSettings}
-        onAddUser={handleAddStaffUser}
-        onCreateCatalogItem={handleCreateCatalogItem}
-        onAdjustCatalogStock={handleAdjustCatalogStock}
-        onDeleteCatalogItem={handleDeleteCatalogItem}
-        onGenerateLetter={handleGenerateLetter}
-        onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
-        onSendLetter={handleSendLetter}
-        onCreateInvoice={handleCreateInvoice}
-        onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
-        onSendInvoice={handleSendInvoice}
-        onExportPatientsCsv={handleExportPatientsCsv}
-        onExportVisitsCsv={handleExportVisitsCsv}
-        onExportInvoicesCsv={handleExportInvoicesCsv}
-        onCheckInAppointment={async (appointmentId, options) => {
-          const checkedInPatient = options?.existingPatientId ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId) : await api.checkInAppointment(appointmentId, { force_new: options?.forceNew });
-          setPatients((current) => [checkedInPatient, ...current.filter((patient) => patient.id !== checkedInPatient.id)]);
-          return { id: appointmentId, checked_in_at: new Date().toISOString(), checked_in_patient_id: checkedInPatient.id };
-        }}
-        onUpdateAppointment={(appointmentId, payload) => api.updateAppointment(appointmentId, payload)}
-        onUpdateFollowUp={(followUpId, payload) => api.updateFollowUp(followUpId, payload)}
-        onBillingComplete={(patientId) => setPatients((current) => current.map((patient) => patient.id === patientId ? { ...patient, billed: true } : patient))}
-      />
+      {isSettingsOpen ? (
+        <LazySettingsDrawer
+          open={isSettingsOpen}
+          settings={clinicSettings}
+          currentUser={currentUser}
+          users={users}
+          onLoadUsers={loadUsers}
+          auditEvents={auditEvents}
+          onLoadAuditEvents={loadAuditEvents}
+          patients={billablePatients}
+          catalogItems={catalogItems}
+          onLoadCatalogItems={loadCatalogItems}
+          onClose={() => setIsSettingsOpen(false)}
+          onSaveClinic={handleSaveClinicSettings}
+          onClinicSettingsChange={applyClinicSettings}
+          onAddUser={handleAddStaffUser}
+          onCreateCatalogItem={handleCreateCatalogItem}
+          onAdjustCatalogStock={handleAdjustCatalogStock}
+          onDeleteCatalogItem={handleDeleteCatalogItem}
+          onGenerateLetter={handleGenerateLetter}
+          onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
+          onSendLetter={handleSendLetter}
+          onCreateInvoice={handleCreateInvoice}
+          onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
+          onSendInvoice={handleSendInvoice}
+          onExportPatientsCsv={handleExportPatientsCsv}
+          onExportVisitsCsv={handleExportVisitsCsv}
+          onExportInvoicesCsv={handleExportInvoicesCsv}
+          onCheckInAppointment={async (appointmentId, options) => {
+            const checkedInPatient = options?.existingPatientId ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId) : await api.checkInAppointment(appointmentId, { force_new: options?.forceNew });
+            setPatients((current) => [checkedInPatient, ...current.filter((patient) => patient.id !== checkedInPatient.id)]);
+            return { id: appointmentId, checked_in_at: new Date().toISOString(), checked_in_patient_id: checkedInPatient.id };
+          }}
+          onUpdateAppointment={(appointmentId, payload) => api.updateAppointment(appointmentId, payload)}
+          onUpdateFollowUp={(followUpId, payload) => api.updateFollowUp(followUpId, payload)}
+          onBillingComplete={(patientId) => setPatients((current) => current.map((patient) => patient.id === patientId ? { ...patient, billed: true } : patient))}
+        />
+      ) : null}
     </main>
   );
 }

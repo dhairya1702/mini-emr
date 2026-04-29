@@ -235,6 +235,7 @@ export interface Invoice {
   id: string;
   org_id: string;
   patient_id: string;
+  patient_name?: string | null;
   subtotal: number;
   total: number;
   payment_status: PaymentStatus;

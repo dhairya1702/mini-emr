@@ -7,7 +7,12 @@ from app.services.email_service import send_clinic_email_message
 from app.services.pdf_service import build_invoice_pdf
 from app.schemas import InvoiceCreate, InvoiceOut, SendInvoiceRequest, SendNoteResponse, UserOut
 from app.services.audit_service import record_invoice_created, record_invoice_shared
-from app.services.patient_views import build_user_name_map, enrich_invoices_with_completer_names
+from app.services.patient_views import (
+    build_patient_name_map,
+    build_user_name_map,
+    enrich_invoices_with_completer_names,
+    enrich_invoices_with_patient_names,
+)
 
 
 async def create_invoice_workflow(
@@ -19,13 +24,18 @@ async def create_invoice_workflow(
     patient = await repo.get_patient(str(current_user.org_id), str(created["patient_id"]))
     patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
     await record_invoice_created(repo, current_user, created, patient_name)
-    return InvoiceOut(**created)
+    return InvoiceOut(**{**created, "patient_name": patient_name})
 
 
 async def list_invoices_with_user_names(repo: SupabaseRepository, org_id: str) -> list[InvoiceOut]:
     invoices = await repo.list_invoices(org_id)
-    names = await build_user_name_map(repo, org_id)
-    return [InvoiceOut(**invoice) for invoice in enrich_invoices_with_completer_names(invoices, names)]
+    user_names = await build_user_name_map(repo, org_id)
+    patient_names = await build_patient_name_map(repo, org_id)
+    enriched = enrich_invoices_with_patient_names(
+        enrich_invoices_with_completer_names(invoices, user_names),
+        patient_names,
+    )
+    return [InvoiceOut(**invoice) for invoice in enriched]
 
 
 async def send_invoice_workflow(

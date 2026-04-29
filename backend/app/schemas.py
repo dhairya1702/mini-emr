@@ -372,6 +372,7 @@ class InvoiceOut(BaseModel):
     id: UUID
     org_id: UUID
     patient_id: UUID
+    patient_name: str | None = None
     subtotal: float
     total: float
     payment_status: PaymentStatus

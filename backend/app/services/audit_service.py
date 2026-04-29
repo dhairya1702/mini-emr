@@ -40,7 +40,7 @@ async def record_patient_created(repo: SupabaseRepository, current_user: UserOut
         entity_id=str(patient["id"]),
         action="patient_created",
         summary=f"Added patient {patient['name']} to the queue.",
-        metadata={"status": patient.get("status"), "phone": patient.get("phone")},
+        metadata={"patient_name": patient.get("name"), "status": patient.get("status"), "phone": patient.get("phone")},
     )
 
 
@@ -52,7 +52,7 @@ async def record_patient_visit(repo: SupabaseRepository, current_user: UserOut, 
         entity_id=str(patient["id"]),
         action="patient_visit_recorded",
         summary=f"Recorded a new visit for patient {patient['name']}.",
-        metadata={"status": patient.get("status"), "phone": patient.get("phone")},
+        metadata={"patient_name": patient.get("name"), "status": patient.get("status"), "phone": patient.get("phone")},
     )
 
 
@@ -69,7 +69,7 @@ async def record_patient_updated(
         entity_id=str(patient["id"]),
         action="patient_updated",
         summary=f"Updated patient {patient['name']}: {', '.join(changed_fields)}.",
-        metadata={"changed_fields": changed_fields},
+        metadata={"patient_name": patient.get("name"), "changed_fields": changed_fields},
     )
 
 
@@ -98,7 +98,7 @@ async def record_appointment_checked_in(
         entity_id=appointment_id,
         action="appointment_checked_in",
         summary=f"Checked in appointment into patient record {patient['name']}.",
-        metadata={"checked_in_patient_id": str(patient["id"])},
+        metadata={"checked_in_patient_id": str(patient["id"]), "patient_name": patient.get("name")},
     )
 
 

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, RefreshCw, Search } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
+import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
-import { SettingsDrawer } from "@/components/settings-drawer";
 import { api } from "@/lib/api";
 import { loadRecentPatients, saveRecentPatient } from "@/lib/recent-patients";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
@@ -339,7 +339,8 @@ export default function PatientsPage() {
         onClose={() => setSelectedPatient(null)}
       />
 
-      <SettingsDrawer
+      {isSettingsOpen ? (
+      <LazySettingsDrawer
         open={isSettingsOpen}
         settings={clinicSettings}
         currentUser={currentUser}
@@ -388,6 +389,7 @@ export default function PatientsPage() {
           setIsSettingsOpen(false);
         }}
       />
+      ) : null}
     </main>
   );
 }

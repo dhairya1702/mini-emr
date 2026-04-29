@@ -220,6 +220,7 @@ async def finalize_note_workflow(
         summary=f"Finalized consultation note for {patient_name}.",
         metadata={
             "patient_id": str(note["patient_id"]),
+            "patient_name": patient_name,
             "status": note.get("status"),
             "version_number": note.get("version_number", 1),
             "root_note_id": note.get("root_note_id"),
@@ -297,6 +298,7 @@ async def send_note_workflow(
         summary=f"Shared consultation note with {recipient_email}.",
         metadata={
             "patient_id": str(payload.patient_id),
+            "patient_name": patient_name,
             "recipient": recipient_email,
             "sent_at": sent_note.get("sent_at"),
             "sent_by": str(current_user.id),

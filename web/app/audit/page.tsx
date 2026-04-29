@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { RefreshCw, X } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
-import { SettingsDrawer } from "@/components/settings-drawer";
+import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { AuditEvent, Patient } from "@/lib/types";
+import { AuditEvent } from "@/lib/types";
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString([], {
@@ -61,7 +61,6 @@ function getActionLabel(action: string) {
 
 export default function AuditPage() {
   const router = useRouter();
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [auditError, setAuditError] = useState("");
   const [isAuditLoading, setIsAuditLoading] = useState(false);
@@ -69,9 +68,11 @@ export default function AuditPage() {
   const [entityFilter, setEntityFilter] = useState("all");
   const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
-  const loadPageData = useCallback(() => api.listPatients(), []);
-  const onPageData = useCallback((data: Patient[]) => {
-    setPatients(data);
+  const loadPageData = useCallback(async () => null, []);
+  const onPageData = useCallback(() => undefined, []);
+  const loadBillablePatients = useCallback(async () => {
+    const patients = await api.listPatients();
+    return patients.filter((patient) => patient.status === "done" && !patient.billed);
   }, []);
   const {
     currentUser,
@@ -136,21 +137,34 @@ export default function AuditPage() {
     return matchesAction && matchesEntity;
   }), [actionFilter, auditEvents, entityFilter]);
 
-  const patientNamesById = useMemo(
-    () =>
-      Object.fromEntries(
-        patients.map((patient) => [patient.id, patient.name]),
-      ),
-    [patients],
-  );
+  function inferPatientNameFromSummary(summary: string) {
+    const patterns = [
+      /consultation note (?:draft )?for (.+?)\./i,
+      /created amended consultation note for (.+?)\./i,
+      /scheduled follow-up for (.+?) on/i,
+      /created invoice for (.+?) totaling/i,
+      /shared invoice for (.+?) with/i,
+      /updated patient (.+?)(?::|\.)/i,
+      /added patient (.+?) to the queue\./i,
+      /recorded a new visit for patient (.+?)\./i,
+      /checked in appointment into patient record (.+?)\./i,
+      /booked appointment for (.+?) on/i,
+    ];
+    for (const pattern of patterns) {
+      const match = summary.match(pattern);
+      if (match?.[1]) {
+        return match[1].trim();
+      }
+    }
+    return "";
+  }
 
   function getPatientName(event: AuditEvent) {
     const metadataName = String(event.metadata?.patient_name || "").trim();
     if (metadataName) {
       return metadataName;
     }
-    const patientId = String(event.metadata?.patient_id || "").trim();
-    return patientNamesById[patientId] || "";
+    return inferPatientNameFromSummary(event.summary);
   }
 
   function getAuditSummary(event: AuditEvent) {
@@ -344,42 +358,44 @@ export default function AuditPage() {
           </div>
         </div>
       ) : null}
-      <SettingsDrawer
-        open={isSettingsOpen}
-        settings={clinicSettings}
-        currentUser={currentUser}
-        users={users}
-        onLoadUsers={loadUsers}
-        auditEvents={auditEvents}
-        onLoadAuditEvents={loadAuditEvents}
-        patients={patients.filter((patient) => patient.status === "done" && !patient.billed)}
-        catalogItems={catalogItems}
-        onLoadCatalogItems={loadCatalogItems}
-        onClose={() => setIsSettingsOpen(false)}
-        onSaveClinic={handleSaveClinicSettings}
-        onClinicSettingsChange={applyClinicSettings}
-        onAddUser={handleAddStaffUser}
-        onCreateCatalogItem={handleCreateCatalogItem}
-        onAdjustCatalogStock={handleAdjustCatalogStock}
-        onDeleteCatalogItem={handleDeleteCatalogItem}
-        onGenerateLetter={handleGenerateLetter}
-        onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
-        onSendLetter={handleSendLetter}
-        onCreateInvoice={handleCreateInvoice}
-        onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
-        onSendInvoice={handleSendInvoice}
-        onExportPatientsCsv={handleExportPatientsCsv}
-        onExportVisitsCsv={handleExportVisitsCsv}
-        onExportInvoicesCsv={handleExportInvoicesCsv}
-        onCheckInAppointment={async (appointmentId, options) => {
-          const checkedInPatient = options?.existingPatientId ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId) : await api.checkInAppointment(appointmentId, { force_new: options?.forceNew });
-          setPatients((current) => [checkedInPatient, ...current.filter((patient) => patient.id !== checkedInPatient.id)]);
-          return { id: appointmentId, checked_in_at: new Date().toISOString(), checked_in_patient_id: checkedInPatient.id };
-        }}
-        onUpdateAppointment={(appointmentId, payload) => api.updateAppointment(appointmentId, payload)}
-        onUpdateFollowUp={(followUpId, payload) => api.updateFollowUp(followUpId, payload)}
-        onBillingComplete={(patientId) => setPatients((current) => current.map((patient) => patient.id === patientId ? { ...patient, billed: true } : patient))}
-      />
+      {isSettingsOpen ? (
+        <LazySettingsDrawer
+          open={isSettingsOpen}
+          settings={clinicSettings}
+          currentUser={currentUser}
+          users={users}
+          onLoadUsers={loadUsers}
+          auditEvents={auditEvents}
+          onLoadAuditEvents={loadAuditEvents}
+          patients={[]}
+          onLoadBillingPatients={loadBillablePatients}
+          catalogItems={catalogItems}
+          onLoadCatalogItems={loadCatalogItems}
+          onClose={() => setIsSettingsOpen(false)}
+          onSaveClinic={handleSaveClinicSettings}
+          onClinicSettingsChange={applyClinicSettings}
+          onAddUser={handleAddStaffUser}
+          onCreateCatalogItem={handleCreateCatalogItem}
+          onAdjustCatalogStock={handleAdjustCatalogStock}
+          onDeleteCatalogItem={handleDeleteCatalogItem}
+          onGenerateLetter={handleGenerateLetter}
+          onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
+          onSendLetter={handleSendLetter}
+          onCreateInvoice={handleCreateInvoice}
+          onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
+          onSendInvoice={handleSendInvoice}
+          onExportPatientsCsv={handleExportPatientsCsv}
+          onExportVisitsCsv={handleExportVisitsCsv}
+          onExportInvoicesCsv={handleExportInvoicesCsv}
+          onCheckInAppointment={async (appointmentId, options) => {
+            const checkedInPatient = options?.existingPatientId ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId) : await api.checkInAppointment(appointmentId, { force_new: options?.forceNew });
+            return { id: appointmentId, checked_in_at: new Date().toISOString(), checked_in_patient_id: checkedInPatient.id };
+          }}
+          onUpdateAppointment={(appointmentId, payload) => api.updateAppointment(appointmentId, payload)}
+          onUpdateFollowUp={(followUpId, payload) => api.updateFollowUp(followUpId, payload)}
+          onBillingComplete={() => undefined}
+        />
+      ) : null}
     </main>
   );
 }

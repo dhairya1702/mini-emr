@@ -9,6 +9,14 @@ async def build_user_name_map(repo: SupabaseRepository, org_id: str) -> dict[str
     return user_names_by_id(users)
 
 
+async def build_patient_name_map(repo: SupabaseRepository, org_id: str) -> dict[str, str]:
+    patients = await repo.list_patients(org_id)
+    return {
+        str(patient["id"]): str(patient.get("name") or "").strip()
+        for patient in patients
+    }
+
+
 def enrich_notes_with_sender_names(notes: list[dict], names: dict[str, str]) -> list[dict]:
     return [
         {
@@ -29,6 +37,16 @@ def enrich_invoices_with_completer_names(invoices: list[dict], names: dict[str, 
     ]
 
 
+def enrich_invoices_with_patient_names(invoices: list[dict], names: dict[str, str]) -> list[dict]:
+    return [
+        {
+            **invoice,
+            "patient_name": names.get(str(invoice.get("patient_id") or "")) or None,
+        }
+        for invoice in invoices
+    ]
+
+
 async def list_patient_notes_view(repo: SupabaseRepository, org_id: str, patient_id: str) -> list[NoteOut]:
     await repo.get_patient(org_id, patient_id)
     notes = await repo.list_notes_for_patient(org_id, patient_id)
@@ -40,7 +58,12 @@ async def list_patient_invoices_view(repo: SupabaseRepository, org_id: str, pati
     await repo.get_patient(org_id, patient_id)
     invoices = await repo.list_invoices_for_patient(org_id, patient_id)
     names = await build_user_name_map(repo, org_id)
-    return [InvoiceOut(**invoice) for invoice in enrich_invoices_with_completer_names(invoices, names)]
+    patient_names = await build_patient_name_map(repo, org_id)
+    enriched = enrich_invoices_with_patient_names(
+        enrich_invoices_with_completer_names(invoices, names),
+        patient_names,
+    )
+    return [InvoiceOut(**invoice) for invoice in enriched]
 
 
 async def build_patient_timeline_view(
@@ -55,11 +78,15 @@ async def build_patient_timeline_view(
     follow_ups = await repo.list_follow_ups_for_patient(org_id, patient_id)
     appointments = await repo.list_appointments_for_patient(org_id, patient_id)
     names = await build_user_name_map(repo, org_id)
+    patient_names = await build_patient_name_map(repo, org_id)
     return build_patient_timeline(
         patient=patient,
         visits=visits,
         notes=enrich_notes_with_sender_names(notes, names),
-        invoices=enrich_invoices_with_completer_names(invoices, names),
+        invoices=enrich_invoices_with_patient_names(
+            enrich_invoices_with_completer_names(invoices, names),
+            patient_names,
+        ),
         follow_ups=follow_ups,
         appointments=appointments,
     )

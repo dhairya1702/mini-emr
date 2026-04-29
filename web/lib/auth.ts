@@ -71,6 +71,16 @@ export const authStorage = {
     }
     window.localStorage.removeItem(TOKEN_KEY);
   },
+  setUser(user: AuthResponse["user"] | null) {
+    if (!isBrowser()) {
+      return;
+    }
+    if (user) {
+      window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+      return;
+    }
+    window.localStorage.removeItem(USER_KEY);
+  },
   setSessionExpiry(expiresAtSeconds: number | null) {
     if (!isBrowser()) {
       return;

@@ -3,8 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import { AppHeader } from "@/components/app-header";
+import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { PasswordInput } from "@/components/password-input";
-import { SettingsDrawer } from "@/components/settings-drawer";
 import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { AuthUser } from "@/lib/types";
@@ -363,52 +363,54 @@ export default function AccountPage() {
         </div>
       </div>
 
-      <SettingsDrawer
-        open={isSettingsOpen}
-        settings={clinicSettings}
-        currentUser={resolvedUser}
-        users={users}
-        onLoadUsers={loadUsers}
-        auditEvents={auditEvents}
-        onLoadAuditEvents={loadAuditEvents}
-        patients={[]}
-        catalogItems={catalogItems}
-        onLoadCatalogItems={loadCatalogItems}
-        onClose={() => setIsSettingsOpen(false)}
-        onSaveClinic={handleSaveClinicSettings}
-        onClinicSettingsChange={applyClinicSettings}
-        onAddUser={handleAddStaffUser}
-        onUpdateUserRole={handleUpdateUserRole}
-        onDeleteUser={handleDeleteUser}
-        onCreateCatalogItem={handleCreateCatalogItem}
-        onAdjustCatalogStock={handleAdjustCatalogStock}
-        onDeleteCatalogItem={handleDeleteCatalogItem}
-        onGenerateLetter={handleGenerateLetter}
-        onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
-        onSendLetter={handleSendLetter}
-        onCreateInvoice={handleCreateInvoice}
-        onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
-        onSendInvoice={handleSendInvoice}
-        onExportPatientsCsv={handleExportPatientsCsv}
-        onExportVisitsCsv={handleExportVisitsCsv}
-        onExportInvoicesCsv={handleExportInvoicesCsv}
-        onCheckInAppointment={(appointmentId, options) =>
-          options?.existingPatientId
-            ? api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId).then((patient) => ({
-              id: appointmentId,
-              checked_in_at: new Date().toISOString(),
-              checked_in_patient_id: patient.id,
-            }))
-            : api.checkInAppointment(appointmentId, { force_new: options?.forceNew }).then((patient) => ({
-              id: appointmentId,
-              checked_in_at: new Date().toISOString(),
-              checked_in_patient_id: patient.id,
-            }))
-        }
-        onUpdateAppointment={(appointmentId, payload) => api.updateAppointment(appointmentId, payload)}
-        onUpdateFollowUp={(followUpId, payload) => api.updateFollowUp(followUpId, payload)}
-        onBillingComplete={() => undefined}
-      />
+      {isSettingsOpen ? (
+        <LazySettingsDrawer
+          open={isSettingsOpen}
+          settings={clinicSettings}
+          currentUser={resolvedUser}
+          users={users}
+          onLoadUsers={loadUsers}
+          auditEvents={auditEvents}
+          onLoadAuditEvents={loadAuditEvents}
+          patients={[]}
+          catalogItems={catalogItems}
+          onLoadCatalogItems={loadCatalogItems}
+          onClose={() => setIsSettingsOpen(false)}
+          onSaveClinic={handleSaveClinicSettings}
+          onClinicSettingsChange={applyClinicSettings}
+          onAddUser={handleAddStaffUser}
+          onUpdateUserRole={handleUpdateUserRole}
+          onDeleteUser={handleDeleteUser}
+          onCreateCatalogItem={handleCreateCatalogItem}
+          onAdjustCatalogStock={handleAdjustCatalogStock}
+          onDeleteCatalogItem={handleDeleteCatalogItem}
+          onGenerateLetter={handleGenerateLetter}
+          onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
+          onSendLetter={handleSendLetter}
+          onCreateInvoice={handleCreateInvoice}
+          onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
+          onSendInvoice={handleSendInvoice}
+          onExportPatientsCsv={handleExportPatientsCsv}
+          onExportVisitsCsv={handleExportVisitsCsv}
+          onExportInvoicesCsv={handleExportInvoicesCsv}
+          onCheckInAppointment={(appointmentId, options) =>
+            options?.existingPatientId
+              ? api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId).then((patient) => ({
+                id: appointmentId,
+                checked_in_at: new Date().toISOString(),
+                checked_in_patient_id: patient.id,
+              }))
+              : api.checkInAppointment(appointmentId, { force_new: options?.forceNew }).then((patient) => ({
+                id: appointmentId,
+                checked_in_at: new Date().toISOString(),
+                checked_in_patient_id: patient.id,
+              }))
+          }
+          onUpdateAppointment={(appointmentId, payload) => api.updateAppointment(appointmentId, payload)}
+          onUpdateFollowUp={(followUpId, payload) => api.updateFollowUp(followUpId, payload)}
+          onBillingComplete={() => undefined}
+        />
+      ) : null}
     </main>
   );
 }

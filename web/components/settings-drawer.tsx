@@ -54,6 +54,7 @@ interface SettingsDrawerProps {
   auditEvents: AuditEvent[];
   onLoadAuditEvents: () => Promise<AuditEvent[]>;
   patients: Patient[];
+  onLoadBillingPatients?: () => Promise<Patient[]>;
   catalogItems: CatalogItem[];
   onLoadCatalogItems: () => Promise<CatalogItem[]>;
   onClose: () => void;
@@ -430,6 +431,7 @@ export function SettingsDrawer({
   auditEvents,
   onLoadAuditEvents,
   patients,
+  onLoadBillingPatients,
   catalogItems,
   onLoadCatalogItems,
   onClose,
@@ -524,6 +526,9 @@ export function SettingsDrawer({
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
   const [isPreparingInvoicePdf, setIsPreparingInvoicePdf] = useState(false);
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
+  const [billingPatients, setBillingPatients] = useState<Patient[]>(patients);
+  const [isBillingPatientsLoading, setIsBillingPatientsLoading] = useState(false);
+  const [hasLoadedBillingPatients, setHasLoadedBillingPatients] = useState(false);
 
   const serviceItems = useMemo(
     () => catalogItems.filter((item) => item.item_type === "service"),
@@ -534,7 +539,7 @@ export function SettingsDrawer({
     [catalogItems],
   );
   const selectedBillingPatient =
-    patients.find((patient) => patient.id === selectedBillingPatientId) ?? null;
+    billingPatients.find((patient) => patient.id === selectedBillingPatientId) ?? null;
   const invoiceSubtotal = invoiceItems.reduce(
     (sum, item) => sum + item.quantity * item.unit_price,
     0,
@@ -597,10 +602,17 @@ export function SettingsDrawer({
   }, [letterPdfPreviewUrl]);
 
   useEffect(() => {
-    if (!selectedBillingPatientId && patients[0]) {
-      setSelectedBillingPatientId(patients[0].id);
+    setBillingPatients(patients);
+    if (patients.length) {
+      setHasLoadedBillingPatients(true);
     }
-  }, [patients, selectedBillingPatientId]);
+  }, [patients]);
+
+  useEffect(() => {
+    if (!selectedBillingPatientId && billingPatients[0]) {
+      setSelectedBillingPatientId(billingPatients[0].id);
+    }
+  }, [billingPatients, selectedBillingPatientId]);
 
   useEffect(() => {
     if (open) {
@@ -680,6 +692,51 @@ export function SettingsDrawer({
       active = false;
     };
   }, [activeTab, hasLoadedCatalog, isCatalogLoading, onLoadCatalogItems, open]);
+
+  useEffect(() => {
+    const needsBillingPatients = open && activeTab === "billing";
+    if (!needsBillingPatients) {
+      setIsBillingPatientsLoading(false);
+      return;
+    }
+
+    if (billingPatients.length || hasLoadedBillingPatients || isBillingPatientsLoading || !onLoadBillingPatients) {
+      return;
+    }
+
+    let active = true;
+    setIsBillingPatientsLoading(true);
+    setBillingError("");
+    void onLoadBillingPatients()
+      .then((loadedPatients) => {
+        if (active) {
+          setBillingPatients(loadedPatients);
+          setHasLoadedBillingPatients(true);
+        }
+      })
+      .catch((loadError) => {
+        if (active) {
+          setHasLoadedBillingPatients(true);
+          setBillingError(loadError instanceof Error ? loadError.message : "Failed to load billable patients.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsBillingPatientsLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    activeTab,
+    billingPatients.length,
+    hasLoadedBillingPatients,
+    isBillingPatientsLoading,
+    onLoadBillingPatients,
+    open,
+  ]);
 
   useEffect(() => {
     if (!open || activeTab !== "audit") {
@@ -1799,7 +1856,7 @@ export function SettingsDrawer({
   function renderBillingTab() {
     return (
       <SettingsDrawerBillingPanel
-        patients={patients}
+        patients={billingPatients}
         selectedBillingPatientId={selectedBillingPatientId}
         selectedBillingPatient={selectedBillingPatient}
         serviceItems={serviceItems}
@@ -1811,7 +1868,11 @@ export function SettingsDrawer({
         balanceDue={balanceDue}
         paymentStatus={paymentStatus}
         billingError={billingError}
-        billingStatus={billingStatus}
+        billingStatus={
+          isBillingPatientsLoading && !billingPatients.length
+            ? "Loading billable patients..."
+            : billingStatus
+        }
         isSavingInvoice={isSavingInvoice}
         isPreparingInvoicePdf={isPreparingInvoicePdf}
         isSendingInvoice={isSendingInvoice}

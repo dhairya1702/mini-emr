@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { CalendarDays, Download, ReceiptIndianRupee, Search } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
-import { SettingsDrawer } from "@/components/settings-drawer";
+import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { Invoice, Patient, PaymentStatus } from "@/lib/types";
+import { Invoice, PaymentStatus } from "@/lib/types";
 
 type GroupMode = "week" | "month" | "year";
 
@@ -36,7 +36,6 @@ function formatCurrency(value: number) {
 export default function EarningsPage() {
   const router = useRouter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [mode, setMode] = useState<GroupMode>("week");
   const [exportStatus, setExportStatus] = useState("");
@@ -46,19 +45,17 @@ export default function EarningsPage() {
   const [openingInvoiceId, setOpeningInvoiceId] = useState("");
   const [hoveredChartPointKey, setHoveredChartPointKey] = useState<string | null>(null);
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
+  const loadBillablePatients = useCallback(async () => {
+    const patients = await api.listPatients();
+    return patients.filter((patient) => patient.status === "done" && !patient.billed);
+  }, []);
   const loadPageData = useCallback(async () => {
-    const [dataInvoices, historyPatients] = await Promise.all([
-      api.listInvoices(),
-      api.listPatients(),
-    ]);
     return {
-      invoices: dataInvoices,
-      patients: historyPatients,
+      invoices: await api.listInvoices(),
     };
   }, []);
-  const onPageData = useCallback((data: { invoices: Invoice[]; patients: Patient[] }) => {
+  const onPageData = useCallback((data: { invoices: Invoice[] }) => {
     setInvoices(data.invoices);
-    setPatients(data.patients);
   }, []);
   const {
     currentUser,
@@ -98,11 +95,6 @@ export default function EarningsPage() {
     }
   }, [currentUser, isAuthReady, router]);
 
-  const patientNames = useMemo(
-    () => Object.fromEntries(patients.map((patient) => [patient.id, patient.name])),
-    [patients],
-  );
-
   const paidInvoices = useMemo(
     () =>
       invoices
@@ -117,9 +109,9 @@ export default function EarningsPage() {
       return paidInvoices;
     }
     return paidInvoices.filter((invoice) =>
-      (patientNames[invoice.patient_id] || "Patient").toLowerCase().includes(query),
+      (invoice.patient_name || "Patient").toLowerCase().includes(query),
     );
-  }, [invoiceSearch, paidInvoices, patientNames]);
+  }, [invoiceSearch, paidInvoices]);
 
   const chartData = useMemo(() => {
     const now = new Date();
@@ -617,7 +609,7 @@ export default function EarningsPage() {
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-slate-900">
-                          {patientNames[invoice.patient_id] || "Patient"}
+                          {invoice.patient_name || "Patient"}
                         </p>
                       </div>
                       <p className="text-sm text-slate-600">
@@ -651,7 +643,8 @@ export default function EarningsPage() {
         </section>
       </div>
 
-      <SettingsDrawer
+      {isSettingsOpen ? (
+      <LazySettingsDrawer
         open={isSettingsOpen}
         settings={clinicSettings}
         currentUser={currentUser}
@@ -659,7 +652,8 @@ export default function EarningsPage() {
         onLoadUsers={loadUsers}
         auditEvents={auditEvents}
         onLoadAuditEvents={loadAuditEvents}
-        patients={patients.filter((patient) => patient.status === "done" && !patient.billed)}
+        patients={[]}
+        onLoadBillingPatients={loadBillablePatients}
         catalogItems={catalogItems}
         onLoadCatalogItems={loadCatalogItems}
         onClose={() => setIsSettingsOpen(false)}
@@ -692,7 +686,6 @@ export default function EarningsPage() {
           const checkedInPatient = options?.existingPatientId
             ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId)
             : await api.checkInAppointment(appointmentId, { force_new: options?.forceNew });
-          setPatients((current) => [checkedInPatient, ...current]);
           return {
             id: appointmentId,
             checked_in_at: new Date().toISOString(),
@@ -701,15 +694,11 @@ export default function EarningsPage() {
         }}
         onUpdateAppointment={(appointmentId, payload) => api.updateAppointment(appointmentId, payload)}
         onUpdateFollowUp={(followUpId, payload) => api.updateFollowUp(followUpId, payload)}
-        onBillingComplete={(patientId) => {
-          setPatients((current) =>
-            current.map((patient) =>
-              patient.id === patientId ? { ...patient, billed: true } : patient,
-            ),
-          );
+        onBillingComplete={() => {
           setIsSettingsOpen(false);
         }}
       />
+      ) : null}
     </main>
   );
 }

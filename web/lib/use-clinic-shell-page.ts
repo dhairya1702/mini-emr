@@ -1,16 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 
+import { useClinicShell } from "@/components/clinic-shell-provider";
 import { api } from "@/lib/api";
-import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
 import { AuditEvent, AuthUser, CatalogItem, ClinicSettings, ClinicSettingsUpdatePayload, Invoice } from "@/lib/types";
 
-const BOOTSTRAP_TIMEOUT_MS = 20000;
-const BOOTSTRAP_RETRY_DELAY_MS = 400;
-const BOOTSTRAP_MAX_ATTEMPTS = 2;
-const SESSION_EXPIRED_REDIRECT = "/login?reason=session-expired";
+const PAGE_LOAD_RETRY_DELAY_MS = 400;
+const PAGE_LOAD_MAX_ATTEMPTS = 2;
 
 export type ClinicCatalogItemPayload = {
   name: string;
@@ -46,18 +43,24 @@ export function useClinicShellPage<T>({
   loadPageData,
   onPageData,
 }: UseClinicShellPageOptions<T>) {
-  const router = useRouter();
+  const shell = useClinicShell();
+  const {
+    applyClinicSettings: applyShellClinicSettings,
+    clinicSettings,
+    currentUser,
+    error: shellError,
+    handleLogout: handleShellLogout,
+    isAuthReady,
+    isRedirectingToLogin,
+    redirectToLogin,
+  } = shell;
   const canLoadPageDataRef = useRef(canLoadPageData);
   const loadPageDataRef = useRef(loadPageData);
   const onPageDataRef = useRef(onPageData);
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
-  const [clinicSettings, setClinicSettings] = useState<ClinicSettings | null>(null);
-  const [error, setError] = useState("");
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [isRedirectingToLogin, setIsRedirectingToLogin] = useState(false);
+  const [pageError, setPageError] = useState("");
 
   useEffect(() => {
     canLoadPageDataRef.current = canLoadPageData;
@@ -67,76 +70,30 @@ export function useClinicShellPage<T>({
 
   useEffect(() => {
     let active = true;
-    let bootstrapTimeoutId: number | null = null;
-
-    function clearBootstrapTimeout() {
-      if (bootstrapTimeoutId !== null) {
-        window.clearTimeout(bootstrapTimeoutId);
-        bootstrapTimeoutId = null;
-      }
-    }
-
-    function scheduleBootstrapTimeout() {
-      clearBootstrapTimeout();
-      bootstrapTimeoutId = window.setTimeout(() => {
-        if (!active) {
-          return;
-        }
-        setError("ClinicOS took too long to load. Refresh again or check the backend.");
-        setIsAuthReady(true);
-      }, BOOTSTRAP_TIMEOUT_MS);
-    }
 
     async function delay(ms: number) {
       await new Promise((resolve) => window.setTimeout(resolve, ms));
     }
 
-    async function loadBootstrapData() {
-      const [user, settings] = await Promise.all([
-        api.getCurrentUser(),
-        api.getClinicSettings(),
-      ]);
-
-      if (active) {
-        setCurrentUser(user);
-        setClinicSettings(settings);
-      }
-
-      if (canLoadPageDataRef.current && !canLoadPageDataRef.current(user)) {
-        return;
-      }
-
-      const pageData = await loadPageDataRef.current();
-      if (active) {
-        onPageDataRef.current(pageData);
-      }
-    }
-
     async function loadApp() {
-      if (active) {
-        setError("");
-        setIsAuthReady(false);
-        setIsRedirectingToLogin(false);
-      }
-
-      if (authStorage.clearExpiredSession()) {
-        if (active) {
-          setError(SESSION_EXPIRED_MESSAGE);
-          setIsRedirectingToLogin(true);
-          setIsAuthReady(true);
-        }
-        router.replace(SESSION_EXPIRED_REDIRECT);
+      if (!isAuthReady || isRedirectingToLogin || !currentUser) {
         return;
       }
 
-      scheduleBootstrapTimeout();
+      if (canLoadPageDataRef.current && !canLoadPageDataRef.current(currentUser)) {
+        return;
+      }
+
+      if (active) {
+        setPageError("");
+      }
 
       try {
-        for (let attempt = 1; attempt <= BOOTSTRAP_MAX_ATTEMPTS; attempt += 1) {
+        for (let attempt = 1; attempt <= PAGE_LOAD_MAX_ATTEMPTS; attempt += 1) {
           try {
-            await loadBootstrapData();
+            const pageData = await loadPageDataRef.current();
             if (active) {
-              setIsAuthReady(true);
+              onPageDataRef.current(pageData);
             }
             return;
           } catch (loadError) {
@@ -145,38 +102,21 @@ export function useClinicShellPage<T>({
               message === "Authentication required." ||
               message === "Invalid token." ||
               message === "Token expired." ||
-              message === "Session expired." ||
-              message === SESSION_EXPIRED_MESSAGE;
+              message === "Session expired.";
             if (shouldRedirect) {
-              authStorage.clear();
-              const redirectTarget =
-                message === "Token expired." ||
-                message === "Session expired." ||
-                message === SESSION_EXPIRED_MESSAGE
-                  ? SESSION_EXPIRED_REDIRECT
-                  : "/login";
-              if (active) {
-                setError(
-                  message === "Token expired." || message === "Session expired."
-                    ? SESSION_EXPIRED_MESSAGE
-                    : message,
-                );
-                setIsRedirectingToLogin(true);
-                setIsAuthReady(true);
-              }
-              router.replace(redirectTarget);
+              redirectToLogin(message);
               return;
             }
 
             const isRetryable =
-              attempt < BOOTSTRAP_MAX_ATTEMPTS &&
+              attempt < PAGE_LOAD_MAX_ATTEMPTS &&
               (message === "Request timed out. Check the backend and refresh." ||
                 message === "Failed to fetch");
             if (!isRetryable) {
               throw loadError;
             }
 
-            await delay(BOOTSTRAP_RETRY_DELAY_MS);
+            await delay(PAGE_LOAD_RETRY_DELAY_MS);
           }
         }
       } catch (loadError) {
@@ -186,52 +126,33 @@ export function useClinicShellPage<T>({
             message === "Authentication required." ||
             message === "Invalid token." ||
             message === "Token expired." ||
-            message === "Session expired." ||
-            message === SESSION_EXPIRED_MESSAGE;
+            message === "Session expired.";
           if (shouldRedirect) {
-            authStorage.clear();
-            const redirectTarget =
-              message === "Token expired." ||
-              message === "Session expired." ||
-              message === SESSION_EXPIRED_MESSAGE
-                ? SESSION_EXPIRED_REDIRECT
-                : "/login";
-            setError(
-              message === "Token expired." || message === "Session expired."
-                ? SESSION_EXPIRED_MESSAGE
-                : message,
-            );
-            setIsRedirectingToLogin(true);
-            setIsAuthReady(true);
-            router.replace(redirectTarget);
+            redirectToLogin(message);
             return;
           }
-          setError(message);
-          setIsAuthReady(true);
+          setPageError(message);
         }
-      } finally {
-        clearBootstrapTimeout();
       }
     }
 
-    loadApp();
+    void loadApp();
     return () => {
       active = false;
-      clearBootstrapTimeout();
     };
-  }, [router]);
+  }, [currentUser, isAuthReady, isRedirectingToLogin, redirectToLogin]);
 
   const handleSaveClinicSettings = useCallback(async (
     payload: ClinicSettingsUpdatePayload,
   ) => {
     const saved = await api.updateClinicSettings(payload);
-    setClinicSettings(saved);
+    applyShellClinicSettings(saved);
     return saved;
-  }, []);
+  }, [applyShellClinicSettings]);
 
   const applyClinicSettings = useCallback((settings: ClinicSettings) => {
-    setClinicSettings(settings);
-  }, []);
+    applyShellClinicSettings(settings);
+  }, [applyShellClinicSettings]);
 
   const loadUsers = useCallback(async () => {
     const loadedUsers = await api.listUsers();
@@ -328,14 +249,8 @@ export function useClinicShellPage<T>({
   const handleExportInvoicesCsv = useCallback(async () => api.exportInvoicesCsv(), []);
 
   const handleLogout = useCallback(() => {
-    setIsRedirectingToLogin(true);
-    void api.logout()
-      .catch(() => undefined)
-      .finally(() => {
-        authStorage.clear();
-        router.replace("/login");
-      });
-  }, [router]);
+    handleShellLogout();
+  }, [handleShellLogout]);
 
   return {
     currentUser,
@@ -346,8 +261,8 @@ export function useClinicShellPage<T>({
     catalogItems,
     loadCatalogItems,
     clinicSettings,
-    error,
-    setError,
+    error: shellError || pageError,
+    setError: setPageError,
     isAuthReady,
     isRedirectingToLogin,
     handleLogout,
