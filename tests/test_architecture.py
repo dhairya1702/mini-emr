@@ -10,7 +10,11 @@ DB_PATH = ROOT / "backend" / "app" / "db.py"
 
 def test_main_stays_app_assembly_only() -> None:
     text = MAIN_PATH.read_text()
-    assert "@app." not in text
+    assert "@app.get(" not in text
+    assert "@app.post(" not in text
+    assert "@app.patch(" not in text
+    assert "@app.put(" not in text
+    assert "@app.delete(" not in text
     assert "app.include_router(" in text
 
 

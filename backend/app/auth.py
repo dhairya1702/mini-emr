@@ -6,7 +6,7 @@ import json
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from fastapi import Cookie, Depends, Header, HTTPException, Response, status
+from fastapi import Cookie, Depends, Header, HTTPException, Request, Response, status
 
 from app.config import get_settings
 from app.db import SupabaseRepository, get_repository
@@ -130,6 +130,7 @@ def decode_access_token(token: str) -> dict[str, str | int]:
 
 
 async def get_current_user(
+    request: Request,
     authorization: str | None = Header(default=None),
     session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     repo: SupabaseRepository = Depends(get_repository),
@@ -164,7 +165,9 @@ async def get_current_user(
         user = await repo.get_user(user_id)
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.") from exc
-    return UserOut(**user)
+    current_user = UserOut(**user)
+    request.state.current_user = current_user
+    return current_user
 
 
 async def require_admin(current_user: UserOut = Depends(get_current_user)) -> UserOut:

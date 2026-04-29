@@ -6,8 +6,10 @@ from uuid import UUID
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
-from app.auth import SESSION_EXPIRES_AT_HEADER, SESSION_TOKEN_HEADER
+from app.auth import SESSION_EXPIRES_AT_HEADER, SESSION_TOKEN_HEADER, issue_session_headers
 from app.config import get_settings
 from app.db import get_repository
 from app.routes import (
@@ -89,6 +91,23 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=[SESSION_TOKEN_HEADER, SESSION_EXPIRES_AT_HEADER],
 )
+
+
+@app.middleware("http")
+async def refresh_authenticated_session(request: Request, call_next):
+    response: Response = await call_next(request)
+    current_user = getattr(request.state, "current_user", None)
+    if current_user is not None:
+        issue_session_headers(
+            response,
+            {
+                "id": str(current_user.id),
+                "org_id": str(current_user.org_id),
+                "role": current_user.role,
+                "identifier": current_user.identifier,
+            },
+        )
+    return response
 
 for router in (
     health_router,

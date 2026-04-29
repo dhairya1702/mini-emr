@@ -25,6 +25,23 @@ def test_auth_me_reissues_session_headers(client):
     assert test_client.cookies.get(auth_module.SESSION_COOKIE_NAME) == refreshed_token
 
 
+def test_authenticated_non_auth_routes_reissue_session_headers(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="session-refresh@clinic.com", clinic_name="Session Refresh Clinic")
+
+    response = test_client.get("/patients", headers=auth_headers(session["token"]))
+    assert response.status_code == 200
+    refreshed_token = response.headers.get("x-session-token")
+    refreshed_expiry = response.headers.get("x-session-expires-at")
+    assert refreshed_token
+    assert refreshed_expiry
+
+    payload = auth_module.decode_access_token(refreshed_token)
+    assert payload["sub"] == session["user"]["id"]
+    assert int(refreshed_expiry) == payload["exp"]
+    assert test_client.cookies.get(auth_module.SESSION_COOKIE_NAME) == refreshed_token
+
+
 def test_auth_cookie_session_and_logout(client):
     test_client, _repo = client
     register(test_client, identifier="cookie@clinic.com", clinic_name="Cookie Clinic")

@@ -446,6 +446,9 @@ create index if not exists follow_ups_org_status_scheduled_idx on public.follow_
 create index if not exists follow_ups_patient_idx on public.follow_ups (patient_id, created_at desc);
 create index if not exists appointments_org_status_scheduled_idx on public.appointments (org_id, status, scheduled_for asc);
 
+drop function if exists public.check_in_appointment_atomic(uuid, uuid);
+drop function if exists public.check_in_appointment_atomic(uuid, uuid, boolean, uuid);
+
 create or replace function public.check_in_appointment_atomic(
   p_org_id uuid,
   p_appointment_id uuid,
