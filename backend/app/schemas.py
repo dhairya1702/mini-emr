@@ -3,6 +3,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+from pydantic import field_validator, model_validator
 
 
 PatientStatus = Literal["waiting", "consultation", "done"]
@@ -412,6 +413,9 @@ class ClinicSettingsUpdate(BaseModel):
     clinic_name: str | None = Field(default=None, min_length=1, max_length=120)
     clinic_address: str | None = Field(default=None, max_length=300)
     clinic_phone: str | None = Field(default=None, max_length=40)
+    appointment_start_time: str | None = Field(default=None, min_length=5, max_length=5)
+    appointment_end_time: str | None = Field(default=None, min_length=5, max_length=5)
+    appointments_per_hour: int | None = Field(default=None, ge=1, le=12)
     doctor_name: str | None = Field(default=None, max_length=120)
     sender_name: str | None = Field(default=None, max_length=120)
     sender_email: str | None = Field(default=None, max_length=200)
@@ -429,11 +433,40 @@ class ClinicSettingsUpdate(BaseModel):
     document_template_margin_bottom: float | None = Field(default=None, ge=0, le=288)
     document_template_margin_left: float | None = Field(default=None, ge=0, le=288)
 
+    @field_validator("appointment_start_time", "appointment_end_time")
+    @classmethod
+    def validate_appointment_time(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        datetime.strptime(value, "%H:%M")
+        return value
+
+    @field_validator("appointments_per_hour")
+    @classmethod
+    def validate_appointments_per_hour(cls, value: int | None) -> int | None:
+        if value is None:
+            return value
+        if 60 % value != 0:
+            raise ValueError("Appointments per hour must divide evenly into 60 minutes.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_booking_window(self) -> "ClinicSettingsUpdate":
+        if self.appointment_start_time and self.appointment_end_time:
+            start = datetime.strptime(self.appointment_start_time, "%H:%M")
+            end = datetime.strptime(self.appointment_end_time, "%H:%M")
+            if start >= end:
+                raise ValueError("Appointment closing time must be after opening time.")
+        return self
+
 
 class ClinicSettingsOut(BaseModel):
     clinic_name: str = "ClinicOS"
     clinic_address: str = ""
     clinic_phone: str = ""
+    appointment_start_time: str = "09:00"
+    appointment_end_time: str = "18:00"
+    appointments_per_hour: int = 4
     doctor_name: str = ""
     sender_name: str = ""
     sender_email: str = ""

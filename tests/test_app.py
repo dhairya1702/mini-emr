@@ -1069,11 +1069,44 @@ def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
         patient_id=patient["id"],
         follow_up_id=follow_up["id"],
     )
+
+    first_slot = datetime.now(UTC).replace(microsecond=0, second=0, minute=0, hour=9)
+    if first_slot <= datetime.now(UTC):
+        first_slot += timedelta(days=1)
+    while first_slot.weekday() == 6:
+        first_slot += timedelta(days=1)
+    second_slot = first_slot + timedelta(minutes=30)
+    repo.clinic_settings[session["user"]["org_id"]].update(
+        {
+            "appointment_start_time": "09:00",
+            "appointment_end_time": "11:00",
+            "appointments_per_hour": 2,
+        }
+    )
+    scheduled_response = test_client.post(
+        "/appointments",
+        headers=auth_headers(token),
+        json={
+            "name": "Occupied Slot",
+            "phone": "5550103333",
+            "reason": "Existing booking",
+            "email": "occupied@example.com",
+            "address": "456 Main Street",
+            "age": 31,
+            "weight": 64,
+            "height": 170,
+            "temperature": 98.5,
+            "scheduled_for": first_slot.isoformat(),
+        },
+    )
+    assert scheduled_response.status_code == 201
+
     context_response = test_client.get(f"/public/follow-up-booking?token={booking_token}")
     assert context_response.status_code == 200
     assert context_response.json()["patient_name"] == "Booking Patient"
+    assert datetime.fromisoformat(context_response.json()["suggested_slots"][0].replace("Z", "+00:00")) == second_slot
 
-    rescheduled_for = (datetime.now(UTC).replace(microsecond=0) + timedelta(days=4)).isoformat()
+    rescheduled_for = second_slot.isoformat()
     book_response = test_client.post(
         "/public/follow-up-booking",
         json={"token": booking_token, "scheduled_for": rescheduled_for},
@@ -1097,13 +1130,12 @@ def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
         headers=auth_headers(token),
     )
     assert appointments_response.status_code == 200
-    assert len(appointments_response.json()) == 1
-    assert appointments_response.json()[0]["reason"] == "Follow-up: Review visit"
+    appointment_reasons = [appointment["reason"] for appointment in appointments_response.json()]
+    assert "Follow-up: Review visit" in appointment_reasons
 
     appointment_events = [event for event in repo.audit_events.values() if event["entity_type"] == "appointment"]
-    assert len(appointment_events) == 1
-    assert appointment_events[0]["actor_user_id"] is None
-    assert appointment_events[0]["metadata"]["source"] == "public_follow_up_booking"
+    assert any(event["actor_user_id"] is None for event in appointment_events)
+    assert any(event.get("metadata", {}).get("source") == "public_follow_up_booking" for event in appointment_events)
 
 
 def test_follow_up_slot_normalizer_accepts_iso_strings() -> None:

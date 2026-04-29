@@ -124,6 +124,9 @@ type ClinicFormState = {
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string;
+  appointment_start_time: string;
+  appointment_end_time: string;
+  appointments_per_hour: string;
   doctor_name: string;
   sender_name: string;
   sender_email: string;
@@ -396,6 +399,9 @@ function createClinicFormState(settings?: ClinicSettings | null): ClinicFormStat
     clinic_name: settings?.clinic_name ?? "ClinicOS",
     clinic_address: settings?.clinic_address ?? "",
     clinic_phone: settings?.clinic_phone ?? "",
+    appointment_start_time: settings?.appointment_start_time ?? "09:00",
+    appointment_end_time: settings?.appointment_end_time ?? "18:00",
+    appointments_per_hour: String(settings?.appointments_per_hour ?? 4),
     doctor_name: settings?.doctor_name ?? "",
     sender_name: settings?.sender_name ?? "",
     sender_email: settings?.sender_email ?? "",
@@ -778,6 +784,23 @@ export function SettingsDrawer({
       setError("Sender email must be a valid email address.");
       return;
     }
+    if (!form.appointment_start_time || !form.appointment_end_time) {
+      setError("Set both clinic opening and closing times.");
+      return;
+    }
+    const appointmentsPerHour = Number(form.appointments_per_hour);
+    if (!Number.isInteger(appointmentsPerHour) || appointmentsPerHour < 1 || appointmentsPerHour > 12) {
+      setError("Appointments per hour must be a whole number between 1 and 12.");
+      return;
+    }
+    if (60 % appointmentsPerHour !== 0) {
+      setError("Appointments per hour must divide evenly into 60 minutes.");
+      return;
+    }
+    if (form.appointment_start_time >= form.appointment_end_time) {
+      setError("Clinic closing time must be after opening time.");
+      return;
+    }
 
     const margins = {
       top: Number(form.document_template_margin_top),
@@ -798,6 +821,9 @@ export function SettingsDrawer({
         clinic_name: form.clinic_name.trim(),
         clinic_address: form.clinic_address.trim(),
         clinic_phone: form.clinic_phone.trim(),
+        appointment_start_time: form.appointment_start_time,
+        appointment_end_time: form.appointment_end_time,
+        appointments_per_hour: appointmentsPerHour,
         doctor_name: form.doctor_name.trim(),
         sender_name: form.sender_name.trim(),
         sender_email: form.sender_email.trim(),
@@ -1373,6 +1399,51 @@ export function SettingsDrawer({
                   className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
                 />
               </label>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Opening Time</span>
+                  <input
+                    type="time"
+                    value={form.appointment_start_time}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, appointment_start_time: event.target.value }))
+                    }
+                    className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Closing Time</span>
+                  <input
+                    type="time"
+                    value={form.appointment_end_time}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, appointment_end_time: event.target.value }))
+                    }
+                    className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Appointments / Hour</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="12"
+                    step="1"
+                    value={form.appointments_per_hour}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, appointments_per_hour: event.target.value }))
+                    }
+                    className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  />
+                </label>
+              </div>
+
+              <p className="text-xs leading-6 text-slate-500">
+                Public follow-up booking uses these hours and hourly capacity limits. Suggested times start at opening whenever that first slot is still free.
+              </p>
             </div>
           </section>
 

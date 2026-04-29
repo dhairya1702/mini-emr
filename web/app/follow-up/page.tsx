@@ -87,7 +87,12 @@ function FollowUpBookingPageContent() {
           return;
         }
         setContext(payload as FollowUpBookingContext);
-        setScheduledFor(toLocalDateTimeInput((payload as FollowUpBookingContext).scheduled_for));
+        const bookingContext = payload as FollowUpBookingContext;
+        setScheduledFor(
+          bookingContext.suggested_slots[0]
+            ? toLocalDateTimeInput(bookingContext.suggested_slots[0])
+            : toLocalDateTimeInput(bookingContext.scheduled_for),
+        );
       } catch (loadError) {
         if (active) {
           setError(loadError instanceof Error ? loadError.message : "Failed to load booking link.");

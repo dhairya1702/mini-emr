@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from fastapi import HTTPException
 
 from app.config import get_settings
@@ -9,7 +9,6 @@ from app.services.audit_service import record_follow_up_created, record_follow_u
 from app.services.followup_booking_service import create_follow_up_booking_token, decode_follow_up_booking_token
 from app.services.email_service import send_clinic_email_message
 
-FOLLOW_UP_SUGGESTION_HOURS = (10, 12, 16, 18)
 FOLLOW_UP_SUGGESTION_DAYS = 7
 
 
@@ -27,7 +26,55 @@ def _as_utc_minute(value: object) -> datetime:
     return parsed.replace(tzinfo=UTC, second=0, microsecond=0)
 
 
-def _follow_up_email_parts(*, clinic_name: str, patient_name: str, scheduled_for: str, notes: str, clinic_phone: str, booking_link: str) -> tuple[str, str]:
+def _parse_time_minutes(value: object, fallback: str) -> int:
+    raw = str(value or fallback).strip() or fallback
+    try:
+        parsed = datetime.strptime(raw, "%H:%M")
+    except ValueError:
+        parsed = datetime.strptime(fallback, "%H:%M")
+    return parsed.hour * 60 + parsed.minute
+
+
+def _appointments_per_hour(clinic_settings: dict) -> int:
+    raw = clinic_settings.get("appointments_per_hour")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = 4
+    if value < 1 or value > 12 or 60 % value != 0:
+        return 4
+    return value
+
+
+def _format_booking_window(clinic_settings: dict) -> str:
+    start_minutes = _parse_time_minutes(clinic_settings.get("appointment_start_time"), "09:00")
+    end_minutes = _parse_time_minutes(clinic_settings.get("appointment_end_time"), "18:00")
+    start = datetime(2000, 1, 1, start_minutes // 60, start_minutes % 60)
+    end = datetime(2000, 1, 1, end_minutes // 60, end_minutes % 60)
+    return f"{start.strftime('%I:%M %p')} to {end.strftime('%I:%M %p')}"
+
+
+def _is_within_booking_window(candidate: datetime, clinic_settings: dict) -> bool:
+    start_minutes = _parse_time_minutes(clinic_settings.get("appointment_start_time"), "09:00")
+    end_minutes = _parse_time_minutes(clinic_settings.get("appointment_end_time"), "18:00")
+    candidate_minutes = candidate.hour * 60 + candidate.minute
+    return start_minutes <= candidate_minutes < end_minutes
+
+
+def _hour_bucket(candidate: datetime) -> datetime:
+    return candidate.replace(minute=0, second=0, microsecond=0)
+
+
+def _follow_up_email_parts(
+    *,
+    clinic_name: str,
+    patient_name: str,
+    scheduled_for: str,
+    notes: str,
+    clinic_phone: str,
+    booking_link: str,
+    booking_window: str,
+) -> tuple[str, str]:
     booking_line = f"To confirm or reschedule, use this link: {booking_link}" if booking_link else (
         f"To confirm or reschedule, contact the clinic{f' at {clinic_phone}' if clinic_phone else ''}."
     )
@@ -35,29 +82,40 @@ def _follow_up_email_parts(*, clinic_name: str, patient_name: str, scheduled_for
     body = (
         f"Hello {patient_name},\n\n"
         f"This is a reminder for your follow-up with {clinic_name} on {scheduled_for}.\n\n"
+        f"Clinic booking hours: {booking_window}.\n\n"
         f"Notes: {notes or 'Please return for the planned review.'}\n\n"
         f"{booking_line}\n"
     )
     return subject, body
 
 
-async def _suggest_follow_up_slots(repo: SupabaseRepository, org_id: str) -> list[datetime]:
+async def _suggest_follow_up_slots(repo: SupabaseRepository, org_id: str, clinic_settings: dict) -> list[datetime]:
     scheduled_appointments = await repo.list_appointments(org_id, status="scheduled", limit=500)
-    occupied = {
-        _as_utc_minute(appointment["scheduled_for"])
-        for appointment in scheduled_appointments
-    }
+    occupied = [_as_utc_minute(appointment["scheduled_for"]) for appointment in scheduled_appointments]
+    occupied_exact = set(occupied)
+    capacity = _appointments_per_hour(clinic_settings)
+    slot_interval_minutes = 60 // capacity
+    start_minutes = _parse_time_minutes(clinic_settings.get("appointment_start_time"), "09:00")
+    end_minutes = _parse_time_minutes(clinic_settings.get("appointment_end_time"), "18:00")
+    occupied_by_hour: dict[datetime, int] = {}
+    for appointment_time in occupied:
+        bucket = _hour_bucket(appointment_time)
+        occupied_by_hour[bucket] = occupied_by_hour.get(bucket, 0) + 1
     suggestions: list[datetime] = []
-    cursor = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+    cursor = datetime.now(UTC).replace(second=0, microsecond=0)
     for day_offset in range(FOLLOW_UP_SUGGESTION_DAYS):
-        day = cursor.date().fromordinal(cursor.date().toordinal() + day_offset)
+        day = (cursor + timedelta(days=day_offset)).date()
         if day.weekday() == 6:
             continue
-        for hour in FOLLOW_UP_SUGGESTION_HOURS:
-            candidate = datetime(day.year, day.month, day.day, hour, 0, tzinfo=UTC)
+        for minute_of_day in range(start_minutes, end_minutes, slot_interval_minutes):
+            hour, minute = divmod(minute_of_day, 60)
+            candidate = datetime(day.year, day.month, day.day, hour, minute, tzinfo=UTC)
             if candidate <= datetime.now(UTC):
                 continue
-            if candidate in occupied:
+            hour_bucket = _hour_bucket(candidate)
+            if occupied_by_hour.get(hour_bucket, 0) >= capacity:
+                continue
+            if candidate in occupied_exact:
                 continue
             suggestions.append(candidate)
             if len(suggestions) >= 10:
@@ -92,6 +150,7 @@ async def _send_follow_up_email_if_needed(repo: SupabaseRepository, current_user
         notes=str(follow_up.get("notes") or "").strip(),
         clinic_phone=str(clinic_settings.get("clinic_phone") or "").strip(),
         booking_link=booking_link,
+        booking_window=_format_booking_window(clinic_settings),
     )
     try:
         await send_clinic_email_message(
@@ -131,7 +190,7 @@ async def get_follow_up_booking_context_workflow(
         raise HTTPException(status_code=400, detail="This follow-up is no longer available for booking.")
     patient = await repo.get_patient(org_id, patient_id)
     clinic_settings = await repo.get_clinic_settings(org_id)
-    suggested_slots = await _suggest_follow_up_slots(repo, org_id)
+    suggested_slots = await _suggest_follow_up_slots(repo, org_id, clinic_settings)
     return follow_up, patient, clinic_settings, token, suggested_slots
 
 
@@ -146,6 +205,17 @@ async def self_book_follow_up_workflow(
     follow_up_id = str(follow_up["id"])
     if scheduled_for < datetime.now(UTC):
         raise HTTPException(status_code=400, detail="Follow-up time must be in the future.")
+    scheduled_for = _as_utc_minute(scheduled_for)
+    if not _is_within_booking_window(scheduled_for, clinic_settings):
+        raise HTTPException(status_code=400, detail="Follow-up time must be within clinic booking hours.")
+    scheduled_hour = _hour_bucket(scheduled_for)
+    scheduled_appointments = await repo.list_appointments(org_id, status="scheduled", limit=500)
+    capacity = _appointments_per_hour(clinic_settings)
+    same_hour_count = sum(
+        1 for appointment in scheduled_appointments if _hour_bucket(_as_utc_minute(appointment["scheduled_for"])) == scheduled_hour
+    )
+    if same_hour_count >= capacity:
+        raise HTTPException(status_code=400, detail="That hour is fully booked. Choose another follow-up slot.")
     patient = await repo.get_patient(org_id, patient_id)
     await repo.update_follow_up(org_id, follow_up_id, FollowUpUpdate(scheduled_for=scheduled_for, status="completed"))
     created = await repo.create_appointment(

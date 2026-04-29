@@ -21,6 +21,9 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
     assert initial.json()["document_template_url"] is None
     assert initial.json()["document_template_notes_enabled"] is False
     assert initial.json()["document_template_margin_top"] == 54
+    assert initial.json()["appointment_start_time"] == "09:00"
+    assert initial.json()["appointment_end_time"] == "18:00"
+    assert initial.json()["appointments_per_hour"] == 4
 
     template_bytes = b"%PDF-1.4 sample clinic paper"
     uploaded = test_client.post(
@@ -46,6 +49,9 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
         headers=headers,
         json={
             "clinic_name": "Template Clinic",
+            "appointment_start_time": "08:30",
+            "appointment_end_time": "17:30",
+            "appointments_per_hour": 2,
             "document_template_notes_enabled": True,
             "document_template_letters_enabled": True,
             "document_template_invoices_enabled": False,
@@ -62,6 +68,9 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
     assert updated_json["document_template_letters_enabled"] is True
     assert updated_json["document_template_margin_top"] == 72
     assert updated_json["document_template_margin_left"] == 60
+    assert updated_json["appointment_start_time"] == "08:30"
+    assert updated_json["appointment_end_time"] == "17:30"
+    assert updated_json["appointments_per_hour"] == 2
 
     removed = test_client.delete("/settings/clinic/document-template", headers=headers)
     assert removed.status_code == 200

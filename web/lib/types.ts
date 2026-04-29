@@ -255,6 +255,9 @@ export interface ClinicSettings {
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string;
+  appointment_start_time: string;
+  appointment_end_time: string;
+  appointments_per_hour: number;
   doctor_name: string;
   sender_name: string;
   sender_email: string;
@@ -447,6 +450,9 @@ export interface ClinicSettingsUpdatePayload {
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string;
+  appointment_start_time: string;
+  appointment_end_time: string;
+  appointments_per_hour: number;
   doctor_name: string;
   sender_name: string;
   sender_email: string;

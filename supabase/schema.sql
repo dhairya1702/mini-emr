@@ -65,6 +65,9 @@ create table if not exists public.clinic_settings (
   clinic_name text not null default 'ClinicOS',
   clinic_address text not null default '',
   clinic_phone text not null default '',
+  appointment_start_time text not null default '09:00',
+  appointment_end_time text not null default '18:00',
+  appointments_per_hour integer not null default 4,
   doctor_name text not null default '',
   sender_name text not null default '',
   sender_email text not null default '',
@@ -293,6 +296,15 @@ add column if not exists org_id uuid references public.organizations(id) on dele
 
 alter table public.clinic_settings
 add column if not exists sender_name text not null default '';
+
+alter table public.clinic_settings
+add column if not exists appointment_start_time text not null default '09:00';
+
+alter table public.clinic_settings
+add column if not exists appointment_end_time text not null default '18:00';
+
+alter table public.clinic_settings
+add column if not exists appointments_per_hour integer not null default 4;
 
 alter table public.clinic_settings
 add column if not exists sender_email text not null default '';

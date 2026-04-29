@@ -748,8 +748,8 @@ export function ConsultationDrawer({
     { label: "Height", value: currentPatient.height !== null ? `${currentPatient.height} cm` : "-" },
   ];
   return (
-    <aside className="fixed inset-0 z-30 w-screen border-l-2 border-sky-300 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.2)] sm:p-6">
-      <div className="flex h-full flex-col">
+    <aside className="fixed inset-0 z-30 w-screen overflow-y-auto border-l-2 border-sky-300 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.2)] sm:p-6">
+      <div className="flex min-h-full flex-col">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <p className="text-sm uppercase tracking-[0.24em] text-slate-600">Consultation</p>
@@ -777,7 +777,7 @@ export function ConsultationDrawer({
           </button>
         </div>
 
-        <form className="grid flex-1 gap-5 overflow-y-auto pr-1 xl:grid-cols-[minmax(0,1.7fr)_360px]" onSubmit={handleGenerate}>
+        <form className="grid gap-5 pr-1 xl:grid-cols-[minmax(0,1.7fr)_360px]" onSubmit={handleGenerate}>
           <div className="space-y-4">
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Symptoms</span>
@@ -1195,7 +1195,7 @@ export function ConsultationDrawer({
               </p>
             </div>
           </div>
-          <div className="space-y-4 xl:sticky xl:top-0 xl:self-start">
+          <div className="space-y-4">
             <div className="rounded-[28px] border border-sky-200 bg-sky-50/40 p-4">
               <div className="rounded-[20px] border border-sky-100 bg-white p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
