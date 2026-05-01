@@ -26,6 +26,9 @@ import {
   InvoiceCreatePayload,
   GenerateNotePayload,
   GenerateNoteResponse,
+  MyopiaHistory,
+  MyopiaMeasurementPayload,
+  MyopiaMeasurementRecord,
   OperationResult,
   Patient,
   PatientInput,
@@ -477,6 +480,18 @@ export const api = {
     }),
   getPatientTimeline: (patientId: string) =>
     request<PatientTimelineEvent[]>(`/patients/${patientId}/timeline`),
+  getPatientMyopiaHistory: (patientId: string) =>
+    request<MyopiaHistory>(`/patients/${patientId}/myopia-history`),
+  createPatientMyopiaRecord: (patientId: string, payload: MyopiaMeasurementPayload) =>
+    request<MyopiaMeasurementRecord>(`/patients/${patientId}/myopia-records`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updatePatientMyopiaRecord: (patientId: string, recordId: string, payload: Partial<MyopiaMeasurementPayload>) =>
+    request<MyopiaMeasurementRecord>(`/patients/${patientId}/myopia-records/${recordId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   listPatientNotes: (patientId: string) =>
     request<ConsultationNote[]>(`/patients/${patientId}/notes`),
   listPatientInvoices: (patientId: string) =>

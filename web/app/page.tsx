@@ -555,7 +555,9 @@ export default function HomePage() {
 
       <PatientDetailsDrawer
         patient={drawerMode === "details" ? selectedPatient : null}
+        isOptometryClinic={clinicSettings?.clinic_specialty === "optometry"}
         onLoadTimeline={handleLoadPatientTimeline}
+        onLoadMyopiaHistory={(patientId) => api.getPatientMyopiaHistory(patientId)}
         onSave={handleUpdatePatient}
         onClose={() => {
           setSelectedPatient(null);
@@ -565,6 +567,7 @@ export default function HomePage() {
 
       <ConsultationDrawer
         patient={drawerMode === "consultation" ? selectedPatient : null}
+        isOptometryClinic={clinicSettings?.clinic_specialty === "optometry"}
         onClose={() => {
           setSelectedPatient(null);
           setDrawerMode(null);

@@ -24,6 +24,7 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
     assert initial.json()["appointment_start_time"] == "09:00"
     assert initial.json()["appointment_end_time"] == "18:00"
     assert initial.json()["appointments_per_hour"] == 4
+    assert initial.json()["clinic_specialty"] is None
 
     template_bytes = b"%PDF-1.4 sample clinic paper"
     uploaded = test_client.post(
@@ -71,6 +72,31 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
     assert updated_json["appointment_start_time"] == "08:30"
     assert updated_json["appointment_end_time"] == "17:30"
     assert updated_json["appointments_per_hour"] == 2
+
+
+def test_clinic_settings_can_store_specialty_for_existing_org(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="settings-specialty@clinic.com", clinic_name="Specialty Clinic")
+    headers = auth_headers(session["token"])
+
+    response = test_client.put(
+        "/settings/clinic",
+        headers=headers,
+        json={
+            "clinic_name": "Specialty Clinic",
+            "clinic_specialty": "optometry",
+            "appointment_start_time": "09:00",
+            "appointment_end_time": "18:00",
+            "appointments_per_hour": 4,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["clinic_specialty"] == "optometry"
+
+    fetched = test_client.get("/settings/clinic", headers=headers)
+    assert fetched.status_code == 200
+    assert fetched.json()["clinic_specialty"] == "optometry"
 
     removed = test_client.delete("/settings/clinic/document-template", headers=headers)
     assert removed.status_code == 200

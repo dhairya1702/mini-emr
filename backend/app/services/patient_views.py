@@ -1,7 +1,47 @@
 from app.db import SupabaseRepository
-from app.schemas import InvoiceOut, NoteOut, PatientTimelineEvent
+from app.schemas import InvoiceOut, MyopiaDeltaOut, MyopiaHistoryOut, MyopiaMeasurementOut, NoteOut, PatientTimelineEvent
 from app.services.audit_service import user_names_by_id
 from app.timeline import build_patient_timeline
+
+
+def _build_myopia_delta(current: dict, previous: dict) -> MyopiaDeltaOut:
+    return MyopiaDeltaOut(
+        right_mm=round(float(current["axial_length_right_mm"]) - float(previous["axial_length_right_mm"]), 3),
+        left_mm=round(float(current["axial_length_left_mm"]) - float(previous["axial_length_left_mm"]), 3),
+    )
+
+
+async def build_patient_myopia_history_view(
+    repo: SupabaseRepository,
+    org_id: str,
+    patient_id: str,
+) -> MyopiaHistoryOut:
+    await repo.get_patient(org_id, patient_id)
+    records = await repo.list_myopia_measurements_for_patient(org_id, patient_id)
+    typed_records = [MyopiaMeasurementOut(**record) for record in records]
+
+    baseline_delta = None
+    last_delta = None
+    annualized_growth = None
+
+    if len(records) >= 2:
+        baseline_delta = _build_myopia_delta(records[-1], records[0])
+        last_delta = _build_myopia_delta(records[-1], records[-2])
+        day_span = (typed_records[-1].measured_at - typed_records[0].measured_at).total_seconds() / 86400
+        if day_span > 0:
+            annualized_growth = MyopiaDeltaOut(
+                right_mm=round(baseline_delta.right_mm / day_span * 365.25, 3),
+                left_mm=round(baseline_delta.left_mm / day_span * 365.25, 3),
+            )
+
+    return MyopiaHistoryOut(
+        patient_id=patient_id,
+        records=typed_records,
+        baseline_delta=baseline_delta,
+        last_delta=last_delta,
+        annualized_growth=annualized_growth,
+        overlay_version="clinic-reference-v1",
+    )
 
 
 async def build_user_name_map(repo: SupabaseRepository, org_id: str) -> dict[str, str]:
@@ -74,6 +114,7 @@ async def build_patient_timeline_view(
     patient = await repo.get_patient(org_id, patient_id)
     visits = await repo.list_patient_visits_for_patient(org_id, patient_id)
     notes = await repo.list_notes_for_patient(org_id, patient_id)
+    myopia_measurements = await repo.list_myopia_measurements_for_patient(org_id, patient_id)
     invoices = await repo.list_invoices_for_patient(org_id, patient_id)
     follow_ups = await repo.list_follow_ups_for_patient(org_id, patient_id)
     appointments = await repo.list_appointments_for_patient(org_id, patient_id)
@@ -83,6 +124,7 @@ async def build_patient_timeline_view(
         patient=patient,
         visits=visits,
         notes=enrich_notes_with_sender_names(notes, names),
+        myopia_measurements=myopia_measurements,
         invoices=enrich_invoices_with_patient_names(
             enrich_invoices_with_completer_names(invoices, names),
             patient_names,

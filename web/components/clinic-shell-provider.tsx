@@ -18,6 +18,7 @@ import { AuthUser, ClinicSettings } from "@/lib/types";
 
 const SESSION_EXPIRED_REDIRECT = "/login?reason=session-expired";
 const PUBLIC_PATHS = new Set(["/login", "/follow-up"]);
+const SPECIALTY_ONBOARDING_PATH = "/onboarding/specialty";
 const SHELL_LOAD_MAX_ATTEMPTS = 2;
 const SHELL_LOAD_RETRY_DELAY_MS = 350;
 
@@ -123,10 +124,24 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
           authStorage.setUser(user);
           setCurrentUser(user);
           setClinicSettings(settings);
+          const requiresSpecialtyOnboarding =
+            authStorage.isSpecialtyOnboardingPending() &&
+            !settings.clinic_specialty;
+          if (settings.clinic_specialty) {
+            authStorage.setSpecialtyOnboardingPending(false);
+          }
           setError("");
           setIsRedirectingToLogin(false);
           setIsAuthReady(true);
           hasBootstrappedRef.current = true;
+          if (requiresSpecialtyOnboarding && pathname !== SPECIALTY_ONBOARDING_PATH) {
+            router.replace(SPECIALTY_ONBOARDING_PATH);
+            return;
+          }
+          if (!requiresSpecialtyOnboarding && pathname === SPECIALTY_ONBOARDING_PATH) {
+            router.replace("/");
+            return;
+          }
           return;
         } catch (loadError) {
           const message = loadError instanceof Error ? loadError.message : "Failed to load page.";
@@ -159,7 +174,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
     } finally {
       bootstrapPromiseRef.current = null;
     }
-  }, [clinicSettings, currentUser, delay, pathname, redirectToLogin]);
+  }, [clinicSettings, currentUser, delay, pathname, redirectToLogin, router]);
 
   useEffect(() => {
     void loadShell(false);
@@ -170,6 +185,9 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   }, [loadShell]);
 
   const applyClinicSettings = useCallback((settings: ClinicSettings) => {
+    if (settings.clinic_specialty) {
+      authStorage.setSpecialtyOnboardingPending(false);
+    }
     setClinicSettings(settings);
   }, []);
 

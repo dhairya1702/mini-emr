@@ -107,6 +107,7 @@ class FakeRepo:
         self.patients: dict[str, dict] = {}
         self.patient_visits: dict[str, dict] = {}
         self.notes: dict[str, dict] = {}
+        self.myopia_measurements: dict[str, dict] = {}
         self.catalog_items: dict[str, dict] = {}
         self.invoices: dict[str, dict] = {}
         self.invoice_items: dict[str, dict] = {}
@@ -291,6 +292,7 @@ class FakeRepo:
             "document_template_content_type": None,
             "document_template_data_base64": None,
             "sender_email_app_password": None,
+            "clinic_specialty": None,
             **values,
             "updated_at": _now(),
         }
@@ -306,7 +308,15 @@ class FakeRepo:
         row = {
             "id": current["id"] if current else str(uuid4()),
             "org_id": org_id,
-            **(current or {"document_template_content_type": None, "document_template_data_base64": None, "sender_email_app_password": None}),
+            **(
+                current
+                or {
+                    "document_template_content_type": None,
+                    "document_template_data_base64": None,
+                    "sender_email_app_password": None,
+                    "clinic_specialty": None,
+                }
+            ),
             **values,
             "updated_at": _now(),
         }
@@ -700,6 +710,42 @@ class FakeRepo:
         if patient["org_id"] != org_id:
             raise ValueError("Patient not found for this organization.")
         return patient
+
+    async def create_myopia_measurement(self, org_id: str, patient_id: str, payload) -> dict:
+        await self.get_patient(org_id, patient_id)
+        record_id = str(uuid4())
+        row = {
+            "id": record_id,
+            "org_id": org_id,
+            "patient_id": patient_id,
+            "measured_at": payload.measured_at,
+            "age_years": payload.age_years,
+            "axial_length_right_mm": payload.axial_length_right_mm,
+            "axial_length_left_mm": payload.axial_length_left_mm,
+            "treatment_type": payload.treatment_type.strip(),
+            "treatment_notes": payload.treatment_notes.strip(),
+            "visit_notes": payload.visit_notes.strip(),
+            "refraction_right": payload.refraction_right.strip(),
+            "refraction_left": payload.refraction_left.strip(),
+            "created_at": _now(),
+        }
+        self.myopia_measurements[record_id] = row
+        return row
+
+    async def list_myopia_measurements_for_patient(self, org_id: str, patient_id: str) -> list[dict]:
+        rows = [
+            row for row in self.myopia_measurements.values()
+            if row["org_id"] == org_id and row["patient_id"] == patient_id
+        ]
+        rows.sort(key=lambda row: row["measured_at"])
+        return rows
+
+    async def update_myopia_measurement(self, org_id: str, patient_id: str, record_id: str, updates: dict) -> dict:
+        row = self.myopia_measurements[record_id]
+        if row["org_id"] != org_id or row["patient_id"] != patient_id:
+            raise ValueError("Myopia measurement not found for this patient.")
+        row.update(updates)
+        return row
 
     async def list_patient_visits_for_patient(self, org_id: str, patient_id: str) -> list[dict]:
         return [
@@ -1335,3 +1381,82 @@ def test_schedule_lists_auto_cancel_expired_items(client):
     assert future_follow_up_body["id"] in follow_up_ids
     assert old_follow_up_body["id"] not in follow_up_ids
     assert repo.follow_ups[old_follow_up_body["id"]]["status"] == "cancelled"
+
+
+def test_myopia_measurements_create_history_and_timeline(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="axial@example.com", clinic_name="Axial Clinic")
+    token = session["token"]
+
+    patient_response = test_client.post(
+        "/patients",
+        headers=auth_headers(token),
+        json={
+            "name": "Maya Rao",
+            "phone": "5550104444",
+            "email": "maya@example.com",
+            "address": "12 Oak Street",
+            "reason": "Myopia review",
+            "age": 11,
+            "weight": 40,
+            "height": 145,
+            "temperature": 98.4,
+        },
+    )
+    assert patient_response.status_code == 201
+    patient = patient_response.json()
+
+    first_record = test_client.post(
+        f"/patients/{patient['id']}/myopia-records",
+        headers=auth_headers(token),
+        json={
+            "measured_at": "2026-01-01T10:00:00+00:00",
+            "age_years": 11.0,
+            "axial_length_right_mm": 24.12,
+            "axial_length_left_mm": 24.05,
+            "treatment_type": "Observation",
+            "treatment_notes": "Baseline biometry.",
+            "visit_notes": "Outdoor time discussed.",
+            "refraction_right": "-1.75 DS",
+            "refraction_left": "-1.50 DS",
+        },
+    )
+    assert first_record.status_code == 201
+
+    second_record = test_client.post(
+        f"/patients/{patient['id']}/myopia-records",
+        headers=auth_headers(token),
+        json={
+            "measured_at": "2026-07-01T10:00:00+00:00",
+            "age_years": 11.5,
+            "axial_length_right_mm": 24.22,
+            "axial_length_left_mm": 24.16,
+            "treatment_type": "Atropine 0.01%",
+            "treatment_notes": "Started low-dose atropine.",
+            "visit_notes": "Compliance reviewed.",
+            "refraction_right": "-2.00 DS",
+            "refraction_left": "-1.75 DS",
+        },
+    )
+    assert second_record.status_code == 201
+
+    history_response = test_client.get(
+        f"/patients/{patient['id']}/myopia-history",
+        headers=auth_headers(token),
+    )
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert len(history["records"]) == 2
+    assert history["baseline_delta"] == {"right_mm": 0.1, "left_mm": 0.11}
+    assert history["last_delta"] == {"right_mm": 0.1, "left_mm": 0.11}
+    assert history["annualized_growth"] is not None
+    assert history["overlay_version"] == "clinic-reference-v1"
+
+    timeline_response = test_client.get(
+        f"/patients/{patient['id']}/timeline",
+        headers=auth_headers(token),
+    )
+    assert timeline_response.status_code == 200
+    myopia_events = [event for event in timeline_response.json() if event["type"] == "myopia_measurement"]
+    assert len(myopia_events) == 2
+    assert any("OD 24.22 mm" in event["description"] for event in myopia_events)

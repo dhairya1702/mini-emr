@@ -165,9 +165,10 @@ export default function LoginPage() {
           clinic_phone: clinicPhone.trim(),
           doctor_name: doctorName.trim() || adminName.trim(),
         });
+        authStorage.setSpecialtyOnboardingPending(true);
       }
       authStorage.setSession(session, authStorage.getTokenExpiryMs());
-      router.replace("/");
+      router.replace(mode === "register" ? "/onboarding/specialty" : "/");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Authentication failed.");
     } finally {

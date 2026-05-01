@@ -3,6 +3,7 @@ import { AuthResponse } from "@/lib/types";
 const TOKEN_KEY = "clinic_auth_token";
 const USER_KEY = "clinic_auth_user";
 const SESSION_EXPIRY_KEY = "clinic_session_expires_at";
+const SPECIALTY_ONBOARDING_KEY = "clinic_specialty_onboarding_pending";
 export const SESSION_EXPIRED_MESSAGE = "Session expired. Please sign in again.";
 
 function isBrowser() {
@@ -108,5 +109,22 @@ export const authStorage = {
     window.localStorage.removeItem(TOKEN_KEY);
     window.localStorage.removeItem(USER_KEY);
     window.localStorage.removeItem(SESSION_EXPIRY_KEY);
+    window.localStorage.removeItem(SPECIALTY_ONBOARDING_KEY);
+  },
+  isSpecialtyOnboardingPending() {
+    if (!isBrowser()) {
+      return false;
+    }
+    return window.localStorage.getItem(SPECIALTY_ONBOARDING_KEY) === "1";
+  },
+  setSpecialtyOnboardingPending(isPending: boolean) {
+    if (!isBrowser()) {
+      return;
+    }
+    if (isPending) {
+      window.localStorage.setItem(SPECIALTY_ONBOARDING_KEY, "1");
+      return;
+    }
+    window.localStorage.removeItem(SPECIALTY_ONBOARDING_KEY);
   },
 };

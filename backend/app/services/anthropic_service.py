@@ -86,7 +86,22 @@ def _strip_pipe_tables(value: str) -> str:
         if skipping_table and (not stripped or set(stripped) <= {"-", ":", " "}):
             continue
         skipping_table = False
-        if stripped in {"Vitals Table:", "Test Scores:", "Eye Exam:", "Prescribed medicines:"}:
+        if stripped in {
+            "Vitals Table:",
+            "Test Scores:",
+            "Eye Exam:",
+            "Prescribed medicines:",
+            "Contact Lens Assessment:",
+            "Contact Lens Order Summary:",
+            "Contact Lens Eye Details:",
+            "Binocular Vision Overview:",
+            "Binocular Vision Convergence:",
+            "Binocular Vision Sensory & Plan:",
+            "Low Vision Assessment:",
+            "Low Vision Functional & Device Trial:",
+            "Low Vision Plan & Support:",
+            "Myopia Management:",
+        }:
             continue
         cleaned_lines.append(raw_line.rstrip())
     return _normalize_multiline_text("\n".join(cleaned_lines))

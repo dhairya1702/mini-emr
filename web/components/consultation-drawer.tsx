@@ -3,8 +3,9 @@
 import { ChangeEvent, Fragment, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarPlus2, Eye, Eraser, FileText, Image as ImageIcon, Mail, Paperclip, PenLine, Sparkles, Undo2, X } from "lucide-react";
 import NextImage from "next/image";
+import type { ReactNode } from "react";
 
-import { CatalogItem, EyeExamEntry, NoteAsset, Patient, TestScoreEntry } from "@/lib/types";
+import { BinocularVisionPayload, CatalogItem, ContactLensEyeEntry, ContactLensPayload, EyeExamEntry, LowVisionPayload, MyopiaMeasurementPayload, NoteAsset, Patient, TestScoreEntry } from "@/lib/types";
 import { api } from "@/lib/api";
 
 function createId() {
@@ -53,6 +54,7 @@ function togglePrescriptionNoteValue(currentValue: string, option: string) {
 
 interface ConsultationDrawerProps {
   patient: Patient | null;
+  isOptometryClinic?: boolean;
   onClose: () => void;
   onDone: (
     patient: Patient,
@@ -72,6 +74,10 @@ interface ConsultationDrawerProps {
     blood_sugar?: number | null;
     test_scores?: TestScoreEntry[];
     eye_exam?: EyeExamEntry[];
+    contact_lens?: ContactLensPayload | null;
+    binocular_vision?: BinocularVisionPayload | null;
+    low_vision?: LowVisionPayload | null;
+    myopia_measurement?: MyopiaMeasurementPayload | null;
     assets?: NoteAsset[];
   }) => Promise<{ content: string; noteId?: string | null; status?: "draft" | "final" | "sent" | null }>;
   onGeneratePdf: (payload: { note_id?: string; patient_id: string; content: string; assets?: NoteAsset[] }) => Promise<Blob>;
@@ -90,6 +96,16 @@ function fileToBase64(file: File) {
   });
 }
 
+type MyopiaMeasurementDraft = MyopiaMeasurementPayload & {
+  record_id: string;
+};
+
+function formatLocalDateTimeInput(value?: Date) {
+  const date = value ?? new Date();
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
 function createEmptyForm() {
   return {
     symptoms: "",
@@ -106,6 +122,55 @@ function createEmptyForm() {
       { eye: "right", sphere: "", cylinder: "", axis: "", vision: "" },
       { eye: "left", sphere: "", cylinder: "", axis: "", vision: "" },
     ] as EyeExamEntry[],
+    contactLens: {
+      wearing_goal: "",
+      current_lens_brand: "",
+      current_wear_schedule: "",
+      replacement_frequency: "",
+      comfort_issues: "",
+      dryness_symptoms: "",
+      handling_issues: "",
+      care_solution: "",
+      allergy_history: "",
+      assessment_notes: "",
+      lens_type: "",
+      manufacturer: "",
+      brand: "",
+      wear_modality: "",
+      trial_lens_used: "",
+      vendor_name: "",
+      quantity: "",
+      special_instructions: "",
+      eyes: [
+        {
+          eye: "right",
+          sphere: "",
+          cylinder: "",
+          axis: "",
+          base_curve: "",
+          diameter: "",
+          add_power: "",
+          visual_acuity: "",
+          over_refraction: "",
+          fit_notes: "",
+        },
+        {
+          eye: "left",
+          sphere: "",
+          cylinder: "",
+          axis: "",
+          base_curve: "",
+          diameter: "",
+          add_power: "",
+          visual_acuity: "",
+          over_refraction: "",
+          fit_notes: "",
+        },
+      ] as ContactLensEyeEntry[],
+    } as ContactLensPayload,
+    binocularVision: createEmptyBinocularVision(),
+    lowVision: createEmptyLowVision(),
+    myopiaManagement: createEmptyMyopiaManagement(),
     followUpDate: "",
     followUpNotes: "",
     generatedNote: "",
@@ -120,6 +185,10 @@ type ConsultationWorkspaceSnapshot = {
     vitals: boolean;
     testScores: boolean;
     eyeExam: boolean;
+    contactLens: boolean;
+    binocularVision: boolean;
+    lowVision: boolean;
+    myopiaManagement: boolean;
   };
   selectedMedicineIds: string[];
   medicineSearch: string;
@@ -164,6 +233,291 @@ function clearWorkspace(patientId: string) {
   window.localStorage.removeItem(workspaceKey(patientId));
 }
 
+function hasContactLensEyeData(entry?: ContactLensEyeEntry | null) {
+  if (!entry) {
+    return false;
+  }
+  return Boolean(
+    entry.sphere.trim() ||
+    entry.cylinder.trim() ||
+    entry.axis.trim() ||
+    entry.base_curve.trim() ||
+    entry.diameter.trim() ||
+    entry.add_power.trim() ||
+    entry.visual_acuity.trim() ||
+    entry.over_refraction.trim() ||
+    entry.fit_notes.trim(),
+  );
+}
+
+function hasContactLensData(contactLens?: ContactLensPayload | null) {
+  if (!contactLens) {
+    return false;
+  }
+  return Boolean(
+    contactLens.wearing_goal.trim() ||
+    contactLens.current_lens_brand.trim() ||
+    contactLens.current_wear_schedule.trim() ||
+    contactLens.replacement_frequency.trim() ||
+    contactLens.comfort_issues.trim() ||
+    contactLens.dryness_symptoms.trim() ||
+    contactLens.handling_issues.trim() ||
+    contactLens.care_solution.trim() ||
+    contactLens.allergy_history.trim() ||
+    contactLens.assessment_notes.trim() ||
+    contactLens.lens_type.trim() ||
+    contactLens.manufacturer.trim() ||
+    contactLens.brand.trim() ||
+    contactLens.wear_modality.trim() ||
+    contactLens.trial_lens_used.trim() ||
+    contactLens.vendor_name.trim() ||
+    contactLens.quantity.trim() ||
+    contactLens.special_instructions.trim() ||
+    contactLens.eyes.some(hasContactLensEyeData),
+  );
+}
+
+function createEmptyBinocularVision(): BinocularVisionPayload {
+  return {
+    symptom_notes: "",
+    asthenopia: false,
+    headache: false,
+    diplopia: false,
+    blur_near: false,
+    blur_distance: false,
+    reading_difficulty: false,
+    poor_concentration: false,
+    distance_cover_test: "",
+    near_cover_test: "",
+    distance_deviation_pd: "",
+    near_deviation_pd: "",
+    binocular_visual_acuity_distance: "",
+    binocular_visual_acuity_near: "",
+    motility: "",
+    pursuits: "",
+    saccades: "",
+    npc_break_cm: "",
+    npc_recovery_cm: "",
+    convergence_notes: "",
+    bo_distance: "",
+    bo_near: "",
+    bi_distance: "",
+    bi_near: "",
+    vergence_notes: "",
+    stereo_test_name: "",
+    stereo_result_arcsec: "",
+    worth_four_dot_distance: "",
+    worth_four_dot_near: "",
+    sensory_notes: "",
+    amplitude_right: "",
+    amplitude_left: "",
+    facility_cpm: "",
+    facility_lens: "",
+    accommodation_notes: "",
+    working_diagnosis: "",
+    management_plan: "",
+    follow_up_interval: "",
+  };
+}
+
+function hasBinocularVisionData(binocular?: BinocularVisionPayload | null) {
+  if (!binocular) {
+    return false;
+  }
+  return Boolean(
+    binocular.symptom_notes.trim() ||
+    binocular.asthenopia ||
+    binocular.headache ||
+    binocular.diplopia ||
+    binocular.blur_near ||
+    binocular.blur_distance ||
+    binocular.reading_difficulty ||
+    binocular.poor_concentration ||
+    binocular.distance_cover_test.trim() ||
+    binocular.near_cover_test.trim() ||
+    binocular.distance_deviation_pd.trim() ||
+    binocular.near_deviation_pd.trim() ||
+    binocular.binocular_visual_acuity_distance.trim() ||
+    binocular.binocular_visual_acuity_near.trim() ||
+    binocular.motility.trim() ||
+    binocular.pursuits.trim() ||
+    binocular.saccades.trim() ||
+    binocular.npc_break_cm.trim() ||
+    binocular.npc_recovery_cm.trim() ||
+    binocular.convergence_notes.trim() ||
+    binocular.bo_distance.trim() ||
+    binocular.bo_near.trim() ||
+    binocular.bi_distance.trim() ||
+    binocular.bi_near.trim() ||
+    binocular.vergence_notes.trim() ||
+    binocular.stereo_test_name.trim() ||
+    binocular.stereo_result_arcsec.trim() ||
+    binocular.worth_four_dot_distance.trim() ||
+    binocular.worth_four_dot_near.trim() ||
+    binocular.sensory_notes.trim() ||
+    binocular.amplitude_right.trim() ||
+    binocular.amplitude_left.trim() ||
+    binocular.facility_cpm.trim() ||
+    binocular.facility_lens.trim() ||
+    binocular.accommodation_notes.trim() ||
+    binocular.working_diagnosis.trim() ||
+    binocular.management_plan.trim() ||
+    binocular.follow_up_interval.trim()
+  );
+}
+
+function buildBinocularVisionSummary(binocular: BinocularVisionPayload) {
+  const parts = [
+    binocular.working_diagnosis.trim(),
+    binocular.npc_break_cm.trim() ? `NPC ${binocular.npc_break_cm.trim()} cm` : "",
+    binocular.stereo_result_arcsec.trim() ? `Stereo ${binocular.stereo_result_arcsec.trim()} arc sec` : "",
+    binocular.near_deviation_pd.trim() ? `Near ${binocular.near_deviation_pd.trim()} pd` : "",
+  ].filter(Boolean);
+  return parts.slice(0, 3).join(" · ") || "Binocular vision data saved.";
+}
+
+function createEmptyLowVision(): LowVisionPayload {
+  return {
+    primary_complaint: "",
+    goals: "",
+    reading_difficulty: false,
+    distance_difficulty: false,
+    mobility_difficulty: false,
+    face_recognition_difficulty: false,
+    glare_complaints: false,
+    lighting_difficulty: false,
+    distance_visual_acuity: "",
+    near_visual_acuity: "",
+    habitual_correction: "",
+    best_correction: "",
+    contrast_sensitivity: "",
+    glare_function: "",
+    central_vision: "",
+    visual_field: "",
+    functional_reading: "",
+    sustained_near_task: "",
+    tv_phone_mobility_notes: "",
+    illumination_response: "",
+    posture_working_distance: "",
+    magnifier_type: "",
+    magnification: "",
+    near_add: "",
+    electronic_aid: "",
+    tint_filter: "",
+    task_performance_with_device: "",
+    device_recommended: "",
+    lighting_advice: "",
+    non_optical_aids: "",
+    rehab_referral: "",
+    support_referral: "",
+    training_required: "",
+    follow_up_plan: "",
+    cause_of_low_vision: "",
+    prognosis: "",
+    emotional_support_notes: "",
+    charles_bonnet_screening: "",
+    final_plan: "",
+  };
+}
+
+function hasLowVisionData(lowVision?: LowVisionPayload | null) {
+  if (!lowVision) {
+    return false;
+  }
+  return Boolean(
+    lowVision.primary_complaint.trim() ||
+    lowVision.goals.trim() ||
+    lowVision.reading_difficulty ||
+    lowVision.distance_difficulty ||
+    lowVision.mobility_difficulty ||
+    lowVision.face_recognition_difficulty ||
+    lowVision.glare_complaints ||
+    lowVision.lighting_difficulty ||
+    lowVision.distance_visual_acuity.trim() ||
+    lowVision.near_visual_acuity.trim() ||
+    lowVision.habitual_correction.trim() ||
+    lowVision.best_correction.trim() ||
+    lowVision.contrast_sensitivity.trim() ||
+    lowVision.glare_function.trim() ||
+    lowVision.central_vision.trim() ||
+    lowVision.visual_field.trim() ||
+    lowVision.functional_reading.trim() ||
+    lowVision.sustained_near_task.trim() ||
+    lowVision.tv_phone_mobility_notes.trim() ||
+    lowVision.illumination_response.trim() ||
+    lowVision.posture_working_distance.trim() ||
+    lowVision.magnifier_type.trim() ||
+    lowVision.magnification.trim() ||
+    lowVision.near_add.trim() ||
+    lowVision.electronic_aid.trim() ||
+    lowVision.tint_filter.trim() ||
+    lowVision.task_performance_with_device.trim() ||
+    lowVision.device_recommended.trim() ||
+    lowVision.lighting_advice.trim() ||
+    lowVision.non_optical_aids.trim() ||
+    lowVision.rehab_referral.trim() ||
+    lowVision.support_referral.trim() ||
+    lowVision.training_required.trim() ||
+    lowVision.follow_up_plan.trim() ||
+    lowVision.cause_of_low_vision.trim() ||
+    lowVision.prognosis.trim() ||
+    lowVision.emotional_support_notes.trim() ||
+    lowVision.charles_bonnet_screening.trim() ||
+    lowVision.final_plan.trim()
+  );
+}
+
+function buildLowVisionSummary(lowVision: LowVisionPayload) {
+  const parts = [
+    lowVision.primary_complaint.trim(),
+    lowVision.distance_visual_acuity.trim() ? `DVA ${lowVision.distance_visual_acuity.trim()}` : "",
+    lowVision.near_visual_acuity.trim() ? `NVA ${lowVision.near_visual_acuity.trim()}` : "",
+    lowVision.device_recommended.trim(),
+  ].filter(Boolean);
+  return parts.slice(0, 3).join(" · ") || "Low vision data saved.";
+}
+
+function createEmptyMyopiaManagement(): MyopiaMeasurementDraft {
+  return {
+    record_id: "",
+    measured_at: formatLocalDateTimeInput(),
+    age_years: 0,
+    axial_length_right_mm: 0,
+    axial_length_left_mm: 0,
+    treatment_type: "",
+    treatment_notes: "",
+    visit_notes: "",
+    refraction_right: "",
+    refraction_left: "",
+  };
+}
+
+function hasMyopiaManagementData(myopia?: MyopiaMeasurementDraft | null) {
+  if (!myopia) {
+    return false;
+  }
+  return Boolean(
+    myopia.record_id ||
+    myopia.age_years > 0 ||
+    myopia.axial_length_right_mm > 0 ||
+    myopia.axial_length_left_mm > 0 ||
+    myopia.treatment_type.trim() ||
+    myopia.treatment_notes.trim() ||
+    myopia.visit_notes.trim() ||
+    myopia.refraction_right.trim() ||
+    myopia.refraction_left.trim(),
+  );
+}
+
+function buildMyopiaManagementSummary(myopia: MyopiaMeasurementDraft) {
+  const parts = [
+    myopia.axial_length_right_mm > 0 ? `OD ${myopia.axial_length_right_mm.toFixed(2)} mm` : "",
+    myopia.axial_length_left_mm > 0 ? `OS ${myopia.axial_length_left_mm.toFixed(2)} mm` : "",
+    myopia.treatment_type.trim(),
+  ].filter(Boolean);
+  return parts.join(" · ") || "Myopia management measurement saved.";
+}
+
 function prescriptionScheduleLabel(prescription: PrescriptionDraft) {
   const parts = [
     prescription.morning ? "Morning" : "",
@@ -173,8 +527,574 @@ function prescriptionScheduleLabel(prescription: PrescriptionDraft) {
   return parts.join(", ") || "As directed";
 }
 
+function BinocularVisionModal({
+  open,
+  value,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  value: BinocularVisionPayload;
+  onClose: () => void;
+  onSave: (next: BinocularVisionPayload) => void;
+}) {
+  const [draft, setDraft] = useState<BinocularVisionPayload>(value);
+
+  useEffect(() => {
+    if (open) {
+      setDraft(value);
+    }
+  }, [open, value]);
+
+  if (!open) {
+    return null;
+  }
+
+  function update<K extends keyof BinocularVisionPayload>(key: K, nextValue: BinocularVisionPayload[K]) {
+    setDraft((current) => ({ ...current, [key]: nextValue }));
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
+      <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-[32px] border border-sky-200 bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Optometry Module</p>
+            <h3 className="mt-2 text-2xl font-semibold text-slate-900">Binocular Vision</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Capture symptoms, alignment, convergence, vergence, stereopsis, accommodation, and the management plan.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-sky-50">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-6 space-y-5">
+          <section className="rounded-[28px] border border-sky-200 bg-sky-50/30 p-4">
+            <p className="text-sm font-medium text-slate-900">Symptoms</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                ["asthenopia", "Asthenopia"],
+                ["headache", "Headache"],
+                ["diplopia", "Diplopia"],
+                ["blur_near", "Blur Near"],
+                ["blur_distance", "Blur Distance"],
+                ["reading_difficulty", "Reading Difficulty"],
+                ["poor_concentration", "Poor Concentration"],
+              ].map(([key, label]) => (
+                <label key={key} className="flex items-center gap-3 rounded-2xl border border-sky-100 bg-white px-4 py-3 text-sm text-slate-700">
+                  <input type="checkbox" checked={Boolean(draft[key as keyof BinocularVisionPayload])} onChange={(event) => update(key as keyof BinocularVisionPayload, event.target.checked as never)} className="h-4 w-4 rounded border-sky-300 text-sky-600 focus:ring-sky-500" />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Symptom Notes</span>
+              <textarea rows={3} value={draft.symptom_notes} onChange={(event) => update("symptom_notes", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+            </label>
+          </section>
+
+          <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+            <p className="text-sm font-medium text-slate-900">Alignment & Motility</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[
+                ["distance_cover_test", "Distance Cover Test"],
+                ["near_cover_test", "Near Cover Test"],
+                ["distance_deviation_pd", "Distance Deviation (pd)"],
+                ["near_deviation_pd", "Near Deviation (pd)"],
+                ["binocular_visual_acuity_distance", "Binocular VA Distance"],
+                ["binocular_visual_acuity_near", "Binocular VA Near"],
+                ["motility", "Motility"],
+                ["pursuits", "Pursuits"],
+                ["saccades", "Saccades"],
+              ].map(([key, label]) => (
+                <label key={key} className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
+                  <input value={draft[key as keyof BinocularVisionPayload] as string} onChange={(event) => update(key as keyof BinocularVisionPayload, event.target.value as never)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+                </label>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+            <p className="text-sm font-medium text-slate-900">Convergence & Vergence</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[
+                ["npc_break_cm", "NPC Break (cm)"],
+                ["npc_recovery_cm", "NPC Recovery (cm)"],
+                ["bo_distance", "BO Distance"],
+                ["bo_near", "BO Near"],
+                ["bi_distance", "BI Distance"],
+                ["bi_near", "BI Near"],
+              ].map(([key, label]) => (
+                <label key={key} className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
+                  <input value={draft[key as keyof BinocularVisionPayload] as string} onChange={(event) => update(key as keyof BinocularVisionPayload, event.target.value as never)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+                </label>
+              ))}
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Convergence Notes</span>
+                <textarea rows={3} value={draft.convergence_notes} onChange={(event) => update("convergence_notes", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Vergence Notes</span>
+                <textarea rows={3} value={draft.vergence_notes} onChange={(event) => update("vergence_notes", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+            <p className="text-sm font-medium text-slate-900">Sensory & Accommodation</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {[
+                ["stereo_test_name", "Stereo Test"],
+                ["stereo_result_arcsec", "Stereo Result (arc sec)"],
+                ["worth_four_dot_distance", "Worth 4 Dot Distance"],
+                ["worth_four_dot_near", "Worth 4 Dot Near"],
+                ["amplitude_right", "Amplitude Right"],
+                ["amplitude_left", "Amplitude Left"],
+                ["facility_cpm", "Facility (cpm)"],
+                ["facility_lens", "Facility Lens"],
+              ].map(([key, label]) => (
+                <label key={key} className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
+                  <input value={draft[key as keyof BinocularVisionPayload] as string} onChange={(event) => update(key as keyof BinocularVisionPayload, event.target.value as never)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+                </label>
+              ))}
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Sensory Notes</span>
+                <textarea rows={3} value={draft.sensory_notes} onChange={(event) => update("sensory_notes", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Accommodation Notes</span>
+                <textarea rows={3} value={draft.accommodation_notes} onChange={(event) => update("accommodation_notes", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+            <p className="text-sm font-medium text-slate-900">Impression & Plan</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Working Diagnosis</span>
+                <input value={draft.working_diagnosis} onChange={(event) => update("working_diagnosis", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Interval</span>
+                <input value={draft.follow_up_interval} onChange={(event) => update("follow_up_interval", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+            </div>
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Management Plan</span>
+              <textarea rows={4} value={draft.management_plan} onChange={(event) => update("management_plan", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+            </label>
+          </section>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-sky-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-sky-50">
+            Cancel
+          </button>
+          <button type="button" onClick={() => { onSave(draft); onClose(); }} className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+            Save Binocular Vision
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LowVisionModal({
+  open,
+  value,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  value: LowVisionPayload;
+  onClose: () => void;
+  onSave: (next: LowVisionPayload) => void;
+}) {
+  const [draft, setDraft] = useState<LowVisionPayload>(value);
+
+  useEffect(() => {
+    if (open) {
+      setDraft(value);
+    }
+  }, [open, value]);
+
+  if (!open) {
+    return null;
+  }
+
+  function update<K extends keyof LowVisionPayload>(key: K, nextValue: LowVisionPayload[K]) {
+    setDraft((current) => ({ ...current, [key]: nextValue }));
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
+      <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-[32px] border border-sky-200 bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Optometry Module</p>
+            <h3 className="mt-2 text-2xl font-semibold text-slate-900">Low Vision</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Capture needs, core measures, functional vision, aids trial, and support planning for low vision assessment.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-sky-50">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-6 space-y-5">
+          <section className="rounded-[28px] border border-sky-200 bg-sky-50/30 p-4">
+            <p className="text-sm font-medium text-slate-900">Patient Needs</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {[
+                ["reading_difficulty", "Reading Difficulty"],
+                ["distance_difficulty", "Distance Difficulty"],
+                ["mobility_difficulty", "Mobility Difficulty"],
+                ["face_recognition_difficulty", "Face Recognition Difficulty"],
+                ["glare_complaints", "Glare Complaints"],
+                ["lighting_difficulty", "Lighting Difficulty"],
+              ].map(([key, label]) => (
+                <label key={key} className="flex items-center gap-3 rounded-2xl border border-sky-100 bg-white px-4 py-3 text-sm text-slate-700">
+                  <input type="checkbox" checked={Boolean(draft[key as keyof LowVisionPayload])} onChange={(event) => update(key as keyof LowVisionPayload, event.target.checked as never)} className="h-4 w-4 rounded border-sky-300 text-sky-600 focus:ring-sky-500" />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Primary Complaint</span>
+                <input value={draft.primary_complaint} onChange={(event) => update("primary_complaint", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Goals</span>
+                <input value={draft.goals} onChange={(event) => update("goals", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+            <p className="text-sm font-medium text-slate-900">Core Measures</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {[
+                ["distance_visual_acuity", "Distance VA"],
+                ["near_visual_acuity", "Near VA"],
+                ["habitual_correction", "Habitual Correction"],
+                ["best_correction", "Best Correction"],
+                ["contrast_sensitivity", "Contrast Sensitivity"],
+                ["glare_function", "Glare Function"],
+                ["central_vision", "Central Vision"],
+                ["visual_field", "Visual Field"],
+              ].map(([key, label]) => (
+                <label key={key} className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
+                  <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => update(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+                </label>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+            <p className="text-sm font-medium text-slate-900">Functional Vision</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              {[
+                ["functional_reading", "Functional Reading"],
+                ["sustained_near_task", "Sustained Near Task"],
+                ["illumination_response", "Illumination Response"],
+                ["posture_working_distance", "Posture / Working Distance"],
+              ].map(([key, label]) => (
+                <label key={key} className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
+                  <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => update(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+                </label>
+              ))}
+              <label className="md:col-span-2 block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">TV / Phone / Mobility Notes</span>
+                <textarea rows={3} value={draft.tv_phone_mobility_notes} onChange={(event) => update("tv_phone_mobility_notes", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+            <p className="text-sm font-medium text-slate-900">Aids Trial</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[
+                ["magnifier_type", "Magnifier Type"],
+                ["magnification", "Magnification"],
+                ["near_add", "Near Add"],
+                ["electronic_aid", "Electronic Aid"],
+                ["tint_filter", "Tint / Filter"],
+                ["device_recommended", "Device Recommended"],
+              ].map(([key, label]) => (
+                <label key={key} className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
+                  <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => update(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+                </label>
+              ))}
+            </div>
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Task Performance With Device</span>
+              <textarea rows={3} value={draft.task_performance_with_device} onChange={(event) => update("task_performance_with_device", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+            </label>
+          </section>
+
+          <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+            <p className="text-sm font-medium text-slate-900">Plan & Support</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[
+                ["lighting_advice", "Lighting Advice"],
+                ["non_optical_aids", "Non-optical Aids"],
+                ["rehab_referral", "Rehab Referral"],
+                ["support_referral", "Support Referral"],
+                ["training_required", "Training Required"],
+                ["follow_up_plan", "Follow-up Plan"],
+                ["cause_of_low_vision", "Cause of Low Vision"],
+                ["prognosis", "Prognosis"],
+                ["charles_bonnet_screening", "Charles Bonnet Screening"],
+              ].map(([key, label]) => (
+                <label key={key} className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
+                  <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => update(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+                </label>
+              ))}
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Emotional Support Notes</span>
+                <textarea rows={3} value={draft.emotional_support_notes} onChange={(event) => update("emotional_support_notes", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Final Plan</span>
+                <textarea rows={3} value={draft.final_plan} onChange={(event) => update("final_plan", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+            </div>
+          </section>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-sky-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-sky-50">
+            Cancel
+          </button>
+          <button type="button" onClick={() => { onSave(draft); onClose(); }} className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+            Save Low Vision
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StructuredModal({
+  open,
+  title,
+  description,
+  onClose,
+  onSave,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  onClose: () => void;
+  onSave: () => void;
+  children: ReactNode;
+}) {
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
+      <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[32px] border border-sky-200 bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Structured Module</p>
+            <h3 className="mt-2 text-2xl font-semibold text-slate-900">{title}</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{description}</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-sky-50">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-6 space-y-5">{children}</div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-sky-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-sky-50">
+            Cancel
+          </button>
+          <button type="button" onClick={onSave} className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MyopiaManagementModal({
+  open,
+  value,
+  patientAge,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  value: MyopiaMeasurementDraft;
+  patientAge: number | null;
+  onClose: () => void;
+  onSave: (next: MyopiaMeasurementDraft) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<MyopiaMeasurementDraft>(value);
+  const [status, setStatus] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setDraft({
+        ...value,
+        age_years: value.age_years > 0 ? value.age_years : Number(patientAge || 0),
+        measured_at: value.measured_at || formatLocalDateTimeInput(),
+      });
+      setStatus("");
+      setIsSaving(false);
+    }
+  }, [open, patientAge, value]);
+
+  if (!open) {
+    return null;
+  }
+
+  function update<K extends keyof MyopiaMeasurementDraft>(key: K, nextValue: MyopiaMeasurementDraft[K]) {
+    setDraft((current) => ({ ...current, [key]: nextValue }));
+  }
+
+  async function handleSave() {
+    if (draft.age_years <= 0) {
+      setStatus("Enter the patient age at measurement.");
+      return;
+    }
+    if (draft.axial_length_right_mm <= 0 || draft.axial_length_left_mm <= 0) {
+      setStatus("Enter axial length for both eyes.");
+      return;
+    }
+    if (!draft.measured_at.trim()) {
+      setStatus("Enter the measurement date and time.");
+      return;
+    }
+    setIsSaving(true);
+    setStatus("");
+    try {
+      await onSave(draft);
+      onClose();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to save myopia measurement.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
+      <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[32px] border border-sky-200 bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Optometry Module</p>
+            <h3 className="mt-2 text-2xl font-semibold text-slate-900">Myopia Management</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Record axial length, treatment, and refraction for longitudinal myopia progression tracking.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-sky-50">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-6 space-y-5">
+          <section className="rounded-[28px] border border-sky-200 bg-sky-50/30 p-4">
+            <p className="text-sm font-medium text-slate-900">Measurement</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <label className="block lg:col-span-2">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Measured At</span>
+                <input type="datetime-local" value={draft.measured_at} onChange={(event) => update("measured_at", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Age (years)</span>
+                <input type="number" step="0.1" value={draft.age_years || ""} onChange={(event) => update("age_years", Number(event.target.value || 0))} className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Treatment Type</span>
+                <input value={draft.treatment_type} onChange={(event) => update("treatment_type", event.target.value)} placeholder="Atropine, ortho-k, DIMS, observation" className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Axial Length OD (mm)</span>
+                <input type="number" step="0.01" value={draft.axial_length_right_mm || ""} onChange={(event) => update("axial_length_right_mm", Number(event.target.value || 0))} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Axial Length OS (mm)</span>
+                <input type="number" step="0.01" value={draft.axial_length_left_mm || ""} onChange={(event) => update("axial_length_left_mm", Number(event.target.value || 0))} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+            <p className="text-sm font-medium text-slate-900">Refraction</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Refraction Right</span>
+                <input value={draft.refraction_right} onChange={(event) => update("refraction_right", event.target.value)} placeholder="-2.25 / -0.50 x 180" className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Refraction Left</span>
+                <input value={draft.refraction_left} onChange={(event) => update("refraction_left", event.target.value)} placeholder="-2.00 / -0.75 x 170" className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+            <p className="text-sm font-medium text-slate-900">Plan & Visit Notes</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Treatment Notes</span>
+                <textarea rows={4} value={draft.treatment_notes} onChange={(event) => update("treatment_notes", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Visit Notes</span>
+                <textarea rows={4} value={draft.visit_notes} onChange={(event) => update("visit_notes", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              </label>
+            </div>
+          </section>
+
+          {status ? <p className="text-sm text-rose-600">{status}</p> : null}
+        </div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-sky-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-sky-50">
+            Cancel
+          </button>
+          <button type="button" disabled={isSaving} onClick={handleSave} className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60">
+            {isSaving ? "Saving..." : "Save Myopia Measurement"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ConsultationDrawer({
   patient,
+  isOptometryClinic = false,
   onClose,
   onDone,
   onGenerate,
@@ -186,6 +1106,10 @@ export function ConsultationDrawer({
     vitals: false,
     testScores: false,
     eyeExam: false,
+    contactLens: false,
+    binocularVision: false,
+    lowVision: false,
+    myopiaManagement: false,
   });
   const [medicineItems, setMedicineItems] = useState<CatalogItem[]>([]);
   const [medicineSearch, setMedicineSearch] = useState("");
@@ -196,6 +1120,13 @@ export function ConsultationDrawer({
   const [isCompleting, setIsCompleting] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
+  const [isVitalsOpen, setIsVitalsOpen] = useState(false);
+  const [isTestScoresOpen, setIsTestScoresOpen] = useState(false);
+  const [isEyeExamOpen, setIsEyeExamOpen] = useState(false);
+  const [isContactLensOpen, setIsContactLensOpen] = useState(false);
+  const [isBinocularVisionOpen, setIsBinocularVisionOpen] = useState(false);
+  const [isLowVisionOpen, setIsLowVisionOpen] = useState(false);
+  const [isMyopiaManagementOpen, setIsMyopiaManagementOpen] = useState(false);
   const [hasGeneratedNote, setHasGeneratedNote] = useState(false);
   const [currentNoteId, setCurrentNoteId] = useState("");
   const [noteStatus, setNoteStatus] = useState<"draft" | "final" | "sent" | "">("");
@@ -214,18 +1145,61 @@ export function ConsultationDrawer({
 
     let active = true;
     const cachedWorkspace = readWorkspace(patient.id);
+    const baseForm = createEmptyForm();
+    const cachedForm = cachedWorkspace?.form;
     setStatusMessage("");
     setIsGenerating(false);
     setIsGeneratingPdf(false);
     setIsCompleting(false);
     setIsSending(false);
     setMedicineSearch(cachedWorkspace?.medicineSearch ?? "");
-    setForm(cachedWorkspace?.form ? { ...createEmptyForm(), ...cachedWorkspace.form } : createEmptyForm());
+    setForm(
+      cachedForm
+        ? {
+            ...baseForm,
+            ...cachedForm,
+            eyeExam: Array.isArray(cachedForm.eyeExam) && cachedForm.eyeExam.length
+              ? cachedForm.eyeExam
+              : baseForm.eyeExam,
+            testScores: Array.isArray(cachedForm.testScores) && cachedForm.testScores.length
+              ? cachedForm.testScores
+              : baseForm.testScores,
+            assets: Array.isArray(cachedForm.assets) ? cachedForm.assets : baseForm.assets,
+            prescriptions: Array.isArray(cachedForm.prescriptions) ? cachedForm.prescriptions : baseForm.prescriptions,
+            contactLens: {
+              ...baseForm.contactLens,
+              ...(cachedForm.contactLens || {}),
+              eyes: Array.isArray(cachedForm.contactLens?.eyes) && cachedForm.contactLens.eyes.length
+                ? cachedForm.contactLens.eyes.map((entry, index) => ({
+                    ...baseForm.contactLens.eyes[index]!,
+                    ...entry,
+                  }))
+                : baseForm.contactLens.eyes,
+            },
+            binocularVision: {
+              ...baseForm.binocularVision,
+              ...(cachedForm.binocularVision || {}),
+            },
+            lowVision: {
+              ...baseForm.lowVision,
+              ...(cachedForm.lowVision || {}),
+            },
+            myopiaManagement: {
+              ...baseForm.myopiaManagement,
+              ...(cachedForm.myopiaManagement || {}),
+            },
+          }
+        : baseForm,
+    );
     setOpenSections(
       cachedWorkspace?.openSections ?? {
         vitals: false,
         testScores: false,
         eyeExam: false,
+        contactLens: false,
+        binocularVision: false,
+        lowVision: false,
+        myopiaManagement: false,
       },
     );
     setSelectedMedicineIds(
@@ -388,6 +1362,31 @@ export function ConsultationDrawer({
         eye_exam: form.eyeExam.filter((entry) =>
           entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim(),
         ),
+        contact_lens: isOptometryClinic && hasContactLensData(form.contactLens)
+          ? {
+              ...form.contactLens,
+              eyes: form.contactLens.eyes.filter((entry) => hasContactLensEyeData(entry)),
+            }
+          : null,
+        binocular_vision: isOptometryClinic && hasBinocularVisionData(form.binocularVision)
+          ? form.binocularVision
+          : null,
+        low_vision: isOptometryClinic && hasLowVisionData(form.lowVision)
+          ? form.lowVision
+          : null,
+        myopia_measurement: isOptometryClinic && hasMyopiaManagementData(form.myopiaManagement)
+          ? {
+              measured_at: new Date(form.myopiaManagement.measured_at).toISOString(),
+              age_years: form.myopiaManagement.age_years,
+              axial_length_right_mm: form.myopiaManagement.axial_length_right_mm,
+              axial_length_left_mm: form.myopiaManagement.axial_length_left_mm,
+              treatment_type: form.myopiaManagement.treatment_type,
+              treatment_notes: form.myopiaManagement.treatment_notes,
+              visit_notes: form.myopiaManagement.visit_notes,
+              refraction_right: form.myopiaManagement.refraction_right,
+              refraction_left: form.myopiaManagement.refraction_left,
+            }
+          : null,
         assets: form.assets,
       });
       setForm((current) => ({ ...current, generatedNote: generated.content }));
@@ -528,6 +1527,72 @@ export function ConsultationDrawer({
     }));
   }
 
+  function updateContactLens(patch: Partial<ContactLensPayload>) {
+    setForm((current) => ({
+      ...current,
+      contactLens: { ...current.contactLens, ...patch },
+    }));
+  }
+
+  function updateContactLensEye(eye: "right" | "left", patch: Partial<ContactLensEyeEntry>) {
+    setForm((current) => ({
+      ...current,
+      contactLens: {
+        ...current.contactLens,
+        eyes: current.contactLens.eyes.map((entry) => (entry.eye === eye ? { ...entry, ...patch } : entry)),
+      },
+    }));
+  }
+
+  function saveBinocularVision(next: BinocularVisionPayload) {
+    setForm((current) => ({ ...current, binocularVision: next }));
+    setStatusMessage(buildBinocularVisionSummary(next));
+  }
+
+  function saveLowVision(next: LowVisionPayload) {
+    setForm((current) => ({ ...current, lowVision: next }));
+    setStatusMessage(buildLowVisionSummary(next));
+  }
+
+  async function saveMyopiaManagement(next: MyopiaMeasurementDraft) {
+    if (!currentPatient) {
+      return;
+    }
+    const payload: MyopiaMeasurementPayload = {
+      measured_at: new Date(next.measured_at).toISOString(),
+      age_years: next.age_years,
+      axial_length_right_mm: next.axial_length_right_mm,
+      axial_length_left_mm: next.axial_length_left_mm,
+      treatment_type: next.treatment_type.trim(),
+      treatment_notes: next.treatment_notes.trim(),
+      visit_notes: next.visit_notes.trim(),
+      refraction_right: next.refraction_right.trim(),
+      refraction_left: next.refraction_left.trim(),
+    };
+    const saved = next.record_id
+      ? await api.updatePatientMyopiaRecord(currentPatient.id, next.record_id, payload)
+      : await api.createPatientMyopiaRecord(currentPatient.id, payload);
+    setForm((current) => ({
+      ...current,
+      myopiaManagement: {
+        record_id: saved.id,
+        measured_at: formatLocalDateTimeInput(new Date(saved.measured_at)),
+        age_years: saved.age_years,
+        axial_length_right_mm: saved.axial_length_right_mm,
+        axial_length_left_mm: saved.axial_length_left_mm,
+        treatment_type: saved.treatment_type,
+        treatment_notes: saved.treatment_notes,
+        visit_notes: saved.visit_notes,
+        refraction_right: saved.refraction_right,
+        refraction_left: saved.refraction_left,
+      },
+    }));
+    setStatusMessage(buildMyopiaManagementSummary({
+      ...next,
+      record_id: saved.id,
+    }));
+  }
+
   function toggleMedicine(itemId: string) {
     const selectedItem = medicineItems.find((item) => item.id === itemId);
     if (!selectedItem) {
@@ -575,8 +1640,34 @@ export function ConsultationDrawer({
     }));
   }
 
-  function toggleSection(section: keyof typeof openSections) {
-    setOpenSections((current) => ({ ...current, [section]: !current[section] }));
+  function handleSectionSuggestionClick(section: keyof typeof openSections) {
+    if (section === "vitals") {
+      setIsVitalsOpen(true);
+      return;
+    }
+    if (section === "testScores") {
+      setIsTestScoresOpen(true);
+      return;
+    }
+    if (section === "eyeExam") {
+      setIsEyeExamOpen(true);
+      return;
+    }
+    if (section === "contactLens") {
+      setIsContactLensOpen(true);
+      return;
+    }
+    if (section === "binocularVision") {
+      setIsBinocularVisionOpen(true);
+      return;
+    }
+    if (section === "lowVision") {
+      setIsLowVisionOpen(true);
+      return;
+    }
+    if (section === "myopiaManagement") {
+      setIsMyopiaManagementOpen(true);
+    }
   }
 
   async function handleAttachmentSelect(event: ChangeEvent<HTMLInputElement>) {
@@ -736,23 +1827,46 @@ export function ConsultationDrawer({
     (entry) => entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim(),
   );
   const hasEyeExam = filledEyeExam.length > 0;
+  const hasContactLens = hasContactLensData(form.contactLens);
+  const hasBinocularVision = hasBinocularVisionData(form.binocularVision);
+  const hasLowVision = hasLowVisionData(form.lowVision);
+  const hasMyopiaManagement = hasMyopiaManagementData(form.myopiaManagement);
 
   const sectionSuggestions = [
     {
       key: "vitals" as const,
       label: "Vitals",
-      active: openSections.vitals || hasVitals,
+      active: hasVitals,
     },
     {
       key: "testScores" as const,
       label: "Test Scores",
-      active: openSections.testScores || hasTestScores,
+      active: hasTestScores,
     },
     {
       key: "eyeExam" as const,
       label: "Eye Exam",
-      active: openSections.eyeExam || hasEyeExam,
+      active: hasEyeExam,
     },
+    ...(isOptometryClinic
+      ? [{
+          key: "contactLens" as const,
+          label: "Contact Lens",
+          active: hasContactLens,
+        }, {
+          key: "binocularVision" as const,
+          label: "Binocular Vision",
+          active: hasBinocularVision,
+        }, {
+          key: "lowVision" as const,
+          label: "Low Vision",
+          active: hasLowVision,
+        }, {
+          key: "myopiaManagement" as const,
+          label: "Myopia Management",
+          active: hasMyopiaManagement,
+        }]
+      : []),
   ];
   const lifecycleLabel =
     noteStatus === "sent"
@@ -984,7 +2098,7 @@ export function ConsultationDrawer({
                 <button
                   key={section.key}
                   type="button"
-                  onClick={() => toggleSection(section.key)}
+                  onClick={() => handleSectionSuggestionClick(section.key)}
                   className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                     section.active
                       ? "border-sky-300 bg-sky-100 text-sky-800"
@@ -995,190 +2109,6 @@ export function ConsultationDrawer({
                 </button>
               ))}
             </div>
-
-            {openSections.vitals ? (
-              <div className="rounded-[28px] border border-sky-200 bg-white p-4">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">Vitals & Measurements</p>
-                  <p className="mt-1 text-xs text-slate-500">Structured findings will be included in the generated note.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => toggleSection("vitals")}
-                  className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50"
-                >
-                  Hide
-                </button>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">BP</span>
-                  <div className="flex gap-2">
-                    <input
-                      value={form.bloodPressureSystolic}
-                      inputMode="numeric"
-                      onChange={(event) =>
-                        setForm((current) => ({ ...current, bloodPressureSystolic: event.target.value }))
-                      }
-                      placeholder="120"
-                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                    <input
-                      value={form.bloodPressureDiastolic}
-                      inputMode="numeric"
-                      onChange={(event) =>
-                        setForm((current) => ({ ...current, bloodPressureDiastolic: event.target.value }))
-                      }
-                      placeholder="80"
-                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </div>
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Pulse</span>
-                  <input
-                    value={form.pulse}
-                    inputMode="numeric"
-                    onChange={(event) => setForm((current) => ({ ...current, pulse: event.target.value }))}
-                    placeholder="72 bpm"
-                    className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">SpO2</span>
-                  <input
-                    value={form.spo2}
-                    inputMode="numeric"
-                    onChange={(event) => setForm((current) => ({ ...current, spo2: event.target.value }))}
-                    placeholder="98"
-                    className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Blood Sugar</span>
-                  <input
-                    value={form.bloodSugar}
-                    inputMode="decimal"
-                    onChange={(event) => setForm((current) => ({ ...current, bloodSugar: event.target.value }))}
-                    placeholder="110"
-                    className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                  />
-                </label>
-              </div>
-              </div>
-            ) : null}
-
-            {openSections.testScores ? (
-              <div className="rounded-[28px] border border-sky-200 bg-white p-4">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">Test Scores</p>
-                  <p className="mt-1 text-xs text-slate-500">Add exam values like visual acuity, pain score, or other structured results.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={addTestScore}
-                    className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 transition hover:bg-sky-100"
-                  >
-                    Add Score
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => toggleSection("testScores")}
-                    className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50"
-                  >
-                    Hide
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-3">
-                {form.testScores.map((entry) => (
-                  <div key={entry.id} className="grid gap-3 md:grid-cols-[1fr_1fr_44px]">
-                    <input
-                      value={entry.label}
-                      onChange={(event) => updateTestScore(entry.id!, { label: event.target.value })}
-                      placeholder="Test name"
-                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                    <input
-                      value={entry.value}
-                      onChange={(event) => updateTestScore(entry.id!, { value: event.target.value })}
-                      placeholder="Result"
-                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeTestScore(entry.id!)}
-                      className="rounded-full border border-sky-200 bg-white p-2 text-slate-600 transition hover:bg-sky-50"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              </div>
-            ) : null}
-
-            {openSections.eyeExam ? (
-              <div className="rounded-[28px] border border-sky-200 bg-white p-4">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">Eye Exam</p>
-                  <p className="mt-1 text-xs text-slate-500">Optional refraction or vision entries for right and left eye.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => toggleSection("eyeExam")}
-                  className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50"
-                >
-                  Hide
-                </button>
-              </div>
-              <div className="grid gap-3 md:grid-cols-[110px_repeat(4,minmax(0,1fr))]">
-                <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Eye</div>
-                <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Sphere</div>
-                <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Cylinder</div>
-                <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Axis</div>
-                <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Vision</div>
-                {form.eyeExam.map((entry) => (
-                  <Fragment key={entry.eye}>
-                    <div className="rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm font-medium capitalize text-slate-700">
-                      {entry.eye}
-                    </div>
-                    <input
-                      value={entry.sphere}
-                      onChange={(event) => updateEyeExam(entry.eye, { sphere: event.target.value })}
-                      placeholder="-1.25"
-                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                    <input
-                      value={entry.cylinder}
-                      onChange={(event) => updateEyeExam(entry.eye, { cylinder: event.target.value })}
-                      placeholder="-0.50"
-                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                    <input
-                      value={entry.axis}
-                      onChange={(event) => updateEyeExam(entry.eye, { axis: event.target.value })}
-                      placeholder="90"
-                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                    <input
-                      value={entry.vision}
-                      onChange={(event) => updateEyeExam(entry.eye, { vision: event.target.value })}
-                      placeholder="6/6"
-                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </Fragment>
-                ))}
-              </div>
-              </div>
-            ) : null}
 
             <div className="rounded-[28px] border border-sky-200 bg-sky-50/50 p-4">
               <div className="mb-3 flex items-center justify-between">
@@ -1438,7 +2368,7 @@ export function ConsultationDrawer({
                   <button
                     key={section.key}
                     type="button"
-                    onClick={() => toggleSection(section.key)}
+                    onClick={() => handleSectionSuggestionClick(section.key)}
                     className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                       section.active
                         ? "border-sky-300 bg-sky-100 text-sky-800"
@@ -1543,6 +2473,173 @@ export function ConsultationDrawer({
           </div>
         </form>
       </div>
+      <StructuredModal
+        open={isVitalsOpen}
+        title="Vitals & Measurements"
+        description="Structured vitals are inserted into the generated consultation note."
+        onClose={() => setIsVitalsOpen(false)}
+        onSave={() => setIsVitalsOpen(false)}
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700">BP</span>
+            <div className="flex gap-2">
+              <input value={form.bloodPressureSystolic} inputMode="numeric" onChange={(event) => setForm((current) => ({ ...current, bloodPressureSystolic: event.target.value }))} placeholder="120" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              <input value={form.bloodPressureDiastolic} inputMode="numeric" onChange={(event) => setForm((current) => ({ ...current, bloodPressureDiastolic: event.target.value }))} placeholder="80" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+            </div>
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700">Pulse</span>
+            <input value={form.pulse} inputMode="numeric" onChange={(event) => setForm((current) => ({ ...current, pulse: event.target.value }))} placeholder="72 bpm" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700">SpO2</span>
+            <input value={form.spo2} inputMode="numeric" onChange={(event) => setForm((current) => ({ ...current, spo2: event.target.value }))} placeholder="98" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700">Blood Sugar</span>
+            <input value={form.bloodSugar} inputMode="decimal" onChange={(event) => setForm((current) => ({ ...current, bloodSugar: event.target.value }))} placeholder="110" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+          </label>
+        </div>
+      </StructuredModal>
+      <StructuredModal
+        open={isTestScoresOpen}
+        title="Test Scores"
+        description="Add structured test results like visual acuity, pain score, or other measured findings."
+        onClose={() => setIsTestScoresOpen(false)}
+        onSave={() => setIsTestScoresOpen(false)}
+      >
+        <div className="flex justify-end">
+          <button type="button" onClick={addTestScore} className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 transition hover:bg-sky-100">
+            Add Score
+          </button>
+        </div>
+        <div className="space-y-3">
+          {form.testScores.map((entry) => (
+            <div key={entry.id} className="grid gap-3 md:grid-cols-[1fr_1fr_44px]">
+              <input value={entry.label} onChange={(event) => updateTestScore(entry.id!, { label: event.target.value })} placeholder="Test name" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              <input value={entry.value} onChange={(event) => updateTestScore(entry.id!, { value: event.target.value })} placeholder="Result" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              <button type="button" onClick={() => removeTestScore(entry.id!)} className="rounded-full border border-sky-200 bg-white p-2 text-slate-600 transition hover:bg-sky-50">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </StructuredModal>
+      <StructuredModal
+        open={isEyeExamOpen}
+        title="Eye Exam"
+        description="Capture refraction and vision entries for the right and left eye."
+        onClose={() => setIsEyeExamOpen(false)}
+        onSave={() => setIsEyeExamOpen(false)}
+      >
+        <div className="grid gap-3 md:grid-cols-[110px_repeat(4,minmax(0,1fr))]">
+          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Eye</div>
+          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Sphere</div>
+          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Cylinder</div>
+          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Axis</div>
+          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Vision</div>
+          {form.eyeExam.map((entry) => (
+            <Fragment key={entry.eye}>
+              <div className="rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm font-medium capitalize text-slate-700">{entry.eye}</div>
+              <input value={entry.sphere} onChange={(event) => updateEyeExam(entry.eye, { sphere: event.target.value })} placeholder="-1.25" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              <input value={entry.cylinder} onChange={(event) => updateEyeExam(entry.eye, { cylinder: event.target.value })} placeholder="-0.50" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              <input value={entry.axis} onChange={(event) => updateEyeExam(entry.eye, { axis: event.target.value })} placeholder="90" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              <input value={entry.vision} onChange={(event) => updateEyeExam(entry.eye, { vision: event.target.value })} placeholder="6/6" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+            </Fragment>
+          ))}
+        </div>
+      </StructuredModal>
+      <StructuredModal
+        open={isContactLensOpen}
+        title="Contact Lens"
+        description="Assessment, trial fit, and vendor-facing order details for optometry consultations."
+        onClose={() => setIsContactLensOpen(false)}
+        onSave={() => setIsContactLensOpen(false)}
+      >
+        <div className="space-y-5">
+          <div>
+            <p className="mb-3 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Assessment</p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Wearing Goal</span><input value={form.contactLens.wearing_goal} onChange={(event) => updateContactLens({ wearing_goal: event.target.value })} placeholder="Daily wear, events, sports, cosmetic use" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Current Lens Brand</span><input value={form.contactLens.current_lens_brand} onChange={(event) => updateContactLens({ current_lens_brand: event.target.value })} placeholder="If already a wearer" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Wear Schedule</span><input value={form.contactLens.current_wear_schedule} onChange={(event) => updateContactLens({ current_wear_schedule: event.target.value })} placeholder="8-10 hours/day, occasional wear" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Replacement Frequency</span><input value={form.contactLens.replacement_frequency} onChange={(event) => updateContactLens({ replacement_frequency: event.target.value })} placeholder="Daily, biweekly, monthly" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" /></label>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Comfort Issues</span><textarea rows={3} value={form.contactLens.comfort_issues} onChange={(event) => updateContactLens({ comfort_issues: event.target.value })} className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Dryness Symptoms</span><textarea rows={3} value={form.contactLens.dryness_symptoms} onChange={(event) => updateContactLens({ dryness_symptoms: event.target.value })} className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Handling Issues</span><textarea rows={3} value={form.contactLens.handling_issues} onChange={(event) => updateContactLens({ handling_issues: event.target.value })} className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" /></label>
+              <div className="grid gap-4">
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Care Solution</span><input value={form.contactLens.care_solution} onChange={(event) => updateContactLens({ care_solution: event.target.value })} className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" /></label>
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Allergy History</span><input value={form.contactLens.allergy_history} onChange={(event) => updateContactLens({ allergy_history: event.target.value })} className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" /></label>
+              </div>
+            </div>
+            <label className="mt-4 block"><span className="mb-2 block text-sm font-medium text-slate-700">Assessment Notes</span><textarea rows={3} value={form.contactLens.assessment_notes} onChange={(event) => updateContactLens({ assessment_notes: event.target.value })} placeholder="Suitability, slit lamp findings, patient preferences" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" /></label>
+          </div>
+          <div>
+            <p className="mb-3 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Order Details</p>
+            <div className="grid gap-4 md:grid-cols-2">
+              {[
+                ["Lens Type", "lens_type", "Soft toric, multifocal, RGP"],
+                ["Manufacturer", "manufacturer", "Acuvue, Bausch + Lomb"],
+                ["Brand", "brand", "Oasys, Biofinity"],
+                ["Wear Modality", "wear_modality", "Daily, monthly"],
+                ["Trial Lens Used", "trial_lens_used", "Trial parameters used in chair"],
+                ["Vendor Name", "vendor_name", "Manufacturer or distributor contact"],
+                ["Quantity", "quantity", "Boxes, pairs, trial set"],
+              ].map(([label, key, placeholder]) => (
+                <label key={String(key)} className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
+                  <input value={form.contactLens[key as keyof ContactLensPayload] as string} onChange={(event) => updateContactLens({ [key]: event.target.value } as Partial<ContactLensPayload>)} placeholder={String(placeholder)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+                </label>
+              ))}
+            </div>
+            <label className="mt-4 block"><span className="mb-2 block text-sm font-medium text-slate-700">Special Instructions</span><textarea rows={3} value={form.contactLens.special_instructions} onChange={(event) => updateContactLens({ special_instructions: event.target.value })} placeholder="Vendor notes, follow-up, handling instructions" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" /></label>
+          </div>
+          <div>
+            <p className="mb-3 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Right / Left Eye Parameters</p>
+            <div className="grid gap-3 md:grid-cols-[110px_repeat(9,minmax(0,1fr))]">
+              {["Eye", "Sphere", "Cylinder", "Axis", "BC", "Dia", "Add", "VA", "Over Ref", "Fit Notes"].map((label) => (
+                <div key={label} className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">{label}</div>
+              ))}
+              {form.contactLens.eyes.map((entry) => (
+                <Fragment key={entry.eye}>
+                  <div className="rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm font-medium capitalize text-slate-700">{entry.eye}</div>
+                  <input value={entry.sphere} onChange={(event) => updateContactLensEye(entry.eye, { sphere: event.target.value })} className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400" placeholder="-1.25" />
+                  <input value={entry.cylinder} onChange={(event) => updateContactLensEye(entry.eye, { cylinder: event.target.value })} className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400" placeholder="-0.75" />
+                  <input value={entry.axis} onChange={(event) => updateContactLensEye(entry.eye, { axis: event.target.value })} className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400" placeholder="90" />
+                  <input value={entry.base_curve} onChange={(event) => updateContactLensEye(entry.eye, { base_curve: event.target.value })} className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400" placeholder="8.6" />
+                  <input value={entry.diameter} onChange={(event) => updateContactLensEye(entry.eye, { diameter: event.target.value })} className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400" placeholder="14.2" />
+                  <input value={entry.add_power} onChange={(event) => updateContactLensEye(entry.eye, { add_power: event.target.value })} className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400" placeholder="+1.50" />
+                  <input value={entry.visual_acuity} onChange={(event) => updateContactLensEye(entry.eye, { visual_acuity: event.target.value })} className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400" placeholder="6/6" />
+                  <input value={entry.over_refraction} onChange={(event) => updateContactLensEye(entry.eye, { over_refraction: event.target.value })} className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400" placeholder="-0.25 DS" />
+                  <input value={entry.fit_notes} onChange={(event) => updateContactLensEye(entry.eye, { fit_notes: event.target.value })} className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400" placeholder="Good centration" />
+                </Fragment>
+              ))}
+            </div>
+          </div>
+        </div>
+      </StructuredModal>
+      <BinocularVisionModal
+        open={isBinocularVisionOpen}
+        value={form.binocularVision}
+        onClose={() => setIsBinocularVisionOpen(false)}
+        onSave={saveBinocularVision}
+      />
+      <LowVisionModal
+        open={isLowVisionOpen}
+        value={form.lowVision}
+        onClose={() => setIsLowVisionOpen(false)}
+        onSave={saveLowVision}
+      />
+      <MyopiaManagementModal
+        open={isMyopiaManagementOpen}
+        value={form.myopiaManagement}
+        patientAge={currentPatient.age}
+        onClose={() => setIsMyopiaManagementOpen(false)}
+        onSave={saveMyopiaManagement}
+      />
     </aside>
   );
 }

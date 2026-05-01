@@ -7,6 +7,7 @@ def build_patient_timeline(
     patient: dict,
     visits: list[dict],
     notes: list[dict],
+    myopia_measurements: list[dict],
     invoices: list[dict],
     follow_ups: list[dict],
     appointments: list[dict],
@@ -104,6 +105,36 @@ def build_patient_timeline(
                     "sent_at": note.get("sent_at"),
                     "sent_to": str(note.get("sent_to") or ""),
                     "sent_by_name": str(note.get("sent_by_name") or ""),
+                },
+            )
+        )
+
+    for measurement in myopia_measurements:
+        treatment = str(measurement.get("treatment_type") or "").strip()
+        treatment_label = f" · {treatment}" if treatment else ""
+        events.append(
+            PatientTimelineEvent(
+                id=f"myopia-{measurement['id']}",
+                type="myopia_measurement",
+                title="Myopia measurement recorded",
+                timestamp=measurement["measured_at"],
+                description=(
+                    f"OD {float(measurement.get('axial_length_right_mm') or 0):.2f} mm · "
+                    f"OS {float(measurement.get('axial_length_left_mm') or 0):.2f} mm · "
+                    f"age {float(measurement.get('age_years') or 0):.1f}y{treatment_label}"
+                ),
+                entity_type="myopia_measurement",
+                entity_id=str(measurement["id"]),
+                details={
+                    "measured_at": measurement.get("measured_at"),
+                    "age_years": float(measurement.get("age_years") or 0),
+                    "axial_length_right_mm": float(measurement.get("axial_length_right_mm") or 0),
+                    "axial_length_left_mm": float(measurement.get("axial_length_left_mm") or 0),
+                    "treatment_type": treatment,
+                    "treatment_notes": str(measurement.get("treatment_notes") or ""),
+                    "visit_notes": str(measurement.get("visit_notes") or ""),
+                    "refraction_right": str(measurement.get("refraction_right") or ""),
+                    "refraction_left": str(measurement.get("refraction_left") or ""),
                 },
             )
         )

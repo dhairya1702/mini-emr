@@ -427,7 +427,22 @@ def _split_text_and_tables(content: str) -> tuple[list[str], list[tuple[list[str
                     index += 1
                 tables.append((header_cells, rows))
                 continue
-        if stripped in {"Vitals Table:", "Test Scores:", "Eye Exam:", "Prescribed medicines:"}:
+        if stripped in {
+            "Vitals Table:",
+            "Test Scores:",
+            "Eye Exam:",
+            "Prescribed medicines:",
+            "Contact Lens Assessment:",
+            "Contact Lens Order Summary:",
+            "Contact Lens Eye Details:",
+            "Binocular Vision Overview:",
+            "Binocular Vision Convergence:",
+            "Binocular Vision Sensory & Plan:",
+            "Low Vision Assessment:",
+            "Low Vision Functional & Device Trial:",
+            "Low Vision Plan & Support:",
+            "Myopia Management:",
+        }:
             index += 1
             continue
         prose_lines.append(lines[index].rstrip())

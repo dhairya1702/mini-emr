@@ -21,6 +21,7 @@ def _clinic_settings_defaults() -> dict[str, Any]:
         "clinic_name",
         "clinic_address",
         "clinic_phone",
+        "clinic_specialty",
         "appointment_start_time",
         "appointment_end_time",
         "appointments_per_hour",

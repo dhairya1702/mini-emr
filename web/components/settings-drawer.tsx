@@ -32,6 +32,7 @@ import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/set
 import { PasswordInput } from "@/components/password-input";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
 import { api } from "@/lib/api";
+import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { Appointment, AuditEvent, AuthUser, CatalogItem, ClinicSettings, ClinicSettingsUpdatePayload, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
 function createId() {
@@ -126,6 +127,7 @@ type ClinicFormState = {
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string;
+  clinic_specialty: ClinicSpecialty | "";
   appointment_start_time: string;
   appointment_end_time: string;
   appointments_per_hour: string;
@@ -401,6 +403,7 @@ function createClinicFormState(settings?: ClinicSettings | null): ClinicFormStat
     clinic_name: settings?.clinic_name ?? "ClinicOS",
     clinic_address: settings?.clinic_address ?? "",
     clinic_phone: settings?.clinic_phone ?? "",
+    clinic_specialty: settings?.clinic_specialty ?? "",
     appointment_start_time: settings?.appointment_start_time ?? "09:00",
     appointment_end_time: settings?.appointment_end_time ?? "18:00",
     appointments_per_hour: String(settings?.appointments_per_hour ?? 4),
@@ -880,6 +883,7 @@ export function SettingsDrawer({
         clinic_name: form.clinic_name.trim(),
         clinic_address: form.clinic_address.trim(),
         clinic_phone: form.clinic_phone.trim(),
+        clinic_specialty: form.clinic_specialty || null,
         appointment_start_time: form.appointment_start_time,
         appointment_end_time: form.appointment_end_time,
         appointments_per_hour: appointmentsPerHour,
@@ -1458,6 +1462,36 @@ export function SettingsDrawer({
                   className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
                 />
               </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Specialty</span>
+                <select
+                  value={form.clinic_specialty}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      clinic_specialty: event.target.value as ClinicSpecialty | "",
+                    }))
+                  }
+                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                >
+                  <option value="">Select a specialty</option>
+                  {CLINIC_SPECIALTY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs leading-6 text-slate-500">
+                  Existing clinics can set this here at any time. Specialty-specific modules will use this setting as the clinic-wide source of truth.
+                </p>
+              </label>
+
+              {!form.clinic_specialty && canEditClinic ? (
+                <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Select a clinic specialty to enable specialty-specific features as they are added.
+                </p>
+              ) : null}
 
               <div className="grid gap-4 md:grid-cols-3">
                 <label className="block">

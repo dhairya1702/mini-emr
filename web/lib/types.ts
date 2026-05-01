@@ -1,3 +1,5 @@
+import type { ClinicSpecialty } from "@/lib/clinic-specialty";
+
 export type PatientStatus = "waiting" | "consultation" | "done";
 
 export interface Patient {
@@ -81,6 +83,7 @@ export type PatientTimelineEventType =
   | "appointment_booked"
   | "appointment_checked_in"
   | "consultation_note"
+  | "myopia_measurement"
   | "invoice_created"
   | "bill_sent"
   | "follow_up_scheduled"
@@ -151,6 +154,166 @@ export interface EyeExamEntry {
   vision: string;
 }
 
+export interface ContactLensEyeEntry {
+  eye: "right" | "left";
+  sphere: string;
+  cylinder: string;
+  axis: string;
+  base_curve: string;
+  diameter: string;
+  add_power: string;
+  visual_acuity: string;
+  over_refraction: string;
+  fit_notes: string;
+}
+
+export interface ContactLensPayload {
+  wearing_goal: string;
+  current_lens_brand: string;
+  current_wear_schedule: string;
+  replacement_frequency: string;
+  comfort_issues: string;
+  dryness_symptoms: string;
+  handling_issues: string;
+  care_solution: string;
+  allergy_history: string;
+  assessment_notes: string;
+  lens_type: string;
+  manufacturer: string;
+  brand: string;
+  wear_modality: string;
+  trial_lens_used: string;
+  vendor_name: string;
+  quantity: string;
+  special_instructions: string;
+  eyes: ContactLensEyeEntry[];
+}
+
+export interface BinocularVisionPayload {
+  symptom_notes: string;
+  asthenopia: boolean;
+  headache: boolean;
+  diplopia: boolean;
+  blur_near: boolean;
+  blur_distance: boolean;
+  reading_difficulty: boolean;
+  poor_concentration: boolean;
+  distance_cover_test: string;
+  near_cover_test: string;
+  distance_deviation_pd: string;
+  near_deviation_pd: string;
+  binocular_visual_acuity_distance: string;
+  binocular_visual_acuity_near: string;
+  motility: string;
+  pursuits: string;
+  saccades: string;
+  npc_break_cm: string;
+  npc_recovery_cm: string;
+  convergence_notes: string;
+  bo_distance: string;
+  bo_near: string;
+  bi_distance: string;
+  bi_near: string;
+  vergence_notes: string;
+  stereo_test_name: string;
+  stereo_result_arcsec: string;
+  worth_four_dot_distance: string;
+  worth_four_dot_near: string;
+  sensory_notes: string;
+  amplitude_right: string;
+  amplitude_left: string;
+  facility_cpm: string;
+  facility_lens: string;
+  accommodation_notes: string;
+  working_diagnosis: string;
+  management_plan: string;
+  follow_up_interval: string;
+}
+
+export interface LowVisionPayload {
+  primary_complaint: string;
+  goals: string;
+  reading_difficulty: boolean;
+  distance_difficulty: boolean;
+  mobility_difficulty: boolean;
+  face_recognition_difficulty: boolean;
+  glare_complaints: boolean;
+  lighting_difficulty: boolean;
+  distance_visual_acuity: string;
+  near_visual_acuity: string;
+  habitual_correction: string;
+  best_correction: string;
+  contrast_sensitivity: string;
+  glare_function: string;
+  central_vision: string;
+  visual_field: string;
+  functional_reading: string;
+  sustained_near_task: string;
+  tv_phone_mobility_notes: string;
+  illumination_response: string;
+  posture_working_distance: string;
+  magnifier_type: string;
+  magnification: string;
+  near_add: string;
+  electronic_aid: string;
+  tint_filter: string;
+  task_performance_with_device: string;
+  device_recommended: string;
+  lighting_advice: string;
+  non_optical_aids: string;
+  rehab_referral: string;
+  support_referral: string;
+  training_required: string;
+  follow_up_plan: string;
+  cause_of_low_vision: string;
+  prognosis: string;
+  emotional_support_notes: string;
+  charles_bonnet_screening: string;
+  final_plan: string;
+}
+
+export interface MyopiaMeasurementPayload {
+  measured_at: string;
+  age_years: number;
+  axial_length_right_mm: number;
+  axial_length_left_mm: number;
+  treatment_type: string;
+  treatment_notes: string;
+  visit_notes: string;
+  refraction_right: string;
+  refraction_left: string;
+}
+
+export interface MyopiaMeasurementRecord {
+  measured_at: string;
+  age_years: number;
+  axial_length_right_mm: number;
+  axial_length_left_mm: number;
+  treatment_type: string;
+  treatment_notes: string;
+  visit_notes: string;
+  refraction_right: string;
+  refraction_left: string;
+  id: string;
+  org_id: string;
+  patient_id: string;
+  created_at: string;
+}
+
+export interface MyopiaDelta {
+  right_mm: number;
+  left_mm: number;
+}
+
+export interface MyopiaHistory {
+  patient_id: string;
+  records: MyopiaMeasurementRecord[];
+  baseline_delta: MyopiaDelta | null;
+  last_delta: MyopiaDelta | null;
+  annualized_growth: MyopiaDelta | null;
+  overlay_version: string;
+}
+
 export interface GenerateNotePayload {
   note_id?: string;
   patient_id?: string;
@@ -165,6 +328,10 @@ export interface GenerateNotePayload {
   blood_sugar?: number | null;
   test_scores?: TestScoreEntry[];
   eye_exam?: EyeExamEntry[];
+  contact_lens?: ContactLensPayload | null;
+  binocular_vision?: BinocularVisionPayload | null;
+  low_vision?: LowVisionPayload | null;
+  myopia_measurement?: MyopiaMeasurementPayload | null;
   assets?: NoteAsset[];
 }
 
@@ -257,6 +424,7 @@ export interface ClinicSettings {
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string;
+  clinic_specialty: ClinicSpecialty | null;
   appointment_start_time: string;
   appointment_end_time: string;
   appointments_per_hour: number;
@@ -503,6 +671,7 @@ export interface ClinicSettingsUpdatePayload {
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string;
+  clinic_specialty: ClinicSpecialty | null;
   appointment_start_time: string;
   appointment_end_time: string;
   appointments_per_hour: number;

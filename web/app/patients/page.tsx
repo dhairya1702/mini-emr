@@ -334,7 +334,9 @@ export default function PatientsPage() {
 
       <PatientDetailsDrawer
         patient={selectedPatient}
+        isOptometryClinic={clinicSettings?.clinic_specialty === "optometry"}
         onLoadTimeline={handleLoadPatientTimeline}
+        onLoadMyopiaHistory={(patientId) => api.getPatientMyopiaHistory(patientId)}
         onSave={handleUpdatePatient}
         onClose={() => setSelectedPatient(null)}
       />

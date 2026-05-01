@@ -28,6 +28,16 @@ def test_auth_me_reissues_session_headers(client):
     assert test_client.cookies.get(auth_module.SESSION_COOKIE_NAME) == refreshed_token
 
 
+def test_register_creates_clinic_settings_with_empty_specialty(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="specialty-register@clinic.com", clinic_name="Specialty Register Clinic")
+
+    response = test_client.get("/settings/clinic", headers=auth_headers(session["token"]))
+
+    assert response.status_code == 200
+    assert response.json()["clinic_specialty"] is None
+
+
 def test_authenticated_non_auth_routes_reissue_session_headers(client):
     test_client, _repo = client
     session = register(test_client, identifier="session-refresh@clinic.com", clinic_name="Session Refresh Clinic")

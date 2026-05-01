@@ -65,6 +65,7 @@ create table if not exists public.clinic_settings (
   clinic_name text not null default 'ClinicOS',
   clinic_address text not null default '',
   clinic_phone text not null default '',
+  clinic_specialty text check (clinic_specialty in ('optometry', 'general_physician')),
   appointment_start_time text not null default '09:00',
   appointment_end_time text not null default '18:00',
   appointments_per_hour integer not null default 4,
@@ -230,6 +231,28 @@ create table if not exists public.patient_visits (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.myopia_measurements (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  measured_at timestamptz not null,
+  age_years double precision not null,
+  axial_length_right_mm double precision not null,
+  axial_length_left_mm double precision not null,
+  treatment_type text not null default '',
+  treatment_notes text not null default '',
+  visit_notes text not null default '',
+  refraction_right text not null default '',
+  refraction_left text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create index if not exists myopia_measurements_patient_measured_at_idx
+  on public.myopia_measurements(patient_id, measured_at asc);
+
+create index if not exists myopia_measurements_org_patient_measured_at_idx
+  on public.myopia_measurements(org_id, patient_id, measured_at asc);
+
 alter table public.patients
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;
 
@@ -317,6 +340,16 @@ add column if not exists org_id uuid references public.organizations(id) on dele
 
 alter table public.clinic_settings
 add column if not exists sender_name text not null default '';
+
+alter table public.clinic_settings
+add column if not exists clinic_specialty text;
+
+alter table public.clinic_settings
+drop constraint if exists clinic_settings_clinic_specialty_check;
+
+alter table public.clinic_settings
+add constraint clinic_settings_clinic_specialty_check
+check (clinic_specialty in ('optometry', 'general_physician'));
 
 alter table public.clinic_settings
 add column if not exists appointment_start_time text not null default '09:00';

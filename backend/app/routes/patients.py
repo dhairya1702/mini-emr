@@ -5,6 +5,10 @@ from app.db import SupabaseRepository, get_repository
 from app.exports import build_history_visit_rows
 from app.schemas import (
     InvoiceOut,
+    MyopiaHistoryOut,
+    MyopiaMeasurementCreate,
+    MyopiaMeasurementOut,
+    MyopiaMeasurementUpdate,
     NoteOut,
     PatientCreate,
     PatientMatchOut,
@@ -16,6 +20,7 @@ from app.schemas import (
     UserOut,
 )
 from app.services.patient_views import (
+    build_patient_myopia_history_view,
     build_patient_timeline_view,
     list_patient_invoices_view,
     list_patient_notes_view,
@@ -123,6 +128,56 @@ async def get_patient_timeline(
 ) -> list[PatientTimelineEvent]:
     try:
         return await build_patient_timeline_view(repo, str(current_user.org_id), patient_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/patients/{patient_id}/myopia-history", response_model=MyopiaHistoryOut)
+async def get_patient_myopia_history(
+    patient_id: str,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> MyopiaHistoryOut:
+    try:
+        return await build_patient_myopia_history_view(repo, str(current_user.org_id), patient_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/patients/{patient_id}/myopia-records", response_model=MyopiaMeasurementOut, status_code=201)
+async def create_patient_myopia_record(
+    patient_id: str,
+    payload: MyopiaMeasurementCreate,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> MyopiaMeasurementOut:
+    try:
+        row = await repo.create_myopia_measurement(str(current_user.org_id), patient_id, payload)
+        return MyopiaMeasurementOut(**row)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.patch("/patients/{patient_id}/myopia-records/{record_id}", response_model=MyopiaMeasurementOut)
+async def update_patient_myopia_record(
+    patient_id: str,
+    record_id: str,
+    payload: MyopiaMeasurementUpdate,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> MyopiaMeasurementOut:
+    updates = payload.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No updates provided.")
+    try:
+        row = await repo.update_myopia_measurement(str(current_user.org_id), patient_id, record_id, updates)
+        return MyopiaMeasurementOut(**row)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover

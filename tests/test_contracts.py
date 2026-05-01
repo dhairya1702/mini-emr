@@ -85,7 +85,7 @@ _install_reportlab_stubs()
 from app.clinic_context import build_clinic_context, build_measurements_context, build_patient_context
 from app.exports import build_history_visit_rows, filter_rows_by_created_at, get_export_range_start
 from app.main import app
-from app.schemas import EyeExamEntry, GenerateNoteRequest, TestScoreEntry as ScoreEntry
+from app.schemas import BinocularVisionInput, ContactLensEyeInput, ContactLensInput, EyeExamEntry, GenerateNoteRequest, LowVisionInput, MyopiaHistoryOut, MyopiaMeasurementInput, MyopiaMeasurementOut, TestScoreEntry as ScoreEntry
 
 
 TYPES_PATH = ROOT / "web" / "lib" / "types.ts"
@@ -148,6 +148,8 @@ def _literal_values(type_name: str) -> list[str]:
         ("CatalogItem", "CatalogItemOut"),
         ("Invoice", "InvoiceOut"),
         ("ClinicSettings", "ClinicSettingsOut"),
+        ("MyopiaMeasurementRecord", "MyopiaMeasurementOut"),
+        ("MyopiaHistory", "MyopiaHistoryOut"),
         ("AuthUser", "UserOut"),
         ("AuthResponse", "AuthResponse"),
     ],
@@ -181,6 +183,7 @@ def test_frontend_response_contracts_match_backend_openapi(frontend_name: str, b
         ("SendLetterPayload", "SendLetterRequest"),
         ("SendNotePayload", "SendNoteRequest"),
         ("ClinicSettingsUpdatePayload", "ClinicSettingsUpdate"),
+        ("MyopiaMeasurementPayload", "MyopiaMeasurementInput"),
     ],
 )
 def test_frontend_request_contracts_match_backend_openapi(frontend_name: str, backend_name: str) -> None:
@@ -250,12 +253,67 @@ def test_build_clinic_and_measurement_contexts_include_structured_fields() -> No
             blood_sugar=110,
             test_scores=[ScoreEntry(label="Vision", value="20/20")],
             eye_exam=[EyeExamEntry(eye="right", sphere="-1.25", cylinder="", axis="90", vision="6/6")],
+            contact_lens=ContactLensInput(
+                wearing_goal="Daily wear",
+                manufacturer="Acme Vision",
+                brand="ClearSoft",
+                vendor_name="Lens Vendor",
+                eyes=[
+                    ContactLensEyeInput(
+                        eye="right",
+                        sphere="-1.00",
+                        base_curve="8.6",
+                        diameter="14.2",
+                        visual_acuity="6/6",
+                    )
+                ],
+            ),
+            binocular_vision=BinocularVisionInput(
+                asthenopia=True,
+                distance_cover_test="Ortho",
+                near_cover_test="XP",
+                npc_break_cm="8",
+                stereo_test_name="Randot",
+                stereo_result_arcsec="40",
+                working_diagnosis="Convergence insufficiency",
+            ),
+            low_vision=LowVisionInput(
+                primary_complaint="Difficulty reading labels",
+                distance_visual_acuity="6/60",
+                near_visual_acuity="N24",
+                magnifier_type="Hand magnifier",
+                device_recommended="4x handheld magnifier",
+                final_plan="Trial low vision aid and review in 4 weeks",
+            ),
+            myopia_measurement=MyopiaMeasurementInput(
+                measured_at=datetime(2026, 4, 20, 9, 30, tzinfo=UTC),
+                age_years=11.5,
+                axial_length_right_mm=24.22,
+                axial_length_left_mm=24.16,
+                treatment_type="Atropine 0.01%",
+                treatment_notes="Started 6 weeks ago",
+                visit_notes="Progression review",
+                refraction_right="-2.00 DS",
+                refraction_left="-1.75 DS",
+            ),
         )
     )
     assert "Vitals Table:" in measurements_context
     assert "Blood Pressure | 120/80 mmHg" in measurements_context
     assert "Vision | 20/20" in measurements_context
     assert "Right | -1.25 | - | 90 | 6/6" in measurements_context
+    assert "Contact Lens Assessment:" in measurements_context
+    assert "Manufacturer | Acme Vision" in measurements_context
+    assert "Right | -1.00 | - | - | 8.6 | 14.2 | - | 6/6 | - | -" in measurements_context
+    assert "Binocular Vision Overview:" in measurements_context
+    assert "Distance Cover Test | Ortho" in measurements_context
+    assert "Stereo Result | 40" in measurements_context
+    assert "Low Vision Assessment:" in measurements_context
+    assert "Primary Complaint | Difficulty reading labels" in measurements_context
+    assert "Device Recommended | 4x handheld magnifier" in measurements_context
+    assert "Myopia Management:" in measurements_context
+    assert "Axial Length Right | 24.22 mm" in measurements_context
+    assert "Treatment Type | Atropine 0.01%" in measurements_context
 
 
 def test_export_helpers_preserve_latest_visit_and_filter_date_ranges() -> None:
