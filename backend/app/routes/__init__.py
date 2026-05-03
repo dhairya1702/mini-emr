@@ -2,6 +2,7 @@ from app.routes.appointments import router as appointments_router
 from app.routes.audit import router as audit_router
 from app.routes.auth import router as auth_router
 from app.routes.billing import router as billing_router
+from app.routes.case_studies import router as case_studies_router
 from app.routes.catalog import router as catalog_router
 from app.routes.exports import router as exports_router
 from app.routes.followups import router as followups_router
@@ -18,6 +19,7 @@ __all__ = [
     "audit_router",
     "auth_router",
     "billing_router",
+    "case_studies_router",
     "catalog_router",
     "exports_router",
     "followups_router",

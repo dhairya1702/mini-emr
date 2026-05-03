@@ -253,6 +253,28 @@ create index if not exists myopia_measurements_patient_measured_at_idx
 create index if not exists myopia_measurements_org_patient_measured_at_idx
   on public.myopia_measurements(org_id, patient_id, measured_at asc);
 
+create table if not exists public.case_studies (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  title text not null,
+  status text not null default 'draft' check (status in ('draft', 'final')),
+  template_key text not null check (template_key in ('conference_presentation', 'teaching_rounds', 'hospital_case_discussion')),
+  anonymized boolean not null default true,
+  author_instructions text not null default '',
+  generated_content text not null,
+  source_snapshot jsonb not null default '{}'::jsonb,
+  created_by uuid references public.clinic_users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists case_studies_org_created_at_idx
+  on public.case_studies(org_id, created_at desc);
+
+create index if not exists case_studies_org_patient_updated_at_idx
+  on public.case_studies(org_id, patient_id, updated_at desc);
+
 alter table public.patients
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;
 

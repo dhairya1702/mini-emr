@@ -190,6 +190,42 @@ def build_fallback_letter(
     )
 
 
+def build_fallback_case_study(
+    title: str,
+    template_key: str,
+    author_instructions: str,
+    source_context: str,
+) -> str:
+    template_line = {
+        "conference_presentation": "Conference-style presentation format.",
+        "teaching_rounds": "Teaching-rounds discussion format.",
+        "hospital_case_discussion": "Hospital case-discussion format.",
+    }.get(template_key, "Structured clinical case format.")
+    instructions = author_instructions.strip() or "No extra author instructions were provided."
+    return (
+        f"Title: {title}\n\n"
+        "Abstract:\n"
+        f"{template_line} This case study was generated from the available longitudinal clinic history.\n\n"
+        "Background / Chief Concern:\n"
+        "The case centers on the presenting concern and documented clinical context from the patient record.\n\n"
+        "Chronological History:\n"
+        f"{source_context or 'Chronological history was limited in the record.'}\n\n"
+        "Examination / Findings:\n"
+        "Relevant examination findings should be reviewed from the consultation notes and visit history.\n\n"
+        "Investigations / Relevant Tests:\n"
+        "Relevant longitudinal tests and structured measurements should be highlighted here.\n\n"
+        "Management / Interventions:\n"
+        "Management decisions should summarize documented interventions, advice, and follow-up planning.\n\n"
+        "Outcome / Follow-up:\n"
+        "Outcome should describe the observed follow-up course in the available records.\n\n"
+        "Discussion:\n"
+        f"Discuss the clinical significance of the case in light of this framing: {instructions}\n\n"
+        "Learning Points:\n"
+        "- Highlight the key diagnostic or management lessons.\n"
+        "- Summarize why this case is useful for presentation or discussion."
+    )
+
+
 async def generate_soap_note(
     repo: SupabaseRepository,
     org_id: str,
@@ -358,3 +394,88 @@ Content instructions:
 
     blocks = [block.text for block in response.content if getattr(block, "type", "") == "text"]
     return "\n".join(blocks).strip() or build_fallback_letter(to, subject, content, clinic_context)
+
+
+async def generate_case_study_document(
+    repo: SupabaseRepository,
+    org_id: str,
+    *,
+    title: str,
+    template_key: str,
+    author_instructions: str,
+    clinic_context: str,
+    source_context: str,
+    anonymized: bool,
+) -> str:
+    settings = get_settings()
+
+    if not settings.anthropic_api_key:
+        return build_fallback_case_study(title, template_key, author_instructions, source_context)
+
+    client = Anthropic(api_key=settings.anthropic_api_key)
+    prompt = f"""
+Write a polished, presentation-ready medical case study in plain text.
+Use these exact headings in this order:
+Title:
+Abstract:
+Background / Chief Concern:
+Chronological History:
+Examination / Findings:
+Investigations / Relevant Tests:
+Management / Interventions:
+Outcome / Follow-up:
+Discussion:
+Learning Points:
+
+Requirements:
+- Keep the output structured and concise enough to present at a conference or hospital discussion.
+- Use full clinical prose, not bullet overload, except Learning Points where short bullets are acceptable.
+- Do not invent missing facts.
+- Use only the source history provided.
+- Respect the requested framing and educational emphasis.
+- If anonymized is true, do not introduce real patient identifiers.
+- Return plain text only.
+
+Clinic context:
+{clinic_context or 'Not provided'}
+
+Template key:
+{template_key}
+
+Author instructions:
+{author_instructions or 'None provided'}
+
+Anonymized:
+{'Yes' if anonymized else 'No'}
+
+Source case history:
+{source_context or 'No source context provided'}
+""".strip()
+
+    try:
+        response = await asyncio.to_thread(
+            lambda: client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=1200,
+                temperature=0.35,
+                system=(
+                    "You write polished clinical case studies for doctors presenting in conferences and hospitals. "
+                    "Return only the final case study text with the requested section headings."
+                ),
+                messages=[{"role": "user", "content": prompt}],
+            )
+        )
+    except Exception:
+        return build_fallback_case_study(title, template_key, author_instructions, source_context)
+
+    await record_anthropic_usage(
+        repo,
+        org_id=org_id,
+        model=settings.anthropic_model,
+        feature="case_study",
+        response=response,
+        metadata={"template_key": template_key, "anonymized": anonymized},
+    )
+
+    blocks = [block.text for block in response.content if getattr(block, "type", "") == "text"]
+    return "\n".join(blocks).strip() or build_fallback_case_study(title, template_key, author_instructions, source_context)

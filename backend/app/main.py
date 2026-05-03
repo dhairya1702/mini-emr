@@ -18,6 +18,7 @@ from app.routes import (
     audit_router,
     auth_router,
     billing_router,
+    case_studies_router,
     catalog_router,
     exports_router,
     followups_router,
@@ -147,5 +148,6 @@ for router in (
     superuser_router,
     notes_router,
     billing_router,
+    case_studies_router,
 ):
     app.include_router(router)

@@ -108,6 +108,7 @@ class FakeRepo:
         self.patient_visits: dict[str, dict] = {}
         self.notes: dict[str, dict] = {}
         self.myopia_measurements: dict[str, dict] = {}
+        self.case_studies: dict[str, dict] = {}
         self.catalog_items: dict[str, dict] = {}
         self.invoices: dict[str, dict] = {}
         self.invoice_items: dict[str, dict] = {}
@@ -745,6 +746,47 @@ class FakeRepo:
         if row["org_id"] != org_id or row["patient_id"] != patient_id:
             raise ValueError("Myopia measurement not found for this patient.")
         row.update(updates)
+        return row
+
+    async def create_case_study(self, org_id: str, created_by: str, payload) -> dict:
+        await self.get_patient(org_id, str(payload.patient_id))
+        case_study_id = str(uuid4())
+        row = {
+            "id": case_study_id,
+            "org_id": org_id,
+            "patient_id": str(payload.patient_id),
+            "title": payload.title.strip(),
+            "status": payload.status,
+            "template_key": payload.template_key,
+            "anonymized": payload.anonymized,
+            "author_instructions": payload.author_instructions.strip(),
+            "generated_content": payload.generated_content,
+            "source_snapshot": payload.source_snapshot,
+            "created_by": created_by,
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+        self.case_studies[case_study_id] = row
+        return row
+
+    async def list_case_studies(self, org_id: str) -> list[dict]:
+        rows = [row for row in self.case_studies.values() if row["org_id"] == org_id]
+        rows.sort(key=lambda row: row["updated_at"], reverse=True)
+        return rows
+
+    async def get_case_study(self, org_id: str, case_study_id: str) -> dict:
+        row = self.case_studies[case_study_id]
+        if row["org_id"] != org_id:
+            raise ValueError("Case study not found for this organization.")
+        return row
+
+    async def update_case_study(self, org_id: str, case_study_id: str, updates: dict) -> dict:
+        row = await self.get_case_study(org_id, case_study_id)
+        if "patient_id" in updates:
+            await self.get_patient(org_id, str(updates["patient_id"]))
+            updates = {**updates, "patient_id": str(updates["patient_id"])}
+        row.update(updates)
+        row["updated_at"] = _now()
         return row
 
     async def list_patient_visits_for_patient(self, org_id: str, patient_id: str) -> list[dict]:
@@ -1460,3 +1502,129 @@ def test_myopia_measurements_create_history_and_timeline(client):
     myopia_events = [event for event in timeline_response.json() if event["type"] == "myopia_measurement"]
     assert len(myopia_events) == 2
     assert any("OD 24.22 mm" in event["description"] for event in myopia_events)
+
+
+def test_case_study_generation_storage_and_pdf(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="case-study@example.com", clinic_name="Case Study Clinic")
+    token = session["token"]
+
+    settings_response = test_client.put(
+        "/settings/clinic",
+        headers=auth_headers(token),
+        json={"clinic_specialty": "optometry"},
+    )
+    assert settings_response.status_code == 200
+
+    patient_response = test_client.post(
+        "/patients",
+        headers=auth_headers(token),
+        json={
+            "name": "Ananya Shah",
+            "phone": "5550105555",
+            "email": "ananya@example.com",
+            "address": "44 Pine Street",
+            "reason": "Progressive myopia",
+            "age": 12,
+            "weight": 43,
+            "height": 150,
+            "temperature": 98.7,
+        },
+    )
+    assert patient_response.status_code == 201
+    patient = patient_response.json()
+
+    note_response = test_client.post(
+        "/generate-note",
+        headers=auth_headers(token),
+        json={
+            "patient_id": patient["id"],
+            "symptoms": "Blurred distance vision",
+            "diagnosis": "Progressive myopia",
+            "medications": "Atropine 0.01%",
+            "notes": "Family history of myopia. Discussed outdoor time and compliance.",
+        },
+    )
+    assert note_response.status_code == 200
+
+    myopia_response = test_client.post(
+        f"/patients/{patient['id']}/myopia-records",
+        headers=auth_headers(token),
+        json={
+            "measured_at": "2026-01-01T10:00:00+00:00",
+            "age_years": 12.0,
+            "axial_length_right_mm": 24.32,
+            "axial_length_left_mm": 24.28,
+            "treatment_type": "Atropine 0.01%",
+            "treatment_notes": "Continuing treatment.",
+            "visit_notes": "Compliance improved.",
+            "refraction_right": "-2.25 DS",
+            "refraction_left": "-2.00 DS",
+        },
+    )
+    assert myopia_response.status_code == 201
+
+    source_response = test_client.get(
+        f"/patients/{patient['id']}/case-study-source",
+        headers=auth_headers(token),
+    )
+    assert source_response.status_code == 200
+    source = source_response.json()
+    assert source["patient"]["name"] == "Ananya Shah"
+    assert len(source["notes"]) == 1
+    assert source["myopia_history"]["records"][0]["treatment_type"] == "Atropine 0.01%"
+
+    generated_response = test_client.post(
+        "/generate-case-study",
+        headers=auth_headers(token),
+        json={
+          "patient_id": patient["id"],
+          "title": "",
+          "template_key": "conference_presentation",
+          "anonymized": True,
+          "author_instructions": "Focus on longitudinal progression and treatment decisions.",
+        },
+    )
+    assert generated_response.status_code == 200
+    generated = generated_response.json()
+    assert "Title:" in generated["content"]
+    assert "Learning Points:" in generated["content"]
+    assert generated["source"]["patient"]["name"] == "Patient A"
+
+    create_response = test_client.post(
+        "/case-studies",
+        headers=auth_headers(token),
+        json={
+            "patient_id": patient["id"],
+            "title": generated["title"],
+            "status": "draft",
+            "template_key": "conference_presentation",
+            "anonymized": True,
+            "author_instructions": "Focus on longitudinal progression and treatment decisions.",
+            "generated_content": generated["content"],
+            "source_snapshot": generated["source"],
+        },
+    )
+    assert create_response.status_code == 201
+    saved = create_response.json()
+    assert saved["status"] == "draft"
+    assert saved["patient_name"] == "Ananya Shah"
+
+    list_response = test_client.get("/case-studies", headers=auth_headers(token))
+    assert list_response.status_code == 200
+    assert len(list_response.json()) == 1
+
+    update_response = test_client.patch(
+        f"/case-studies/{saved['id']}",
+        headers=auth_headers(token),
+        json={"status": "final", "title": "Conference Case: Progressive Myopia"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["status"] == "final"
+
+    pdf_response = test_client.get(
+        f"/case-studies/{saved['id']}/pdf",
+        headers=auth_headers(token),
+    )
+    assert pdf_response.status_code == 200
+    assert pdf_response.headers["content-type"] == "application/pdf"

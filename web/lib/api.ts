@@ -10,6 +10,8 @@ import {
   AuthResponse,
   AuthUser,
   CatalogItem,
+  CaseStudy,
+  CaseStudySavePayload,
   CatalogItemCreatePayload,
   CatalogStockUpdatePayload,
   ClinicSettings,
@@ -21,6 +23,8 @@ import {
   GenerateLetterPayload,
   GenerateLetterResponse,
   GenerateLetterPdfPayload,
+  GenerateCaseStudyPayload,
+  GenerateCaseStudyResponse,
   GeneratePdfPayload,
   Invoice,
   InvoiceCreatePayload,
@@ -38,6 +42,7 @@ import {
   PatientTimelineEvent,
   PatientStatus,
   PasswordUpdatePayload,
+  PatientCaseStudySource,
   RegisterPayload,
   UserRoleUpdatePayload,
   SendInvoicePayload,
@@ -52,6 +57,7 @@ import {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
 const REQUEST_TIMEOUT_MS = 15000;
+const LONG_REQUEST_TIMEOUT_MS = 60000;
 const SAFE_REQUEST_RETRY_ATTEMPTS = 2;
 const SAFE_REQUEST_RETRY_DELAY_MS = 350;
 const SESSION_TOKEN_HEADER = "x-session-token";
@@ -109,9 +115,9 @@ function withQuery(path: string, params: Record<string, string | number | undefi
   return query ? `${path}?${query}` : path;
 }
 
-function createTimeoutSignal() {
+function createTimeoutSignal(timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
   return {
     signal: controller.signal,
     cleanup: () => window.clearTimeout(timeoutId),
@@ -131,11 +137,16 @@ async function delay(ms: number) {
   await new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-async function performFetch(path: string, init: RequestInit | undefined, headers: Record<string, string>) {
+async function performFetch(
+  path: string,
+  init: RequestInit | undefined,
+  headers: Record<string, string>,
+  options?: { timeoutMs?: number },
+) {
   const maxAttempts = canRetrySafely(init) ? SAFE_REQUEST_RETRY_ATTEMPTS : 1;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const timeout = typeof window !== "undefined" ? createTimeoutSignal() : null;
+    const timeout = typeof window !== "undefined" ? createTimeoutSignal(options?.timeoutMs) : null;
     try {
       const response = await fetch(`${API_BASE_URL}${path}`, {
         ...init,
@@ -192,9 +203,9 @@ function buildRequestHeaders(
   return { token, headers };
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, options?: { timeoutMs?: number }): Promise<T> {
   const { token, headers } = buildRequestHeaders(path, init);
-  const response = await performFetch(path, init, headers);
+  const response = await performFetch(path, init, headers, options);
   syncSessionFromResponse(response);
 
   if (!response.ok) {
@@ -249,9 +260,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json();
 }
 
-async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
+async function requestBlob(path: string, init?: RequestInit, options?: { timeoutMs?: number }): Promise<Blob> {
   const { token, headers } = buildRequestHeaders(path, init);
-  const response = await performFetch(path, init, headers);
+  const response = await performFetch(path, init, headers, options);
   syncSessionFromResponse(response);
 
   if (!response.ok) {
@@ -272,9 +283,9 @@ async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
   return response.blob();
 }
 
-async function requestForm<T>(path: string, formData: FormData, init?: RequestInit): Promise<T> {
+async function requestForm<T>(path: string, formData: FormData, init?: RequestInit, options?: { timeoutMs?: number }): Promise<T> {
   const { token, headers } = buildRequestHeaders(path, init, { includeJsonContentType: false });
-  const response = await performFetch(path, { ...init, body: formData }, headers);
+  const response = await performFetch(path, { ...init, body: formData }, headers, options);
   syncSessionFromResponse(response);
 
   if (!response.ok) {
@@ -496,6 +507,29 @@ export const api = {
     request<ConsultationNote[]>(`/patients/${patientId}/notes`),
   listPatientInvoices: (patientId: string) =>
     request<Invoice[]>(`/patients/${patientId}/invoices`),
+  getPatientCaseStudySource: (patientId: string) =>
+    request<PatientCaseStudySource>(`/patients/${patientId}/case-study-source`),
+  listCaseStudies: () =>
+    request<CaseStudy[]>("/case-studies"),
+  getCaseStudy: (caseStudyId: string) =>
+    request<CaseStudy>(`/case-studies/${caseStudyId}`),
+  generateCaseStudy: (payload: GenerateCaseStudyPayload) =>
+    request<GenerateCaseStudyResponse>("/generate-case-study", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }, { timeoutMs: LONG_REQUEST_TIMEOUT_MS }),
+  createCaseStudy: (payload: CaseStudySavePayload) =>
+    request<CaseStudy>("/case-studies", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateCaseStudy: (caseStudyId: string, payload: Partial<CaseStudySavePayload>) =>
+    request<CaseStudy>(`/case-studies/${caseStudyId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  generateCaseStudyPdf: (caseStudyId: string) =>
+    requestBlob(`/case-studies/${caseStudyId}/pdf`),
   generateNote: (payload: GenerateNotePayload) =>
     request<GenerateNoteResponse>("/generate-note", {
       method: "POST",

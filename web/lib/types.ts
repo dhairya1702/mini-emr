@@ -314,6 +314,64 @@ export interface MyopiaHistory {
   overlay_version: string;
 }
 
+export type CaseStudyTemplateKey =
+  | "conference_presentation"
+  | "teaching_rounds"
+  | "hospital_case_discussion";
+
+export type CaseStudyStatus = "draft" | "final";
+
+export interface PatientCaseStudySource {
+  patient: Patient;
+  visits: PatientVisit[];
+  timeline: PatientTimelineEvent[];
+  notes: ConsultationNote[];
+  myopia_history: MyopiaHistory | null;
+}
+
+export interface GenerateCaseStudyPayload {
+  patient_id: string;
+  title: string;
+  template_key: CaseStudyTemplateKey;
+  anonymized: boolean;
+  author_instructions: string;
+}
+
+export interface GenerateCaseStudyResponse {
+  title: string;
+  content: string;
+  source: PatientCaseStudySource;
+}
+
+export interface CaseStudy {
+  id: string;
+  org_id: string;
+  patient_id: string;
+  patient_name: string | null;
+  title: string;
+  status: CaseStudyStatus;
+  template_key: CaseStudyTemplateKey;
+  anonymized: boolean;
+  author_instructions: string;
+  generated_content: string;
+  source_snapshot: Record<string, unknown>;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CaseStudySavePayload {
+  patient_id: string;
+  title: string;
+  status: CaseStudyStatus;
+  template_key: CaseStudyTemplateKey;
+  anonymized: boolean;
+  author_instructions: string;
+  generated_content: string;
+  source_snapshot: Record<string, unknown>;
+}
+
 export interface GenerateNotePayload {
   note_id?: string;
   patient_id?: string;

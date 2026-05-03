@@ -1184,6 +1184,96 @@ def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: 
     return _apply_pdf_template(buffer.getvalue(), template)
 
 
+def build_case_study_pdf(clinic: dict[str, Any], title: str, case_study_content: str, generated_on: str) -> bytes:
+    width, height = A4
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=(width, height))
+    margin_x = 0.8 * inch
+    top_y = height - 0.8 * inch
+    max_width = width - (margin_x * 2)
+    bottom_limit = 0.85 * inch
+
+    clinic_name = str(clinic.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
+    pdf.setTitle(title.strip() or "Case Study")
+    pdf.setFillColor(HexColor("#0f172a"))
+    pdf.setFont("Helvetica-Bold", 11)
+    pdf.drawString(margin_x, top_y, clinic_name)
+    pdf.setFont("Helvetica", 10)
+    pdf.setFillColor(HexColor("#475569"))
+    pdf.drawString(margin_x, top_y - 16, "Case Study")
+    generated_label = f"Generated on {generated_on}"
+    generated_width = stringWidth(generated_label, "Helvetica", 10)
+    pdf.drawString(width - margin_x - generated_width, top_y - 16, generated_label)
+    y = top_y - 42
+
+    pdf.setFillColor(HexColor("#0f172a"))
+    pdf.setFont("Helvetica-Bold", 16)
+    title_lines = _wrap_text(title.strip() or "Case Study", "Helvetica-Bold", 16, max_width)
+    for line in title_lines[:3]:
+        if y < bottom_limit:
+            pdf.showPage()
+            y = height - 0.85 * inch
+            pdf.setFillColor(HexColor("#0f172a"))
+            pdf.setFont("Helvetica-Bold", 16)
+        pdf.drawString(margin_x, y, line)
+        y -= 22
+
+    y -= 6
+    pdf.setStrokeColor(HexColor("#cbd5e1"))
+    pdf.line(margin_x, y, width - margin_x, y)
+    y -= 18
+    pdf.setFillColor(HexColor("#1e293b"))
+
+    content_lines = case_study_content.splitlines()
+    if content_lines:
+        first_non_empty = next((line.strip() for line in content_lines if line.strip()), "")
+        if first_non_empty.startswith("Title:"):
+            trimmed_lines: list[str] = []
+            skipped_title_heading = False
+            skipped_title_body = False
+            for raw_line in content_lines:
+                stripped = raw_line.strip()
+                if not skipped_title_heading and stripped.startswith("Title:"):
+                    skipped_title_heading = True
+                    title_remainder = stripped.split(":", 1)[1].strip()
+                    if title_remainder:
+                        skipped_title_body = True
+                    continue
+                if skipped_title_heading and not skipped_title_body:
+                    if not stripped:
+                        continue
+                    skipped_title_body = True
+                    continue
+                trimmed_lines.append(raw_line)
+            content_lines = trimmed_lines
+
+    for raw_line in content_lines:
+        stripped = raw_line.strip()
+        if not stripped:
+            y -= 10
+            continue
+
+        is_heading = stripped.endswith(":") and len(stripped) < 40
+        font_name = "Helvetica-Bold" if is_heading else "Helvetica"
+        font_size = 12 if is_heading else 11
+        leading = 18 if is_heading else 16
+        pdf.setFont(font_name, font_size)
+        wrapped_lines = _wrap_text(stripped, font_name, font_size, max_width)
+        for wrapped in wrapped_lines:
+            if y < bottom_limit:
+                pdf.showPage()
+                y = height - 0.85 * inch
+                pdf.setFillColor(HexColor("#1e293b"))
+                pdf.setFont(font_name, font_size)
+            pdf.drawString(margin_x, y, wrapped)
+            y -= leading
+        y -= 4
+
+    pdf.save()
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
 def build_invoice_pdf(
     clinic: dict[str, Any],
     patient: dict[str, Any],

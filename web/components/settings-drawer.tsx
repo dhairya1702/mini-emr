@@ -558,6 +558,7 @@ export function SettingsDrawer({
   const menuItems: DrawerMenuItem[] = [
     { href: "/", label: "Queue", icon: LayoutDashboard },
     { href: "/patients", label: "Patients", icon: Search },
+    { href: "/case-study", label: "Case Study", icon: FileText },
     { tab: "appointments" as SettingsTab, label: "Appointments", icon: CalendarClock },
     { href: "/billing", label: "Billing", icon: CreditCard },
     { href: "/history", label: "History", icon: History },

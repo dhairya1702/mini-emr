@@ -10,6 +10,7 @@ from app.schemas import (
     MyopiaMeasurementOut,
     MyopiaMeasurementUpdate,
     NoteOut,
+    PatientCaseStudySourceOut,
     PatientCreate,
     PatientMatchOut,
     PatientOut,
@@ -19,6 +20,7 @@ from app.schemas import (
     PatientVisitOut,
     UserOut,
 )
+from app.services.case_study_workflow import build_case_study_source_view
 from app.services.patient_views import (
     build_patient_myopia_history_view,
     build_patient_timeline_view,
@@ -192,6 +194,20 @@ async def list_patient_notes(
 ) -> list[NoteOut]:
     try:
         return await list_patient_notes_view(repo, str(current_user.org_id), patient_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/patients/{patient_id}/case-study-source", response_model=PatientCaseStudySourceOut)
+async def get_patient_case_study_source(
+    patient_id: str,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> PatientCaseStudySourceOut:
+    try:
+        return await build_case_study_source_view(repo, str(current_user.org_id), patient_id, anonymized=False)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover
