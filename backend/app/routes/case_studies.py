@@ -21,22 +21,11 @@ from app.services.case_study_workflow import (
     list_case_studies_view,
     update_case_study_workflow,
 )
+from app.services.document_helpers import build_document_context_for_user
 from app.services.pdf_service import build_case_study_pdf
 
 
 router = APIRouter()
-
-
-async def _document_context_for_current_user(repo: SupabaseRepository, current_user: UserOut) -> dict:
-    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
-    doctor_profile = await repo.get_user(str(current_user.id))
-    return {
-        **clinic_settings,
-        "doctor_name": str(doctor_profile.get("name") or clinic_settings.get("doctor_name") or "").strip(),
-        "doctor_signature_name": doctor_profile.get("doctor_signature_name"),
-        "doctor_signature_content_type": doctor_profile.get("doctor_signature_content_type"),
-        "doctor_signature_data_base64": doctor_profile.get("doctor_signature_data_base64"),
-    }
 
 
 @router.get("/case-studies", response_model=list[CaseStudyOut])
@@ -118,7 +107,7 @@ async def generate_case_study_pdf(
 ) -> StreamingResponse:
     try:
         case_study = await get_case_study_view(repo, str(current_user.org_id), case_study_id)
-        clinic_settings = await _document_context_for_current_user(repo, current_user)
+        clinic_settings = await build_document_context_for_user(repo, current_user)
         generated_on = datetime.now().strftime("%b %d, %Y")
         pdf_bytes = build_case_study_pdf(
             clinic_settings,

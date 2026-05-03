@@ -22,8 +22,9 @@ from app.schemas import (
 from app.services.anthropic_service import generate_case_study_document
 from app.services.auth_flow import enforce_rate_limit
 from app.services.audit_service import write_audit_event
+from app.services.case_study_specialty import apply_case_study_specialty_enrichment
+from app.services.document_helpers import normalize_structured_document_content
 from app.services.patient_views import (
-    build_patient_myopia_history_view,
     build_patient_name_map,
     build_patient_timeline_view,
     build_user_name_map,
@@ -198,46 +199,10 @@ def build_case_study_source_context(source: PatientCaseStudySourceOut, *, templa
     return "\n".join(lines).strip()
 
 
-def _normalize_case_study_content(content: str, title: str) -> str:
-    normalized = (content or "").strip()
-    if not normalized:
-        return "\n".join(
-            [
-                f"Title: {title}",
-                "Abstract:",
-                "Case study could not be generated from the available clinical history.",
-                "Background / Chief Concern:",
-                "",
-                "Chronological History:",
-                "",
-                "Examination / Findings:",
-                "",
-                "Investigations / Relevant Tests:",
-                "",
-                "Management / Interventions:",
-                "",
-                "Outcome / Follow-up:",
-                "",
-                "Discussion:",
-                "",
-                "Learning Points:",
-                "",
-            ]
-        )
-    if "Title:" not in normalized:
-        normalized = f"Title: {title}\n\n{normalized}"
-    for heading in CASE_STUDY_SECTION_HEADINGS[1:]:
-        if heading not in normalized:
-            normalized = f"{normalized}\n\n{heading}\n"
-    return normalized.strip()
-
-
-async def build_case_study_source_view(
+async def build_base_case_study_source_view(
     repo: SupabaseRepository,
     org_id: str,
     patient_id: str,
-    *,
-    anonymized: bool = False,
 ) -> PatientCaseStudySourceOut:
     patient = PatientOut(**await repo.get_patient(org_id, patient_id))
     visits = [
@@ -253,19 +218,32 @@ async def build_case_study_source_view(
     user_names = await build_user_name_map(repo, org_id)
     note_rows = [NoteOut(**note) for note in enrich_notes_with_sender_names(notes, user_names)]
     timeline = await build_patient_timeline_view(repo, org_id, patient_id)
-    clinic_settings = await repo.get_clinic_settings(org_id)
-    myopia_history = None
-    if clinic_settings.get("clinic_specialty") == "optometry":
-        history = await build_patient_myopia_history_view(repo, org_id, patient_id)
-        myopia_history = history if history.records else None
-    source = PatientCaseStudySourceOut(
+    return PatientCaseStudySourceOut(
         patient=patient,
         visits=visits,
         timeline=timeline,
         notes=note_rows,
-        myopia_history=myopia_history,
+        myopia_history=None,
     )
-    return anonymize_case_study_source(source) if anonymized else source
+
+
+async def build_case_study_source_view(
+    repo: SupabaseRepository,
+    org_id: str,
+    patient_id: str,
+    *,
+    anonymized: bool = False,
+) -> PatientCaseStudySourceOut:
+    base_source = await build_base_case_study_source_view(repo, org_id, patient_id)
+    clinic_settings = await repo.get_clinic_settings(org_id)
+    enriched_source = await apply_case_study_specialty_enrichment(
+        repo,
+        org_id,
+        patient_id,
+        clinic_settings.get("clinic_specialty"),
+        base_source,
+    )
+    return anonymize_case_study_source(enriched_source) if anonymized else enriched_source
 
 
 async def generate_case_study_workflow(
@@ -306,7 +284,12 @@ async def generate_case_study_workflow(
     )
     return GenerateCaseStudyResponse(
         title=title,
-        content=_normalize_case_study_content(content, title),
+        content=normalize_structured_document_content(
+            content,
+            title=title,
+            headings=CASE_STUDY_SECTION_HEADINGS,
+            empty_message="Case study could not be generated from the available clinical history.",
+        ),
         source=source,
     )
 

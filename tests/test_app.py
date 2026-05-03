@@ -1628,3 +1628,50 @@ def test_case_study_generation_storage_and_pdf(client):
     )
     assert pdf_response.status_code == 200
     assert pdf_response.headers["content-type"] == "application/pdf"
+
+
+def test_case_study_source_is_generic_for_non_optometry_clinics(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="case-study-gp@example.com", clinic_name="General Clinic")
+    token = session["token"]
+
+    patient_response = test_client.post(
+        "/patients",
+        headers=auth_headers(token),
+        json={
+            "name": "Ravi Kumar",
+            "phone": "5550201111",
+            "email": "ravi@example.com",
+            "address": "18 Lake Road",
+            "reason": "Fever",
+            "age": 34,
+            "weight": 72,
+            "height": 174,
+            "temperature": 99.1,
+        },
+    )
+    assert patient_response.status_code == 201
+    patient = patient_response.json()
+
+    note_response = test_client.post(
+        "/generate-note",
+        headers=auth_headers(token),
+        json={
+            "patient_id": patient["id"],
+            "symptoms": "Fever and body ache",
+            "diagnosis": "Viral fever",
+            "medications": "Paracetamol",
+            "notes": "Hydration and rest advised.",
+        },
+    )
+    assert note_response.status_code == 200
+
+    source_response = test_client.get(
+        f"/patients/{patient['id']}/case-study-source",
+        headers=auth_headers(token),
+    )
+    assert source_response.status_code == 200
+    source = source_response.json()
+    assert source["patient"]["name"] == "Ravi Kumar"
+    assert len(source["notes"]) == 1
+    assert source["myopia_history"] is None

@@ -11,3 +11,6 @@ web/.env.local
 web/node_modules/
 web/.next/
 web/.next-dev/
+
+.graphify_detect.json
+graphify-out/cache/
