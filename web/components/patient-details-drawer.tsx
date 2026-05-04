@@ -32,6 +32,14 @@ interface PatientDetailsDrawerProps {
   }) => Promise<void>;
 }
 
+function detailNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function detailText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export function PatientDetailsDrawer({
   patient,
   isOptometryClinic = false,
@@ -219,11 +227,15 @@ export function PatientDetailsDrawer({
   const latestMyopiaRecord = myopiaRecords[myopiaRecords.length - 1] ?? null;
 
   async function handleSaveHistoricalMyopia(payload: MyopiaMeasurementPayload) {
+    if (!currentPatient) {
+      return;
+    }
+    const patientId = currentPatient.id;
     setIsMyopiaLoading(true);
     setMyopiaError("");
     try {
-      const saved = await api.createPatientMyopiaRecord(currentPatient.id, payload);
-      const { events, nextMyopiaHistory } = await loadPatientHistory(currentPatient.id);
+      const saved = await api.createPatientMyopiaRecord(patientId, payload);
+      const { events, nextMyopiaHistory } = await loadPatientHistory(patientId);
       setTimeline(events);
       setMyopiaHistory(nextMyopiaHistory);
       setSelectedEventId(`myopia-${saved.id}`);

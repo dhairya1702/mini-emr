@@ -11,6 +11,9 @@ web/.env.local
 web/node_modules/
 web/.next/
 web/.next-dev/
+web/playwright-report/
+web/test-results/
 
 .graphify_detect.json
 graphify-out/cache/
+tests/.compiled-web-tests/

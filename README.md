@@ -26,6 +26,23 @@ cp .env.example .env.local
 npm run dev
 ```
 
+## Frontend E2E smoke tests
+
+The repo now includes a mocked Playwright smoke suite for core browser flows. It does not require a live backend seed because API calls are intercepted inside the browser tests.
+
+```bash
+cd web
+npx playwright install chromium
+npm run test:e2e
+```
+
+Use headed mode while developing selectors or debugging a failing flow:
+
+```bash
+cd web
+npm run test:e2e:headed
+```
+
 ## Backend setup
 
 ```bash

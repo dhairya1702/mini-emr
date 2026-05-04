@@ -603,8 +603,12 @@ export default function CaseStudyPage() {
           onAddUser={handleAddStaffUser}
           onUpdateUserRole={handleUpdateUserRole}
           onDeleteUser={handleDeleteUser}
-          onUploadUserSignature={handleUploadUserSignature}
-          onRemoveUserSignature={handleRemoveUserSignature}
+          onUploadUserSignature={async (userId, file) => {
+            await handleUploadUserSignature(userId, file);
+          }}
+          onRemoveUserSignature={async (userId) => {
+            await handleRemoveUserSignature(userId);
+          }}
           onCreateCatalogItem={handleCreateCatalogItem}
           onAdjustCatalogStock={handleAdjustCatalogStock}
           onDeleteCatalogItem={handleDeleteCatalogItem}
@@ -617,11 +621,16 @@ export default function CaseStudyPage() {
           onExportPatientsCsv={handleExportPatientsCsv}
           onExportVisitsCsv={() => handleExportVisitsCsv({ range: "all" })}
           onExportInvoicesCsv={handleExportInvoicesCsv}
-          onCheckInAppointment={(appointmentId, options) =>
-            options?.existingPatientId
-              ? api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId)
-              : api.checkInAppointment(appointmentId, { force_new: options?.forceNew })
-          }
+          onCheckInAppointment={async (appointmentId, options) => {
+            const checkedInPatient = options?.existingPatientId
+              ? await api.checkInAppointmentWithPatient(appointmentId, options.existingPatientId)
+              : await api.checkInAppointment(appointmentId, { force_new: options?.forceNew });
+            return {
+              id: appointmentId,
+              checked_in_at: new Date().toISOString(),
+              checked_in_patient_id: checkedInPatient.id,
+            };
+          }}
           onUpdateAppointment={(appointmentId, payload) => api.updateAppointment(appointmentId, payload)}
           onUpdateFollowUp={(followUpId, payload) => api.updateFollowUp(followUpId, payload)}
           onBillingComplete={() => void 0}

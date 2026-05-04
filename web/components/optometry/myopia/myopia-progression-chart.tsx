@@ -26,6 +26,12 @@ export function MyopiaProgressionChart({ history }: { history: MyopiaHistory | n
     )
     : 0;
   const tooltipY = hoveredPoint ? Math.max(model.chartPadding.top, hoveredPoint.y - 62) : 0;
+  const projectedSixMonthAge = model.latestRecord ? model.latestRecord.age_years + 0.5 : null;
+  const projectedTwelveMonthAge = model.latestRecord ? model.latestRecord.age_years + 1 : null;
+  const projectedSixMonthRight = model.projectedSixMonthRight;
+  const projectedSixMonthLeft = model.projectedSixMonthLeft;
+  const projectedTwelveMonthRight = model.projectedTwelveMonthRight;
+  const projectedTwelveMonthLeft = model.projectedTwelveMonthLeft;
 
   return (
     <div className="rounded-[24px] border border-sky-100 bg-white p-4">
@@ -174,70 +180,70 @@ export function MyopiaProgressionChart({ history }: { history: MyopiaHistory | n
               onMouseLeave={() => setHoveredPoint(null)}
             />
           ))}
-          {model.latestRecord && model.projectedSixMonthRight !== null ? (
+          {projectedSixMonthAge !== null && projectedSixMonthRight !== null ? (
             <circle
-              cx={model.xForAge(model.latestRecord.age_years + 0.5)}
-              cy={model.yForMm(model.projectedSixMonthRight)}
+              cx={model.xForAge(projectedSixMonthAge)}
+              cy={model.yForMm(projectedSixMonthRight)}
               r="5.5"
               fill="#ffffff"
               stroke="#0f766e"
               strokeWidth="2.5"
               onMouseEnter={() => setHoveredPoint({
-                x: model.xForAge(model.latestRecord.age_years + 0.5),
-                y: model.yForMm(model.projectedSixMonthRight),
+                x: model.xForAge(projectedSixMonthAge),
+                y: model.yForMm(projectedSixMonthRight),
                 title: "Projected OD · 6 months",
-                value: `${model.projectedSixMonthRight.toFixed(2)} mm`,
+                value: `${projectedSixMonthRight.toFixed(2)} mm`,
               })}
               onMouseLeave={() => setHoveredPoint(null)}
             />
           ) : null}
-          {model.latestRecord && model.projectedSixMonthLeft !== null ? (
+          {projectedSixMonthAge !== null && projectedSixMonthLeft !== null ? (
             <circle
-              cx={model.xForAge(model.latestRecord.age_years + 0.5)}
-              cy={model.yForMm(model.projectedSixMonthLeft)}
+              cx={model.xForAge(projectedSixMonthAge)}
+              cy={model.yForMm(projectedSixMonthLeft)}
               r="5.5"
               fill="#ffffff"
               stroke="#2563eb"
               strokeWidth="2.5"
               onMouseEnter={() => setHoveredPoint({
-                x: model.xForAge(model.latestRecord.age_years + 0.5),
-                y: model.yForMm(model.projectedSixMonthLeft),
+                x: model.xForAge(projectedSixMonthAge),
+                y: model.yForMm(projectedSixMonthLeft),
                 title: "Projected OS · 6 months",
-                value: `${model.projectedSixMonthLeft.toFixed(2)} mm`,
+                value: `${projectedSixMonthLeft.toFixed(2)} mm`,
               })}
               onMouseLeave={() => setHoveredPoint(null)}
             />
           ) : null}
-          {model.latestRecord && model.projectedTwelveMonthRight !== null ? (
+          {projectedTwelveMonthAge !== null && projectedTwelveMonthRight !== null ? (
             <circle
-              cx={model.xForAge(model.latestRecord.age_years + 1)}
-              cy={model.yForMm(model.projectedTwelveMonthRight)}
+              cx={model.xForAge(projectedTwelveMonthAge)}
+              cy={model.yForMm(projectedTwelveMonthRight)}
               r="5.5"
               fill="#ffffff"
               stroke="#0f766e"
               strokeWidth="2.5"
               onMouseEnter={() => setHoveredPoint({
-                x: model.xForAge(model.latestRecord.age_years + 1),
-                y: model.yForMm(model.projectedTwelveMonthRight),
+                x: model.xForAge(projectedTwelveMonthAge),
+                y: model.yForMm(projectedTwelveMonthRight),
                 title: "Projected OD · 12 months",
-                value: `${model.projectedTwelveMonthRight.toFixed(2)} mm`,
+                value: `${projectedTwelveMonthRight.toFixed(2)} mm`,
               })}
               onMouseLeave={() => setHoveredPoint(null)}
             />
           ) : null}
-          {model.latestRecord && model.projectedTwelveMonthLeft !== null ? (
+          {projectedTwelveMonthAge !== null && projectedTwelveMonthLeft !== null ? (
             <circle
-              cx={model.xForAge(model.latestRecord.age_years + 1)}
-              cy={model.yForMm(model.projectedTwelveMonthLeft)}
+              cx={model.xForAge(projectedTwelveMonthAge)}
+              cy={model.yForMm(projectedTwelveMonthLeft)}
               r="5.5"
               fill="#ffffff"
               stroke="#2563eb"
               strokeWidth="2.5"
               onMouseEnter={() => setHoveredPoint({
-                x: model.xForAge(model.latestRecord.age_years + 1),
-                y: model.yForMm(model.projectedTwelveMonthLeft),
+                x: model.xForAge(projectedTwelveMonthAge),
+                y: model.yForMm(projectedTwelveMonthLeft),
                 title: "Projected OS · 12 months",
-                value: `${model.projectedTwelveMonthLeft.toFixed(2)} mm`,
+                value: `${projectedTwelveMonthLeft.toFixed(2)} mm`,
               })}
               onMouseLeave={() => setHoveredPoint(null)}
             />
