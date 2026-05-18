@@ -199,3 +199,53 @@ def test_cross_org_invoice_and_negative_stock_adjustment_are_rejected(client):
     )
     assert negative_adjustment.status_code == 400
     assert "Stock cannot go below zero" in negative_adjustment.text
+
+
+def test_invoice_delivery_failure_reports_finalized_state(client, monkeypatch):
+    test_client, repo = client
+    session = register(test_client, identifier="billing-failure@clinic.com", clinic_name="Billing Failure Clinic")
+
+    async def failing_send_clinic_email_message(**_kwargs):
+        raise RuntimeError("SMTP unavailable")
+
+    monkeypatch.setattr(billing_workflow, "send_clinic_email_message", failing_send_clinic_email_message)
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Failed Bill Patient",
+            "phone": "5550106262",
+            "email": "failed-bill@example.com",
+            "address": "12 Billing Street",
+            "reason": "Consultation",
+            "age": 40,
+            "weight": 75,
+            "height": 172,
+            "temperature": 98.6,
+        },
+        headers=auth_headers(session["token"]),
+    ).json()
+
+    invoice = test_client.post(
+        "/invoices",
+        json={
+            "patient_id": patient["id"],
+            "payment_status": "paid",
+            "items": [{"item_type": "service", "label": "Consultation", "quantity": 1, "unit_price": 500}],
+        },
+        headers=auth_headers(session["token"]),
+    ).json()
+
+    response = test_client.post(
+        "/send-invoice",
+        json={"invoice_id": invoice["id"], "recipient_email": patient["email"]},
+        headers=auth_headers(session["token"]),
+    )
+
+    assert response.status_code == 502
+    assert "invoice finalized" in response.json()["detail"]["message"].lower()
+    assert repo.invoices[invoice["id"]]["completed_at"] is not None
+    assert any(
+        error["path"] == "/send-invoice" and error["context"].get("invoice_id") == invoice["id"]
+        for error in repo.platform_errors.values()
+    )

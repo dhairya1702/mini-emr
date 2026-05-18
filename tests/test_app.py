@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import sys
+import asyncio
+import hashlib
+import hmac
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import ModuleType
@@ -86,6 +90,9 @@ from app import config as config_module
 from app import main as main_module
 from app.main import app
 from app.db import DuplicateCheckInCandidateError, get_repository
+from app.schemas import ClinicSettingsUpdate, PatientCaseStudySourceOut, UserOut
+from app.services.case_study_specialty import apply_case_study_specialty_enrichment
+from app.services.document_helpers import build_document_context_for_user, serialize_note_assets
 from app.services.followup_workflow import _as_utc_minute
 from app.services import followup_booking_service as followup_booking_service_module
 
@@ -108,6 +115,7 @@ class FakeRepo:
         self.patient_visits: dict[str, dict] = {}
         self.notes: dict[str, dict] = {}
         self.myopia_measurements: dict[str, dict] = {}
+        self.longitudinal_tracks: dict[str, dict] = {}
         self.case_studies: dict[str, dict] = {}
         self.catalog_items: dict[str, dict] = {}
         self.invoices: dict[str, dict] = {}
@@ -403,6 +411,12 @@ class FakeRepo:
             ),
             "created_at": user["created_at"],
         }
+
+    async def get_user_for_org(self, org_id: str, user_id: str) -> dict:
+        user = self.users[user_id]
+        if user["org_id"] != org_id:
+            raise KeyError(user_id)
+        return await self.get_user(user_id)
 
     async def list_users(self, org_id: str) -> list[dict]:
         return [
@@ -748,6 +762,38 @@ class FakeRepo:
         row.update(updates)
         return row
 
+    async def create_longitudinal_track(self, org_id: str, patient_id: str, payload) -> dict:
+        await self.get_patient(org_id, patient_id)
+        record_id = str(uuid4())
+        row = {
+            "id": record_id,
+            "org_id": org_id,
+            "patient_id": patient_id,
+            "track_type": payload.track_type,
+            "measured_at": payload.measured_at,
+            "summary_fields": payload.summary_fields,
+            "raw_payload": payload.raw_payload,
+            "derived_metrics": payload.derived_metrics,
+            "created_at": _now(),
+        }
+        self.longitudinal_tracks[record_id] = row
+        return row
+
+    async def list_longitudinal_tracks_for_patient(self, org_id: str, patient_id: str, *, track_type: str | None = None) -> list[dict]:
+        rows = [
+            row for row in self.longitudinal_tracks.values()
+            if row["org_id"] == org_id and row["patient_id"] == patient_id and (track_type is None or row["track_type"] == track_type)
+        ]
+        rows.sort(key=lambda row: row["measured_at"])
+        return rows
+
+    async def update_longitudinal_track(self, org_id: str, patient_id: str, record_id: str, updates: dict) -> dict:
+        row = self.longitudinal_tracks[record_id]
+        if row["org_id"] != org_id or row["patient_id"] != patient_id:
+            raise ValueError("Longitudinal track record not found for this patient.")
+        row.update(updates)
+        return row
+
     async def create_case_study(self, org_id: str, created_by: str, payload) -> dict:
         await self.get_patient(org_id, str(payload.patient_id))
         case_study_id = str(uuid4())
@@ -807,6 +853,7 @@ class FakeRepo:
             str(payload.patient_id),
             payload.content,
             asset_payload=getattr(payload, "asset_payload", []),
+            structured_modules=getattr(payload, "structured_modules", []),
             version_number=1,
             root_note_id=None,
             amended_from_note_id=None,
@@ -819,6 +866,7 @@ class FakeRepo:
         content: str,
         *,
         asset_payload: list[dict],
+        structured_modules: list[dict],
         version_number: int,
         root_note_id: str | None,
         amended_from_note_id: str | None,
@@ -830,6 +878,7 @@ class FakeRepo:
             "patient_id": patient_id,
             "content": content,
             "asset_payload": asset_payload,
+            "structured_modules": structured_modules,
             "status": "draft",
             "version_number": version_number,
             "root_note_id": root_note_id,
@@ -845,13 +894,15 @@ class FakeRepo:
         self.notes[note_id] = note
         return note
 
-    async def update_note_draft(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None) -> dict:
+    async def update_note_draft(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None, structured_modules: list[dict] | None = None) -> dict:
         note = await self.get_note(org_id, note_id)
         if note["status"] != "draft":
             raise ValueError("Only draft notes can be updated.")
         note["content"] = content
         if asset_payload is not None:
             note["asset_payload"] = asset_payload
+        if structured_modules is not None:
+            note["structured_modules"] = structured_modules
         return note
 
     async def get_note(self, org_id: str, note_id: str) -> dict:
@@ -872,7 +923,7 @@ class FakeRepo:
         note["finalized_at"] = _now()
         return note
 
-    async def create_note_amendment(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None) -> dict:
+    async def create_note_amendment(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None, structured_modules: list[dict] | None = None) -> dict:
         note = await self.get_note(org_id, note_id)
         related = [
             entry for entry in self.notes.values()
@@ -886,6 +937,7 @@ class FakeRepo:
             note["patient_id"],
             content,
             asset_payload=asset_payload or note.get("asset_payload") or [],
+            structured_modules=structured_modules if structured_modules is not None else note.get("structured_modules") or [],
             version_number=next_version,
             root_note_id=str(note.get("root_note_id") or note["id"]),
             amended_from_note_id=note_id,
@@ -1324,6 +1376,104 @@ def test_follow_up_slot_normalizer_accepts_iso_strings() -> None:
     assert normalized == datetime(2026, 4, 10, 10, 30, tzinfo=UTC)
 
 
+def test_public_follow_up_booking_rejects_expired_tokens(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    session = register(test_client, identifier="booking-expired@example.com", clinic_name="Expired Booking Clinic")
+
+    original_secret = followup_booking_service_module._secret
+
+    def expired_token(*, org_id: str, patient_id: str, follow_up_id: str) -> str:
+        payload = {
+            "org_id": org_id,
+            "patient_id": patient_id,
+            "follow_up_id": follow_up_id,
+            "exp": int((datetime.now(UTC) - timedelta(days=1)).timestamp()),
+        }
+        payload_segment = followup_booking_service_module._b64encode(
+            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        )
+        signature = hmac.new(
+            original_secret(),
+            payload_segment.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+        return f"{payload_segment}.{followup_booking_service_module._b64encode(signature)}"
+
+    patient = test_client.post(
+        "/patients",
+        headers=auth_headers(session["token"]),
+        json={
+            "name": "Expired Booking Patient",
+            "phone": "5550108282",
+            "email": "expired@example.com",
+            "address": "123 Main Street",
+            "reason": "Review visit",
+            "age": 29,
+            "weight": 67,
+            "height": 172,
+            "temperature": 98.6,
+        },
+    ).json()
+
+    follow_up = test_client.post(
+        f"/patients/{patient['id']}/follow-ups",
+        headers=auth_headers(session["token"]),
+        json={"scheduled_for": (datetime.now(UTC).replace(microsecond=0) + timedelta(days=2)).isoformat(), "notes": "Return soon"},
+    ).json()
+
+    token = expired_token(
+        org_id=session["user"]["org_id"],
+        patient_id=patient["id"],
+        follow_up_id=follow_up["id"],
+    )
+
+    response = test_client.get(f"/public/follow-up-booking?token={token}")
+    assert response.status_code == 400
+    assert "expired" in response.json()["detail"].lower()
+
+
+def test_public_follow_up_booking_rate_limits_context_requests(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    session = register(test_client, identifier="booking-ratelimit@example.com", clinic_name="Rate Limit Booking Clinic")
+
+    patient = test_client.post(
+        "/patients",
+        headers=auth_headers(session["token"]),
+        json={
+            "name": "Rate Limit Booking Patient",
+            "phone": "5550109292",
+            "email": "ratelimit@example.com",
+            "address": "123 Main Street",
+            "reason": "Review visit",
+            "age": 29,
+            "weight": 67,
+            "height": 172,
+            "temperature": 98.6,
+        },
+    ).json()
+
+    follow_up = test_client.post(
+        f"/patients/{patient['id']}/follow-ups",
+        headers=auth_headers(session["token"]),
+        json={"scheduled_for": (datetime.now(UTC).replace(microsecond=0) + timedelta(days=2)).isoformat(), "notes": "Return soon"},
+    ).json()
+
+    token = followup_booking_service_module.create_follow_up_booking_token(
+        org_id=session["user"]["org_id"],
+        patient_id=patient["id"],
+        follow_up_id=follow_up["id"],
+    )
+
+    monkeypatch.setitem(main_module.RATE_LIMIT_WINDOWS, "public_follow_up_booking_get", (1, 60.0))
+    main_module.RATE_LIMIT_BUCKETS.clear()
+
+    first = test_client.get(f"/public/follow-up-booking?token={token}")
+    assert first.status_code == 200
+
+    second = test_client.get(f"/public/follow-up-booking?token={token}")
+    assert second.status_code == 429
+
+
 def test_schedule_lists_auto_cancel_expired_items(client):
     test_client, repo = client
     session = register(test_client, identifier="cleanup@example.com", clinic_name="Cleanup Clinic")
@@ -1675,3 +1825,212 @@ def test_case_study_source_is_generic_for_non_optometry_clinics(client):
     assert source["patient"]["name"] == "Ravi Kumar"
     assert len(source["notes"]) == 1
     assert source["myopia_history"] is None
+
+
+def test_pediatric_growth_records_create_history_and_timeline(client):
+    test_client, _repo = client
+    session = register(test_client, identifier="peds@example.com", clinic_name="Peds Clinic")
+    token = session["token"]
+
+    settings_response = test_client.put(
+        "/settings/clinic",
+        headers=auth_headers(token),
+        json={"clinic_specialty": "pediatrics"},
+    )
+    assert settings_response.status_code == 200
+
+    patient_response = test_client.post(
+        "/patients",
+        headers=auth_headers(token),
+        json={
+            "name": "Aarav Mehta",
+            "phone": "5550204444",
+            "email": "aarav@example.com",
+            "address": "22 Maple Street",
+            "reason": "Well-child visit",
+            "age": 8,
+            "weight": 26,
+            "height": 128,
+            "temperature": 98.4,
+        },
+    )
+    assert patient_response.status_code == 201
+    patient = patient_response.json()
+
+    growth_response = test_client.post(
+        f"/patients/{patient['id']}/growth-records",
+        headers=auth_headers(token),
+        json={
+            "measured_at": "2026-05-01T10:00:00+00:00",
+            "height_cm": 128,
+            "weight_kg": 26,
+            "head_circumference_cm": 52,
+            "visit_notes": "Routine growth review",
+        },
+    )
+    assert growth_response.status_code == 201
+    assert growth_response.json()["bmi"] > 0
+
+    history_response = test_client.get(
+        f"/patients/{patient['id']}/growth-history",
+        headers=auth_headers(token),
+    )
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert len(history["records"]) == 1
+    assert history["latest_measurement"]["height_cm"] == 128.0
+
+    timeline_response = test_client.get(
+        f"/patients/{patient['id']}/timeline",
+        headers=auth_headers(token),
+    )
+    assert timeline_response.status_code == 200
+    growth_events = [event for event in timeline_response.json() if event["type"] == "growth_measurement"]
+    assert len(growth_events) == 1
+    assert "BMI" in growth_events[0]["description"]
+
+
+def test_build_document_context_for_user_prefers_user_profile_name() -> None:
+    async def scenario() -> None:
+        repo = FakeRepo()
+        org = await repo.create_organization("ClinicOS")
+        await repo.create_clinic_settings(
+            org["id"],
+            ClinicSettingsUpdate(
+                clinic_name="ClinicOS",
+                doctor_name="Fallback Doctor",
+            ),
+        )
+        user = await repo.create_user(
+            org["id"],
+            "admin@clinic.test",
+            "Dr. Rivera",
+            "hashed-password",
+            "admin",
+        )
+        await repo.set_user_signature(
+            user["id"],
+            filename="signature.png",
+            content_type="image/png",
+            data_base64="ZmFrZQ==",
+        )
+
+        context = await build_document_context_for_user(repo, UserOut(**await repo.get_user(user["id"])))
+
+        assert context["doctor_name"] == "Dr. Rivera"
+        assert context["doctor_signature_name"] == "signature.png"
+        assert context["doctor_signature_content_type"] == "image/png"
+        assert context["doctor_signature_data_base64"] == "ZmFrZQ=="
+
+    asyncio.run(scenario())
+
+
+def test_case_study_specialty_enrichment_dispatches_only_for_optometry() -> None:
+    async def scenario() -> None:
+        repo = FakeRepo()
+        org = await repo.create_organization("ClinicOS")
+
+        payload = SimpleNamespace(
+            model_dump=lambda: {
+                "name": "Lina",
+                "phone": "1234567890",
+                "email": "",
+                "address": "",
+                "reason": "Progressive myopia",
+                "age": 11,
+                "weight": 31.5,
+                "temperature": 98.6,
+                "height": 140.0,
+            },
+            name="Lina",
+            phone="1234567890",
+            email="",
+            address="",
+            reason="Progressive myopia",
+            age=11,
+            weight=31.5,
+            temperature=98.6,
+            height=140.0,
+        )
+        patient = await repo.create_patient(org["id"], payload)
+
+        base_source = PatientCaseStudySourceOut(
+            patient={
+                **patient,
+                "status": patient["status"],
+                "billed": patient["billed"],
+                "last_visit_at": patient["last_visit_at"],
+            },
+            visits=[],
+            timeline=[],
+            notes=[],
+            myopia_history=None,
+        )
+
+        generic_source = await apply_case_study_specialty_enrichment(
+            repo,
+            org["id"],
+            patient["id"],
+            "general_physician",
+            base_source,
+        )
+        assert generic_source.myopia_history is None
+
+        measured_at = _now()
+        await repo.create_myopia_measurement(
+            org["id"],
+            patient["id"],
+            SimpleNamespace(
+                measured_at=measured_at,
+                age_years=11.0,
+                axial_length_right_mm=23.11,
+                axial_length_left_mm=23.02,
+                treatment_type="Observation",
+                treatment_notes="",
+                visit_notes="",
+                refraction_right="",
+                refraction_left="",
+                model_dump=lambda: {
+                    "measured_at": measured_at,
+                    "age_years": 11.0,
+                    "axial_length_right_mm": 23.11,
+                    "axial_length_left_mm": 23.02,
+                    "treatment_type": "Observation",
+                    "treatment_notes": "",
+                    "visit_notes": "",
+                    "refraction_right": "",
+                    "refraction_left": "",
+                },
+            ),
+        )
+
+        enriched_source = await apply_case_study_specialty_enrichment(
+            repo,
+            org["id"],
+            patient["id"],
+            "optometry",
+            base_source,
+        )
+        assert enriched_source.myopia_history is not None
+        assert enriched_source.myopia_history.records[0].treatment_type == "Observation"
+
+    asyncio.run(scenario())
+
+
+def test_serialize_note_assets_uses_model_dump() -> None:
+    class FakeAsset:
+        def __init__(self, payload: dict) -> None:
+            self.payload = payload
+
+        def model_dump(self) -> dict:
+            return dict(self.payload)
+
+    assets = [
+        FakeAsset({"id": "asset-1", "kind": "attachment"}),
+        FakeAsset({"id": "asset-2", "kind": "drawing"}),
+    ]
+
+    assert serialize_note_assets(assets) == [
+        {"id": "asset-1", "kind": "attachment"},
+        {"id": "asset-2", "kind": "drawing"},
+    ]

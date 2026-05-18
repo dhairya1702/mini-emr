@@ -5,4 +5,5 @@ from app.schema_domains.case_studies import *
 from app.schema_domains.common import *
 from app.schema_domains.documents import *
 from app.schema_domains.optometry import *
+from app.schema_domains.specialty import *
 from app.schema_domains.patients import *

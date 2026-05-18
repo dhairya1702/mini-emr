@@ -5,7 +5,7 @@ const DEFAULT_TOKEN = "playwright-session-token";
 const DEFAULT_EXPIRY_SECONDS = Math.floor(Date.now() / 1000) + 60 * 60;
 
 type UserRole = "admin" | "staff";
-type ClinicSpecialty = "general_physician" | "optometry" | null;
+type ClinicSpecialty = "general_physician" | "optometry" | "pediatrics" | null;
 
 export type MockAuthUser = {
   id: string;
@@ -90,6 +90,7 @@ type MockCaseStudySource = {
   timeline: Array<Record<string, unknown>>;
   notes: Array<Record<string, unknown>>;
   myopia_history: Record<string, unknown> | null;
+  pediatric_growth_history: Record<string, unknown> | null;
 };
 
 function jsonHeaders() {
@@ -234,6 +235,7 @@ export function buildCaseStudySource(patient: MockPatient): MockCaseStudySource 
       },
     ],
     myopia_history: null,
+    pediatric_growth_history: null,
   };
 }
 

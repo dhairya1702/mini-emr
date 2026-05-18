@@ -10,7 +10,7 @@ from app.repositories.base import (
     round_money,
     rpc_single,
 )
-from app.schemas import CatalogItemCreate, CatalogStockUpdate, InvoiceCreate
+from app.schema_domains.billing import CatalogItemCreate, CatalogStockUpdate, InvoiceCreate
 
 
 class BillingRepositoryMixin(BaseSupabaseRepository):

@@ -36,6 +36,7 @@ create table if not exists public.notes (
   snapshot_content text,
   asset_payload jsonb not null default '[]'::jsonb,
   snapshot_asset_payload jsonb not null default '[]'::jsonb,
+  structured_modules jsonb not null default '[]'::jsonb,
   finalized_at timestamptz,
   sent_at timestamptz,
   sent_by uuid references public.clinic_users(id) on delete set null,
@@ -65,7 +66,7 @@ create table if not exists public.clinic_settings (
   clinic_name text not null default 'ClinicOS',
   clinic_address text not null default '',
   clinic_phone text not null default '',
-  clinic_specialty text check (clinic_specialty in ('optometry', 'general_physician')),
+  clinic_specialty text check (clinic_specialty in ('optometry', 'general_physician', 'pediatrics')),
   appointment_start_time text not null default '09:00',
   appointment_end_time text not null default '18:00',
   appointments_per_hour integer not null default 4,
@@ -247,6 +248,21 @@ create table if not exists public.myopia_measurements (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.longitudinal_tracks (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  track_type text not null,
+  measured_at timestamptz not null,
+  summary_fields jsonb not null default '{}'::jsonb,
+  raw_payload jsonb not null default '{}'::jsonb,
+  derived_metrics jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists longitudinal_tracks_org_patient_measured_at_idx
+  on public.longitudinal_tracks(org_id, patient_id, measured_at asc);
+
 create index if not exists myopia_measurements_patient_measured_at_idx
   on public.myopia_measurements(patient_id, measured_at asc);
 
@@ -366,12 +382,15 @@ add column if not exists sender_name text not null default '';
 alter table public.clinic_settings
 add column if not exists clinic_specialty text;
 
+alter table public.notes
+add column if not exists structured_modules jsonb not null default '[]'::jsonb;
+
 alter table public.clinic_settings
 drop constraint if exists clinic_settings_clinic_specialty_check;
 
 alter table public.clinic_settings
 add constraint clinic_settings_clinic_specialty_check
-check (clinic_specialty in ('optometry', 'general_physician'));
+check (clinic_specialty in ('optometry', 'general_physician', 'pediatrics'));
 
 alter table public.clinic_settings
 add column if not exists appointment_start_time text not null default '09:00';

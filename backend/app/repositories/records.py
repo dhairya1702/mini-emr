@@ -5,7 +5,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.repositories.base import BaseSupabaseRepository
-from app.schemas import FollowUpCreate, FollowUpUpdate, NoteCreate
+from app.schema_domains.patients import FollowUpCreate, FollowUpUpdate, NoteCreate
 
 
 class RecordsRepositoryMixin(BaseSupabaseRepository):
@@ -20,6 +20,7 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
                     "patient_id": str(payload.patient_id),
                     "content": payload.content,
                     "asset_payload": payload.asset_payload,
+                    "structured_modules": payload.structured_modules,
                     "status": "draft",
                     "version_number": version_number,
                     "root_note_id": root_note_id,
@@ -36,7 +37,14 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
             .data[0]
         )
 
-    async def update_note_draft(self, org_id: str, note_id: str, content: str, asset_payload: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    async def update_note_draft(
+        self,
+        org_id: str,
+        note_id: str,
+        content: str,
+        asset_payload: list[dict[str, Any]] | None = None,
+        structured_modules: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         def _update() -> dict[str, Any]:
             note = self.client.table("notes").select("*").eq("org_id", org_id).eq("id", note_id).single().execute().data
             if not note:
@@ -47,6 +55,7 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
                 {
                     "content": content,
                     "asset_payload": asset_payload if asset_payload is not None else note.get("asset_payload") or [],
+                    "structured_modules": structured_modules if structured_modules is not None else note.get("structured_modules") or [],
                 }
             ).eq("org_id", org_id).eq("id", note_id).execute().data
             if not updated:
@@ -89,7 +98,14 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
 
         return await asyncio.to_thread(_finalize)
 
-    async def create_note_amendment(self, org_id: str, note_id: str, content: str, asset_payload: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    async def create_note_amendment(
+        self,
+        org_id: str,
+        note_id: str,
+        content: str,
+        asset_payload: list[dict[str, Any]] | None = None,
+        structured_modules: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         note = await self.get_note(org_id, note_id)
         patient_notes = await self.list_notes_for_patient(org_id, str(note["patient_id"]))
         root_note_id = str(note.get("root_note_id") or note["id"])
@@ -99,7 +115,12 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
         next_version = max(int(entry.get("version_number") or 1) for entry in existing_versions) + 1
         return await self.create_note(
             org_id,
-            NoteCreate(patient_id=note["patient_id"], content=content, asset_payload=asset_payload or note.get("asset_payload") or []),
+            NoteCreate(
+                patient_id=note["patient_id"],
+                content=content,
+                asset_payload=asset_payload or note.get("asset_payload") or [],
+                structured_modules=structured_modules if structured_modules is not None else note.get("structured_modules") or [],
+            ),
             version_number=next_version,
             root_note_id=root_note_id,
             amended_from_note_id=str(note["id"]),

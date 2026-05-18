@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.schema_domains.common import CaseStudyStatus, CaseStudyTemplateKey
 from app.schema_domains.optometry import MyopiaHistoryOut
 from app.schema_domains.patients import NoteOut, PatientOut, PatientTimelineEvent, PatientVisitOut
+from app.schema_domains.specialty import PediatricGrowthSummaryOut
 
 
 class PatientCaseStudySourceOut(BaseModel):
@@ -15,6 +16,7 @@ class PatientCaseStudySourceOut(BaseModel):
     timeline: list[PatientTimelineEvent] = Field(default_factory=list)
     notes: list[NoteOut] = Field(default_factory=list)
     myopia_history: MyopiaHistoryOut | None = None
+    pediatric_growth_history: PediatricGrowthSummaryOut | None = None
 
 
 class GenerateCaseStudyRequest(BaseModel):

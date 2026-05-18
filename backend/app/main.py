@@ -30,7 +30,7 @@ from app.routes import (
     superuser_router,
     users_router,
 )
-from app.schemas import UserOut
+from app.schema_domains.auth_settings import UserOut
 from app.services.auth_flow import RATE_LIMIT_BUCKETS, RATE_LIMIT_WINDOWS
 from app.services.followup_workflow import send_due_follow_up_emails_workflow
 

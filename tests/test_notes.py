@@ -120,3 +120,57 @@ def test_note_generation_rate_limit_returns_429(client, monkeypatch):
         headers=headers,
     )
     assert second.status_code == 429
+
+
+def test_note_delivery_failure_reports_finalized_state(client, monkeypatch):
+    test_client, repo = client
+    session = register(test_client, identifier="notes-failure@clinic.com", clinic_name="Notes Failure Clinic")
+    headers = auth_headers(session["token"])
+
+    async def failing_send_clinic_email_message(**_kwargs):
+        raise RuntimeError("SMTP unavailable")
+
+    monkeypatch.setattr(note_workflow, "send_clinic_email_message", failing_send_clinic_email_message)
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Failure Note Patient",
+            "phone": "5550107272",
+            "reason": "Consultation",
+            "age": 29,
+            "weight": 61,
+            "height": 166,
+            "temperature": 98.6,
+        },
+        headers=headers,
+    ).json()
+
+    generated = test_client.post(
+        "/generate-note",
+        json={
+            "patient_id": patient["id"],
+            "symptoms": "Headache",
+            "diagnosis": "Migraine",
+            "medications": "Paracetamol",
+            "notes": "Hydrate well.",
+        },
+        headers=headers,
+    )
+    assert generated.status_code == 200
+    note_id = generated.json()["note_id"]
+
+    response = test_client.post(
+        "/send-note",
+        json={"note_id": note_id, "patient_id": patient["id"], "recipient_email": "patient@example.com"},
+        headers=headers,
+    )
+
+    assert response.status_code == 502
+    assert "note finalized" in response.json()["detail"]["message"].lower()
+    assert repo.notes[note_id]["status"] == "final"
+    assert repo.notes[note_id]["sent_at"] is None
+    assert any(
+        error["path"] == "/send-note" and error["context"].get("note_id") == note_id
+        for error in repo.platform_errors.values()
+    )

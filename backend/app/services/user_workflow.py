@@ -2,7 +2,14 @@ from fastapi import HTTPException, Response
 
 from app.auth import hash_password, issue_session_headers, verify_password
 from app.db import SupabaseRepository
-from app.schemas import AuthResponse, ClinicSettingsUpdate, LoginRequest, StaffUserCreate, UserCreate, UserOut
+from app.schema_domains.auth_settings import (
+    AuthResponse,
+    ClinicSettingsUpdate,
+    LoginRequest,
+    StaffUserCreate,
+    UserCreate,
+    UserOut,
+)
 from app.services.audit_service import write_audit_event
 from app.services.auth_flow import enforce_rate_limit, normalize_identifier
 

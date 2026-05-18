@@ -1,5 +1,12 @@
 from app.db import SupabaseRepository
-from app.schemas import InvoiceOut, MyopiaDeltaOut, MyopiaHistoryOut, MyopiaMeasurementOut, NoteOut, PatientTimelineEvent
+from app.schema_domains.billing import InvoiceOut
+from app.schema_domains.optometry import MyopiaDeltaOut, MyopiaHistoryOut, MyopiaMeasurementOut
+from app.schema_domains.patients import NoteOut, PatientTimelineEvent
+from app.schema_domains.specialty import (
+    PediatricGrowthDeltaOut,
+    PediatricGrowthMeasurementOut,
+    PediatricGrowthSummaryOut,
+)
 from app.services.audit_service import user_names_by_id
 from app.timeline import build_patient_timeline
 
@@ -41,6 +48,77 @@ async def build_patient_myopia_history_view(
         last_delta=last_delta,
         annualized_growth=annualized_growth,
         overlay_version="clinic-reference-v1",
+    )
+
+
+def _patient_age_months_on(measured_at, patient: dict) -> int | None:
+    patient_age_years = patient.get("age")
+    created_at = patient.get("created_at")
+    if patient_age_years is None or created_at is None:
+        return None
+    day_span = (measured_at - created_at).total_seconds() / 86400
+    approximate_months = round(float(patient_age_years) * 12 + (day_span / 30.4375))
+    return max(approximate_months, 0)
+
+
+def _build_growth_record(track: dict, patient: dict) -> PediatricGrowthMeasurementOut:
+    raw = track.get("raw_payload") or {}
+    derived = track.get("derived_metrics") or {}
+    return PediatricGrowthMeasurementOut(
+        measured_at=track["measured_at"],
+        age_months=_patient_age_months_on(track["measured_at"], patient),
+        height_cm=float(raw.get("height_cm") or track.get("summary_fields", {}).get("height_cm") or 0),
+        weight_kg=float(raw.get("weight_kg") or track.get("summary_fields", {}).get("weight_kg") or 0),
+        bmi=float(derived.get("bmi") or 0),
+        head_circumference_cm=(
+            float(raw["head_circumference_cm"])
+            if raw.get("head_circumference_cm") is not None
+            else None
+        ),
+        visit_notes=str(raw.get("visit_notes") or ""),
+        track_id=str(track["id"]),
+        created_at=track["created_at"],
+    )
+
+
+async def build_patient_growth_history_view(
+    repo: SupabaseRepository,
+    org_id: str,
+    patient_id: str,
+) -> PediatricGrowthSummaryOut:
+    patient = await repo.get_patient(org_id, patient_id)
+    records = [
+        _build_growth_record(track, patient)
+        for track in await repo.list_longitudinal_tracks_for_patient(org_id, patient_id, track_type="growth_measurement")
+    ]
+    latest = records[-1] if records else None
+    previous = records[-2] if len(records) > 1 else None
+    interval_change = None
+    if latest and previous:
+        interval_change = PediatricGrowthDeltaOut(
+            height_cm=round(latest.height_cm - previous.height_cm, 2),
+            weight_kg=round(latest.weight_kg - previous.weight_kg, 2),
+            bmi=round(latest.bmi - previous.bmi, 2),
+        )
+    trend_bits: list[str] = []
+    if interval_change:
+        if interval_change.height_cm:
+            trend_bits.append(f"height {interval_change.height_cm:+g} cm")
+        if interval_change.weight_kg:
+            trend_bits.append(f"weight {interval_change.weight_kg:+g} kg")
+    flags: list[str] = []
+    if latest and latest.bmi < 13:
+        flags.append("Low BMI review suggested.")
+    if latest and latest.bmi > 25:
+        flags.append("High BMI review suggested.")
+    return PediatricGrowthSummaryOut(
+        patient_id=patient_id,
+        latest_measurement=latest,
+        previous_measurement=previous,
+        interval_change=interval_change,
+        trend_summary=", ".join(trend_bits) if trend_bits else "Insufficient measurements for interval trend.",
+        flags=flags,
+        records=records,
     )
 
 
@@ -112,9 +190,11 @@ async def build_patient_timeline_view(
     patient_id: str,
 ) -> list[PatientTimelineEvent]:
     patient = await repo.get_patient(org_id, patient_id)
+    clinic_settings = await repo.get_clinic_settings(org_id)
     visits = await repo.list_patient_visits_for_patient(org_id, patient_id)
     notes = await repo.list_notes_for_patient(org_id, patient_id)
     myopia_measurements = await repo.list_myopia_measurements_for_patient(org_id, patient_id)
+    longitudinal_tracks = await repo.list_longitudinal_tracks_for_patient(org_id, patient_id)
     invoices = await repo.list_invoices_for_patient(org_id, patient_id)
     follow_ups = await repo.list_follow_ups_for_patient(org_id, patient_id)
     appointments = await repo.list_appointments_for_patient(org_id, patient_id)
@@ -131,4 +211,6 @@ async def build_patient_timeline_view(
         ),
         follow_ups=follow_ups,
         appointments=appointments,
+        longitudinal_tracks=longitudinal_tracks,
+        clinic_specialty=clinic_settings.get("clinic_specialty"),
     )

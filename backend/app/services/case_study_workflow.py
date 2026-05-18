@@ -8,17 +8,15 @@ from fastapi import HTTPException
 from app.clinic_context import build_clinic_context
 from app.db import SupabaseRepository
 from app.formatting import format_display_datetime
-from app.schemas import (
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.case_studies import (
     CaseStudyCreate,
     CaseStudyOut,
     GenerateCaseStudyRequest,
     GenerateCaseStudyResponse,
-    NoteOut,
     PatientCaseStudySourceOut,
-    PatientOut,
-    PatientVisitOut,
-    UserOut,
 )
+from app.schema_domains.patients import NoteOut, PatientOut, PatientVisitOut
 from app.services.anthropic_service import generate_case_study_document
 from app.services.auth_flow import enforce_rate_limit
 from app.services.audit_service import write_audit_event
@@ -137,6 +135,7 @@ def anonymize_case_study_source(source: PatientCaseStudySourceOut) -> PatientCas
         timeline=timeline,
         notes=notes,
         myopia_history=source.myopia_history,
+        pediatric_growth_history=source.pediatric_growth_history,
     )
 
 
@@ -196,6 +195,17 @@ def build_case_study_source_context(source: PatientCaseStudySourceOut, *, templa
             )
     else:
         lines.append("- No specialty longitudinal measurements recorded.")
+    lines.extend(["", "Pediatrics Growth Data:"])
+    if source.pediatric_growth_history and source.pediatric_growth_history.records:
+        for record in source.pediatric_growth_history.records[-10:]:
+            lines.append(
+                f"- {format_display_datetime(record.measured_at)} | "
+                f"height={record.height_cm} cm | weight={record.weight_kg} kg | bmi={record.bmi} | "
+                f"head circumference={record.head_circumference_cm if record.head_circumference_cm is not None else 'n/a'} | "
+                f"notes={record.visit_notes or '-'}"
+            )
+    else:
+        lines.append("- No pediatric growth measurements recorded.")
     return "\n".join(lines).strip()
 
 
@@ -224,6 +234,7 @@ async def build_base_case_study_source_view(
         timeline=timeline,
         notes=note_rows,
         myopia_history=None,
+        pediatric_growth_history=None,
     )
 
 

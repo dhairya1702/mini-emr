@@ -7,7 +7,8 @@ from fastapi.responses import StreamingResponse
 from app.auth import get_current_user, require_admin
 from app.db import SupabaseRepository, get_repository
 from app.formatting import format_display_datetime
-from app.schemas import (
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.documents import (
     FinalizeNoteRequest,
     GenerateLetterPdfRequest,
     GenerateLetterRequest,
@@ -15,12 +16,11 @@ from app.schemas import (
     GeneratePdfRequest,
     GenerateNoteRequest,
     GenerateNoteResponse,
-    NoteOut,
     SendLetterRequest,
     SendNoteRequest,
     SendNoteResponse,
-    UserOut,
 )
+from app.schema_domains.patients import NoteOut
 from app.services.note_workflow import (
     finalize_note_workflow,
     generate_letter_content,
@@ -28,22 +28,11 @@ from app.services.note_workflow import (
     send_letter_workflow,
     send_note_workflow,
 )
+from app.services.document_helpers import build_document_context_for_user
 from app.services.pdf_service import build_letter_pdf, build_note_pdf
 
 
 router = APIRouter()
-
-
-async def _document_context_for_current_user(repo: SupabaseRepository, current_user: UserOut) -> dict:
-    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
-    doctor_profile = await repo.get_user(str(current_user.id))
-    return {
-        **clinic_settings,
-        "doctor_name": str(doctor_profile.get("name") or clinic_settings.get("doctor_name") or "").strip(),
-        "doctor_signature_name": doctor_profile.get("doctor_signature_name"),
-        "doctor_signature_content_type": doctor_profile.get("doctor_signature_content_type"),
-        "doctor_signature_data_base64": doctor_profile.get("doctor_signature_data_base64"),
-    }
 
 
 @router.post("/generate-note", response_model=GenerateNoteResponse)
@@ -128,7 +117,7 @@ async def generate_note_pdf(
 ) -> StreamingResponse:
     try:
         patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
-        clinic_settings = await _document_context_for_current_user(repo, current_user)
+        clinic_settings = await build_document_context_for_user(repo, current_user)
         generated_on = datetime.now().strftime("%b %d, %Y %I:%M %p")
         pdf_bytes = build_note_pdf(
             patient={**patient, **clinic_settings},
@@ -157,7 +146,7 @@ async def generate_saved_note_pdf(
     try:
         note = await repo.get_note(str(current_user.org_id), note_id)
         patient = await repo.get_patient(str(current_user.org_id), str(note["patient_id"]))
-        clinic_settings = await _document_context_for_current_user(repo, current_user)
+        clinic_settings = await build_document_context_for_user(repo, current_user)
         snapshot_content = str(note.get("snapshot_content") or note.get("content") or "").strip()
         if not snapshot_content:
             raise HTTPException(status_code=400, detail="Saved note content is empty.")
@@ -185,7 +174,7 @@ async def generate_letter_pdf(
     current_user: UserOut = Depends(get_current_user),
 ) -> StreamingResponse:
     try:
-        clinic_settings = await _document_context_for_current_user(repo, current_user)
+        clinic_settings = await build_document_context_for_user(repo, current_user)
         generated_on = datetime.now().strftime("%b %d, %Y")
         pdf_bytes = build_letter_pdf(
             clinic=clinic_settings,

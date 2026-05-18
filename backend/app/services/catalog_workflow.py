@@ -1,5 +1,6 @@
 from app.db import SupabaseRepository
-from app.schemas import CatalogItemCreate, CatalogItemOut, CatalogStockUpdate, UserOut
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.billing import CatalogItemCreate, CatalogItemOut, CatalogStockUpdate
 from app.services.audit_service import (
     record_catalog_item_created,
     record_catalog_item_deleted,

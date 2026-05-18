@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from app.config import get_settings
 
 
-BOOKING_TOKEN_TTL_DAYS = 30
+BOOKING_TOKEN_TTL_DAYS = 7
 
 
 def _b64encode(value: bytes) -> str:

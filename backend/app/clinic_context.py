@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from app.schemas import GenerateNoteRequest
+from app.schema_domains.documents import GenerateNoteRequest
 
 
 def _render_pipe_table(title: str, headers: list[str], rows: list[list[str]]) -> str:
@@ -326,4 +326,22 @@ def build_measurements_context(payload: GenerateNoteRequest) -> str:
         )
         if myopia_table:
             measurement_bits.append(myopia_table)
+    for module in payload.structured_modules:
+        module_type = module.module_type.strip()
+        if not module_type:
+            continue
+        module_rows = [
+            [key.replace("_", " ").title(), str(value)]
+            for key, value in module.payload.items()
+            if value not in (None, "", [], {})
+        ]
+        if not module_rows:
+            continue
+        module_table = _render_pipe_table(
+            f"Structured Module: {module_type}",
+            ["Field", "Value"],
+            module_rows,
+        )
+        if module_table:
+            measurement_bits.append(module_table)
     return "\n".join(bit for bit in measurement_bits if bit)

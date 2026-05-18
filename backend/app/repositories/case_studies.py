@@ -6,7 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.repositories.base import BaseSupabaseRepository
-from app.schemas import CaseStudyCreate
+from app.schema_domains.case_studies import CaseStudyCreate
 
 
 class CaseStudiesRepositoryMixin(BaseSupabaseRepository):

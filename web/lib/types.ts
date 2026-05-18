@@ -84,6 +84,8 @@ export type PatientTimelineEventType =
   | "appointment_checked_in"
   | "consultation_note"
   | "myopia_measurement"
+  | "growth_measurement"
+  | "well_child_visit"
   | "invoice_created"
   | "bill_sent"
   | "follow_up_scheduled"
@@ -111,6 +113,7 @@ export interface ConsultationNote {
   snapshot_content: string | null;
   asset_payload?: NoteAsset[];
   snapshot_asset_payload?: NoteAsset[];
+  structured_modules?: StructuredModule[];
   finalized_at: string | null;
   sent_at: string | null;
   sent_by: string | null;
@@ -314,6 +317,68 @@ export interface MyopiaHistory {
   overlay_version: string;
 }
 
+export interface StructuredModule {
+  module_type: string;
+  payload: Record<string, unknown>;
+}
+
+export interface PediatricGrowthMeasurementPayload {
+  measured_at: string;
+  height_cm: number;
+  weight_kg: number;
+  head_circumference_cm?: number | null;
+  visit_notes: string;
+}
+
+export interface PediatricGrowthMeasurementRecord {
+  measured_at: string;
+  age_months: number | null;
+  height_cm: number;
+  weight_kg: number;
+  bmi: number;
+  head_circumference_cm: number | null;
+  visit_notes: string;
+  track_id: string;
+  created_at: string;
+}
+
+export interface PediatricGrowthDelta {
+  height_cm: number | null;
+  weight_kg: number | null;
+  bmi: number | null;
+}
+
+export interface PediatricGrowthSummary {
+  patient_id: string;
+  latest_measurement: PediatricGrowthMeasurementRecord | null;
+  previous_measurement: PediatricGrowthMeasurementRecord | null;
+  interval_change: PediatricGrowthDelta | null;
+  trend_summary: string;
+  flags: string[];
+  records: PediatricGrowthMeasurementRecord[];
+}
+
+export interface WellChildVisitPayload {
+  visit_band: string;
+  nutrition_summary: string;
+  sleep_summary: string;
+  elimination_summary: string;
+  school_behavior_summary: string;
+  parent_concerns: string;
+  assessment_summary: string;
+}
+
+export interface ParentHandoutRequestPayload {
+  template_key: string;
+  instructions: string;
+}
+
+export interface PediatricFollowUpPlanPayload {
+  preset_key: string;
+  suggested_interval: string;
+  notes: string;
+}
+
 export type CaseStudyTemplateKey =
   | "conference_presentation"
   | "teaching_rounds"
@@ -327,6 +392,7 @@ export interface PatientCaseStudySource {
   timeline: PatientTimelineEvent[];
   notes: ConsultationNote[];
   myopia_history: MyopiaHistory | null;
+  pediatric_growth_history: PediatricGrowthSummary | null;
 }
 
 export interface GenerateCaseStudyPayload {
@@ -390,6 +456,7 @@ export interface GenerateNotePayload {
   binocular_vision?: BinocularVisionPayload | null;
   low_vision?: LowVisionPayload | null;
   myopia_measurement?: MyopiaMeasurementPayload | null;
+  structured_modules?: StructuredModule[];
   assets?: NoteAsset[];
 }
 

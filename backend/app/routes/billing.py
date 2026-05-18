@@ -6,7 +6,9 @@ from fastapi.responses import StreamingResponse
 
 from app.auth import require_admin
 from app.db import SupabaseRepository, get_repository
-from app.schemas import InvoiceCreate, InvoiceOut, SendInvoiceRequest, SendNoteResponse, UserOut
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.billing import InvoiceCreate, InvoiceOut, SendInvoiceRequest
+from app.schema_domains.documents import SendNoteResponse
 from app.services.billing_workflow import create_invoice_workflow, list_invoices_with_user_names, send_invoice_workflow
 from app.services.pdf_service import build_invoice_pdf
 

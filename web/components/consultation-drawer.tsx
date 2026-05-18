@@ -5,7 +5,9 @@ import { CalendarPlus2, Eye, Eraser, FileText, Image as ImageIcon, Mail, Papercl
 import NextImage from "next/image";
 import type { ReactNode } from "react";
 
-import { BinocularVisionPayload, CatalogItem, ContactLensEyeEntry, ContactLensPayload, EyeExamEntry, LowVisionPayload, MyopiaMeasurementPayload, NoteAsset, Patient, TestScoreEntry } from "@/lib/types";
+import type { ClinicSpecialty } from "@/lib/clinic-specialty";
+import { specialtyHasModule } from "@/lib/specialty";
+import { BinocularVisionPayload, CatalogItem, ContactLensEyeEntry, ContactLensPayload, EyeExamEntry, LowVisionPayload, MyopiaMeasurementPayload, NoteAsset, Patient, PediatricGrowthMeasurementPayload, TestScoreEntry, WellChildVisitPayload } from "@/lib/types";
 import { api } from "@/lib/api";
 import { BinocularVisionModal } from "@/components/optometry/binocular-vision-modal";
 import { ContactLensModal } from "@/components/optometry/contact-lens-modal";
@@ -74,7 +76,7 @@ function togglePrescriptionNoteValue(currentValue: string, option: string) {
 
 interface ConsultationDrawerProps {
   patient: Patient | null;
-  isOptometryClinic?: boolean;
+  clinicSpecialty?: ClinicSpecialty | null;
   onClose: () => void;
   onDone: (
     patient: Patient,
@@ -98,6 +100,7 @@ interface ConsultationDrawerProps {
     binocular_vision?: BinocularVisionPayload | null;
     low_vision?: LowVisionPayload | null;
     myopia_measurement?: MyopiaMeasurementPayload | null;
+    structured_modules?: Array<{ module_type: string; payload: Record<string, unknown> }>;
     assets?: NoteAsset[];
   }) => Promise<{ content: string; noteId?: string | null; status?: "draft" | "final" | "sent" | null }>;
   onGeneratePdf: (payload: { note_id?: string; patient_id: string; content: string; assets?: NoteAsset[] }) => Promise<Blob>;
@@ -136,6 +139,32 @@ function createEmptyForm() {
     binocularVision: createEmptyBinocularVision(),
     lowVision: createEmptyLowVision(),
     myopiaManagement: createEmptyMyopiaManagement(),
+    growthMeasurement: {
+      measured_at: formatLocalDateTimeInput(new Date()),
+      height_cm: "",
+      weight_kg: "",
+      head_circumference_cm: "",
+      visit_notes: "",
+      savedRecord: null as null | { bmi: number; track_id: string },
+    },
+    wellChildVisit: {
+      visit_band: "school_age",
+      nutrition_summary: "",
+      sleep_summary: "",
+      elimination_summary: "",
+      school_behavior_summary: "",
+      parent_concerns: "",
+      assessment_summary: "",
+    },
+    parentHandoutRequest: {
+      template_key: "well_visit_summary",
+      instructions: "",
+    },
+    pediatricFollowUpPlan: {
+      preset_key: "routine_review",
+      suggested_interval: "",
+      notes: "",
+    },
     followUpDate: "",
     followUpNotes: "",
     generatedNote: "",
@@ -257,13 +286,15 @@ function StructuredModal({
 
 export function ConsultationDrawer({
   patient,
-  isOptometryClinic = false,
+  clinicSpecialty = null,
   onClose,
   onDone,
   onGenerate,
   onGeneratePdf,
   onSend,
 }: ConsultationDrawerProps) {
+  const isOptometryClinic = specialtyHasModule(clinicSpecialty, "contact_lens");
+  const isPediatricsClinic = specialtyHasModule(clinicSpecialty, "pediatric_growth_measurement");
   const [form, setForm] = useState(createEmptyForm);
   const [openSections, setOpenSections] = useState({
     vitals: false,
@@ -507,6 +538,48 @@ export function ConsultationDrawer({
     setStatusMessage("");
     try {
       const refreshingDraft = Boolean(currentNoteId && noteStatus === "draft");
+      const structuredModules: Array<{ module_type: string; payload: Record<string, unknown> }> = [];
+      if (isPediatricsClinic && form.growthMeasurement.height_cm && form.growthMeasurement.weight_kg) {
+        structuredModules.push({
+          module_type: "pediatric_growth_measurement",
+          payload: {
+            measured_at: new Date(form.growthMeasurement.measured_at).toISOString(),
+            height_cm: Number(form.growthMeasurement.height_cm),
+            weight_kg: Number(form.growthMeasurement.weight_kg),
+            head_circumference_cm: form.growthMeasurement.head_circumference_cm ? Number(form.growthMeasurement.head_circumference_cm) : null,
+            visit_notes: form.growthMeasurement.visit_notes.trim(),
+          },
+        });
+      }
+      if (isPediatricsClinic && (
+        form.wellChildVisit.nutrition_summary.trim() ||
+        form.wellChildVisit.sleep_summary.trim() ||
+        form.wellChildVisit.elimination_summary.trim() ||
+        form.wellChildVisit.school_behavior_summary.trim() ||
+        form.wellChildVisit.parent_concerns.trim() ||
+        form.wellChildVisit.assessment_summary.trim()
+      )) {
+        structuredModules.push({
+          module_type: "well_child_visit",
+          payload: form.wellChildVisit,
+        });
+      }
+      if (isPediatricsClinic && form.parentHandoutRequest.template_key.trim()) {
+        structuredModules.push({
+          module_type: "parent_handout_request",
+          payload: form.parentHandoutRequest,
+        });
+      }
+      if (isPediatricsClinic && (
+        form.pediatricFollowUpPlan.preset_key.trim() ||
+        form.pediatricFollowUpPlan.suggested_interval.trim() ||
+        form.pediatricFollowUpPlan.notes.trim()
+      )) {
+        structuredModules.push({
+          module_type: "pediatric_follow_up_plan",
+          payload: form.pediatricFollowUpPlan,
+        });
+      }
       const generated = await onGenerate({
         note_id: refreshingDraft ? currentNoteId : undefined,
         patient_id: currentPatient.id,
@@ -550,6 +623,7 @@ export function ConsultationDrawer({
               refraction_left: form.myopiaManagement.refraction_left,
             }
           : null,
+        structured_modules: structuredModules,
         assets: form.assets,
       });
       setForm((current) => ({ ...current, generatedNote: generated.content }));
@@ -754,6 +828,34 @@ export function ConsultationDrawer({
       ...next,
       record_id: saved.id,
     }));
+  }
+
+  async function saveGrowthMeasurement() {
+    if (!currentPatient || !form.growthMeasurement.height_cm || !form.growthMeasurement.weight_kg) {
+      setStatusMessage("Enter pediatric height and weight before saving growth.");
+      return;
+    }
+    const payload: PediatricGrowthMeasurementPayload = {
+      measured_at: new Date(form.growthMeasurement.measured_at).toISOString(),
+      height_cm: Number(form.growthMeasurement.height_cm),
+      weight_kg: Number(form.growthMeasurement.weight_kg),
+      head_circumference_cm: form.growthMeasurement.head_circumference_cm ? Number(form.growthMeasurement.head_circumference_cm) : null,
+      visit_notes: form.growthMeasurement.visit_notes.trim(),
+    };
+    const saved = await api.createPatientGrowthRecord(currentPatient.id, payload);
+    setForm((current) => ({
+      ...current,
+      growthMeasurement: {
+        ...current.growthMeasurement,
+        measured_at: formatLocalDateTimeInput(new Date(saved.measured_at)),
+        height_cm: String(saved.height_cm),
+        weight_kg: String(saved.weight_kg),
+        head_circumference_cm: saved.head_circumference_cm !== null ? String(saved.head_circumference_cm) : "",
+        visit_notes: saved.visit_notes,
+        savedRecord: { bmi: saved.bmi, track_id: saved.track_id },
+      },
+    }));
+    setStatusMessage(`Growth saved · BMI ${saved.bmi.toFixed(2)}`);
   }
 
   function toggleMedicine(itemId: string) {
@@ -1272,6 +1374,110 @@ export function ConsultationDrawer({
                 </button>
               ))}
             </div>
+
+            {isPediatricsClinic ? (
+              <div className="grid gap-4 xl:grid-cols-2">
+                <div className="rounded-[28px] border border-amber-200 bg-amber-50/40 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">Growth Tracking</p>
+                      <p className="mt-1 text-xs text-slate-500">Pediatric height, weight, BMI, and head circumference.</p>
+                    </div>
+                    {form.growthMeasurement.savedRecord ? (
+                      <span className="rounded-full border border-amber-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-amber-700">
+                        Saved
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Measured At</span>
+                      <input type="datetime-local" value={form.growthMeasurement.measured_at} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, measured_at: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Height (cm)</span>
+                      <input value={form.growthMeasurement.height_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, height_cm: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Weight (kg)</span>
+                      <input value={form.growthMeasurement.weight_kg} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, weight_kg: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Head Circumference (cm)</span>
+                      <input value={form.growthMeasurement.head_circumference_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, head_circumference_cm: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+                    </label>
+                  </div>
+                  <label className="mt-3 block">
+                    <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Visit Notes</span>
+                    <textarea rows={3} value={form.growthMeasurement.visit_notes} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, visit_notes: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+                  </label>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <p className="text-xs text-slate-500">
+                      {form.growthMeasurement.savedRecord ? `Latest BMI ${form.growthMeasurement.savedRecord.bmi.toFixed(2)}` : "Save to add the growth record to the patient timeline."}
+                    </p>
+                    <button type="button" onClick={() => void saveGrowthMeasurement()} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
+                      Save Growth
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-[28px] border border-amber-200 bg-white p-4">
+                  <p className="text-sm font-medium text-slate-900">Well-Child Visit</p>
+                  <div className="mt-4 grid gap-3">
+                    <select value={form.wellChildVisit.visit_band} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, visit_band: event.target.value } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
+                      <option value="infant">Infant</option>
+                      <option value="toddler">Toddler</option>
+                      <option value="preschool">Preschool</option>
+                      <option value="school_age">School-age</option>
+                      <option value="adolescent">Adolescent</option>
+                    </select>
+                    {[
+                      ["nutrition_summary", "Nutrition / Feeding"],
+                      ["sleep_summary", "Sleep"],
+                      ["elimination_summary", "Elimination"],
+                      ["school_behavior_summary", "School / Behavior"],
+                      ["parent_concerns", "Parent Concerns"],
+                      ["assessment_summary", "Review Summary"],
+                    ].map(([field, label]) => (
+                      <label key={field} className="block">
+                        <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">{label}</span>
+                        <textarea rows={2} value={form.wellChildVisit[field as keyof WellChildVisitPayload] as string} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, [field]: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {isPediatricsClinic ? (
+              <div className="grid gap-4 xl:grid-cols-2">
+                <div className="rounded-[28px] border border-amber-200 bg-white p-4">
+                  <p className="text-sm font-medium text-slate-900">Parent Handout</p>
+                  <div className="mt-3 grid gap-3">
+                    <select value={form.parentHandoutRequest.template_key} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, template_key: event.target.value } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
+                      <option value="fever_home_care">Fever home care</option>
+                      <option value="nutrition_guidance">Nutrition guidance</option>
+                      <option value="well_visit_summary">Well-visit summary</option>
+                      <option value="hydration_uri_home_care">Hydration / URI home care</option>
+                    </select>
+                    <textarea rows={3} value={form.parentHandoutRequest.instructions} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, instructions: event.target.value } }))} placeholder="Optional context for the handout" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+                  </div>
+                </div>
+                <div className="rounded-[28px] border border-amber-200 bg-white p-4">
+                  <p className="text-sm font-medium text-slate-900">Pediatric Follow-up Preset</p>
+                  <div className="mt-3 grid gap-3">
+                    <select value={form.pediatricFollowUpPlan.preset_key} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, preset_key: event.target.value } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
+                      <option value="routine_review">Routine review</option>
+                      <option value="growth_recheck">Growth recheck</option>
+                      <option value="symptom_follow_up">Symptom follow-up</option>
+                      <option value="counseling_review">Counseling review</option>
+                    </select>
+                    <input value={form.pediatricFollowUpPlan.suggested_interval} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, suggested_interval: event.target.value } }))} placeholder="Suggested interval, e.g. 3 months" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+                    <input value={form.pediatricFollowUpPlan.notes} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, notes: event.target.value } }))} placeholder="Scheduling notes" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="rounded-[28px] border border-sky-200 bg-sky-50/50 p-4">
               <div className="mb-3 flex items-center justify-between">

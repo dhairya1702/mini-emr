@@ -10,7 +10,7 @@ from fastapi import Cookie, Depends, Header, HTTPException, Request, Response, s
 
 from app.config import get_settings
 from app.db import SupabaseRepository, get_repository
-from app.schemas import UserOut
+from app.schema_domains.auth_settings import UserOut
 
 
 TOKEN_TTL_DAYS = 30

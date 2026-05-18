@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from app.db import get_repository
-from app.schemas import UserOut
+from app.schema_domains.auth_settings import UserOut
 from app.services.followup_workflow import send_due_follow_up_emails_workflow
 
 

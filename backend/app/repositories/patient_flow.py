@@ -13,7 +13,13 @@ from app.repositories.base import (
     rpc_single,
     visit_payload,
 )
-from app.schemas import AppointmentCheckInRequest, AppointmentCreate, AppointmentUpdate, PatientCreate, PatientVisitCreate
+from app.schema_domains.patients import (
+    AppointmentCheckInRequest,
+    AppointmentCreate,
+    AppointmentUpdate,
+    PatientCreate,
+    PatientVisitCreate,
+)
 
 
 class PatientFlowRepositoryMixin(BaseSupabaseRepository):

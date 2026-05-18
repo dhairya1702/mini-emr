@@ -6,7 +6,7 @@ from typing import Any
 import httpcore
 import httpx
 
-from app.schemas import PatientCreate, PatientVisitCreate
+from app.schema_domains.patients import PatientCreate, PatientVisitCreate
 
 
 RETRYABLE_TRANSPORT_EXCEPTIONS = (

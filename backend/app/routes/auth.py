@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 
 from app.auth import clear_session, get_current_user, hash_password, issue_session_headers, verify_password
 from app.db import SupabaseRepository, get_repository
-from app.schemas import (
+from app.schema_domains.auth_settings import (
     AuthResponse,
     LoginRequest,
     UserAccountUpdate,

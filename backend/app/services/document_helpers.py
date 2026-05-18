@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Iterable
 
 from app.db import SupabaseRepository
-from app.schemas import UserOut
+from app.schema_domains.auth_settings import UserOut
 
 
 async def build_document_context_for_user(repo: SupabaseRepository, current_user: UserOut) -> dict:
@@ -16,6 +16,10 @@ async def build_document_context_for_user(repo: SupabaseRepository, current_user
         "doctor_signature_content_type": doctor_profile.get("doctor_signature_content_type"),
         "doctor_signature_data_base64": doctor_profile.get("doctor_signature_data_base64"),
     }
+
+
+def serialize_note_assets(payload_assets) -> list[dict]:
+    return [asset.model_dump() for asset in payload_assets]
 
 
 def normalize_structured_document_content(

@@ -212,6 +212,46 @@ export function PatientEventDetailsPanel({
               );
             }
 
+            if (selectedEvent.type === "growth_measurement") {
+              return (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    ["Height", detailNumber(details.height_cm) !== null ? `${detailNumber(details.height_cm)} cm` : "—"],
+                    ["Weight", detailNumber(details.weight_kg) !== null ? `${detailNumber(details.weight_kg)} kg` : "—"],
+                    ["BMI", detailNumber(details.bmi) ?? "—"],
+                    ["Head Circumference", detailNumber(details.head_circumference_cm) !== null ? `${detailNumber(details.head_circumference_cm)} cm` : "—"],
+                    ["Visit Notes", detailText(details.visit_notes) || "—"],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                      <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              );
+            }
+
+            if (selectedEvent.type === "well_child_visit") {
+              return (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    ["Visit Band", detailText(details.visit_band).replaceAll("_", " ") || "—"],
+                    ["Nutrition", detailText(details.nutrition_summary) || "—"],
+                    ["Sleep", detailText(details.sleep_summary) || "—"],
+                    ["Elimination", detailText(details.elimination_summary) || "—"],
+                    ["School / Behavior", detailText(details.school_behavior_summary) || "—"],
+                    ["Parent Concerns", detailText(details.parent_concerns) || "—"],
+                    ["Assessment", detailText(details.assessment_summary) || "—"],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                      <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              );
+            }
+
             return null;
           })()}
         </div>

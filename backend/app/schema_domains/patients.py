@@ -145,6 +145,7 @@ class NoteCreate(BaseModel):
     patient_id: UUID
     content: str = Field(min_length=1)
     asset_payload: list[dict[str, Any]] = Field(default_factory=list)
+    structured_modules: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class NoteOut(BaseModel):
@@ -158,6 +159,7 @@ class NoteOut(BaseModel):
     snapshot_content: str | None = None
     asset_payload: list[dict[str, Any]] = Field(default_factory=list)
     snapshot_asset_payload: list[dict[str, Any]] = Field(default_factory=list)
+    structured_modules: list[dict[str, Any]] = Field(default_factory=list)
     finalized_at: datetime | None = None
     sent_at: datetime | None = None
     sent_by: UUID | None = None

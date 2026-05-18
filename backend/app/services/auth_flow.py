@@ -12,6 +12,8 @@ RATE_LIMIT_WINDOWS: dict[str, tuple[int, float]] = {
     "auth_register": (3, 300.0),
     "note_generation": (20, 300.0),
     "case_study_generation": (10, 300.0),
+    "public_follow_up_booking_get": (20, 300.0),
+    "public_follow_up_booking_post": (10, 300.0),
 }
 RATE_LIMIT_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
 

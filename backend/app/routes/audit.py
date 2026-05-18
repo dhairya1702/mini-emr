@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, Query
 
 from app.auth import require_admin
 from app.db import SupabaseRepository, get_repository
-from app.schemas import AuditEventOut, UserOut
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.patients import AuditEventOut
 
 
 router = APIRouter()

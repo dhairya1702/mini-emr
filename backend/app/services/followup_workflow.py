@@ -4,7 +4,8 @@ from fastapi import HTTPException
 from app.config import get_settings
 from app.db import SupabaseRepository
 from app.formatting import format_display_datetime
-from app.schemas import AppointmentCreate, FollowUpCreate, FollowUpOut, FollowUpUpdate, UserOut
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.patients import AppointmentCreate, FollowUpCreate, FollowUpOut, FollowUpUpdate
 from app.services.audit_service import record_follow_up_created, record_follow_up_updated
 from app.services.followup_booking_service import create_follow_up_booking_token, decode_follow_up_booking_token
 from app.services.email_service import send_clinic_email_message

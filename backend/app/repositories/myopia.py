@@ -4,7 +4,7 @@ import asyncio
 from typing import Any
 
 from app.repositories.base import BaseSupabaseRepository
-from app.schemas import MyopiaMeasurementCreate
+from app.schema_domains.optometry import MyopiaMeasurementCreate
 
 
 class MyopiaRepositoryMixin(BaseSupabaseRepository):

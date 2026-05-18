@@ -6,13 +6,13 @@ from fastapi.responses import StreamingResponse
 
 from app.auth import require_admin
 from app.db import SupabaseRepository, get_repository
-from app.schemas import (
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.case_studies import (
     CaseStudyCreate,
     CaseStudyOut,
     CaseStudyUpdate,
     GenerateCaseStudyRequest,
     GenerateCaseStudyResponse,
-    UserOut,
 )
 from app.services.case_study_workflow import (
     create_case_study_workflow,

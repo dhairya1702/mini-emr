@@ -7,6 +7,7 @@ from app.repositories.case_studies import CaseStudiesRepositoryMixin
 from app.repositories.myopia import MyopiaRepositoryMixin
 from app.repositories.patient_flow import PatientFlowRepositoryMixin
 from app.repositories.records import RecordsRepositoryMixin
+from app.repositories.specialty_tracks import SpecialtyTracksRepositoryMixin
 from app.repositories.superuser import SuperuserRepositoryMixin
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "MyopiaRepositoryMixin",
     "PatientFlowRepositoryMixin",
     "RecordsRepositoryMixin",
+    "SpecialtyTracksRepositoryMixin",
     "SuperuserRepositoryMixin",
 ]

@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_user
 from app.db import SupabaseRepository, get_repository
-from app.schemas import FollowUpCreate, FollowUpOut, FollowUpStatus, FollowUpUpdate, UserOut
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.common import FollowUpStatus
+from app.schema_domains.patients import FollowUpCreate, FollowUpOut, FollowUpUpdate
 from app.services.followup_workflow import _as_utc_minute, create_follow_up_workflow, expire_stale_schedule_workflow, update_follow_up_workflow
 
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarClock, Clock3, UserRound, X } from "lucide-react";
 
+import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { PatientBioDataPanel } from "@/components/patient-chart/patient-bio-data-panel";
 import { PatientEventDetailsPanel } from "@/components/patient-chart/patient-event-details-panel";
 import { PatientTimelinePanel } from "@/components/patient-chart/patient-timeline-panel";
@@ -10,14 +11,16 @@ import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-
 import { MyopiaManagementModal } from "@/components/optometry/myopia/myopia-management-modal";
 import { api } from "@/lib/api";
 import { formatMillimeterDelta } from "@/lib/optometry/myopia/shared";
-import { MyopiaHistory, MyopiaMeasurementPayload, Patient, PatientTimelineEvent } from "@/lib/types";
+import { specialtyHasModule } from "@/lib/specialty";
+import { MyopiaHistory, MyopiaMeasurementPayload, Patient, PatientTimelineEvent, PediatricGrowthSummary } from "@/lib/types";
 
 interface PatientDetailsDrawerProps {
   patient: Patient | null;
-  isOptometryClinic?: boolean;
+  clinicSpecialty?: ClinicSpecialty | null;
   onClose: () => void;
   onLoadTimeline: (patientId: string) => Promise<PatientTimelineEvent[]>;
   onLoadMyopiaHistory?: (patientId: string) => Promise<MyopiaHistory>;
+  onLoadGrowthHistory?: (patientId: string) => Promise<PediatricGrowthSummary>;
   readOnly?: boolean;
   onSave: (payloadPatientId: string, payload: {
     name: string;
@@ -42,13 +45,16 @@ function detailText(value: unknown) {
 
 export function PatientDetailsDrawer({
   patient,
-  isOptometryClinic = false,
+  clinicSpecialty = null,
   onClose,
   onLoadTimeline,
   onLoadMyopiaHistory,
+  onLoadGrowthHistory,
   readOnly = false,
   onSave,
 }: PatientDetailsDrawerProps) {
+  const isOptometryClinic = specialtyHasModule(clinicSpecialty, "myopia_management");
+  const isPediatricsClinic = specialtyHasModule(clinicSpecialty, "pediatric_growth_measurement");
   const [form, setForm] = useState({
     name: "",
     phone: "",
@@ -66,6 +72,7 @@ export function PatientDetailsDrawer({
   const [isTimelineLoading, setIsTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState("");
   const [myopiaHistory, setMyopiaHistory] = useState<MyopiaHistory | null>(null);
+  const [growthHistory, setGrowthHistory] = useState<PediatricGrowthSummary | null>(null);
   const [isMyopiaLoading, setIsMyopiaLoading] = useState(false);
   const [myopiaError, setMyopiaError] = useState("");
   const [isHistoricalMyopiaOpen, setIsHistoricalMyopiaOpen] = useState(false);
@@ -92,7 +99,7 @@ export function PatientDetailsDrawer({
   }, [patient]);
 
   const loadPatientHistory = useCallback(async (patientId: string) => {
-    const [events, nextMyopiaHistory] = await Promise.all([
+    const [events, nextMyopiaHistory, nextGrowthHistory] = await Promise.all([
       onLoadTimeline(patientId),
       isOptometryClinic && onLoadMyopiaHistory
         ? onLoadMyopiaHistory(patientId)
@@ -104,9 +111,20 @@ export function PatientDetailsDrawer({
             annualized_growth: null,
             overlay_version: "clinic-reference-v1",
           } satisfies MyopiaHistory),
+      isPediatricsClinic && onLoadGrowthHistory
+        ? onLoadGrowthHistory(patientId)
+        : Promise.resolve({
+            patient_id: patientId,
+            latest_measurement: null,
+            previous_measurement: null,
+            interval_change: null,
+            trend_summary: "",
+            flags: [],
+            records: [],
+          } satisfies PediatricGrowthSummary),
     ]);
-    return { events, nextMyopiaHistory };
-  }, [isOptometryClinic, onLoadMyopiaHistory, onLoadTimeline]);
+    return { events, nextMyopiaHistory, nextGrowthHistory };
+  }, [isOptometryClinic, isPediatricsClinic, onLoadGrowthHistory, onLoadMyopiaHistory, onLoadTimeline]);
 
   useEffect(() => {
     if (!patient) {
@@ -114,6 +132,7 @@ export function PatientDetailsDrawer({
       setTimelineError("");
       setIsTimelineLoading(false);
       setMyopiaHistory(null);
+      setGrowthHistory(null);
       setMyopiaError("");
       setIsMyopiaLoading(false);
       setSelectedEventId("");
@@ -129,12 +148,13 @@ export function PatientDetailsDrawer({
       setTimelineError("");
       setMyopiaError("");
       try {
-        const { events, nextMyopiaHistory } = await loadPatientHistory(currentPatient.id);
+        const { events, nextMyopiaHistory, nextGrowthHistory } = await loadPatientHistory(currentPatient.id);
         if (!active) {
           return;
         }
         setTimeline(events);
         setMyopiaHistory(nextMyopiaHistory);
+        setGrowthHistory(nextGrowthHistory);
         setSelectedEventId("");
       } catch (loadError) {
         if (!active) {
@@ -142,6 +162,7 @@ export function PatientDetailsDrawer({
         }
         setTimeline([]);
         setMyopiaHistory(null);
+        setGrowthHistory(null);
         const message = loadError instanceof Error ? loadError.message : "Failed to load patient history.";
         setTimelineError(message);
         setMyopiaError(message);
@@ -195,6 +216,9 @@ export function PatientDetailsDrawer({
     if (type === "myopia_measurement") {
       return <Clock3 className="h-4 w-4 text-emerald-600" />;
     }
+    if (type === "growth_measurement" || type === "well_child_visit") {
+      return <Clock3 className="h-4 w-4 text-amber-600" />;
+    }
     if (type === "visit_recorded") return <UserRound className="h-4 w-4 text-sky-600" />;
     return <Clock3 className="h-4 w-4 text-sky-600" />;
   }
@@ -223,8 +247,10 @@ export function PatientDetailsDrawer({
     return groups;
   }, []);
   const myopiaRecords = myopiaHistory?.records ?? [];
+  const growthRecords = growthHistory?.records ?? [];
   const measurementCount = myopiaRecords.length;
   const latestMyopiaRecord = myopiaRecords[myopiaRecords.length - 1] ?? null;
+  const latestGrowthRecord = growthRecords[growthRecords.length - 1] ?? null;
 
   async function handleSaveHistoricalMyopia(payload: MyopiaMeasurementPayload) {
     if (!currentPatient) {
@@ -412,6 +438,38 @@ export function PatientDetailsDrawer({
                       </p>
                     </div>
                   </div>
+                </div>
+              ) : null}
+
+              {isPediatricsClinic ? (
+                <div className="rounded-[28px] border border-amber-100 bg-white p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Pediatric Growth</p>
+                      <h4 className="mt-1 text-lg font-semibold text-slate-900">Longitudinal growth tracking</h4>
+                    </div>
+                  </div>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50/35 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Readings</p>
+                      <p className="mt-2 text-sm font-medium text-slate-900">{growthRecords.length} recorded</p>
+                    </div>
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50/35 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Latest Measurement</p>
+                      <p className="mt-2 text-sm font-medium text-slate-900">
+                        {latestGrowthRecord ? `${latestGrowthRecord.height_cm} cm · ${latestGrowthRecord.weight_kg} kg · BMI ${latestGrowthRecord.bmi}` : "No data yet"}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50/35 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Trend</p>
+                      <p className="mt-2 text-sm font-medium text-slate-900">{growthHistory?.trend_summary || "No trend yet"}</p>
+                    </div>
+                  </div>
+                  {growthHistory?.flags.length ? (
+                    <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      {growthHistory.flags.join(" ")}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 

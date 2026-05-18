@@ -4,15 +4,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_user
 from app.db import SupabaseRepository, get_repository
-from app.schemas import (
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.common import AppointmentStatus
+from app.schema_domains.patients import (
     AppointmentCheckInRequest,
     AppointmentCreate,
     AppointmentOut,
-    AppointmentStatus,
     AppointmentUpdate,
     PatientMatchOut,
     PatientOut,
-    UserOut,
 )
 from app.services.appointment_workflow import (
     check_in_appointment_workflow,

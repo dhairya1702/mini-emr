@@ -6,13 +6,8 @@ from typing import Any
 from uuid import UUID
 
 from app.repositories.base import BaseSupabaseRepository, display_name
-from app.schemas import (
-    ClinicSettingsOut,
-    ClinicSettingsUpdate,
-    UserAccountUpdate,
-    UserRole,
-    UserRoleUpdate,
-)
+from app.schema_domains.auth_settings import ClinicSettingsOut, ClinicSettingsUpdate, UserAccountUpdate, UserRoleUpdate
+from app.schema_domains.common import UserRole
 
 
 def _clinic_settings_defaults() -> dict[str, Any]:
@@ -219,6 +214,33 @@ class AuthSettingsRepositoryMixin(BaseSupabaseRepository):
         )
         user["name"] = display_name(user)
         user["doctor_signature_url"] = "/users/{}/signature/file".format(user_id) if user.get("doctor_signature_name") and user.get("doctor_signature_data_base64") else None
+        return user
+
+    async def get_user_for_org(self, org_id: str, user_id: str) -> dict[str, Any]:
+        def _get() -> dict[str, Any]:
+            rows = (
+                self.client.table("clinic_users")
+                .select(
+                    "id, org_id, identifier, name, role, doctor_dob, doctor_address, doctor_signature_name, "
+                    "doctor_signature_content_type, doctor_signature_data_base64, created_at"
+                )
+                .eq("org_id", org_id)
+                .eq("id", user_id)
+                .limit(1)
+                .execute()
+                .data
+            )
+            if not rows:
+                raise IndexError(user_id)
+            return rows[0]
+
+        user = await asyncio.to_thread(_get)
+        user["name"] = display_name(user)
+        user["doctor_signature_url"] = (
+            "/users/{}/signature/file".format(user_id)
+            if user.get("doctor_signature_name") and user.get("doctor_signature_data_base64")
+            else None
+        )
         return user
 
     async def set_user_signature(

@@ -12,6 +12,7 @@ from app.schema_domains.optometry import (
     NoteAssetInput,
     TestScoreEntry,
 )
+from app.schema_domains.specialty import StructuredModuleInput
 
 
 class GenerateNoteRequest(BaseModel):
@@ -32,6 +33,7 @@ class GenerateNoteRequest(BaseModel):
     binocular_vision: BinocularVisionInput | None = None
     low_vision: LowVisionInput | None = None
     myopia_measurement: MyopiaMeasurementInput | None = None
+    structured_modules: list[StructuredModuleInput] = Field(default_factory=list)
     assets: list[NoteAssetInput] = Field(default_factory=list)
 
 

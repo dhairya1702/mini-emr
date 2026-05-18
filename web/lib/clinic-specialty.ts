@@ -1,4 +1,4 @@
-export type ClinicSpecialty = "optometry" | "general_physician";
+export type ClinicSpecialty = "optometry" | "general_physician" | "pediatrics";
 
 export const CLINIC_SPECIALTY_OPTIONS: Array<{
   value: ClinicSpecialty;
@@ -14,5 +14,10 @@ export const CLINIC_SPECIALTY_OPTIONS: Array<{
     value: "general_physician",
     label: "General Physician",
     description: "Keep the shared clinic workflow without optometry-specific modules.",
+  },
+  {
+    value: "pediatrics",
+    label: "Pediatrics",
+    description: "Enable growth tracking, well-child structured visits, pediatric handouts, and pediatric follow-ups.",
   },
 ];

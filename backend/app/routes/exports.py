@@ -9,7 +9,7 @@ from app.exports import (
     filter_rows_by_created_at,
     get_export_range_start,
 )
-from app.schemas import UserOut
+from app.schema_domains.auth_settings import UserOut
 
 
 router = APIRouter()

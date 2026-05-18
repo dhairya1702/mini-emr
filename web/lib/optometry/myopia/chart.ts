@@ -1,5 +1,5 @@
 import { MYOPIA_REFERENCE_BAND } from "@/lib/myopia-reference";
-import { MyopiaHistory, MyopiaMeasurementRecord } from "@/lib/types";
+import type { MyopiaHistory, MyopiaMeasurementRecord } from "@/lib/types";
 
 import {
   estimateTreatmentEffectiveness,

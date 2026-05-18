@@ -15,6 +15,7 @@ from app.repositories import (
     MyopiaRepositoryMixin,
     PatientFlowRepositoryMixin,
     RecordsRepositoryMixin,
+    SpecialtyTracksRepositoryMixin,
     SuperuserRepositoryMixin,
 )
 
@@ -49,6 +50,7 @@ class SupabaseRepository(
     PatientFlowRepositoryMixin,
     CaseStudiesRepositoryMixin,
     MyopiaRepositoryMixin,
+    SpecialtyTracksRepositoryMixin,
     RecordsRepositoryMixin,
     BillingRepositoryMixin,
     SuperuserRepositoryMixin,

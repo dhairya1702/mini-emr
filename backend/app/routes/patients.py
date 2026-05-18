@@ -3,14 +3,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.db import SupabaseRepository, get_repository
 from app.exports import build_history_visit_rows
-from app.schemas import (
-    InvoiceOut,
-    MyopiaHistoryOut,
-    MyopiaMeasurementCreate,
-    MyopiaMeasurementOut,
-    MyopiaMeasurementUpdate,
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.billing import InvoiceOut
+from app.schema_domains.case_studies import PatientCaseStudySourceOut
+from app.schema_domains.optometry import MyopiaHistoryOut, MyopiaMeasurementCreate, MyopiaMeasurementOut, MyopiaMeasurementUpdate
+from app.schema_domains.patients import (
     NoteOut,
-    PatientCaseStudySourceOut,
     PatientCreate,
     PatientMatchOut,
     PatientOut,
@@ -18,10 +16,16 @@ from app.schemas import (
     PatientUpdate,
     PatientVisitCreate,
     PatientVisitOut,
-    UserOut,
+)
+from app.schema_domains.specialty import (
+    LongitudinalTrackCreate,
+    PediatricGrowthMeasurementInput,
+    PediatricGrowthMeasurementOut,
+    PediatricGrowthSummaryOut,
 )
 from app.services.case_study_workflow import build_case_study_source_view
 from app.services.patient_views import (
+    build_patient_growth_history_view,
     build_patient_myopia_history_view,
     build_patient_timeline_view,
     list_patient_invoices_view,
@@ -144,6 +148,84 @@ async def get_patient_myopia_history(
 ) -> MyopiaHistoryOut:
     try:
         return await build_patient_myopia_history_view(repo, str(current_user.org_id), patient_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/patients/{patient_id}/growth-history", response_model=PediatricGrowthSummaryOut)
+async def get_patient_growth_history(
+    patient_id: str,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> PediatricGrowthSummaryOut:
+    try:
+        return await build_patient_growth_history_view(repo, str(current_user.org_id), patient_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/patients/{patient_id}/growth-records", response_model=PediatricGrowthMeasurementOut, status_code=201)
+async def create_patient_growth_record(
+    patient_id: str,
+    payload: PediatricGrowthMeasurementInput,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> PediatricGrowthMeasurementOut:
+    try:
+        height_cm = round(float(payload.height_cm), 2)
+        weight_kg = round(float(payload.weight_kg), 2)
+        bmi = round(weight_kg / ((height_cm / 100) ** 2), 2)
+        track = await repo.create_longitudinal_track(
+            str(current_user.org_id),
+            patient_id,
+            LongitudinalTrackCreate(
+                track_type="growth_measurement",
+                measured_at=payload.measured_at,
+                summary_fields={"height_cm": height_cm, "weight_kg": weight_kg},
+                raw_payload=payload.model_dump(mode="json"),
+                derived_metrics={"bmi": bmi},
+            ),
+        )
+        history = await build_patient_growth_history_view(repo, str(current_user.org_id), patient_id)
+        return history.records[-1]
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.patch("/patients/{patient_id}/growth-records/{record_id}", response_model=PediatricGrowthMeasurementOut)
+async def update_patient_growth_record(
+    patient_id: str,
+    record_id: str,
+    payload: PediatricGrowthMeasurementInput,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> PediatricGrowthMeasurementOut:
+    try:
+        height_cm = round(float(payload.height_cm), 2)
+        weight_kg = round(float(payload.weight_kg), 2)
+        bmi = round(weight_kg / ((height_cm / 100) ** 2), 2)
+        await repo.update_longitudinal_track(
+            str(current_user.org_id),
+            patient_id,
+            record_id,
+            {
+                "measured_at": payload.measured_at,
+                "summary_fields": {"height_cm": height_cm, "weight_kg": weight_kg},
+                "raw_payload": payload.model_dump(mode="json"),
+                "derived_metrics": {"bmi": bmi},
+            },
+        )
+        history = await build_patient_growth_history_view(repo, str(current_user.org_id), patient_id)
+        updated = next((record for record in history.records if record.track_id == record_id), None)
+        if not updated:
+            raise ValueError("Growth record not found for this patient.")
+        return updated
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover

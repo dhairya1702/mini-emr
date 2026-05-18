@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 
 from app.auth import get_current_user, require_admin
 from app.db import SupabaseRepository, get_repository
-from app.schemas import ClinicSettingsOut, ClinicSettingsUpdate, UserOut
+from app.schema_domains.auth_settings import ClinicSettingsOut, ClinicSettingsUpdate, UserOut
 
 
 router = APIRouter()

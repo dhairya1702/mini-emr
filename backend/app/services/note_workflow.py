@@ -5,25 +5,55 @@ from fastapi import HTTPException
 from app.clinic_context import build_clinic_context, build_measurements_context, build_patient_context
 from app.db import SupabaseRepository
 from app.formatting import format_display_datetime
-from app.schemas import (
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.documents import (
     FinalizeNoteRequest,
     GenerateNoteRequest,
     GenerateNoteResponse,
-    NoteCreate,
-    NoteOut,
     SendNoteRequest,
     SendNoteResponse,
-    UserOut,
+)
+from app.schema_domains.patients import (
+    NoteCreate,
+    NoteOut,
 )
 from app.services.anthropic_service import generate_clinic_letter, generate_soap_note
 from app.services.audit_service import get_actor_name, write_audit_event
 from app.services.auth_flow import enforce_rate_limit
+from app.services.document_helpers import build_document_context_for_user, serialize_note_assets
 from app.services.email_service import send_clinic_email_message
 from app.services.pdf_service import build_letter_pdf, build_note_pdf
 
 
-def _serialize_assets(payload_assets) -> list[dict]:
-    return [asset.model_dump() for asset in payload_assets]
+async def _record_note_delivery_failure(
+    repo: SupabaseRepository,
+    current_user: UserOut,
+    *,
+    note_id: str,
+    patient_id: str,
+    patient_name: str,
+    recipient_email: str,
+    finalized: bool,
+    error_message: str,
+) -> None:
+    await repo.create_platform_error(
+        org_id=str(current_user.org_id),
+        user_id=str(current_user.id),
+        identifier=current_user.identifier,
+        path="/send-note",
+        method="POST",
+        status_code=502,
+        error_type="EmailDeliveryError",
+        message=error_message,
+        details="Consultation note email delivery failed after note state was prepared.",
+        context={
+            "note_id": note_id,
+            "patient_id": patient_id,
+            "patient_name": patient_name,
+            "recipient_email": recipient_email,
+            "finalized": finalized,
+        },
+    )
 
 
 async def generate_note_workflow(
@@ -32,17 +62,7 @@ async def generate_note_workflow(
     payload: GenerateNoteRequest,
 ) -> GenerateNoteResponse:
     enforce_rate_limit("note_generation", str(current_user.id))
-    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
-    doctor_profile = await repo.get_user(str(current_user.id))
-    clinic_context = build_clinic_context(
-        {
-            **clinic_settings,
-            "doctor_name": str(doctor_profile.get("name") or clinic_settings.get("doctor_name") or "").strip(),
-            "doctor_signature_name": doctor_profile.get("doctor_signature_name"),
-            "doctor_signature_content_type": doctor_profile.get("doctor_signature_content_type"),
-            "doctor_signature_data_base64": doctor_profile.get("doctor_signature_data_base64"),
-        }
-    )
+    clinic_context = build_clinic_context(await build_document_context_for_user(repo, current_user))
     patient = None
     if payload.patient_id:
         patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
@@ -61,7 +81,8 @@ async def generate_note_workflow(
         measurements_context=measurements_context,
     )
     note = None
-    asset_payload = _serialize_assets(payload.assets)
+    asset_payload = serialize_note_assets(payload.assets)
+    structured_modules = [module.model_dump(mode="json") for module in payload.structured_modules]
     if payload.patient_id:
         patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
         if payload.note_id:
@@ -69,7 +90,13 @@ async def generate_note_workflow(
             if str(existing_note["patient_id"]) != str(payload.patient_id):
                 raise HTTPException(status_code=400, detail="Note does not belong to that patient.")
             if existing_note.get("status") == "draft":
-                note = await repo.update_note_draft(str(current_user.org_id), str(payload.note_id), content, asset_payload)
+                note = await repo.update_note_draft(
+                    str(current_user.org_id),
+                    str(payload.note_id),
+                    content,
+                    asset_payload,
+                    structured_modules,
+                )
                 await write_audit_event(
                     repo,
                     current_user,
@@ -86,7 +113,13 @@ async def generate_note_workflow(
                     },
                 )
             else:
-                note = await repo.create_note_amendment(str(current_user.org_id), str(payload.note_id), content, asset_payload)
+                note = await repo.create_note_amendment(
+                    str(current_user.org_id),
+                    str(payload.note_id),
+                    content,
+                    asset_payload,
+                    structured_modules,
+                )
                 await write_audit_event(
                     repo,
                     current_user,
@@ -107,7 +140,12 @@ async def generate_note_workflow(
         else:
             note = await repo.create_note(
                 str(current_user.org_id),
-                NoteCreate(patient_id=payload.patient_id, content=content, asset_payload=asset_payload),
+                NoteCreate(
+                    patient_id=payload.patient_id,
+                    content=content,
+                    asset_payload=asset_payload,
+                    structured_modules=structured_modules,
+                ),
             )
             await write_audit_event(
                 repo,
@@ -171,15 +209,7 @@ async def send_letter_workflow(
     normalized_email = recipient_email.strip()
     if "@" not in normalized_email:
         raise HTTPException(status_code=400, detail="Enter a valid recipient email.")
-    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
-    doctor_profile = await repo.get_user(str(current_user.id))
-    clinic_settings = {
-        **clinic_settings,
-        "doctor_name": str(doctor_profile.get("name") or clinic_settings.get("doctor_name") or "").strip(),
-        "doctor_signature_name": doctor_profile.get("doctor_signature_name"),
-        "doctor_signature_content_type": doctor_profile.get("doctor_signature_content_type"),
-        "doctor_signature_data_base64": doctor_profile.get("doctor_signature_data_base64"),
-    }
+    clinic_settings = await build_document_context_for_user(repo, current_user)
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
     generated_on = datetime.now().strftime("%b %d, %Y")
     pdf_bytes = build_letter_pdf(
@@ -242,16 +272,9 @@ async def send_note_workflow(
     if str(note["patient_id"]) != str(payload.patient_id):
         raise HTTPException(status_code=400, detail="Note does not belong to that patient.")
     patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
-    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
-    doctor_profile = await repo.get_user(str(current_user.id))
-    clinic_settings = {
-        **clinic_settings,
-        "doctor_name": str(doctor_profile.get("name") or clinic_settings.get("doctor_name") or "").strip(),
-        "doctor_signature_name": doctor_profile.get("doctor_signature_name"),
-        "doctor_signature_content_type": doctor_profile.get("doctor_signature_content_type"),
-        "doctor_signature_data_base64": doctor_profile.get("doctor_signature_data_base64"),
-    }
-    finalized_note = note if note.get("status") in {"final", "sent"} else await repo.finalize_note(
+    clinic_settings = await build_document_context_for_user(repo, current_user)
+    finalized_during_request = note.get("status") not in {"final", "sent"}
+    finalized_note = note if not finalized_during_request else await repo.finalize_note(
         str(current_user.org_id),
         str(payload.note_id),
     )
@@ -282,7 +305,32 @@ async def send_note_workflow(
             ],
         )
     except RuntimeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if finalized_during_request:
+            failure_message = (
+                f"Consultation note finalized for {patient_name}, but email delivery to {recipient_email} failed: {exc}"
+            )
+        else:
+            failure_message = (
+                f"Consultation note email delivery to {recipient_email} failed: {exc}"
+            )
+        await _record_note_delivery_failure(
+            repo,
+            current_user,
+            note_id=str(payload.note_id),
+            patient_id=str(payload.patient_id),
+            patient_name=patient_name,
+            recipient_email=recipient_email,
+            finalized=finalized_during_request or finalized_note.get("status") in {"final", "sent"},
+            error_message=failure_message,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": failure_message,
+                "delivery_failed": True,
+                "finalized": finalized_during_request or finalized_note.get("status") in {"final", "sent"},
+            },
+        ) from exc
     sent_note = await repo.mark_note_sent(
         str(current_user.org_id),
         str(payload.note_id),

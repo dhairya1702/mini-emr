@@ -197,3 +197,49 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
     )
     assert start_consultation.status_code == 403
     assert "Admin access required to start consultation" in start_consultation.text
+
+
+def test_admin_cannot_manage_users_across_organizations(client):
+    test_client, _repo = client
+    session_a = register(test_client, identifier="owner-users-a@clinic.com", clinic_name="Users Clinic A")
+    session_b = register(test_client, identifier="owner-users-b@clinic.com", clinic_name="Users Clinic B")
+
+    create_staff_b = test_client.post(
+        "/users/staff",
+        json={"identifier": "staff-users-b@clinic.com", "password": "password123"},
+        headers=auth_headers(session_b["token"]),
+    )
+    assert create_staff_b.status_code == 201
+    foreign_user_id = create_staff_b.json()["id"]
+
+    update_role = test_client.patch(
+        f"/users/{foreign_user_id}",
+        json={"role": "admin"},
+        headers=auth_headers(session_a["token"]),
+    )
+    assert update_role.status_code == 404
+
+    upload_signature = test_client.post(
+        f"/users/{foreign_user_id}/signature",
+        headers=auth_headers(session_a["token"]),
+        files={"file": ("signature.png", b"\x89PNG\r\n\x1a\nfake", "image/png")},
+    )
+    assert upload_signature.status_code == 404
+
+    remove_signature = test_client.delete(
+        f"/users/{foreign_user_id}/signature",
+        headers=auth_headers(session_a["token"]),
+    )
+    assert remove_signature.status_code == 404
+
+    download_signature = test_client.get(
+        f"/users/{foreign_user_id}/signature/file",
+        headers=auth_headers(session_a["token"]),
+    )
+    assert download_signature.status_code == 404
+
+    delete_user = test_client.delete(
+        f"/users/{foreign_user_id}",
+        headers=auth_headers(session_a["token"]),
+    )
+    assert delete_user.status_code == 404

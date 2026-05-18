@@ -5,7 +5,9 @@ from fastapi import HTTPException
 from app.db import SupabaseRepository
 from app.services.email_service import send_clinic_email_message
 from app.services.pdf_service import build_invoice_pdf
-from app.schemas import InvoiceCreate, InvoiceOut, SendInvoiceRequest, SendNoteResponse, UserOut
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.billing import InvoiceCreate, InvoiceOut, SendInvoiceRequest
+from app.schema_domains.documents import SendNoteResponse
 from app.services.audit_service import record_invoice_created, record_invoice_shared
 from app.services.patient_views import (
     build_patient_name_map,
@@ -13,6 +15,33 @@ from app.services.patient_views import (
     enrich_invoices_with_completer_names,
     enrich_invoices_with_patient_names,
 )
+
+
+async def _record_invoice_delivery_failure(
+    repo: SupabaseRepository,
+    current_user: UserOut,
+    *,
+    invoice_id: str,
+    patient_name: str,
+    recipient_email: str,
+    error_message: str,
+) -> None:
+    await repo.create_platform_error(
+        org_id=str(current_user.org_id),
+        user_id=str(current_user.id),
+        identifier=current_user.identifier,
+        path="/send-invoice",
+        method="POST",
+        status_code=502,
+        error_type="EmailDeliveryError",
+        message=error_message,
+        details="Invoice was finalized before email delivery failed.",
+        context={
+            "invoice_id": invoice_id,
+            "patient_name": patient_name,
+            "recipient_email": recipient_email,
+        },
+    )
 
 
 async def create_invoice_workflow(
@@ -93,7 +122,25 @@ async def send_invoice_workflow(
             ],
         )
     except RuntimeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        failure_message = (
+            f"Invoice finalized for {patient_name}, but email delivery to {recipient_email} failed: {exc}"
+        )
+        await _record_invoice_delivery_failure(
+            repo,
+            current_user,
+            invoice_id=str(payload.invoice_id),
+            patient_name=patient_name,
+            recipient_email=recipient_email,
+            error_message=failure_message,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": failure_message,
+                "delivery_failed": True,
+                "finalized": True,
+            },
+        ) from exc
     await record_invoice_shared(
         repo,
         current_user,

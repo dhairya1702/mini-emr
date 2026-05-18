@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth import require_admin
 from app.db import SupabaseRepository, get_repository
-from app.schemas import CatalogItemCreate, CatalogItemOut, CatalogStockUpdate, UserOut
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.billing import CatalogItemCreate, CatalogItemOut, CatalogStockUpdate
 from app.services.catalog_workflow import (
     create_catalog_item_workflow,
     delete_catalog_item_workflow,

@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 
 from app.auth import get_current_user, require_admin
 from app.db import SupabaseRepository, get_repository
-from app.schemas import StaffUserCreate, UserOut, UserRoleUpdate
+from app.schema_domains.auth_settings import StaffUserCreate, UserOut, UserRoleUpdate
 from app.services.signature_service import normalize_signature_image
 from app.services.user_workflow import create_staff_user_workflow
 
@@ -39,9 +39,10 @@ async def update_user_role(
     repo: SupabaseRepository = Depends(get_repository),
 ) -> UserOut:
     try:
+        await repo.get_user_for_org(str(current_user.org_id), user_id)
         updated = await repo.update_user_role(user_id, payload)
         return UserOut(**updated)
-    except IndexError as exc:
+    except (IndexError, KeyError) as exc:
         raise HTTPException(status_code=404, detail="User not found.") from exc
 
 
@@ -54,12 +55,9 @@ async def delete_user(
     if str(current_user.id) == user_id:
         raise HTTPException(status_code=400, detail="You cannot remove your own account.")
     try:
-        target_user = await repo.get_user(user_id)
-    except Exception as exc:
+        await repo.get_user_for_org(str(current_user.org_id), user_id)
+    except (IndexError, KeyError) as exc:
         raise HTTPException(status_code=404, detail="User not found.") from exc
-
-    if str(target_user.get("org_id")) != str(current_user.org_id):
-        raise HTTPException(status_code=404, detail="User not found.")
 
     await repo.delete_user(user_id)
 
@@ -80,6 +78,7 @@ async def upload_user_signature(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
+        await repo.get_user_for_org(str(current_user.org_id), user_id)
         saved = await repo.set_user_signature(
             user_id,
             filename=(file.filename or "signature").strip() or "signature",
@@ -88,7 +87,7 @@ async def upload_user_signature(
         )
         saved["doctor_signature_url"] = f"/users/{user_id}/signature/file"
         return UserOut(**saved)
-    except IndexError as exc:
+    except (IndexError, KeyError) as exc:
         raise HTTPException(status_code=404, detail="User not found.") from exc
 
 
@@ -99,10 +98,11 @@ async def delete_user_signature(
     repo: SupabaseRepository = Depends(get_repository),
 ) -> UserOut:
     try:
+        await repo.get_user_for_org(str(current_user.org_id), user_id)
         removed = await repo.clear_user_signature(user_id)
         removed["doctor_signature_url"] = None
         return UserOut(**removed)
-    except IndexError as exc:
+    except (IndexError, KeyError) as exc:
         raise HTTPException(status_code=404, detail="User not found.") from exc
 
 
@@ -115,7 +115,10 @@ async def download_user_signature(
     try:
         if current_user.role != "admin" and str(current_user.id) != user_id:
             raise HTTPException(status_code=403, detail="You can only view your own signature.")
-        user = await repo.get_user(user_id)
+        if current_user.role == "admin":
+            user = await repo.get_user_for_org(str(current_user.org_id), user_id)
+        else:
+            user = await repo.get_user(user_id)
         filename = str(user.get("doctor_signature_name") or "").strip()
         encoded = str(user.get("doctor_signature_data_base64") or "").strip()
         content_type = str(user.get("doctor_signature_content_type") or "application/octet-stream").strip()
@@ -130,5 +133,7 @@ async def download_user_signature(
         )
     except HTTPException:
         raise
+    except (IndexError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail="User not found.") from exc
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc

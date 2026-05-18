@@ -1,5 +1,5 @@
 from app.formatting import build_visit_description, format_display_datetime, format_money
-from app.schemas import PatientTimelineEvent
+from app.schema_domains.patients import PatientTimelineEvent
 
 
 def build_patient_timeline(
@@ -8,9 +8,11 @@ def build_patient_timeline(
     visits: list[dict],
     notes: list[dict],
     myopia_measurements: list[dict],
+    longitudinal_tracks: list[dict],
     invoices: list[dict],
     follow_ups: list[dict],
     appointments: list[dict],
+    clinic_specialty: str | None = None,
 ) -> list[PatientTimelineEvent]:
     events: list[PatientTimelineEvent] = [
         PatientTimelineEvent(
@@ -138,6 +140,58 @@ def build_patient_timeline(
                 },
             )
         )
+
+    for track in longitudinal_tracks:
+        if track.get("track_type") != "growth_measurement":
+            continue
+        raw = track.get("raw_payload") or {}
+        derived = track.get("derived_metrics") or {}
+        height_cm = float(raw.get("height_cm") or track.get("summary_fields", {}).get("height_cm") or 0)
+        weight_kg = float(raw.get("weight_kg") or track.get("summary_fields", {}).get("weight_kg") or 0)
+        bmi = float(derived.get("bmi") or 0)
+        events.append(
+            PatientTimelineEvent(
+                id=f"growth-{track['id']}",
+                type="growth_measurement",
+                title="Growth measurement recorded",
+                timestamp=track["measured_at"],
+                description=(
+                    f"Height {height_cm:.1f} cm · Weight {weight_kg:.1f} kg · BMI {bmi:.1f}"
+                ),
+                entity_type="longitudinal_track",
+                entity_id=str(track["id"]),
+                details={
+                    "track_type": "growth_measurement",
+                    "measured_at": track.get("measured_at"),
+                    "height_cm": height_cm,
+                    "weight_kg": weight_kg,
+                    "bmi": bmi,
+                    "head_circumference_cm": raw.get("head_circumference_cm"),
+                    "visit_notes": str(raw.get("visit_notes") or ""),
+                },
+            )
+        )
+
+    for note in notes:
+        for module in note.get("structured_modules") or []:
+            if str(module.get("module_type") or "") != "well_child_visit":
+                continue
+            payload = module.get("payload") or {}
+            events.append(
+                PatientTimelineEvent(
+                    id=f"well-child-{note['id']}",
+                    type="well_child_visit",
+                    title="Well-child visit recorded",
+                    timestamp=note.get("sent_at") or note.get("finalized_at") or note["created_at"],
+                    description=(
+                        f"{str(payload.get('visit_band') or 'general').replace('_', ' ')} · "
+                        f"{str(payload.get('assessment_summary') or 'Structured pediatric review saved.')}"
+                    ),
+                    entity_type="note",
+                    entity_id=str(note["id"]),
+                    details={key: value for key, value in payload.items()},
+                )
+            )
 
     for appointment in appointments:
         display_date = format_display_datetime(appointment["scheduled_for"])

@@ -1,5 +1,6 @@
 from app.db import SupabaseRepository
-from app.schemas import PatientCreate, PatientOut, PatientUpdate, PatientVisitCreate, UserOut
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.patients import PatientCreate, PatientOut, PatientUpdate, PatientVisitCreate
 from app.services.audit_service import record_patient_created, record_patient_updated, record_patient_visit
 
 

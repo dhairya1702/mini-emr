@@ -5,7 +5,7 @@ from io import StringIO
 from fastapi.responses import StreamingResponse
 
 from app.formatting import format_export_datetime
-from app.schemas import PatientVisitOut
+from app.schema_domains.patients import PatientVisitOut
 
 
 def build_csv_response(filename: str, rows: list[dict], fieldnames: list[str]) -> StreamingResponse:

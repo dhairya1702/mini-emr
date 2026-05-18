@@ -1,7 +1,15 @@
 from fastapi import HTTPException
 
 from app.db import DuplicateCheckInCandidateError, SupabaseRepository
-from app.schemas import AppointmentCheckInRequest, AppointmentCreate, AppointmentOut, AppointmentUpdate, PatientMatchOut, PatientOut, UserOut
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.patients import (
+    AppointmentCheckInRequest,
+    AppointmentCreate,
+    AppointmentOut,
+    AppointmentUpdate,
+    PatientMatchOut,
+    PatientOut,
+)
 from app.services.audit_service import (
     record_appointment_checked_in,
     record_appointment_created,

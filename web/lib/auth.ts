@@ -1,6 +1,5 @@
 import { AuthResponse } from "@/lib/types";
 
-const TOKEN_KEY = "clinic_auth_token";
 const USER_KEY = "clinic_auth_user";
 const SESSION_EXPIRY_KEY = "clinic_session_expires_at";
 const SPECIALTY_ONBOARDING_KEY = "clinic_specialty_onboarding_pending";
@@ -12,10 +11,7 @@ function isBrowser() {
 
 export const authStorage = {
   getToken(): string {
-    if (!isBrowser()) {
-      return "";
-    }
-    return window.localStorage.getItem(TOKEN_KEY) || "";
+    return "";
   },
   getUser() {
     if (!isBrowser()) {
@@ -54,23 +50,14 @@ export const authStorage = {
     if (!isBrowser()) {
       return;
     }
-    if (session.token) {
-      window.localStorage.setItem(TOKEN_KEY, session.token);
-    }
+    window.localStorage.removeItem("clinic_auth_token");
     window.localStorage.setItem(USER_KEY, JSON.stringify(session.user));
     if (expiresAtMs && Number.isFinite(expiresAtMs)) {
       window.localStorage.setItem(SESSION_EXPIRY_KEY, String(expiresAtMs));
     }
   },
   setToken(token: string) {
-    if (!isBrowser()) {
-      return;
-    }
-    if (token) {
-      window.localStorage.setItem(TOKEN_KEY, token);
-      return;
-    }
-    window.localStorage.removeItem(TOKEN_KEY);
+    void token;
   },
   setUser(user: AuthResponse["user"] | null) {
     if (!isBrowser()) {
@@ -106,7 +93,7 @@ export const authStorage = {
     if (!isBrowser()) {
       return;
     }
-    window.localStorage.removeItem(TOKEN_KEY);
+    window.localStorage.removeItem("clinic_auth_token");
     window.localStorage.removeItem(USER_KEY);
     window.localStorage.removeItem(SESSION_EXPIRY_KEY);
     window.localStorage.removeItem(SPECIALTY_ONBOARDING_KEY);

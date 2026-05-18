@@ -33,6 +33,9 @@ import {
   MyopiaHistory,
   MyopiaMeasurementPayload,
   MyopiaMeasurementRecord,
+  PediatricGrowthMeasurementPayload,
+  PediatricGrowthMeasurementRecord,
+  PediatricGrowthSummary,
   OperationResult,
   Patient,
   PatientInput,
@@ -493,9 +496,21 @@ export const api = {
     request<PatientTimelineEvent[]>(`/patients/${patientId}/timeline`),
   getPatientMyopiaHistory: (patientId: string) =>
     request<MyopiaHistory>(`/patients/${patientId}/myopia-history`),
+  getPatientGrowthHistory: (patientId: string) =>
+    request<PediatricGrowthSummary>(`/patients/${patientId}/growth-history`),
   createPatientMyopiaRecord: (patientId: string, payload: MyopiaMeasurementPayload) =>
     request<MyopiaMeasurementRecord>(`/patients/${patientId}/myopia-records`, {
       method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  createPatientGrowthRecord: (patientId: string, payload: PediatricGrowthMeasurementPayload) =>
+    request<PediatricGrowthMeasurementRecord>(`/patients/${patientId}/growth-records`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updatePatientGrowthRecord: (patientId: string, recordId: string, payload: PediatricGrowthMeasurementPayload) =>
+    request<PediatricGrowthMeasurementRecord>(`/patients/${patientId}/growth-records/${recordId}`, {
+      method: "PATCH",
       body: JSON.stringify(payload),
     }),
   updatePatientMyopiaRecord: (patientId: string, recordId: string, payload: Partial<MyopiaMeasurementPayload>) =>

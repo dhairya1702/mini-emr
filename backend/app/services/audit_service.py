@@ -1,5 +1,5 @@
 from app.db import SupabaseRepository
-from app.schemas import UserOut
+from app.schema_domains.auth_settings import UserOut
 
 
 def get_actor_name(current_user: UserOut) -> str:
