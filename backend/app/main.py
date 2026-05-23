@@ -10,8 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app import config as config_module
 from app.auth import SESSION_EXPIRES_AT_HEADER, SESSION_TOKEN_HEADER, issue_session_headers
-from app.config import get_settings
 from app.db import get_repository
 from app.routes import (
     appointments_router,
@@ -49,7 +49,7 @@ def _system_user_for_org(org_id: str) -> UserOut:
 
 
 async def _run_follow_up_reminders(app: FastAPI) -> None:
-    settings = get_settings()
+    settings = config_module.get_settings()
     while True:
         try:
             repo_factory = app.dependency_overrides.get(get_repository, get_repository)
@@ -63,15 +63,20 @@ async def _run_follow_up_reminders(app: FastAPI) -> None:
                         logger.exception("Failed to send due follow-up reminders for org %s", org_id)
         except Exception:  # pragma: no cover
             logger.exception("Follow-up reminder loop failed.")
-        await asyncio.sleep(max(settings.follow_up_reminder_interval_seconds, 60))
+        interval_seconds = max(int(getattr(settings, "follow_up_reminder_interval_seconds", 300)), 60)
+        await asyncio.sleep(interval_seconds)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings = get_settings()
+    settings = config_module.get_settings()
+    validate_runtime = getattr(settings, "validate_runtime", None)
+    if callable(validate_runtime):
+        validate_runtime()
+    reminder_runner_enabled = bool(getattr(settings, "follow_up_reminder_runner_enabled", False))
     reminder_task = (
         asyncio.create_task(_run_follow_up_reminders(app))
-        if settings.follow_up_reminder_runner_enabled
+        if reminder_runner_enabled
         else None
     )
     try:
@@ -83,12 +88,12 @@ async def lifespan(app: FastAPI):
                 await reminder_task
 
 
-settings = get_settings()
+settings = config_module.get_settings()
 app = FastAPI(title="Clinic EMR API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.app_origin, "http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=settings.cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

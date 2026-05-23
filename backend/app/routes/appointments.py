@@ -2,6 +2,7 @@ from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
 from app.db import SupabaseRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
@@ -34,7 +35,7 @@ async def create_appointment(
     try:
         return await create_appointment_workflow(repo, current_user, payload)
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="create_appointment") from exc
 
 
 @router.get("/appointments", response_model=list[AppointmentOut])
@@ -69,9 +70,9 @@ async def check_in_appointment(
     except HTTPException:
         raise
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="check_in_appointment") from exc
 
 
 @router.get("/appointments/{appointment_id}/check-in-preview", response_model=list[PatientMatchOut])
@@ -84,9 +85,9 @@ async def preview_check_in_appointment(
         matches = await repo.list_potential_check_in_matches(str(current_user.org_id), appointment_id)
         return [PatientMatchOut(**match) for match in matches]
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="preview_check_in_appointment") from exc
 
 
 @router.patch("/appointments/{appointment_id}", response_model=AppointmentOut)
@@ -99,6 +100,6 @@ async def update_appointment(
     try:
         return await update_appointment_workflow(repo, current_user, appointment_id, payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="update_appointment") from exc

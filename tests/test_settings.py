@@ -5,15 +5,15 @@ from io import BytesIO
 
 from pypdf import PdfWriter
 
-from test_app import auth_headers, client, register
+from test_app import auth_headers_for_token, client, register_test_clinic
 from app.services.pdf_service import _page_size_for_template
 from app.services import note_workflow
 
 
 def test_clinic_settings_document_template_upload_download_and_remove(client):
     test_client, _repo = client
-    session = register(test_client, identifier="settings-template@clinic.com", clinic_name="Template Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="settings-template@clinic.com", clinic_name="Template Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     initial = test_client.get("/settings/clinic", headers=headers)
     assert initial.status_code == 200
@@ -76,8 +76,8 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
 
 def test_clinic_settings_can_store_specialty_for_existing_org(client):
     test_client, _repo = client
-    session = register(test_client, identifier="settings-specialty@clinic.com", clinic_name="Specialty Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="settings-specialty@clinic.com", clinic_name="Specialty Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     response = test_client.put(
         "/settings/clinic",
@@ -112,8 +112,8 @@ def test_clinic_settings_can_store_specialty_for_existing_org(client):
 
 def test_generate_letter_pdf_returns_error_when_template_is_enabled_but_missing(client):
     test_client, repo = client
-    session = register(test_client, identifier="settings-letter-preview@clinic.com", clinic_name="Letter Preview Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="settings-letter-preview@clinic.com", clinic_name="Letter Preview Clinic")
+    headers = auth_headers_for_token(session["token"])
     org_id = session["user"]["org_id"]
 
     repo.clinic_settings[org_id] = {
@@ -138,8 +138,8 @@ def test_generate_letter_pdf_returns_error_when_template_is_enabled_but_missing(
 
 def test_generate_letter_pdf_uses_template_when_letter_template_is_configured(client):
     test_client, repo = client
-    session = register(test_client, identifier="settings-letter-template@clinic.com", clinic_name="Letter Template Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="settings-letter-template@clinic.com", clinic_name="Letter Template Clinic")
+    headers = auth_headers_for_token(session["token"])
     org_id = session["user"]["org_id"]
 
     repo.clinic_settings[org_id] = {
@@ -164,8 +164,8 @@ def test_generate_letter_pdf_uses_template_when_letter_template_is_configured(cl
 
 def test_generate_letter_pdf_uses_current_user_signature_context(client, monkeypatch):
     test_client, repo = client
-    session = register(test_client, identifier="settings-letter-signature@clinic.com", clinic_name="Letter Signature Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="settings-letter-signature@clinic.com", clinic_name="Letter Signature Clinic")
+    headers = auth_headers_for_token(session["token"])
     user_id = session["user"]["id"]
 
     repo.users[user_id]["name"] = "Dr Letter Preview"
@@ -213,8 +213,8 @@ def test_pdf_template_page_size_is_read_from_uploaded_pdf():
 
 def test_saved_clinic_template_offsets_are_used_for_note_pdf_generation(client, monkeypatch):
     test_client, repo = client
-    session = register(test_client, identifier="settings-note-template@clinic.com", clinic_name="Note Template Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="settings-note-template@clinic.com", clinic_name="Note Template Clinic")
+    headers = auth_headers_for_token(session["token"])
     org_id = session["user"]["org_id"]
     user_id = session["user"]["id"]
 
@@ -283,8 +283,8 @@ def test_saved_clinic_template_offsets_are_used_for_note_pdf_generation(client, 
 
 def test_clinic_email_sender_settings_are_saved_without_returning_app_password(client):
     test_client, repo = client
-    session = register(test_client, identifier="settings-email@clinic.com", clinic_name="Mail Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="settings-email@clinic.com", clinic_name="Mail Clinic")
+    headers = auth_headers_for_token(session["token"])
     org_id = session["user"]["org_id"]
 
     response = test_client.put(
@@ -309,8 +309,8 @@ def test_clinic_email_sender_settings_are_saved_without_returning_app_password(c
 
 def test_send_letter_emails_generated_content(client, monkeypatch):
     test_client, _repo = client
-    session = register(test_client, identifier="settings-send-letter@clinic.com", clinic_name="Letter Send Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="settings-send-letter@clinic.com", clinic_name="Letter Send Clinic")
+    headers = auth_headers_for_token(session["token"])
     sent_messages: list[dict[str, object]] = []
 
     async def fake_send_clinic_email_message(**kwargs):
@@ -347,8 +347,8 @@ def test_send_letter_emails_generated_content(client, monkeypatch):
 
 def test_user_signature_can_be_uploaded_and_removed(client):
     test_client, _repo = client
-    session = register(test_client, identifier="profile@clinic.com", clinic_name="Profile Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="profile@clinic.com", clinic_name="Profile Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     created = test_client.post(
         "/users/staff",
@@ -378,8 +378,8 @@ def test_user_signature_can_be_uploaded_and_removed(client):
 
 def test_admin_can_change_user_role(client):
     test_client, _repo = client
-    session = register(test_client, identifier="role-admin@clinic.com", clinic_name="Role Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="role-admin@clinic.com", clinic_name="Role Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     created = test_client.post(
         "/users/staff",
@@ -400,8 +400,8 @@ def test_admin_can_change_user_role(client):
 
 def test_admin_can_remove_user_but_not_self(client):
     test_client, _repo = client
-    session = register(test_client, identifier="remove-admin@clinic.com", clinic_name="Remove Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="remove-admin@clinic.com", clinic_name="Remove Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     created = test_client.post(
         "/users/staff",

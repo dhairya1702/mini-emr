@@ -14,6 +14,7 @@ interface SettingsDrawerLetterPanelProps {
   letterForm: LetterFormState;
   letterError: string;
   letterStatus: string;
+  setupWarnings?: string[];
   isGeneratingLetter: boolean;
   isPreparingLetterPdf: boolean;
   isSendingLetter: boolean;
@@ -27,6 +28,7 @@ export function SettingsDrawerLetterPanel({
   letterForm,
   letterError,
   letterStatus,
+  setupWarnings = [],
   isGeneratingLetter,
   isPreparingLetterPdf,
   isSendingLetter,
@@ -46,6 +48,13 @@ export function SettingsDrawerLetterPanel({
         </div>
 
         <div className="grid gap-4">
+          {setupWarnings.length ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm leading-6 text-amber-900">
+              {setupWarnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+            </div>
+          ) : null}
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">To</span>
             <input

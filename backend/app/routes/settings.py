@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
+from app.api_errors import internal_server_error
 from app.auth import get_current_user, require_admin
 from app.db import SupabaseRepository, get_repository
 from app.schema_domains.auth_settings import ClinicSettingsOut, ClinicSettingsUpdate, UserOut
@@ -67,7 +68,7 @@ async def get_clinic_settings(
         settings_row["doctor_name"] = current_user.name or str(settings_row.get("doctor_name") or "")
         return _serialize_clinic_settings(settings_row)
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="get_clinic_settings") from exc
 
 
 @router.put("/settings/clinic", response_model=ClinicSettingsOut)
@@ -84,7 +85,7 @@ async def update_clinic_settings(
         saved["doctor_name"] = current_user.name or str(saved.get("doctor_name") or "")
         return _serialize_clinic_settings(saved)
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="update_clinic_settings") from exc
 
 
 @router.post("/settings/clinic/document-template", response_model=ClinicSettingsOut)
@@ -110,7 +111,7 @@ async def upload_clinic_template(
         saved["doctor_name"] = current_user.name or str(saved.get("doctor_name") or "")
         return _serialize_clinic_settings(saved)
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="upload_clinic_template") from exc
 
 
 @router.get("/settings/clinic/document-template/file")
@@ -134,7 +135,7 @@ async def download_clinic_template(
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="download_clinic_template") from exc
 
 
 @router.delete("/settings/clinic/document-template", response_model=ClinicSettingsOut)
@@ -147,4 +148,4 @@ async def delete_clinic_template(
         saved["doctor_name"] = current_user.name or str(saved.get("doctor_name") or "")
         return _serialize_clinic_settings(saved)
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="delete_clinic_template") from exc

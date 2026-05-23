@@ -149,8 +149,8 @@ export default function LoginPage() {
         if (!identifier.trim()) {
           throw new Error("Username, email, or phone number is required.");
         }
-        if (password.length < 6) {
-          throw new Error("Password must be at least 6 characters.");
+        if (password.length < 4) {
+          throw new Error("Password must be at least 4 characters.");
         }
         if (password !== confirmPassword) {
           throw new Error("Passwords do not match.");
@@ -255,7 +255,7 @@ export default function LoginPage() {
                     label="Password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Minimum 6 characters"
+                    placeholder="Minimum 4 characters"
                   />
                 </>
               ) : registerStep === 1 ? (
@@ -350,7 +350,7 @@ export default function LoginPage() {
                     label="Password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Minimum 6 characters"
+                    placeholder="Minimum 4 characters"
                   />
 
                   <PasswordInput

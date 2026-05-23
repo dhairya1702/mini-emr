@@ -4,6 +4,7 @@ from io import BytesIO
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user, require_admin
 from app.db import SupabaseRepository, get_repository
 from app.formatting import format_display_datetime
@@ -13,6 +14,8 @@ from app.schema_domains.documents import (
     GenerateLetterPdfRequest,
     GenerateLetterRequest,
     GenerateLetterResponse,
+    GenerateParentHandoutRequest,
+    GenerateParentHandoutResponse,
     GeneratePdfRequest,
     GenerateNoteRequest,
     GenerateNoteResponse,
@@ -25,6 +28,7 @@ from app.services.note_workflow import (
     finalize_note_workflow,
     generate_letter_content,
     generate_note_workflow,
+    generate_parent_handout_workflow,
     send_letter_workflow,
     send_note_workflow,
 )
@@ -46,9 +50,9 @@ async def create_generated_note(
     except HTTPException:
         raise
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="create_generated_note") from exc
 
 
 @router.post("/generate-letter", response_model=GenerateLetterResponse)
@@ -67,7 +71,23 @@ async def create_generated_letter(
         )
         return GenerateLetterResponse(content=content)
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="create_generated_letter") from exc
+
+
+@router.post("/generate-parent-handout", response_model=GenerateParentHandoutResponse)
+async def create_parent_handout(
+    payload: GenerateParentHandoutRequest,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> GenerateParentHandoutResponse:
+    try:
+        return await generate_parent_handout_workflow(repo, current_user, payload)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="create_parent_handout") from exc
 
 
 @router.post("/notes/finalize", response_model=NoteOut)
@@ -79,7 +99,7 @@ async def finalize_note(
     try:
         return await finalize_note_workflow(repo, current_user, payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
 
 
 @router.post("/send-note", response_model=SendNoteResponse)
@@ -91,7 +111,7 @@ async def send_note(
     try:
         return await send_note_workflow(repo, current_user, payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
 
 
 @router.post("/send-letter", response_model=SendNoteResponse)
@@ -132,9 +152,9 @@ async def generate_note_pdf(
             headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="generate_note_pdf") from exc
 
 
 @router.get("/notes/{note_id}/pdf")
@@ -164,7 +184,7 @@ async def generate_saved_note_pdf(
             headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
 
 
 @router.post("/generate-letter-pdf")
@@ -187,6 +207,6 @@ async def generate_letter_pdf(
             headers={"Content-Disposition": 'inline; filename="clinic_letter.pdf"'},
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="generate_letter_pdf") from exc

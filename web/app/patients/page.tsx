@@ -78,10 +78,23 @@ export default function PatientsPage() {
     onPageData,
   });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
+  const currentUserId = currentUser?.id;
+  const currentOrgId = currentUser?.org_id;
+  const recentPatientsScope = useMemo(
+    () => currentUserId && currentOrgId ? { orgId: currentOrgId, userId: currentUserId } : null,
+    [currentOrgId, currentUserId],
+  );
 
   useEffect(() => {
-    setRecentPatients(loadRecentPatients());
-  }, []);
+    setRecentPatients(recentPatientsScope ? loadRecentPatients(recentPatientsScope) : []);
+  }, [recentPatientsScope]);
+
+  function rememberRecentPatient(patient: Patient) {
+    if (!recentPatientsScope) {
+      return;
+    }
+    setRecentPatients(saveRecentPatient({ ...recentPatientsScope, patient }));
+  }
 
   const visiblePatients = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -114,7 +127,7 @@ export default function PatientsPage() {
     const saved = await api.updatePatient(patientId, payload);
     setPatients((current) => current.map((patient) => (patient.id === patientId ? saved : patient)));
     setSelectedPatient(saved);
-    setRecentPatients(saveRecentPatient(saved));
+    rememberRecentPatient(saved);
   }
 
   async function handleLoadPatientTimeline(patientId: string) {
@@ -236,7 +249,7 @@ export default function PatientsPage() {
                     type="button"
                     onClick={() => {
                       setSelectedPatient(patient);
-                      setRecentPatients(saveRecentPatient(patient));
+                      rememberRecentPatient(patient);
                     }}
                     className="min-w-[220px] rounded-[22px] border border-sky-100 bg-sky-50/50 px-4 py-3 text-left transition hover:border-sky-200 hover:bg-white"
                   >
@@ -286,7 +299,7 @@ export default function PatientsPage() {
                         key={patient.id}
                         onClick={() => {
                           setSelectedPatient(patient);
-                          setRecentPatients(saveRecentPatient(patient));
+                          rememberRecentPatient(patient);
                         }}
                         className="cursor-pointer transition hover:bg-sky-50/70"
                       >

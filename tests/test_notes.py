@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from test_app import auth_headers, client, main_module, register
+from test_app import auth_headers_for_token, client, main_module, register_test_clinic
 from app.services import note_workflow
 
 
 def test_sent_consultation_note_is_emailed_and_locked_to_saved_record(client, monkeypatch):
     test_client, repo = client
-    session = register(test_client, identifier="notes-lock@clinic.com", clinic_name="Notes Lock Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="notes-lock@clinic.com", clinic_name="Notes Lock Clinic")
+    headers = auth_headers_for_token(session["token"])
     sent_messages: list[dict[str, object]] = []
 
     async def fake_send_clinic_email_message(**kwargs):
@@ -88,8 +88,8 @@ def test_sent_consultation_note_is_emailed_and_locked_to_saved_record(client, mo
 
 def test_note_generation_rate_limit_returns_429(client, monkeypatch):
     test_client, _repo = client
-    session = register(test_client, identifier="ratelimit-note@clinic.com", clinic_name="Rate Limit Note Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="ratelimit-note@clinic.com", clinic_name="Rate Limit Note Clinic")
+    headers = auth_headers_for_token(session["token"])
     patient = test_client.post(
         "/patients",
         json={
@@ -124,8 +124,8 @@ def test_note_generation_rate_limit_returns_429(client, monkeypatch):
 
 def test_note_delivery_failure_reports_finalized_state(client, monkeypatch):
     test_client, repo = client
-    session = register(test_client, identifier="notes-failure@clinic.com", clinic_name="Notes Failure Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="notes-failure@clinic.com", clinic_name="Notes Failure Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     async def failing_send_clinic_email_message(**_kwargs):
         raise RuntimeError("SMTP unavailable")

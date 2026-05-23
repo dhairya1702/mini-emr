@@ -1,5 +1,6 @@
 import { AuthResponse } from "@/lib/types";
 
+const TOKEN_KEY = "clinic_auth_token";
 const USER_KEY = "clinic_auth_user";
 const SESSION_EXPIRY_KEY = "clinic_session_expires_at";
 const SPECIALTY_ONBOARDING_KEY = "clinic_specialty_onboarding_pending";
@@ -9,9 +10,20 @@ function isBrowser() {
   return typeof window !== "undefined";
 }
 
+function getSessionStorage() {
+  if (!isBrowser()) {
+    return null;
+  }
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
 export const authStorage = {
   getToken(): string {
-    return "";
+    return getSessionStorage()?.getItem(TOKEN_KEY) || "";
   },
   getUser() {
     if (!isBrowser()) {
@@ -50,14 +62,24 @@ export const authStorage = {
     if (!isBrowser()) {
       return;
     }
-    window.localStorage.removeItem("clinic_auth_token");
+    if (session.token) {
+      getSessionStorage()?.setItem(TOKEN_KEY, session.token);
+    }
     window.localStorage.setItem(USER_KEY, JSON.stringify(session.user));
     if (expiresAtMs && Number.isFinite(expiresAtMs)) {
       window.localStorage.setItem(SESSION_EXPIRY_KEY, String(expiresAtMs));
     }
   },
   setToken(token: string) {
-    void token;
+    const storage = getSessionStorage();
+    if (!storage) {
+      return;
+    }
+    if (token) {
+      storage.setItem(TOKEN_KEY, token);
+      return;
+    }
+    storage.removeItem(TOKEN_KEY);
   },
   setUser(user: AuthResponse["user"] | null) {
     if (!isBrowser()) {
@@ -93,7 +115,7 @@ export const authStorage = {
     if (!isBrowser()) {
       return;
     }
-    window.localStorage.removeItem("clinic_auth_token");
+    getSessionStorage()?.removeItem(TOKEN_KEY);
     window.localStorage.removeItem(USER_KEY);
     window.localStorage.removeItem(SESSION_EXPIRY_KEY);
     window.localStorage.removeItem(SPECIALTY_ONBOARDING_KEY);

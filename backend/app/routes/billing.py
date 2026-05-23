@@ -4,6 +4,7 @@ from io import BytesIO
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from app.api_errors import bad_request_error, internal_server_error
 from app.auth import require_admin
 from app.db import SupabaseRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
@@ -25,7 +26,7 @@ async def create_invoice(
     try:
         return await create_invoice_workflow(repo, current_user, payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
 
 
 @router.get("/invoices", response_model=list[InvoiceOut])
@@ -45,7 +46,7 @@ async def send_invoice(
     try:
         return await send_invoice_workflow(repo, current_user, payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
 
 
 @router.get("/invoices/{invoice_id}/pdf")
@@ -72,4 +73,4 @@ async def generate_invoice_pdf(
             headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="generate_invoice_pdf") from exc

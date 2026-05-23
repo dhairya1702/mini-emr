@@ -472,6 +472,18 @@ export interface GenerateLetterPayload {
   content: string;
 }
 
+export interface GenerateParentHandoutPayload {
+  patient_id: string;
+  template_key: string;
+  instructions: string;
+  well_child_visit?: WellChildVisitPayload | null;
+}
+
+export interface GenerateParentHandoutResponse {
+  title: string;
+  content: string;
+}
+
 export interface GeneratePdfPayload {
   patient_id: string;
   content: string;

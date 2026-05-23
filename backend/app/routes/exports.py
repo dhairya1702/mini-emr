@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from app.api_errors import bad_request_error
 from app.auth import require_admin
 from app.db import SupabaseRepository, get_repository
 from app.exports import (
@@ -49,7 +50,7 @@ async def export_visits_csv(
     try:
         start_at = get_export_range_start(range)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     filtered_rows = filter_rows_by_created_at([row.model_dump() for row in history_rows], start_at)
     return build_csv_response(
         "patient_visits.csv",

@@ -95,7 +95,7 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(min_length=6, max_length=128)
+    password: str = Field(min_length=4, max_length=128)
     admin_name: str = Field(min_length=1, max_length=120)
     clinic_name: str = Field(min_length=1, max_length=120)
     clinic_address: str = Field(min_length=1, max_length=300)
@@ -104,7 +104,7 @@ class UserCreate(UserBase):
 
 
 class StaffUserCreate(UserBase):
-    password: str = Field(min_length=6, max_length=128)
+    password: str = Field(min_length=4, max_length=128)
 
 
 class UserRoleUpdate(BaseModel):
@@ -112,7 +112,7 @@ class UserRoleUpdate(BaseModel):
 
 
 class LoginRequest(UserBase):
-    password: str = Field(min_length=6, max_length=128)
+    password: str = Field(min_length=4, max_length=128)
 
 
 class UserAccountUpdate(BaseModel):
@@ -122,8 +122,8 @@ class UserAccountUpdate(BaseModel):
 
 
 class UserPasswordUpdate(BaseModel):
-    current_password: str = Field(min_length=6, max_length=128)
-    new_password: str = Field(min_length=6, max_length=128)
+    current_password: str = Field(min_length=4, max_length=128)
+    new_password: str = Field(min_length=4, max_length=128)
 
 
 class UserOut(UserBase):

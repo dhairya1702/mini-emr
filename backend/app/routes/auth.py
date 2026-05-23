@@ -3,6 +3,7 @@ from base64 import b64decode, b64encode
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
+from app.api_errors import bad_request_error
 from app.auth import clear_session, get_current_user, hash_password, issue_session_headers, verify_password
 from app.db import SupabaseRepository, get_repository
 from app.schema_domains.auth_settings import (
@@ -103,7 +104,7 @@ async def upload_my_signature(
     try:
         raw_bytes, content_type = normalize_signature_image(raw_bytes, content_type)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
 
     saved = await repo.set_user_signature(
         str(current_user.id),

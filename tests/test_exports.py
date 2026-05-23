@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from test_app import auth_headers, client, register
+from test_app import auth_headers_for_token, client, register_test_clinic
 
 
 def test_admin_can_export_patients_visits_and_invoices_csv(client):
     test_client, _repo = client
-    session = register(test_client, identifier="exports@clinic.com", clinic_name="Exports Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="exports@clinic.com", clinic_name="Exports Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     patient = test_client.post(
         "/patients",

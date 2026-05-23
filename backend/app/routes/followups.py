@@ -2,6 +2,7 @@ from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
 from app.db import SupabaseRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
@@ -23,9 +24,9 @@ async def create_follow_up(
     try:
         return await create_follow_up_workflow(repo, current_user, patient_id, payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="create_follow_up") from exc
 
 
 @router.get("/follow-ups", response_model=list[FollowUpOut])
@@ -58,6 +59,6 @@ async def update_follow_up(
     try:
         return await update_follow_up_workflow(repo, current_user, follow_up_id, payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="update_follow_up") from exc

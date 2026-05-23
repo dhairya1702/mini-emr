@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from test_app import auth_headers, client, register
+from test_app import auth_headers_for_token, client, register_test_clinic
 from app.services import billing_workflow
 
 
 def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypatch):
     test_client, repo = client
-    session = register(test_client, identifier="billing@clinic.com", clinic_name="Billing Clinic")
+    session = register_test_clinic(test_client, identifier="billing@clinic.com", clinic_name="Billing Clinic")
     sent_messages: list[dict[str, object]] = []
 
     async def fake_send_clinic_email_message(**kwargs):
@@ -27,7 +27,7 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypat
             "height": 172,
             "temperature": 98.6,
         },
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     ).json()
 
     item = test_client.post(
@@ -41,7 +41,7 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypat
             "low_stock_threshold": 2,
             "unit": "strip",
         },
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     ).json()
 
     invoice_response = test_client.post(
@@ -59,7 +59,7 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypat
                 }
             ],
         },
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     )
     assert invoice_response.status_code == 201
     invoice = invoice_response.json()
@@ -74,7 +74,7 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypat
     first_send = test_client.post(
         "/send-invoice",
         json={"invoice_id": invoice["id"], "recipient_email": patient["email"]},
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     )
     assert first_send.status_code == 200
     assert repo.patients[patient["id"]]["billed"] is True
@@ -88,7 +88,7 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypat
     second_send = test_client.post(
         "/send-invoice",
         json={"invoice_id": invoice["id"], "recipient_email": patient["email"]},
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     )
     assert second_send.status_code == 200
     assert repo.catalog_items[item["id"]]["stock_quantity"] == 7
@@ -97,8 +97,8 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypat
 
 def test_invoice_can_be_created_with_partial_payment_status(client):
     test_client, repo = client
-    session = register(test_client, identifier="billing-partial@clinic.com", clinic_name="Billing Partial Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="billing-partial@clinic.com", clinic_name="Billing Partial Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     patient = test_client.post(
         "/patients",
@@ -142,8 +142,8 @@ def test_invoice_can_be_created_with_partial_payment_status(client):
 
 def test_cross_org_invoice_and_negative_stock_adjustment_are_rejected(client):
     test_client, _repo = client
-    session_a = register(test_client, identifier="owner-a2@clinic.com", clinic_name="Clinic A2")
-    session_b = register(test_client, identifier="owner-b2@clinic.com", clinic_name="Clinic B2")
+    session_a = register_test_clinic(test_client, identifier="owner-a2@clinic.com", clinic_name="Clinic A2")
+    session_b = register_test_clinic(test_client, identifier="owner-b2@clinic.com", clinic_name="Clinic B2")
 
     patient_b = test_client.post(
         "/patients",
@@ -156,7 +156,7 @@ def test_cross_org_invoice_and_negative_stock_adjustment_are_rejected(client):
             "height": 165,
             "temperature": 98.4,
         },
-        headers=auth_headers(session_b["token"]),
+        headers=auth_headers_for_token(session_b["token"]),
     ).json()
 
     foreign_invoice = test_client.post(
@@ -173,7 +173,7 @@ def test_cross_org_invoice_and_negative_stock_adjustment_are_rejected(client):
                 }
             ],
         },
-        headers=auth_headers(session_a["token"]),
+        headers=auth_headers_for_token(session_a["token"]),
     )
     assert foreign_invoice.status_code == 400
     assert "Patient not found for this organization" in foreign_invoice.text
@@ -189,13 +189,13 @@ def test_cross_org_invoice_and_negative_stock_adjustment_are_rejected(client):
             "low_stock_threshold": 1,
             "unit": "strip",
         },
-        headers=auth_headers(session_a["token"]),
+        headers=auth_headers_for_token(session_a["token"]),
     ).json()
 
     negative_adjustment = test_client.patch(
         f"/catalog/{item['id']}/stock",
         json={"delta": -3},
-        headers=auth_headers(session_a["token"]),
+        headers=auth_headers_for_token(session_a["token"]),
     )
     assert negative_adjustment.status_code == 400
     assert "Stock cannot go below zero" in negative_adjustment.text
@@ -203,7 +203,7 @@ def test_cross_org_invoice_and_negative_stock_adjustment_are_rejected(client):
 
 def test_invoice_delivery_failure_reports_finalized_state(client, monkeypatch):
     test_client, repo = client
-    session = register(test_client, identifier="billing-failure@clinic.com", clinic_name="Billing Failure Clinic")
+    session = register_test_clinic(test_client, identifier="billing-failure@clinic.com", clinic_name="Billing Failure Clinic")
 
     async def failing_send_clinic_email_message(**_kwargs):
         raise RuntimeError("SMTP unavailable")
@@ -223,7 +223,7 @@ def test_invoice_delivery_failure_reports_finalized_state(client, monkeypatch):
             "height": 172,
             "temperature": 98.6,
         },
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     ).json()
 
     invoice = test_client.post(
@@ -233,13 +233,13 @@ def test_invoice_delivery_failure_reports_finalized_state(client, monkeypatch):
             "payment_status": "paid",
             "items": [{"item_type": "service", "label": "Consultation", "quantity": 1, "unit_price": 500}],
         },
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     ).json()
 
     response = test_client.post(
         "/send-invoice",
         json={"invoice_id": invoice["id"], "recipient_email": patient["email"]},
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     )
 
     assert response.status_code == 502

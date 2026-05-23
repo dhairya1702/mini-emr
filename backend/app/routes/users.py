@@ -3,6 +3,7 @@ from base64 import b64encode
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
+from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user, require_admin
 from app.db import SupabaseRepository, get_repository
 from app.schema_domains.auth_settings import StaffUserCreate, UserOut, UserRoleUpdate
@@ -76,7 +77,7 @@ async def upload_user_signature(
     try:
         raw_bytes, content_type = normalize_signature_image(raw_bytes, content_type)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     try:
         await repo.get_user_for_org(str(current_user.org_id), user_id)
         saved = await repo.set_user_signature(
@@ -136,4 +137,4 @@ async def download_user_signature(
     except (IndexError, KeyError) as exc:
         raise HTTPException(status_code=404, detail="User not found.") from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="download_user_signature") from exc

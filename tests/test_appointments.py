@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from test_app import auth_headers, client, register
+from test_app import auth_headers_for_token, client, register_test_clinic
 
 
 def _future_iso(*, days: int = 1, hour: int = 9, minute: int = 0) -> str:
@@ -13,8 +13,8 @@ def _future_iso(*, days: int = 1, hour: int = 9, minute: int = 0) -> str:
 
 def test_appointment_can_be_created_listed_and_checked_into_queue(client):
     test_client, _repo = client
-    session = register(test_client, identifier="appointments@clinic.com", clinic_name="Appointments Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="appointments@clinic.com", clinic_name="Appointments Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     create_appointment = test_client.post(
         "/appointments",
@@ -70,8 +70,8 @@ def test_appointment_can_be_created_listed_and_checked_into_queue(client):
 
 def test_appointment_check_in_preview_returns_active_phone_matches(client):
     test_client, _repo = client
-    session = register(test_client, identifier="appointments-preview@clinic.com", clinic_name="Appointments Preview Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="appointments-preview@clinic.com", clinic_name="Appointments Preview Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     patient = test_client.post(
         "/patients",
@@ -109,8 +109,8 @@ def test_appointment_check_in_preview_returns_active_phone_matches(client):
 
 def test_appointment_check_in_requires_explicit_choice_when_phone_has_active_matches(client):
     test_client, _repo = client
-    session = register(test_client, identifier="appointments-duplicate-choice@clinic.com", clinic_name="Appointments Duplicate Choice Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="appointments-duplicate-choice@clinic.com", clinic_name="Appointments Duplicate Choice Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     existing = test_client.post(
         "/patients",
@@ -161,8 +161,8 @@ def test_appointment_check_in_requires_explicit_choice_when_phone_has_active_mat
 
 def test_appointment_check_in_can_link_existing_active_patient(client):
     test_client, _repo = client
-    session = register(test_client, identifier="appointments-link@clinic.com", clinic_name="Appointments Link Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="appointments-link@clinic.com", clinic_name="Appointments Link Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     patient = test_client.post(
         "/patients",
@@ -210,8 +210,8 @@ def test_appointment_check_in_can_link_existing_active_patient(client):
 
 def test_appointment_check_in_can_force_new_patient_with_existing_phone(client):
     test_client, _repo = client
-    session = register(test_client, identifier="appointments-force-new@clinic.com", clinic_name="Appointments Force New Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="appointments-force-new@clinic.com", clinic_name="Appointments Force New Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     existing = test_client.post(
         "/patients",
@@ -260,8 +260,8 @@ def test_appointment_check_in_can_force_new_patient_with_existing_phone(client):
 
 def test_patient_lookup_returns_family_cluster_after_reusing_and_adding_under_same_phone(client):
     test_client, _repo = client
-    session = register(test_client, identifier="patients-family@clinic.com", clinic_name="Patients Family Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="patients-family@clinic.com", clinic_name="Patients Family Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     parent = test_client.post(
         "/patients",
@@ -335,8 +335,8 @@ def test_patient_lookup_returns_family_cluster_after_reusing_and_adding_under_sa
 
 def test_appointment_can_be_rescheduled_and_cancelled(client):
     test_client, _repo = client
-    session = register(test_client, identifier="appointments-manage@clinic.com", clinic_name="Appointments Manage Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="appointments-manage@clinic.com", clinic_name="Appointments Manage Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     appointment = test_client.post(
         "/appointments",

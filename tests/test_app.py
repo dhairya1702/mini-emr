@@ -1243,7 +1243,7 @@ def client(monkeypatch: pytest.MonkeyPatch):
     app.dependency_overrides.clear()
 
 
-def register(client: TestClient, *, identifier: str, clinic_name: str) -> dict:
+def register_test_clinic(client: TestClient, *, identifier: str, clinic_name: str) -> dict:
     response = client.post(
         "/auth/register",
         json={
@@ -1260,18 +1260,18 @@ def register(client: TestClient, *, identifier: str, clinic_name: str) -> dict:
     return response.json()
 
 
-def auth_headers(token: str) -> dict[str, str]:
+def auth_headers_for_token(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
 def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
     test_client, repo = client
-    session = register(test_client, identifier="booking@example.com", clinic_name="Booking Clinic")
+    session = register_test_clinic(test_client, identifier="booking@example.com", clinic_name="Booking Clinic")
     token = session["token"]
 
     patient_response = test_client.post(
         "/patients",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "name": "Booking Patient",
             "phone": "5550102222",
@@ -1290,7 +1290,7 @@ def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
     scheduled_for = (datetime.now(UTC).replace(microsecond=0) + timedelta(days=2)).isoformat()
     follow_up_response = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={"scheduled_for": scheduled_for, "notes": "Return for blood pressure review"},
     )
     assert follow_up_response.status_code == 201
@@ -1317,7 +1317,7 @@ def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
     )
     scheduled_response = test_client.post(
         "/appointments",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "name": "Occupied Slot",
             "phone": "5550103333",
@@ -1350,7 +1350,7 @@ def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
 
     follow_ups_response = test_client.get(
         f"/follow-ups?scheduled_date={datetime.fromisoformat(rescheduled_for).date().isoformat()}",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
     )
     assert follow_ups_response.status_code == 200
     refreshed_follow_up = follow_ups_response.json()[0]
@@ -1359,7 +1359,7 @@ def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
 
     appointments_response = test_client.get(
         f"/appointments?scheduled_date={datetime.fromisoformat(rescheduled_for).date().isoformat()}",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
     )
     assert appointments_response.status_code == 200
     appointment_reasons = [appointment["reason"] for appointment in appointments_response.json()]
@@ -1378,7 +1378,7 @@ def test_follow_up_slot_normalizer_accepts_iso_strings() -> None:
 
 def test_public_follow_up_booking_rejects_expired_tokens(client, monkeypatch: pytest.MonkeyPatch):
     test_client, _repo = client
-    session = register(test_client, identifier="booking-expired@example.com", clinic_name="Expired Booking Clinic")
+    session = register_test_clinic(test_client, identifier="booking-expired@example.com", clinic_name="Expired Booking Clinic")
 
     original_secret = followup_booking_service_module._secret
 
@@ -1401,7 +1401,7 @@ def test_public_follow_up_booking_rejects_expired_tokens(client, monkeypatch: py
 
     patient = test_client.post(
         "/patients",
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
         json={
             "name": "Expired Booking Patient",
             "phone": "5550108282",
@@ -1417,7 +1417,7 @@ def test_public_follow_up_booking_rejects_expired_tokens(client, monkeypatch: py
 
     follow_up = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
         json={"scheduled_for": (datetime.now(UTC).replace(microsecond=0) + timedelta(days=2)).isoformat(), "notes": "Return soon"},
     ).json()
 
@@ -1434,11 +1434,11 @@ def test_public_follow_up_booking_rejects_expired_tokens(client, monkeypatch: py
 
 def test_public_follow_up_booking_rate_limits_context_requests(client, monkeypatch: pytest.MonkeyPatch):
     test_client, _repo = client
-    session = register(test_client, identifier="booking-ratelimit@example.com", clinic_name="Rate Limit Booking Clinic")
+    session = register_test_clinic(test_client, identifier="booking-ratelimit@example.com", clinic_name="Rate Limit Booking Clinic")
 
     patient = test_client.post(
         "/patients",
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
         json={
             "name": "Rate Limit Booking Patient",
             "phone": "5550109292",
@@ -1454,7 +1454,7 @@ def test_public_follow_up_booking_rate_limits_context_requests(client, monkeypat
 
     follow_up = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
         json={"scheduled_for": (datetime.now(UTC).replace(microsecond=0) + timedelta(days=2)).isoformat(), "notes": "Return soon"},
     ).json()
 
@@ -1476,12 +1476,12 @@ def test_public_follow_up_booking_rate_limits_context_requests(client, monkeypat
 
 def test_schedule_lists_auto_cancel_expired_items(client):
     test_client, repo = client
-    session = register(test_client, identifier="cleanup@example.com", clinic_name="Cleanup Clinic")
+    session = register_test_clinic(test_client, identifier="cleanup@example.com", clinic_name="Cleanup Clinic")
     token = session["token"]
 
     patient_response = test_client.post(
         "/patients",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "name": "Cleanup Patient",
             "phone": "5550103333",
@@ -1502,7 +1502,7 @@ def test_schedule_lists_auto_cancel_expired_items(client):
 
     old_appointment = test_client.post(
         "/appointments",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "name": "Old Appointment",
             "phone": "5550103333",
@@ -1521,7 +1521,7 @@ def test_schedule_lists_auto_cancel_expired_items(client):
 
     future_appointment = test_client.post(
         "/appointments",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "name": "Future Appointment",
             "phone": "5550103333",
@@ -1540,7 +1540,7 @@ def test_schedule_lists_auto_cancel_expired_items(client):
 
     old_follow_up = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={"scheduled_for": yesterday.isoformat(), "notes": "Old follow-up"},
     )
     assert old_follow_up.status_code == 201
@@ -1548,7 +1548,7 @@ def test_schedule_lists_auto_cancel_expired_items(client):
 
     future_follow_up = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={"scheduled_for": tomorrow.isoformat(), "notes": "Future follow-up"},
     )
     assert future_follow_up.status_code == 201
@@ -1556,7 +1556,7 @@ def test_schedule_lists_auto_cancel_expired_items(client):
 
     appointments_response = test_client.get(
         f"/appointments?scheduled_date={tomorrow.date().isoformat()}",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
     )
     assert appointments_response.status_code == 200
     appointment_ids = {row["id"] for row in appointments_response.json()}
@@ -1566,7 +1566,7 @@ def test_schedule_lists_auto_cancel_expired_items(client):
 
     follow_ups_response = test_client.get(
         f"/follow-ups?scheduled_date={tomorrow.date().isoformat()}",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
     )
     assert follow_ups_response.status_code == 200
     follow_up_ids = {row["id"] for row in follow_ups_response.json()}
@@ -1577,12 +1577,12 @@ def test_schedule_lists_auto_cancel_expired_items(client):
 
 def test_myopia_measurements_create_history_and_timeline(client):
     test_client, _repo = client
-    session = register(test_client, identifier="axial@example.com", clinic_name="Axial Clinic")
+    session = register_test_clinic(test_client, identifier="axial@example.com", clinic_name="Axial Clinic")
     token = session["token"]
 
     patient_response = test_client.post(
         "/patients",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "name": "Maya Rao",
             "phone": "5550104444",
@@ -1600,7 +1600,7 @@ def test_myopia_measurements_create_history_and_timeline(client):
 
     first_record = test_client.post(
         f"/patients/{patient['id']}/myopia-records",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "measured_at": "2026-01-01T10:00:00+00:00",
             "age_years": 11.0,
@@ -1617,7 +1617,7 @@ def test_myopia_measurements_create_history_and_timeline(client):
 
     second_record = test_client.post(
         f"/patients/{patient['id']}/myopia-records",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "measured_at": "2026-07-01T10:00:00+00:00",
             "age_years": 11.5,
@@ -1634,7 +1634,7 @@ def test_myopia_measurements_create_history_and_timeline(client):
 
     history_response = test_client.get(
         f"/patients/{patient['id']}/myopia-history",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
     )
     assert history_response.status_code == 200
     history = history_response.json()
@@ -1646,7 +1646,7 @@ def test_myopia_measurements_create_history_and_timeline(client):
 
     timeline_response = test_client.get(
         f"/patients/{patient['id']}/timeline",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
     )
     assert timeline_response.status_code == 200
     myopia_events = [event for event in timeline_response.json() if event["type"] == "myopia_measurement"]
@@ -1656,19 +1656,19 @@ def test_myopia_measurements_create_history_and_timeline(client):
 
 def test_case_study_generation_storage_and_pdf(client):
     test_client, _repo = client
-    session = register(test_client, identifier="case-study@example.com", clinic_name="Case Study Clinic")
+    session = register_test_clinic(test_client, identifier="case-study@example.com", clinic_name="Case Study Clinic")
     token = session["token"]
 
     settings_response = test_client.put(
         "/settings/clinic",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={"clinic_specialty": "optometry"},
     )
     assert settings_response.status_code == 200
 
     patient_response = test_client.post(
         "/patients",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "name": "Ananya Shah",
             "phone": "5550105555",
@@ -1686,7 +1686,7 @@ def test_case_study_generation_storage_and_pdf(client):
 
     note_response = test_client.post(
         "/generate-note",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "patient_id": patient["id"],
             "symptoms": "Blurred distance vision",
@@ -1699,7 +1699,7 @@ def test_case_study_generation_storage_and_pdf(client):
 
     myopia_response = test_client.post(
         f"/patients/{patient['id']}/myopia-records",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "measured_at": "2026-01-01T10:00:00+00:00",
             "age_years": 12.0,
@@ -1716,7 +1716,7 @@ def test_case_study_generation_storage_and_pdf(client):
 
     source_response = test_client.get(
         f"/patients/{patient['id']}/case-study-source",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
     )
     assert source_response.status_code == 200
     source = source_response.json()
@@ -1726,7 +1726,7 @@ def test_case_study_generation_storage_and_pdf(client):
 
     generated_response = test_client.post(
         "/generate-case-study",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
           "patient_id": patient["id"],
           "title": "",
@@ -1743,7 +1743,7 @@ def test_case_study_generation_storage_and_pdf(client):
 
     create_response = test_client.post(
         "/case-studies",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "patient_id": patient["id"],
             "title": generated["title"],
@@ -1760,13 +1760,13 @@ def test_case_study_generation_storage_and_pdf(client):
     assert saved["status"] == "draft"
     assert saved["patient_name"] == "Ananya Shah"
 
-    list_response = test_client.get("/case-studies", headers=auth_headers(token))
+    list_response = test_client.get("/case-studies", headers=auth_headers_for_token(token))
     assert list_response.status_code == 200
     assert len(list_response.json()) == 1
 
     update_response = test_client.patch(
         f"/case-studies/{saved['id']}",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={"status": "final", "title": "Conference Case: Progressive Myopia"},
     )
     assert update_response.status_code == 200
@@ -1774,7 +1774,7 @@ def test_case_study_generation_storage_and_pdf(client):
 
     pdf_response = test_client.get(
         f"/case-studies/{saved['id']}/pdf",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
     )
     assert pdf_response.status_code == 200
     assert pdf_response.headers["content-type"] == "application/pdf"
@@ -1782,12 +1782,12 @@ def test_case_study_generation_storage_and_pdf(client):
 
 def test_case_study_source_is_generic_for_non_optometry_clinics(client):
     test_client, _repo = client
-    session = register(test_client, identifier="case-study-gp@example.com", clinic_name="General Clinic")
+    session = register_test_clinic(test_client, identifier="case-study-gp@example.com", clinic_name="General Clinic")
     token = session["token"]
 
     patient_response = test_client.post(
         "/patients",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "name": "Ravi Kumar",
             "phone": "5550201111",
@@ -1805,7 +1805,7 @@ def test_case_study_source_is_generic_for_non_optometry_clinics(client):
 
     note_response = test_client.post(
         "/generate-note",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "patient_id": patient["id"],
             "symptoms": "Fever and body ache",
@@ -1818,7 +1818,7 @@ def test_case_study_source_is_generic_for_non_optometry_clinics(client):
 
     source_response = test_client.get(
         f"/patients/{patient['id']}/case-study-source",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
     )
     assert source_response.status_code == 200
     source = source_response.json()
@@ -1829,19 +1829,19 @@ def test_case_study_source_is_generic_for_non_optometry_clinics(client):
 
 def test_pediatric_growth_records_create_history_and_timeline(client):
     test_client, _repo = client
-    session = register(test_client, identifier="peds@example.com", clinic_name="Peds Clinic")
+    session = register_test_clinic(test_client, identifier="peds@example.com", clinic_name="Peds Clinic")
     token = session["token"]
 
     settings_response = test_client.put(
         "/settings/clinic",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={"clinic_specialty": "pediatrics"},
     )
     assert settings_response.status_code == 200
 
     patient_response = test_client.post(
         "/patients",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "name": "Aarav Mehta",
             "phone": "5550204444",
@@ -1859,7 +1859,7 @@ def test_pediatric_growth_records_create_history_and_timeline(client):
 
     growth_response = test_client.post(
         f"/patients/{patient['id']}/growth-records",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
         json={
             "measured_at": "2026-05-01T10:00:00+00:00",
             "height_cm": 128,
@@ -1873,7 +1873,7 @@ def test_pediatric_growth_records_create_history_and_timeline(client):
 
     history_response = test_client.get(
         f"/patients/{patient['id']}/growth-history",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
     )
     assert history_response.status_code == 200
     history = history_response.json()
@@ -1882,12 +1882,61 @@ def test_pediatric_growth_records_create_history_and_timeline(client):
 
     timeline_response = test_client.get(
         f"/patients/{patient['id']}/timeline",
-        headers=auth_headers(token),
+        headers=auth_headers_for_token(token),
     )
     assert timeline_response.status_code == 200
     growth_events = [event for event in timeline_response.json() if event["type"] == "growth_measurement"]
     assert len(growth_events) == 1
     assert "BMI" in growth_events[0]["description"]
+
+
+def test_generate_parent_handout_returns_pediatric_content(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="peds-handout@example.com", clinic_name="Blue Bird Pediatrics")
+    token = session["token"]
+
+    patient_response = test_client.post(
+        "/patients",
+        headers=auth_headers_for_token(token),
+        json={
+            "name": "Maya Sharma",
+            "phone": "5550207777",
+            "email": "maya@example.com",
+            "address": "7 Garden Lane",
+            "reason": "Well-child visit",
+            "age": 6,
+            "weight": 20,
+            "height": 112,
+            "temperature": 98.6,
+        },
+    )
+    assert patient_response.status_code == 201
+    patient = patient_response.json()
+
+    handout_response = test_client.post(
+        "/generate-parent-handout",
+        headers=auth_headers_for_token(token),
+        json={
+            "patient_id": patient["id"],
+            "template_key": "well_visit_summary",
+            "instructions": "Focus on hydration and return precautions.",
+            "well_child_visit": {
+                "visit_band": "school_age",
+                "nutrition_summary": "Balanced diet discussed.",
+                "sleep_summary": "Regular bedtime encouraged.",
+                "elimination_summary": "",
+                "school_behavior_summary": "",
+                "parent_concerns": "Occasional picky eating.",
+                "assessment_summary": "Doing well overall.",
+            },
+        },
+    )
+
+    assert handout_response.status_code == 200
+    body = handout_response.json()
+    assert body["title"] == "Well-Visit Summary"
+    assert "Maya Sharma" in body["content"]
+    assert "Focus on hydration and return precautions." in body["content"]
 
 
 def test_build_document_context_for_user_prefers_user_profile_name() -> None:

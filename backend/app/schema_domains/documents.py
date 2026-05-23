@@ -12,7 +12,7 @@ from app.schema_domains.optometry import (
     NoteAssetInput,
     TestScoreEntry,
 )
-from app.schema_domains.specialty import StructuredModuleInput
+from app.schema_domains.specialty import StructuredModuleInput, WellChildVisitInput
 
 
 class GenerateNoteRequest(BaseModel):
@@ -54,6 +54,18 @@ class GenerateLetterRequest(BaseModel):
 
 
 class GenerateLetterResponse(BaseModel):
+    content: str
+
+
+class GenerateParentHandoutRequest(BaseModel):
+    patient_id: UUID
+    template_key: str = Field(min_length=1, max_length=120)
+    instructions: str = Field(default="", max_length=1000)
+    well_child_visit: WellChildVisitInput | None = None
+
+
+class GenerateParentHandoutResponse(BaseModel):
+    title: str
     content: str
 
 

@@ -4,6 +4,7 @@ from io import BytesIO
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from app.api_errors import bad_request_error, internal_server_error, not_found_error
 from app.auth import require_admin
 from app.db import SupabaseRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
@@ -36,7 +37,7 @@ async def list_case_studies(
     try:
         return await list_case_studies_view(repo, str(current_user.org_id))
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="list_case_studies") from exc
 
 
 @router.get("/case-studies/{case_study_id}", response_model=CaseStudyOut)
@@ -48,9 +49,9 @@ async def get_case_study(
     try:
         return await get_case_study_view(repo, str(current_user.org_id), case_study_id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise not_found_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="get_case_study") from exc
 
 
 @router.post("/generate-case-study", response_model=GenerateCaseStudyResponse)
@@ -62,9 +63,9 @@ async def generate_case_study(
     try:
         return await generate_case_study_workflow(repo, current_user, payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="generate_case_study") from exc
 
 
 @router.post("/case-studies", response_model=CaseStudyOut, status_code=201)
@@ -76,9 +77,9 @@ async def create_case_study(
     try:
         return await create_case_study_workflow(repo, current_user, payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="create_case_study") from exc
 
 
 @router.patch("/case-studies/{case_study_id}", response_model=CaseStudyOut)
@@ -94,9 +95,9 @@ async def update_case_study(
     try:
         return await update_case_study_workflow(repo, current_user, case_study_id, updates)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="update_case_study") from exc
 
 
 @router.get("/case-studies/{case_study_id}/pdf")
@@ -122,6 +123,6 @@ async def generate_case_study_pdf(
             headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise not_found_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="generate_case_study_pdf") from exc

@@ -27,6 +27,7 @@ interface SettingsDrawerBillingPanelProps {
   paymentStatus: PaymentStatus;
   billingError: string;
   billingStatus: string;
+  setupWarnings?: string[];
   isSavingInvoice: boolean;
   isPreparingInvoicePdf: boolean;
   isSendingInvoice: boolean;
@@ -61,6 +62,7 @@ export function SettingsDrawerBillingPanel({
   paymentStatus,
   billingError,
   billingStatus,
+  setupWarnings = [],
   isSavingInvoice,
   isPreparingInvoicePdf,
   isSendingInvoice,
@@ -141,6 +143,13 @@ export function SettingsDrawerBillingPanel({
           </div>
 
           <div className="space-y-3">
+            {setupWarnings.length ? (
+              <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-4 text-sm leading-6 text-amber-900">
+                {setupWarnings.map((warning) => (
+                  <p key={warning}>{warning}</p>
+                ))}
+              </div>
+            ) : null}
             {invoiceItems.length ? invoiceItems.map((item) => (
               <div key={item.id} className="grid gap-3 rounded-[24px] border border-sky-100 bg-sky-50/30 p-4 md:grid-cols-[1.3fr_120px_140px_44px]">
                 <div>

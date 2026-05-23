@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { CheckCircle2, CircleDashed, FileText, Mail, PenLine, Settings2, UserPlus, Users } from "lucide-react";
 
 import { AddPatientModal } from "@/components/add-patient-modal";
 import { AppHeader } from "@/components/app-header";
@@ -8,7 +10,10 @@ import { ConsultationDrawer } from "@/components/consultation-drawer";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
 import { PatientColumn } from "@/components/patient-column";
+import { SetupStepModal } from "@/components/setup/setup-step-modal";
 import { api } from "@/lib/api";
+import { buildClinicSetupChecklist, ClinicSetupStep, ClinicSetupStepKey, hasClinicDocumentTemplate, hasUserSignature } from "@/lib/setup-checklist";
+import { findNextSetupStep as findNextSetupStepFromChecklist, setupQueryForStep, setupStepFromQuery } from "@/lib/setup-flow";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { Patient, PatientStatus, PatientTimelineEvent } from "@/lib/types";
 
@@ -82,12 +87,134 @@ function createId() {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function setupStepIcon(stepKey: ClinicSetupStepKey) {
+  switch (stepKey) {
+    case "signature":
+      return PenLine;
+    case "sender_email":
+      return Mail;
+    case "first_staff_user":
+      return UserPlus;
+    case "first_patient":
+      return Users;
+    case "document_template":
+      return FileText;
+    default:
+      return Settings2;
+  }
+}
+
+function SetupChecklistCard({
+  checklist,
+  onOpenStep,
+  highlightedStepKey = null,
+}: {
+  checklist: ReturnType<typeof buildClinicSetupChecklist>;
+  onOpenStep: (step: ClinicSetupStep) => void;
+  highlightedStepKey?: ClinicSetupStepKey | null;
+}) {
+  const requiredSteps = checklist.items.filter((step) => step.key !== "document_template");
+  const optionalStep = checklist.items.find((step) => step.key === "document_template") ?? null;
+
+  return (
+    <section className="mb-4 rounded-[32px] border border-sky-200 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-3xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Clinic Setup</p>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-900">Get this clinic ready for a real day</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Follow the operational order below. Each step unlocks the workflows that depend on it, so the clinic does not run into hidden setup failures later.
+          </p>
+        </div>
+        <div className="rounded-[24px] border border-sky-200 bg-sky-50/80 px-4 py-3 text-sm font-medium text-sky-800">
+          {checklist.requiredCompleted} of {checklist.requiredTotal} required steps complete
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-3">
+        {requiredSteps.map((step) => {
+          const Icon = setupStepIcon(step.key);
+          const isComplete = step.status === "complete";
+          return (
+            <div
+              key={step.key}
+              className={`flex flex-col gap-4 rounded-[24px] border p-4 md:flex-row md:items-center md:justify-between ${
+                isComplete
+                  ? "border-emerald-200 bg-emerald-50/70"
+                  : highlightedStepKey === step.key
+                    ? "border-sky-400 bg-sky-50 ring-2 ring-sky-200"
+                    : "border-sky-200 bg-white"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div className={`rounded-2xl p-3 ${isComplete ? "bg-emerald-100 text-emerald-700" : "bg-sky-50 text-sky-700"}`}>
+                  {isComplete ? <CheckCircle2 className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                </div>
+                <div>
+                  <p className="text-base font-semibold text-slate-900">{step.title}</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">{step.description}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenStep(step)}
+                className={`inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium transition ${
+                  isComplete
+                    ? "border border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-50"
+                    : "bg-sky-500 text-white hover:bg-sky-600"
+                }`}
+              >
+                {isComplete ? "Review" : "Complete step"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {optionalStep ? (
+        <div
+          className={`mt-5 rounded-[24px] border p-4 ${
+            highlightedStepKey === optionalStep.key
+              ? "border-sky-400 bg-sky-50 ring-2 ring-sky-200"
+              : "border-slate-200 bg-slate-50/70"
+          }`}
+        >
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="rounded-2xl bg-white p-3 text-slate-600">
+                {optionalStep.status === "complete" ? <CheckCircle2 className="h-5 w-5 text-emerald-700" /> : <CircleDashed className="h-5 w-5" />}
+              </div>
+              <div>
+                <p className="text-base font-semibold text-slate-900">{optionalStep.title}</p>
+                <p className="mt-1 text-sm leading-6 text-slate-600">{optionalStep.description}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpenStep(optionalStep)}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-slate-100"
+            >
+              {optionalStep.status === "complete" ? "Review template" : "Upload template"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export default function HomePage() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const setupChecklistRef = useRef<HTMLDivElement | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [drawerMode, setDrawerMode] = useState<"details" | "consultation" | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [setupQuery, setSetupQuery] = useState("");
+  const [activeSetupStep, setActiveSetupStep] = useState<ClinicSetupStepKey | null>(null);
+  const [highlightedSetupStep, setHighlightedSetupStep] = useState<ClinicSetupStepKey | null>(null);
   const [queueOrder, setQueueOrder] = useState<QueueOrder>(() => createEmptyQueueOrder());
   const loadPageData = useCallback(() => api.listPatients(), []);
   const onPageData = useCallback((data: Patient[]) => {
@@ -106,9 +233,12 @@ export default function HomePage() {
     setError,
     isAuthReady,
     isRedirectingToLogin,
+    isPageDataLoaded,
+    isUsersLoaded,
     handleLogout,
     handleSaveClinicSettings,
     applyClinicSettings,
+    applyCurrentUser,
     handleAddStaffUser,
     handleCreateCatalogItem,
     handleAdjustCatalogStock,
@@ -127,9 +257,48 @@ export default function HomePage() {
     onPageData,
   });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
+  const isSetupChecklistReady = Boolean(
+    currentUser &&
+      clinicSettings &&
+      isPageDataLoaded &&
+      (currentUser.role !== "admin" || isUsersLoaded),
+  );
+  const checklist = useMemo(
+    () =>
+      buildClinicSetupChecklist({
+        currentUser,
+        users,
+        patients,
+        clinicSettings,
+      }),
+    [clinicSettings, currentUser, patients, users],
+  );
+
+  const updateSetupQuery = useCallback((value?: string) => {
+    const next = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    if (value) {
+      next.set("setup", value);
+    } else {
+      next.delete("setup");
+    }
+    const query = next.toString();
+    setSetupQuery(value || "");
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [pathname, router]);
+
+  const findNextSetupStep = useCallback((completedStepKey: ClinicSetupStepKey) => {
+    return findNextSetupStepFromChecklist(checklist, completedStepKey);
+  }, [checklist]);
 
   useEffect(() => {
     setQueueOrder(loadQueueOrder());
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    setSetupQuery(new URLSearchParams(window.location.search).get("setup") || "");
   }, []);
 
   useEffect(() => {
@@ -184,6 +353,28 @@ export default function HomePage() {
     };
   }, [isAuthReady, isRedirectingToLogin]);
 
+  useEffect(() => {
+    if (!isAuthReady || currentUser?.role !== "admin") {
+      return;
+    }
+    if (!users.length) {
+      void loadUsers();
+    }
+  }, [currentUser, isAuthReady, loadUsers, users.length]);
+
+  useEffect(() => {
+    if (!isAuthReady || currentUser?.role !== "admin") {
+      return;
+    }
+
+    const nextStep = setupStepFromQuery(setupQuery);
+    if (!nextStep) {
+      return;
+    }
+
+    setActiveSetupStep(nextStep);
+  }, [currentUser, isAuthReady, setupQuery]);
+
   const groupedPatients = useMemo(() => {
     return statusOrder.reduce<Record<PatientStatus, Patient[]>>(
       (accumulator, status) => {
@@ -197,6 +388,50 @@ export default function HomePage() {
       },
     );
   }, [patients, queueOrder]);
+
+  const openSetupStep = useCallback((step: ClinicSetupStep) => {
+    setActiveSetupStep(step.key);
+    setHighlightedSetupStep(null);
+    updateSetupQuery(setupQueryForStep(step.key));
+  }, [updateSetupQuery]);
+
+  const handleCloseSetupStep = useCallback(() => {
+    setActiveSetupStep(null);
+    if (setupQuery) {
+      updateSetupQuery();
+    }
+  }, [setupQuery, updateSetupQuery]);
+
+  const handleSetupStepComplete = useCallback(async (stepKey: ClinicSetupStepKey) => {
+    if (stepKey === "first_staff_user") {
+      await loadUsers();
+    }
+    if (stepKey === "first_patient") {
+      const nextPatients = await api.listPatients();
+      setPatients(nextPatients);
+    }
+
+    setActiveSetupStep(null);
+    setIsModalOpen(false);
+    setHighlightedSetupStep(findNextSetupStep(stepKey));
+    if (setupQuery) {
+      updateSetupQuery();
+    }
+    window.setTimeout(() => {
+      setupChecklistRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }, [findNextSetupStep, loadUsers, setupQuery, updateSetupQuery]);
+
+  function handleCloseSettingsDrawer() {
+    setIsSettingsOpen(false);
+  }
+
+  function handleClosePatientModal() {
+    setIsModalOpen(false);
+    if (activeSetupStep === "first_patient") {
+      handleCloseSetupStep();
+    }
+  }
 
   async function handleCreatePatient(payload: {
     entryType: "queue" | "appointment";
@@ -463,6 +698,16 @@ export default function HomePage() {
           </div>
         ) : null}
 
+        {currentUser?.role === "admin" && isSetupChecklistReady && !checklist.allRequiredComplete ? (
+          <div ref={setupChecklistRef}>
+            <SetupChecklistCard
+              checklist={checklist}
+              onOpenStep={openSetupStep}
+              highlightedStepKey={highlightedSetupStep}
+            />
+          </div>
+        ) : null}
+
         <div className="grid gap-4 xl:grid-cols-3">
           <PatientColumn
             title="Waiting"
@@ -494,9 +739,29 @@ export default function HomePage() {
       </div>
 
       <AddPatientModal
-        open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        open={isModalOpen || activeSetupStep === "first_patient"}
+        onClose={handleClosePatientModal}
+        onSubmitted={() => {
+          if (activeSetupStep === "first_patient") {
+            void handleSetupStepComplete("first_patient");
+          }
+        }}
         onSubmit={handleCreatePatient}
+      />
+
+      <SetupStepModal
+        stepKey={activeSetupStep}
+        settings={clinicSettings}
+        currentUser={currentUser}
+        onClose={handleCloseSetupStep}
+        onComplete={(stepKey) => {
+          void handleSetupStepComplete(stepKey);
+        }}
+        onSaveClinic={handleSaveClinicSettings}
+        onClinicSettingsChange={applyClinicSettings}
+        onCurrentUserChange={applyCurrentUser}
+        onAddUser={handleAddStaffUser}
+        onLoadUsers={loadUsers}
       />
 
       {isSettingsOpen ? (
@@ -511,7 +776,7 @@ export default function HomePage() {
           patients={groupedPatients.done}
           catalogItems={catalogItems}
           onLoadCatalogItems={loadCatalogItems}
-          onClose={() => setIsSettingsOpen(false)}
+          onClose={handleCloseSettingsDrawer}
           onSaveClinic={handleSaveClinicSettings}
           onClinicSettingsChange={applyClinicSettings}
           onAddUser={handleAddStaffUser}
@@ -568,7 +833,11 @@ export default function HomePage() {
 
       <ConsultationDrawer
         patient={drawerMode === "consultation" ? selectedPatient : null}
+        currentUser={currentUser}
         clinicSpecialty={clinicSettings?.clinic_specialty ?? null}
+        emailConfigured={Boolean(clinicSettings?.email_configured)}
+        hasUserSignature={hasUserSignature(currentUser)}
+        hasClinicDocumentTemplate={hasClinicDocumentTemplate(clinicSettings)}
         onClose={() => {
           setSelectedPatient(null);
           setDrawerMode(null);

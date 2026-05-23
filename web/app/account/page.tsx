@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
@@ -19,6 +19,8 @@ function normalizeDateInput(value: string | null | undefined) {
 export default function AccountPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [accountUser, setAccountUser] = useState<AuthUser | null>(null);
+  const [highlightSignature, setHighlightSignature] = useState(false);
+  const [isSignatureSetupTarget, setIsSignatureSetupTarget] = useState(false);
   const [profileForm, setProfileForm] = useState({
     name: "",
     doctor_dob: "",
@@ -38,6 +40,7 @@ export default function AccountPage() {
   const [signatureError, setSignatureError] = useState("");
   const [signatureStatus, setSignatureStatus] = useState("");
   const [isUpdatingSignature, setIsUpdatingSignature] = useState(false);
+  const signatureSectionRef = useRef<HTMLElement | null>(null);
   const loadPageData = async () => null;
   const onPageData = () => undefined;
   const {
@@ -88,6 +91,32 @@ export default function AccountPage() {
     });
   }, [currentUser]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    setIsSignatureSetupTarget(new URLSearchParams(window.location.search).get("setup") === "signature");
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthReady || !isSignatureSetupTarget) {
+      return;
+    }
+
+    setHighlightSignature(true);
+    const timeoutId = window.setTimeout(() => {
+      signatureSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 40);
+    const clearId = window.setTimeout(() => {
+      setHighlightSignature(false);
+    }, 2400);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearTimeout(clearId);
+    };
+  }, [isAuthReady, isSignatureSetupTarget]);
+
   async function handleSaveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!resolvedUser) {
@@ -121,8 +150,8 @@ export default function AccountPage() {
     setPasswordError("");
     setPasswordStatus("");
 
-    if (passwordForm.new_password.length < 6) {
-      setPasswordError("Password must be at least 6 characters.");
+    if (passwordForm.new_password.length < 4) {
+      setPasswordError("Password must be at least 4 characters.");
       return;
     }
     if (passwordForm.new_password !== passwordForm.confirm_password) {
@@ -200,7 +229,7 @@ export default function AccountPage() {
 
         {error ? <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(360px,0.9fr)_minmax(360px,0.75fr)]">
+        <div className="space-y-6">
           <section className="rounded-[32px] border border-sky-100 bg-white/95 p-6 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -268,98 +297,101 @@ export default function AccountPage() {
             </form>
           </section>
 
-          <div className="space-y-6">
-            <section className="rounded-[32px] border border-sky-100 bg-white/95 p-6 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Signature</p>
-                <h2 className="mt-2 text-xl font-semibold text-slate-900">Document signature</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Upload a JPG or PNG signature. Generated notes and letters use your own signature when available.
-                </p>
-              </div>
+          <section
+            ref={signatureSectionRef}
+            className={`rounded-[32px] border bg-white/95 p-6 shadow-[0_20px_60px_rgba(125,211,252,0.16)] transition ${
+              highlightSignature ? "border-sky-400 ring-2 ring-sky-200" : "border-sky-100"
+            }`}
+          >
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Signature</p>
+              <h2 className="mt-2 text-xl font-semibold text-slate-900">Document signature</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Upload a JPG or PNG signature. Generated notes and letters use your own signature when available.
+              </p>
+            </div>
 
-              <div className="mt-5 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
-                {resolvedUser?.doctor_signature_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001"}${resolvedUser.doctor_signature_url}`}
-                    alt="User signature"
-                    className="max-h-28 w-auto max-w-full object-contain"
-                  />
-                ) : (
-                  <p className="text-sm text-slate-500">No signature uploaded yet.</p>
-                )}
-              </div>
+            <div className="mt-5 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
+              {resolvedUser?.doctor_signature_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001"}${resolvedUser.doctor_signature_url}`}
+                  alt="User signature"
+                  className="max-h-28 w-auto max-w-full object-contain"
+                />
+              ) : (
+                <p className="text-sm text-slate-500">No signature uploaded yet.</p>
+              )}
+            </div>
 
-              <div className="mt-5 flex flex-wrap gap-3">
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600">
-                  {isUpdatingSignature ? "Uploading..." : "Upload signature"}
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg"
-                    className="sr-only"
-                    disabled={isUpdatingSignature}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file) {
-                        void handleUploadSignature(file);
-                      }
-                      event.target.value = "";
-                    }}
-                  />
-                </label>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600">
+                {isUpdatingSignature ? "Uploading..." : "Upload signature"}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  className="sr-only"
+                  disabled={isUpdatingSignature}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      void handleUploadSignature(file);
+                    }
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!resolvedUser?.doctor_signature_name || isUpdatingSignature}
+                onClick={() => void handleRemoveSignature()}
+                className="rounded-full border border-rose-200 bg-white px-5 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+              >
+                Remove
+              </button>
+            </div>
+            {signatureError ? <p className="mt-4 text-sm font-medium text-rose-600">{signatureError}</p> : null}
+            {signatureStatus ? <p className="mt-4 text-sm font-medium text-emerald-700">{signatureStatus}</p> : null}
+          </section>
+
+          <section className="rounded-[32px] border border-sky-100 bg-white/95 p-6 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Security</p>
+              <h2 className="mt-2 text-xl font-semibold text-slate-900">Change password</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Update your own login password here. This does not affect any other user in the clinic.
+              </p>
+            </div>
+
+            <form className="mt-6 grid gap-4" onSubmit={handleSavePassword}>
+              <PasswordInput
+                label="Current password"
+                value={passwordForm.current_password}
+                onChange={(event) => setPasswordForm((current) => ({ ...current, current_password: event.target.value }))}
+              />
+              <PasswordInput
+                label="New password"
+                value={passwordForm.new_password}
+                onChange={(event) => setPasswordForm((current) => ({ ...current, new_password: event.target.value }))}
+              />
+              <PasswordInput
+                label="Confirm new password"
+                value={passwordForm.confirm_password}
+                onChange={(event) => setPasswordForm((current) => ({ ...current, confirm_password: event.target.value }))}
+              />
+              {passwordError ? <p className="text-sm font-medium text-rose-600">{passwordError}</p> : null}
+              {passwordStatus ? <p className="text-sm font-medium text-emerald-700">{passwordStatus}</p> : null}
+              <div className="flex justify-end">
                 <button
-                  type="button"
-                  disabled={!resolvedUser?.doctor_signature_name || isUpdatingSignature}
-                  onClick={() => void handleRemoveSignature()}
-                  className="rounded-full border border-rose-200 bg-white px-5 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                  type="submit"
+                  disabled={isSavingPassword}
+                  className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
                 >
-                  Remove
+                  {isSavingPassword ? "Updating..." : "Change password"}
                 </button>
               </div>
-              {signatureError ? <p className="mt-4 text-sm font-medium text-rose-600">{signatureError}</p> : null}
-              {signatureStatus ? <p className="mt-4 text-sm font-medium text-emerald-700">{signatureStatus}</p> : null}
-            </section>
-
-            <section className="rounded-[32px] border border-sky-100 bg-white/95 p-6 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Security</p>
-                <h2 className="mt-2 text-xl font-semibold text-slate-900">Change password</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Update your own login password here. This does not affect any other user in the clinic.
-                </p>
-              </div>
-
-              <form className="mt-6 grid gap-4" onSubmit={handleSavePassword}>
-                <PasswordInput
-                  label="Current password"
-                  value={passwordForm.current_password}
-                  onChange={(event) => setPasswordForm((current) => ({ ...current, current_password: event.target.value }))}
-                />
-                <PasswordInput
-                  label="New password"
-                  value={passwordForm.new_password}
-                  onChange={(event) => setPasswordForm((current) => ({ ...current, new_password: event.target.value }))}
-                />
-                <PasswordInput
-                  label="Confirm new password"
-                  value={passwordForm.confirm_password}
-                  onChange={(event) => setPasswordForm((current) => ({ ...current, confirm_password: event.target.value }))}
-                />
-                {passwordError ? <p className="text-sm font-medium text-rose-600">{passwordError}</p> : null}
-                {passwordStatus ? <p className="text-sm font-medium text-emerald-700">{passwordStatus}</p> : null}
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={isSavingPassword}
-                    className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
-                  >
-                    {isSavingPassword ? "Updating..." : "Change password"}
-                  </button>
-                </div>
-              </form>
-            </section>
-          </div>
+            </form>
+          </section>
         </div>
       </div>
 

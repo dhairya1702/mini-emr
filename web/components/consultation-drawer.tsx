@@ -1,13 +1,14 @@
 "use client";
 
 import { ChangeEvent, Fragment, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarPlus2, Eye, Eraser, FileText, Image as ImageIcon, Mail, Paperclip, PenLine, Sparkles, Undo2, X } from "lucide-react";
+import { CalendarPlus2, Eye, Eraser, FileText, Image as ImageIcon, Mail, Paperclip, PenLine, Plus, Sparkles, Undo2, X } from "lucide-react";
 import NextImage from "next/image";
 import type { ReactNode } from "react";
 
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { specialtyHasModule } from "@/lib/specialty";
-import { BinocularVisionPayload, CatalogItem, ContactLensEyeEntry, ContactLensPayload, EyeExamEntry, LowVisionPayload, MyopiaMeasurementPayload, NoteAsset, Patient, PediatricGrowthMeasurementPayload, TestScoreEntry, WellChildVisitPayload } from "@/lib/types";
+import { clearConsultationWorkspace, readConsultationWorkspace, writeConsultationWorkspace } from "@/lib/consultation-workspace";
+import { AuthUser, BinocularVisionPayload, CatalogItem, ContactLensEyeEntry, ContactLensPayload, EyeExamEntry, LowVisionPayload, MyopiaMeasurementPayload, NoteAsset, Patient, PediatricGrowthMeasurementPayload, TestScoreEntry, WellChildVisitPayload } from "@/lib/types";
 import { api } from "@/lib/api";
 import { BinocularVisionModal } from "@/components/optometry/binocular-vision-modal";
 import { ContactLensModal } from "@/components/optometry/contact-lens-modal";
@@ -40,6 +41,12 @@ function createId() {
 const MAX_ATTACHMENT_SIZE_BYTES = 6 * 1024 * 1024;
 const MAX_ATTACHMENT_COUNT = 6;
 const SUPPORTED_ATTACHMENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+const PEDIATRIC_FOLLOW_UP_DEFAULTS: Record<string, { days: number; interval: string; notePrefix: string }> = {
+  routine_review: { days: 90, interval: "3 months", notePrefix: "Routine pediatric review" },
+  growth_recheck: { days: 60, interval: "2 months", notePrefix: "Growth recheck" },
+  symptom_follow_up: { days: 14, interval: "2 weeks", notePrefix: "Symptom follow-up" },
+  counseling_review: { days: 30, interval: "1 month", notePrefix: "Counseling review" },
+};
 
 type PrescriptionDraft = {
   itemId: string;
@@ -76,7 +83,11 @@ function togglePrescriptionNoteValue(currentValue: string, option: string) {
 
 interface ConsultationDrawerProps {
   patient: Patient | null;
+  currentUser?: AuthUser | null;
   clinicSpecialty?: ClinicSpecialty | null;
+  emailConfigured?: boolean;
+  hasUserSignature?: boolean;
+  hasClinicDocumentTemplate?: boolean;
   onClose: () => void;
   onDone: (
     patient: Patient,
@@ -159,6 +170,8 @@ function createEmptyForm() {
     parentHandoutRequest: {
       template_key: "well_visit_summary",
       instructions: "",
+      generated_title: "",
+      generated_content: "",
     },
     pediatricFollowUpPlan: {
       preset_key: "routine_review",
@@ -176,6 +189,9 @@ function createEmptyForm() {
 type ConsultationWorkspaceSnapshot = {
   form: ReturnType<typeof createEmptyForm>;
   openSections: {
+    attachments?: boolean;
+    drawing?: boolean;
+    medicines?: boolean;
     vitals: boolean;
     testScores: boolean;
     eyeExam: boolean;
@@ -184,6 +200,7 @@ type ConsultationWorkspaceSnapshot = {
     lowVision: boolean;
     myopiaManagement: boolean;
   };
+  pediatricSectionsOpen?: PediatricSectionsOpen;
   selectedMedicineIds: string[];
   medicineSearch: string;
   currentNoteId: string;
@@ -194,37 +211,35 @@ type ConsultationWorkspaceSnapshot = {
   isFollowUpOpen: boolean;
 };
 
-function workspaceKey(patientId: string) {
-  return `consultation-workspace:${patientId}`;
+type PediatricSectionsOpen = {
+  growth: boolean;
+  wellChild: boolean;
+  parentHandout: boolean;
+  pediatricFollowUp: boolean;
+};
+
+function createClosedPediatricSections(): PediatricSectionsOpen {
+  return {
+    growth: false,
+    wellChild: false,
+    parentHandout: false,
+    pediatricFollowUp: false,
+  };
 }
 
-function readWorkspace(patientId: string): ConsultationWorkspaceSnapshot | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const raw = window.localStorage.getItem(workspaceKey(patientId));
-  if (!raw) {
-    return null;
-  }
-  try {
-    return JSON.parse(raw) as ConsultationWorkspaceSnapshot;
-  } catch {
-    return null;
-  }
-}
-
-function writeWorkspace(patientId: string, snapshot: ConsultationWorkspaceSnapshot) {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.setItem(workspaceKey(patientId), JSON.stringify(snapshot));
-}
-
-function clearWorkspace(patientId: string) {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.removeItem(workspaceKey(patientId));
+function createClosedConsultationSections() {
+  return {
+    attachments: false,
+    drawing: false,
+    medicines: false,
+    vitals: false,
+    testScores: false,
+    eyeExam: false,
+    contactLens: false,
+    binocularVision: false,
+    lowVision: false,
+    myopiaManagement: false,
+  };
 }
 
 function prescriptionScheduleLabel(prescription: PrescriptionDraft) {
@@ -236,57 +251,76 @@ function prescriptionScheduleLabel(prescription: PrescriptionDraft) {
   return parts.join(", ") || "As directed";
 }
 
-function StructuredModal({
-  open,
+function addDaysToDateInput(days: number) {
+  const next = new Date();
+  next.setHours(0, 0, 0, 0);
+  next.setDate(next.getDate() + days);
+  return next.toISOString().slice(0, 10);
+}
+
+function ConsultationExpandableCard({
   title,
   description,
-  onClose,
-  onSave,
+  open,
+  onToggle,
+  badge,
+  tone = "sky",
   children,
 }: {
-  open: boolean;
   title: string;
   description: string;
-  onClose: () => void;
-  onSave: () => void;
-  children: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  badge?: ReactNode;
+  tone?: "sky" | "amber" | "emerald";
+  children?: ReactNode;
 }) {
-  if (!open) {
-    return null;
-  }
+  const toneClasses = {
+    sky: {
+      section: "border-sky-200 bg-white/80",
+      icon: "border-sky-200 bg-sky-50 hover:bg-sky-100",
+    },
+    amber: {
+      section: "border-amber-200 bg-white/80",
+      icon: "border-amber-200 bg-amber-50 hover:bg-amber-100",
+    },
+    emerald: {
+      section: "border-emerald-200 bg-white/80",
+      icon: "border-emerald-200 bg-emerald-50 hover:bg-emerald-100",
+    },
+  }[tone];
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
-      <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[32px] border border-sky-200 bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Structured Module</p>
-            <h3 className="mt-2 text-2xl font-semibold text-slate-900">{title}</h3>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{description}</p>
-          </div>
-          <button type="button" onClick={onClose} className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-sky-50">
-            <X className="h-4 w-4" />
-          </button>
+    <section className={`rounded-[28px] border p-4 ${toneClasses.section}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex w-full items-start justify-between gap-4 text-left"
+      >
+        <div>
+          <p className="text-sm font-medium text-slate-900">{title}</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
         </div>
-
-        <div className="mt-6 space-y-5">{children}</div>
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="rounded-2xl border border-sky-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-sky-50">
-            Cancel
-          </button>
-          <button type="button" onClick={onSave} className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
-            Save
-          </button>
+        <div className="flex shrink-0 items-center gap-3">
+          {badge}
+          <span className={`flex h-10 w-10 items-center justify-center rounded-full border text-slate-900 transition ${toneClasses.icon}`}>
+            <Plus className={`h-6 w-6 transition-transform ${open ? "rotate-45" : ""}`} />
+          </span>
         </div>
-      </div>
-    </div>
+      </button>
+      {open ? <div className="mt-4">{children}</div> : null}
+    </section>
   );
 }
 
 export function ConsultationDrawer({
   patient,
+  currentUser = null,
   clinicSpecialty = null,
+  emailConfigured = false,
+  hasUserSignature = false,
+  hasClinicDocumentTemplate = false,
   onClose,
   onDone,
   onGenerate,
@@ -296,26 +330,17 @@ export function ConsultationDrawer({
   const isOptometryClinic = specialtyHasModule(clinicSpecialty, "contact_lens");
   const isPediatricsClinic = specialtyHasModule(clinicSpecialty, "pediatric_growth_measurement");
   const [form, setForm] = useState(createEmptyForm);
-  const [openSections, setOpenSections] = useState({
-    vitals: false,
-    testScores: false,
-    eyeExam: false,
-    contactLens: false,
-    binocularVision: false,
-    lowVision: false,
-    myopiaManagement: false,
-  });
+  const [openSections, setOpenSections] = useState(createClosedConsultationSections);
   const [medicineItems, setMedicineItems] = useState<CatalogItem[]>([]);
   const [medicineSearch, setMedicineSearch] = useState("");
   const [selectedMedicineIds, setSelectedMedicineIds] = useState<string[]>([]);
+  const [pediatricSectionsOpen, setPediatricSectionsOpen] = useState<PediatricSectionsOpen>(() => createClosedPediatricSections());
   const [statusMessage, setStatusMessage] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
-  const [isVitalsOpen, setIsVitalsOpen] = useState(false);
-  const [isTestScoresOpen, setIsTestScoresOpen] = useState(false);
   const [isEyeExamOpen, setIsEyeExamOpen] = useState(false);
   const [isContactLensOpen, setIsContactLensOpen] = useState(false);
   const [isBinocularVisionOpen, setIsBinocularVisionOpen] = useState(false);
@@ -329,8 +354,22 @@ export function ConsultationDrawer({
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawingMode, setDrawingMode] = useState<"draw" | "erase">("draw");
   const [brushSize, setBrushSize] = useState(3);
+  const [isGeneratingHandout, setIsGeneratingHandout] = useState(false);
+  const [isGeneratingHandoutPdf, setIsGeneratingHandoutPdf] = useState(false);
   const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingHistoryRef = useRef<string[]>([]);
+  const patientId = patient?.id ?? "";
+  const currentUserId = currentUser?.id ?? "";
+  const currentOrgId = currentUser?.org_id ?? "";
+  const workspaceScope = useMemo(
+    () => {
+      if (!patientId || !currentUserId || !currentOrgId) {
+        return null;
+      }
+      return { orgId: currentOrgId, userId: currentUserId, patientId };
+    },
+    [currentOrgId, currentUserId, patientId],
+  );
 
   useEffect(() => {
     if (!patient) {
@@ -338,12 +377,18 @@ export function ConsultationDrawer({
     }
 
     let active = true;
-    const cachedWorkspace = readWorkspace(patient.id);
+    const cachedWorkspace = workspaceScope
+      ? readConsultationWorkspace<ConsultationWorkspaceSnapshot>(workspaceScope, {
+          legacyPatientId: patient.id,
+        })
+      : null;
     const baseForm = createEmptyForm();
     const cachedForm = cachedWorkspace?.form;
     setStatusMessage("");
     setIsGenerating(false);
     setIsGeneratingPdf(false);
+    setIsGeneratingHandout(false);
+    setIsGeneratingHandoutPdf(false);
     setIsCompleting(false);
     setIsSending(false);
     setMedicineSearch(cachedWorkspace?.medicineSearch ?? "");
@@ -382,23 +427,35 @@ export function ConsultationDrawer({
               ...baseForm.myopiaManagement,
               ...(cachedForm.myopiaManagement || {}),
             },
+            growthMeasurement: {
+              ...baseForm.growthMeasurement,
+              ...(cachedForm.growthMeasurement || {}),
+            },
+            wellChildVisit: {
+              ...baseForm.wellChildVisit,
+              ...(cachedForm.wellChildVisit || {}),
+            },
+            parentHandoutRequest: {
+              ...baseForm.parentHandoutRequest,
+              ...(cachedForm.parentHandoutRequest || {}),
+            },
+            pediatricFollowUpPlan: {
+              ...baseForm.pediatricFollowUpPlan,
+              ...(cachedForm.pediatricFollowUpPlan || {}),
+            },
           }
         : baseForm,
     );
     setOpenSections(
-      cachedWorkspace?.openSections ?? {
-        vitals: false,
-        testScores: false,
-        eyeExam: false,
-        contactLens: false,
-        binocularVision: false,
-        lowVision: false,
-        myopiaManagement: false,
+      {
+        ...createClosedConsultationSections(),
+        ...(cachedWorkspace?.openSections ?? {}),
       },
     );
     setSelectedMedicineIds(
       cachedWorkspace?.selectedMedicineIds ?? cachedWorkspace?.form.prescriptions.map((entry) => entry.itemId) ?? [],
     );
+    setPediatricSectionsOpen(cachedWorkspace?.pediatricSectionsOpen ?? createClosedPediatricSections());
     setIsFollowUpOpen(cachedWorkspace?.isFollowUpOpen ?? false);
     setHasGeneratedNote(cachedWorkspace?.hasGeneratedNote ?? false);
     setCurrentNoteId(cachedWorkspace?.currentNoteId ?? "");
@@ -440,16 +497,17 @@ export function ConsultationDrawer({
     return () => {
       active = false;
     };
-  }, [patient]);
+  }, [patient, workspaceScope]);
 
   useEffect(() => {
-    if (!patient) {
+    if (!patient || !workspaceScope) {
       return;
     }
 
-    writeWorkspace(patient.id, {
+    writeConsultationWorkspace(workspaceScope, {
       form,
       openSections,
+      pediatricSectionsOpen,
       selectedMedicineIds,
       medicineSearch,
       currentNoteId,
@@ -468,9 +526,11 @@ export function ConsultationDrawer({
     medicineSearch,
     noteStatus,
     openSections,
+    pediatricSectionsOpen,
     patient,
     recipientEmail,
     selectedMedicineIds,
+    workspaceScope,
   ]);
 
   const filteredMedicineItems = useMemo(() => {
@@ -508,6 +568,19 @@ export function ConsultationDrawer({
 
     return [manualPlan, structuredPlan].filter(Boolean).join("\n\n");
   }, [form.medications, form.prescriptions]);
+  const setupWarnings = useMemo(() => {
+    const warnings: string[] = [];
+    if (!emailConfigured) {
+      warnings.push("Clinic sender email is not configured yet. Email actions can fail until Clinic Settings is finished.");
+    }
+    if (!hasUserSignature) {
+      warnings.push("Your signature is missing. Generated notes and letters will not include doctor signoff yet.");
+    }
+    if (!hasClinicDocumentTemplate) {
+      warnings.push("No clinic paper template is uploaded. PDFs will use the fallback header and footer layout.");
+    }
+    return warnings;
+  }, [emailConfigured, hasClinicDocumentTemplate, hasUserSignature]);
 
   useEffect(() => {
     const canvas = drawingCanvasRef.current;
@@ -524,7 +597,7 @@ export function ConsultationDrawer({
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
     };
     image.src = `data:${drawingAsset.content_type};base64,${drawingAsset.data_base64}`;
-  }, [drawingAsset]);
+  }, [drawingAsset, openSections.drawing]);
 
   if (!patient) {
     return null;
@@ -567,7 +640,10 @@ export function ConsultationDrawer({
       if (isPediatricsClinic && form.parentHandoutRequest.template_key.trim()) {
         structuredModules.push({
           module_type: "parent_handout_request",
-          payload: form.parentHandoutRequest,
+          payload: {
+            template_key: form.parentHandoutRequest.template_key,
+            instructions: form.parentHandoutRequest.instructions,
+          },
         });
       }
       if (isPediatricsClinic && (
@@ -667,7 +743,9 @@ export function ConsultationDrawer({
       setNoteStatus("sent");
       setIsSent(true);
       setStatusMessage(message);
-      clearWorkspace(currentPatient.id);
+      if (workspaceScope) {
+        clearConsultationWorkspace(workspaceScope);
+      }
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to send email.");
     } finally {
@@ -727,34 +805,47 @@ export function ConsultationDrawer({
             }
           : undefined;
       await onDone(currentPatient, followUp);
-      clearWorkspace(currentPatient.id);
+      if (workspaceScope) {
+        clearConsultationWorkspace(workspaceScope);
+      }
       onClose();
     } finally {
       setIsCompleting(false);
     }
   }
 
-  function updateTestScore(id: string, patch: Partial<TestScoreEntry>) {
-    setForm((current) => ({
+  function togglePediatricSection(section: keyof PediatricSectionsOpen) {
+    setPediatricSectionsOpen((current) => ({
       ...current,
-      testScores: current.testScores.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
+      [section]: !current[section],
     }));
   }
 
-  function addTestScore() {
-    setForm((current) => ({
+  function toggleConsultationSection(section: keyof ReturnType<typeof createClosedConsultationSections>) {
+    setOpenSections((current) => ({
       ...current,
-      testScores: [...current.testScores, { id: createId(), label: "", value: "" }],
+      [section]: !current[section],
     }));
   }
 
-  function removeTestScore(id: string) {
-    setForm((current) => ({
-      ...current,
-      testScores: current.testScores.length > 1
-        ? current.testScores.filter((entry) => entry.id !== id)
-        : [{ id: createId(), label: "", value: "" }],
-    }));
+  function openOptometryModule(section: "contactLens" | "binocularVision" | "lowVision" | "myopiaManagement") {
+    if (section === "contactLens") {
+      setIsContactLensOpen(true);
+      return;
+    }
+    if (section === "binocularVision") {
+      setIsBinocularVisionOpen(true);
+      return;
+    }
+    if (section === "lowVision") {
+      setIsLowVisionOpen(true);
+      return;
+    }
+    setIsMyopiaManagementOpen(true);
+  }
+
+  function openEyeExamModule() {
+    setIsEyeExamOpen(true);
   }
 
   function updateEyeExam(eye: "right" | "left", patch: Partial<EyeExamEntry>) {
@@ -858,6 +949,90 @@ export function ConsultationDrawer({
     setStatusMessage(`Growth saved · BMI ${saved.bmi.toFixed(2)}`);
   }
 
+  async function handleGenerateParentHandout() {
+    if (!currentPatient) {
+      return;
+    }
+    setIsGeneratingHandout(true);
+    setStatusMessage("");
+    try {
+      const response = await api.generateParentHandout({
+        patient_id: currentPatient.id,
+        template_key: form.parentHandoutRequest.template_key,
+        instructions: form.parentHandoutRequest.instructions.trim(),
+        well_child_visit: form.wellChildVisit,
+      });
+      setForm((current) => ({
+        ...current,
+        parentHandoutRequest: {
+          ...current.parentHandoutRequest,
+          generated_title: response.title,
+          generated_content: response.content,
+        },
+      }));
+      setStatusMessage(`${response.title} generated.`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Failed to generate parent handout.");
+    } finally {
+      setIsGeneratingHandout(false);
+    }
+  }
+
+  async function handleParentHandoutPdf(action: "preview" | "download") {
+    if (!form.parentHandoutRequest.generated_content.trim()) {
+      setStatusMessage("Generate the parent handout before previewing the PDF.");
+      return;
+    }
+    setIsGeneratingHandoutPdf(true);
+    try {
+      const blob = await api.generateLetterPdf({
+        content: form.parentHandoutRequest.generated_content,
+      });
+      const url = URL.createObjectURL(blob);
+      const fileBase = (form.parentHandoutRequest.generated_title || "parent_handout")
+        .replace(/\s+/g, "_")
+        .toLowerCase();
+
+      if (action === "preview") {
+        window.open(url, "_blank", "noopener,noreferrer");
+      } else {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${fileBase}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+      setStatusMessage("Parent handout PDF ready.");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Failed to prepare parent handout PDF.");
+    } finally {
+      setIsGeneratingHandoutPdf(false);
+    }
+  }
+
+  function applyPediatricFollowUpPreset() {
+    const preset = PEDIATRIC_FOLLOW_UP_DEFAULTS[form.pediatricFollowUpPlan.preset_key] ?? PEDIATRIC_FOLLOW_UP_DEFAULTS.routine_review;
+    const interval = form.pediatricFollowUpPlan.suggested_interval.trim() || preset.interval;
+    const extraNotes = form.pediatricFollowUpPlan.notes.trim();
+    const noteParts = [`${preset.notePrefix} in ${interval}.`];
+    if (extraNotes) {
+      noteParts.push(extraNotes);
+    }
+    setForm((current) => ({
+      ...current,
+      pediatricFollowUpPlan: {
+        ...current.pediatricFollowUpPlan,
+        suggested_interval: interval,
+      },
+      followUpDate: addDaysToDateInput(preset.days),
+      followUpNotes: noteParts.join(" "),
+    }));
+    setIsFollowUpOpen(true);
+    setStatusMessage(`Follow-up preset applied for ${interval}.`);
+  }
+
   function toggleMedicine(itemId: string) {
     const selectedItem = medicineItems.find((item) => item.id === itemId);
     if (!selectedItem) {
@@ -903,36 +1078,6 @@ export function ConsultationDrawer({
       ...current,
       prescriptions: current.prescriptions.filter((entry) => entry.itemId !== itemId),
     }));
-  }
-
-  function handleSectionSuggestionClick(section: keyof typeof openSections) {
-    if (section === "vitals") {
-      setIsVitalsOpen(true);
-      return;
-    }
-    if (section === "testScores") {
-      setIsTestScoresOpen(true);
-      return;
-    }
-    if (section === "eyeExam") {
-      setIsEyeExamOpen(true);
-      return;
-    }
-    if (section === "contactLens") {
-      setIsContactLensOpen(true);
-      return;
-    }
-    if (section === "binocularVision") {
-      setIsBinocularVisionOpen(true);
-      return;
-    }
-    if (section === "lowVision") {
-      setIsLowVisionOpen(true);
-      return;
-    }
-    if (section === "myopiaManagement") {
-      setIsMyopiaManagementOpen(true);
-    }
   }
 
   async function handleAttachmentSelect(event: ChangeEvent<HTMLInputElement>) {
@@ -1086,8 +1231,6 @@ export function ConsultationDrawer({
     Boolean(form.pulse.trim()) ||
     Boolean(form.spo2.trim()) ||
     Boolean(form.bloodSugar.trim());
-  const filledTestScores = form.testScores.filter((entry) => entry.label.trim() || entry.value.trim());
-  const hasTestScores = filledTestScores.length > 0;
   const filledEyeExam = form.eyeExam.filter(
     (entry) => entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim(),
   );
@@ -1097,42 +1240,6 @@ export function ConsultationDrawer({
   const hasLowVision = hasLowVisionData(form.lowVision);
   const hasMyopiaManagement = hasMyopiaManagementData(form.myopiaManagement);
 
-  const sectionSuggestions = [
-    {
-      key: "vitals" as const,
-      label: "Vitals",
-      active: hasVitals,
-    },
-    {
-      key: "testScores" as const,
-      label: "Test Scores",
-      active: hasTestScores,
-    },
-    {
-      key: "eyeExam" as const,
-      label: "Eye Exam",
-      active: hasEyeExam,
-    },
-    ...(isOptometryClinic
-      ? [{
-          key: "contactLens" as const,
-          label: "Contact Lens",
-          active: hasContactLens,
-        }, {
-          key: "binocularVision" as const,
-          label: "Binocular Vision",
-          active: hasBinocularVision,
-        }, {
-          key: "lowVision" as const,
-          label: "Low Vision",
-          active: hasLowVision,
-        }, {
-          key: "myopiaManagement" as const,
-          label: "Myopia Management",
-          active: hasMyopiaManagement,
-        }]
-      : []),
-  ];
   const lifecycleLabel =
     noteStatus === "sent"
       ? "Sent and locked"
@@ -1232,23 +1339,29 @@ export function ConsultationDrawer({
             </label>
 
             <div className="grid gap-4 xl:grid-cols-2">
-              <div className="rounded-[28px] border border-sky-200 bg-white p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">Attachments</p>
-                    <p className="mt-1 text-xs text-slate-500">Upload JPG, PNG, or PDF files. Images are appended to the PDF, PDFs are emailed as attachments.</p>
-                  </div>
-                  <label className="rounded-full border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 transition hover:bg-sky-100">
-                    Add files
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      multiple
-                      onChange={handleAttachmentSelect}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
+              <ConsultationExpandableCard
+                title="Attachments"
+                description="Upload JPG, PNG, or PDF files. Images are appended to the PDF, PDFs are emailed as attachments."
+                open={openSections.attachments}
+                onToggle={() => toggleConsultationSection("attachments")}
+                badge={
+                  attachmentAssets.length ? (
+                    <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">
+                      {attachmentAssets.length} file{attachmentAssets.length === 1 ? "" : "s"}
+                    </span>
+                  ) : null
+                }
+              >
+                <label className="mb-3 inline-flex rounded-full border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 transition hover:bg-sky-100">
+                  Add files
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    multiple
+                    onChange={handleAttachmentSelect}
+                    className="hidden"
+                  />
+                </label>
                 <div className="space-y-2">
                   {attachmentAssets.length ? attachmentAssets.map((asset) => (
                     <div key={asset.id} className="flex items-center justify-between gap-3 rounded-[18px] border border-sky-100 bg-sky-50/40 px-3 py-2">
@@ -1285,15 +1398,23 @@ export function ConsultationDrawer({
                     </p>
                   )}
                 </div>
-              </div>
+              </ConsultationExpandableCard>
 
-              <div className="rounded-[28px] border border-sky-200 bg-white p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">Drawing</p>
-                    <p className="mt-1 text-xs text-slate-500">Sketch findings, markings, or procedure notes.</p>
-                  </div>
-                  <div className="flex items-center gap-2">
+              <ConsultationExpandableCard
+                title="Drawing"
+                description="Sketch findings, markings, or procedure notes."
+                open={openSections.drawing}
+                onToggle={() => toggleConsultationSection("drawing")}
+                badge={
+                  drawingAsset ? (
+                    <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">
+                      Drawing added
+                    </span>
+                  ) : null
+                }
+              >
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setDrawingMode("draw")}
@@ -1355,41 +1476,25 @@ export function ConsultationDrawer({
                     Drawing will be appended as an extra page in the generated consultation PDF.
                   </div>
                 ) : null}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {sectionSuggestions.map((section) => (
-                <button
-                  key={section.key}
-                  type="button"
-                  onClick={() => handleSectionSuggestionClick(section.key)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                    section.active
-                      ? "border-sky-300 bg-sky-100 text-sky-800"
-                      : "border-sky-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
-                  }`}
-                >
-                  {section.active ? `${section.label} Added` : `+ ${section.label}`}
-                </button>
-              ))}
+              </ConsultationExpandableCard>
             </div>
 
             {isPediatricsClinic ? (
               <div className="grid gap-4 xl:grid-cols-2">
-                <div className="rounded-[28px] border border-amber-200 bg-amber-50/40 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">Growth Tracking</p>
-                      <p className="mt-1 text-xs text-slate-500">Pediatric height, weight, BMI, and head circumference.</p>
-                    </div>
-                    {form.growthMeasurement.savedRecord ? (
+                <ConsultationExpandableCard
+                  title="Growth Tracking"
+                  description="Pediatric height, weight, BMI, and head circumference."
+                  open={pediatricSectionsOpen.growth}
+                  onToggle={() => togglePediatricSection("growth")}
+                  badge={
+                    form.growthMeasurement.savedRecord ? (
                       <span className="rounded-full border border-amber-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-amber-700">
                         Saved
                       </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    ) : null
+                  }
+                >
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block">
                       <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Measured At</span>
                       <input type="datetime-local" value={form.growthMeasurement.measured_at} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, measured_at: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
@@ -1419,11 +1524,15 @@ export function ConsultationDrawer({
                       Save Growth
                     </button>
                   </div>
-                </div>
+                </ConsultationExpandableCard>
 
-                <div className="rounded-[28px] border border-amber-200 bg-white p-4">
-                  <p className="text-sm font-medium text-slate-900">Well-Child Visit</p>
-                  <div className="mt-4 grid gap-3">
+                <ConsultationExpandableCard
+                  title="Well-Child Visit"
+                  description="Nutrition, sleep, elimination, behavior, concerns, and visit summary."
+                  open={pediatricSectionsOpen.wellChild}
+                  onToggle={() => togglePediatricSection("wellChild")}
+                >
+                  <div className="grid gap-3">
                     <select value={form.wellChildVisit.visit_band} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, visit_band: event.target.value } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
                       <option value="infant">Infant</option>
                       <option value="toddler">Toddler</option>
@@ -1445,27 +1554,58 @@ export function ConsultationDrawer({
                       </label>
                     ))}
                   </div>
-                </div>
-              </div>
-            ) : null}
+                </ConsultationExpandableCard>
 
-            {isPediatricsClinic ? (
-              <div className="grid gap-4 xl:grid-cols-2">
-                <div className="rounded-[28px] border border-amber-200 bg-white p-4">
-                  <p className="text-sm font-medium text-slate-900">Parent Handout</p>
-                  <div className="mt-3 grid gap-3">
-                    <select value={form.parentHandoutRequest.template_key} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, template_key: event.target.value } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
+                <ConsultationExpandableCard
+                  title="Parent Handout"
+                  description="Generate parent-facing instructions and export them as a PDF."
+                  open={pediatricSectionsOpen.parentHandout}
+                  onToggle={() => togglePediatricSection("parentHandout")}
+                  badge={
+                    form.parentHandoutRequest.generated_content.trim() ? (
+                      <span className="rounded-full border border-amber-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-amber-700">
+                        Ready
+                      </span>
+                    ) : null
+                  }
+                >
+                  <div className="grid gap-3">
+                    <select value={form.parentHandoutRequest.template_key} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, template_key: event.target.value, generated_title: "", generated_content: "" } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
                       <option value="fever_home_care">Fever home care</option>
                       <option value="nutrition_guidance">Nutrition guidance</option>
                       <option value="well_visit_summary">Well-visit summary</option>
                       <option value="hydration_uri_home_care">Hydration / URI home care</option>
                     </select>
-                    <textarea rows={3} value={form.parentHandoutRequest.instructions} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, instructions: event.target.value } }))} placeholder="Optional context for the handout" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+                    <textarea rows={3} value={form.parentHandoutRequest.instructions} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, instructions: event.target.value, generated_title: "", generated_content: "" } }))} placeholder="Optional context for the handout" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+                    <div className="flex flex-wrap gap-3">
+                      <button type="button" onClick={() => void handleGenerateParentHandout()} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
+                        {isGeneratingHandout ? "Generating..." : "Generate Handout"}
+                      </button>
+                      <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("preview")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50 disabled:opacity-60">
+                        {isGeneratingHandoutPdf ? "Preparing..." : "Preview PDF"}
+                      </button>
+                      <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("download")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50 disabled:opacity-60">
+                        Download PDF
+                      </button>
+                    </div>
+                    {form.parentHandoutRequest.generated_content.trim() ? (
+                      <div className="rounded-[22px] border border-amber-100 bg-amber-50/30 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          {form.parentHandoutRequest.generated_title || "Generated handout"}
+                        </p>
+                        <pre className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{form.parentHandoutRequest.generated_content}</pre>
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-                <div className="rounded-[28px] border border-amber-200 bg-white p-4">
-                  <p className="text-sm font-medium text-slate-900">Pediatric Follow-up Preset</p>
-                  <div className="mt-3 grid gap-3">
+                </ConsultationExpandableCard>
+
+                <ConsultationExpandableCard
+                  title="Pediatric Follow-up Preset"
+                  description="Apply common pediatric follow-up timing into the main follow-up section."
+                  open={pediatricSectionsOpen.pediatricFollowUp}
+                  onToggle={() => togglePediatricSection("pediatricFollowUp")}
+                >
+                  <div className="grid gap-3">
                     <select value={form.pediatricFollowUpPlan.preset_key} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, preset_key: event.target.value } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
                       <option value="routine_review">Routine review</option>
                       <option value="growth_recheck">Growth recheck</option>
@@ -1474,8 +1614,16 @@ export function ConsultationDrawer({
                     </select>
                     <input value={form.pediatricFollowUpPlan.suggested_interval} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, suggested_interval: event.target.value } }))} placeholder="Suggested interval, e.g. 3 months" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
                     <input value={form.pediatricFollowUpPlan.notes} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, notes: event.target.value } }))} placeholder="Scheduling notes" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-slate-500">
+                        Apply this preset to the real follow-up section below. Marking the consultation done will create the follow-up record.
+                      </p>
+                      <button type="button" onClick={applyPediatricFollowUpPreset} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
+                        Apply to Follow-up
+                      </button>
+                    </div>
                   </div>
-                </div>
+                </ConsultationExpandableCard>
               </div>
             ) : null}
 
@@ -1516,19 +1664,19 @@ export function ConsultationDrawer({
             </div>
           </div>
           <div className="space-y-4">
-            <div className="rounded-[28px] border border-sky-200 bg-sky-50/40 p-4">
-              <div className="rounded-[20px] border border-sky-100 bg-white p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">Vitals For Note</p>
-                    <p className="mt-1 text-xs text-slate-500">Filled vitals are inserted as a structured table in the generated note.</p>
-                  </div>
-                  {hasVitals ? (
+            <ConsultationExpandableCard
+              title="Vitals For Note"
+              description="Filled vitals are inserted as a structured table in the generated note."
+              open={openSections.vitals}
+              onToggle={() => toggleConsultationSection("vitals")}
+              badge={
+                hasVitals ? (
                     <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">
                       Included
                     </span>
-                  ) : null}
-                </div>
+                ) : null
+              }
+            >
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block">
                     <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">BP Systolic</span>
@@ -1581,19 +1729,20 @@ export function ConsultationDrawer({
                     />
                   </label>
                 </div>
-              </div>
-            </div>
+            </ConsultationExpandableCard>
 
-            <div className="rounded-[28px] border border-emerald-200 bg-emerald-50/50 p-4">
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">Medicines & Suggestions</p>
-                  <p className="mt-1 text-xs text-slate-500">Pick from inventory, then fill quantity and schedule for the treatment table.</p>
-                </div>
+            <ConsultationExpandableCard
+              title="Medicines & Suggestions"
+              description="Pick from inventory, then fill quantity and schedule for the treatment table."
+              open={openSections.medicines}
+              onToggle={() => toggleConsultationSection("medicines")}
+              tone="emerald"
+              badge={
                 <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-medium text-emerald-700">
                   {form.prescriptions.length} selected
                 </span>
-              </div>
+              }
+            >
               <input
                 value={medicineSearch}
                 onChange={(event) => setMedicineSearch(event.target.value)}
@@ -1727,33 +1876,66 @@ export function ConsultationDrawer({
                   </p>
                 )}
               </div>
-            </div>
+            </ConsultationExpandableCard>
 
-            <div className="rounded-[28px] border border-sky-200 bg-white p-4">
-              <p className="text-sm font-medium text-slate-900">Structured Add-ons</p>
-              <p className="mt-1 text-xs text-slate-500">Turn on the extra clinical tables only when you need them.</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {sectionSuggestions.map((section) => (
-                  <button
-                    key={section.key}
-                    type="button"
-                    onClick={() => handleSectionSuggestionClick(section.key)}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                      section.active
-                        ? "border-sky-300 bg-sky-100 text-sky-800"
-                        : "border-sky-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
-                    }`}
-                  >
-                    {section.active ? `${section.label} Added` : `+ ${section.label}`}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <ConsultationExpandableCard
+              title="Eye Exam"
+              description="Capture refraction and vision entries for the right and left eye."
+              open={false}
+              onToggle={openEyeExamModule}
+              badge={hasEyeExam ? <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">Added</span> : null}
+            />
+
+            {isOptometryClinic ? (
+              <>
+                <ConsultationExpandableCard
+                  title="Contact Lens"
+                  description="Assessment, trial fit, and vendor-facing order details."
+                  open={false}
+                  onToggle={() => openOptometryModule("contactLens")}
+                  badge={hasContactLens ? <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">Added</span> : null}
+                />
+
+                <ConsultationExpandableCard
+                  title="Binocular Vision"
+                  description="Capture symptoms, alignment, convergence, stereopsis, accommodation, and management plan."
+                  open={false}
+                  onToggle={() => openOptometryModule("binocularVision")}
+                  badge={hasBinocularVision ? <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">Added</span> : null}
+                />
+
+                <ConsultationExpandableCard
+                  title="Low Vision"
+                  description="Capture needs, core measures, functional vision, aids trial, and support planning."
+                  open={false}
+                  onToggle={() => openOptometryModule("lowVision")}
+                  badge={hasLowVision ? <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">Added</span> : null}
+                />
+
+                <ConsultationExpandableCard
+                  title="Myopia Management"
+                  description="Record axial length, treatment, and refraction for longitudinal myopia tracking."
+                  open={false}
+                  onToggle={() => openOptometryModule("myopiaManagement")}
+                  badge={hasMyopiaManagement ? <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">Added</span> : null}
+                />
+              </>
+            ) : null}
 
             <div className="border-t border-sky-200 pt-4">
               <div className="flex flex-col gap-4">
                 <p className="text-sm text-slate-700">{statusMessage || "Ready to generate and send."}</p>
                 <div className="flex flex-col gap-3">
+                  {setupWarnings.length ? (
+                    <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-4">
+                      <p className="text-sm font-semibold text-amber-900">Setup notes</p>
+                      <div className="mt-2 space-y-2 text-sm leading-6 text-amber-900">
+                        {setupWarnings.map((warning) => (
+                          <p key={warning}>{warning}</p>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {isFollowUpOpen ? (
                     <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
                       <div className="grid gap-3">
@@ -1842,109 +2024,83 @@ export function ConsultationDrawer({
           </div>
         </form>
       </div>
-      <StructuredModal
-        open={isVitalsOpen}
-        title="Vitals & Measurements"
-        description="Structured vitals are inserted into the generated consultation note."
-        onClose={() => setIsVitalsOpen(false)}
-        onSave={() => setIsVitalsOpen(false)}
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">BP</span>
-            <div className="flex gap-2">
-              <input value={form.bloodPressureSystolic} inputMode="numeric" onChange={(event) => setForm((current) => ({ ...current, bloodPressureSystolic: event.target.value }))} placeholder="120" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-              <input value={form.bloodPressureDiastolic} inputMode="numeric" onChange={(event) => setForm((current) => ({ ...current, bloodPressureDiastolic: event.target.value }))} placeholder="80" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-            </div>
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Pulse</span>
-            <input value={form.pulse} inputMode="numeric" onChange={(event) => setForm((current) => ({ ...current, pulse: event.target.value }))} placeholder="72 bpm" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">SpO2</span>
-            <input value={form.spo2} inputMode="numeric" onChange={(event) => setForm((current) => ({ ...current, spo2: event.target.value }))} placeholder="98" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Blood Sugar</span>
-            <input value={form.bloodSugar} inputMode="decimal" onChange={(event) => setForm((current) => ({ ...current, bloodSugar: event.target.value }))} placeholder="110" className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-          </label>
-        </div>
-      </StructuredModal>
-      <StructuredModal
-        open={isTestScoresOpen}
-        title="Test Scores"
-        description="Add structured test results like visual acuity, pain score, or other measured findings."
-        onClose={() => setIsTestScoresOpen(false)}
-        onSave={() => setIsTestScoresOpen(false)}
-      >
-        <div className="flex justify-end">
-          <button type="button" onClick={addTestScore} className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 transition hover:bg-sky-100">
-            Add Score
-          </button>
-        </div>
-        <div className="space-y-3">
-          {form.testScores.map((entry) => (
-            <div key={entry.id} className="grid gap-3 md:grid-cols-[1fr_1fr_44px]">
-              <input value={entry.label} onChange={(event) => updateTestScore(entry.id!, { label: event.target.value })} placeholder="Test name" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-              <input value={entry.value} onChange={(event) => updateTestScore(entry.id!, { value: event.target.value })} placeholder="Result" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-              <button type="button" onClick={() => removeTestScore(entry.id!)} className="rounded-full border border-sky-200 bg-white p-2 text-slate-600 transition hover:bg-sky-50">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-        </div>
-      </StructuredModal>
-      <StructuredModal
-        open={isEyeExamOpen}
-        title="Eye Exam"
-        description="Capture refraction and vision entries for the right and left eye."
-        onClose={() => setIsEyeExamOpen(false)}
-        onSave={() => setIsEyeExamOpen(false)}
-      >
-        <div className="grid gap-3 md:grid-cols-[110px_repeat(4,minmax(0,1fr))]">
-          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Eye</div>
-          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Sphere</div>
-          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Cylinder</div>
-          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Axis</div>
-          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Vision</div>
-          {form.eyeExam.map((entry) => (
-            <Fragment key={entry.eye}>
-              <div className="rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm font-medium capitalize text-slate-700">{entry.eye}</div>
-              <input value={entry.sphere} onChange={(event) => updateEyeExam(entry.eye, { sphere: event.target.value })} placeholder="-1.25" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-              <input value={entry.cylinder} onChange={(event) => updateEyeExam(entry.eye, { cylinder: event.target.value })} placeholder="-0.50" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-              <input value={entry.axis} onChange={(event) => updateEyeExam(entry.eye, { axis: event.target.value })} placeholder="90" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-              <input value={entry.vision} onChange={(event) => updateEyeExam(entry.eye, { vision: event.target.value })} placeholder="6/6" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-            </Fragment>
-          ))}
-        </div>
-      </StructuredModal>
       <ContactLensModal
         open={isContactLensOpen}
         value={form.contactLens}
         onClose={() => setIsContactLensOpen(false)}
-        onSave={() => setIsContactLensOpen(false)}
+        onSave={() => {
+          setStatusMessage("Contact lens details added.");
+          setIsContactLensOpen(false);
+        }}
         onChange={updateContactLens}
         onEyeChange={updateContactLensEye}
       />
+      {isEyeExamOpen ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
+          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[32px] border border-sky-200 bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Structured Module</p>
+                <h3 className="mt-2 text-2xl font-semibold text-slate-900">Eye Exam</h3>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                  Capture refraction and vision entries for the right and left eye.
+                </p>
+              </div>
+              <button type="button" onClick={() => setIsEyeExamOpen(false)} className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-sky-50">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-6 grid gap-3 md:grid-cols-[110px_repeat(4,minmax(0,1fr))]">
+              <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Eye</div>
+              <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Sphere</div>
+              <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Cylinder</div>
+              <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Axis</div>
+              <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Vision</div>
+              {form.eyeExam.map((entry) => (
+                <Fragment key={entry.eye}>
+                  <div className="rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm font-medium capitalize text-slate-700">{entry.eye}</div>
+                  <input value={entry.sphere} onChange={(event) => updateEyeExam(entry.eye, { sphere: event.target.value })} placeholder="-1.25" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+                  <input value={entry.cylinder} onChange={(event) => updateEyeExam(entry.eye, { cylinder: event.target.value })} placeholder="-0.50" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+                  <input value={entry.axis} onChange={(event) => updateEyeExam(entry.eye, { axis: event.target.value })} placeholder="90" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+                  <input value={entry.vision} onChange={(event) => updateEyeExam(entry.eye, { vision: event.target.value })} placeholder="6/6" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+                </Fragment>
+              ))}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button type="button" onClick={() => setIsEyeExamOpen(false)} className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+                Save Eye Exam
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <BinocularVisionModal
         open={isBinocularVisionOpen}
         value={form.binocularVision}
         onClose={() => setIsBinocularVisionOpen(false)}
-        onSave={saveBinocularVision}
+        onSave={(next) => {
+          saveBinocularVision(next);
+          setIsBinocularVisionOpen(false);
+        }}
       />
       <LowVisionModal
         open={isLowVisionOpen}
         value={form.lowVision}
         onClose={() => setIsLowVisionOpen(false)}
-        onSave={saveLowVision}
+        onSave={(next) => {
+          saveLowVision(next);
+          setIsLowVisionOpen(false);
+        }}
       />
       <MyopiaManagementModal
         open={isMyopiaManagementOpen}
         value={form.myopiaManagement}
         patientAge={currentPatient.age}
         onClose={() => setIsMyopiaManagementOpen(false)}
-        onSave={saveMyopiaManagement}
+        onSave={async (next) => {
+          await saveMyopiaManagement(next);
+          setIsMyopiaManagementOpen(false);
+        }}
       />
     </aside>
   );

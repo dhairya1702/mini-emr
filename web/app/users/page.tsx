@@ -13,6 +13,7 @@ export default function UsersPage() {
   const router = useRouter();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [openAddFirstStaffSetup, setOpenAddFirstStaffSetup] = useState(false);
   const [userForm, setUserForm] = useState<UserFormState>({ identifier: "", password: "" });
   const [userError, setUserError] = useState("");
   const [userSuccess, setUserSuccess] = useState("");
@@ -71,6 +72,24 @@ export default function UsersPage() {
     }
   }, [currentUser, isAuthReady, loadUsers]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    setOpenAddFirstStaffSetup(new URLSearchParams(window.location.search).get("setup") === "add-first-staff");
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthReady || currentUser?.role !== "admin") {
+      return;
+    }
+    if (openAddFirstStaffSetup) {
+      setIsAddUserOpen(true);
+      setUserError("");
+      setUserSuccess("");
+    }
+  }, [currentUser, isAuthReady, openAddFirstStaffSetup]);
+
   async function handleAddUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setUserError("");
@@ -79,8 +98,8 @@ export default function UsersPage() {
       setUserError("Email or phone number is required.");
       return;
     }
-    if (userForm.password.length < 6) {
-      setUserError("Password must be at least 6 characters.");
+    if (userForm.password.length < 4) {
+      setUserError("Password must be at least 4 characters.");
       return;
     }
     setIsAddingUser(true);

@@ -8,5 +8,12 @@
     }
   ],
   "total_input_tokens": 0,
-  "total_output_tokens": 0
+  "total_output_tokens": 0,
+  "updated_at": 1779499230,
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "nodes": 1201,
+  "edges": 2503,
+  "communities": 80,
+  "corpus_words": 190686
 }

@@ -7,6 +7,8 @@ import { api } from "@/lib/api";
 import { PlatformError, SuperuserOrgDetail, SuperuserOrgSummary } from "@/lib/types";
 
 type SuperuserTab = "dashboard" | "orgs" | "errors";
+type SuperuserTheme = "light" | "dark";
+const SUPERUSER_THEME_STORAGE_KEY = "clinic_superuser_theme_v1";
 
 function formatDateTime(value: string | null | undefined) {
   if (!value) {
@@ -23,9 +25,14 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
+function cn(...values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(" ");
+}
+
 export default function SuperuserPage() {
   const { currentUser, isAuthReady, isRedirectingToLogin, handleLogout } = useClinicShell();
   const [activeTab, setActiveTab] = useState<SuperuserTab>("dashboard");
+  const [theme, setTheme] = useState<SuperuserTheme>("light");
   const [orgs, setOrgs] = useState<SuperuserOrgSummary[]>([]);
   const [selectedOrgId, setSelectedOrgId] = useState("");
   const [selectedOrgDetail, setSelectedOrgDetail] = useState<SuperuserOrgDetail | null>(null);
@@ -39,6 +46,23 @@ export default function SuperuserPage() {
   useEffect(() => {
     selectedOrgIdRef.current = selectedOrgId;
   }, [selectedOrgId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const savedTheme = window.localStorage.getItem(SUPERUSER_THEME_STORAGE_KEY);
+    if (savedTheme === "light" || savedTheme === "dark") {
+      setTheme(savedTheme);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(SUPERUSER_THEME_STORAGE_KEY, theme);
+  }, [theme]);
 
   const loadDashboard = useCallback(async (preferredOrgId?: string) => {
     setIsLoading(true);
@@ -181,6 +205,26 @@ export default function SuperuserPage() {
     }
   }
 
+  const isDark = theme === "dark";
+  const surface = isDark ? "bg-slate-925 border-slate-800 shadow-[0_16px_40px_rgba(0,0,0,0.28)]" : "bg-white border-slate-200 shadow-[0_20px_60px_rgba(148,163,184,0.14)]";
+  const softSurface = isDark ? "bg-slate-900 border-slate-800" : "bg-slate-50 border-slate-200";
+  const strongSurface = isDark ? "bg-slate-950 border-slate-700" : "bg-white border-slate-200";
+  const mainBg = isDark ? "bg-slate-950 text-slate-100" : "bg-[linear-gradient(180deg,#f5fbff_0%,#eef6ff_52%,#f9fbff_100%)] text-slate-900";
+  const sectionHeader = isDark ? "text-slate-100" : "text-slate-900";
+  const bodyText = isDark ? "text-slate-400" : "text-slate-600";
+  const subtleText = isDark ? "text-slate-500" : "text-slate-500";
+  const chip = isDark ? "border-slate-700 bg-slate-950 text-slate-300" : "border-slate-200 bg-white text-slate-600";
+  const tabWrap = isDark ? "border-slate-800 bg-slate-900" : "border-slate-200 bg-slate-100";
+  const tabActive = isDark ? "bg-slate-800 text-slate-100" : "bg-white text-slate-900 shadow-sm";
+  const tabInactive = isDark ? "text-slate-400 hover:bg-slate-800 hover:text-slate-100" : "text-slate-600 hover:bg-white hover:text-slate-900";
+  const rosePanel = isDark ? "border-rose-900/40 bg-rose-950/25" : "border-rose-200 bg-rose-50/90";
+  const roseCard = isDark ? "border-rose-900/40 bg-slate-950/50" : "border-rose-200 bg-white";
+  const roseTitle = isDark ? "text-rose-200" : "text-rose-700";
+  const roseMeta = isDark ? "text-rose-200/70" : "text-rose-600";
+  const dangerButton = "rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-100 disabled:opacity-60";
+  const neutralButton = isDark ? "rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-800" : "rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50";
+  const primaryButton = isDark ? "rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400" : "rounded-full bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-500";
+
   if (isRedirectingToLogin) {
     return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600">Redirecting to login...</div></main>;
   }
@@ -190,22 +234,22 @@ export default function SuperuserPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-5 text-slate-100 sm:px-6 lg:px-8">
+    <main className={cn("min-h-screen px-4 py-5 sm:px-6 lg:px-8", mainBg)}>
       <div className="mx-auto max-w-[1560px] space-y-5">
-        <section className="overflow-hidden rounded-[32px] border border-slate-800 bg-slate-925 shadow-[0_22px_60px_rgba(0,0,0,0.35)]">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 px-5 py-4 sm:px-6">
+        <section className={cn("overflow-hidden rounded-[32px] border", surface, isDark && "shadow-[0_22px_60px_rgba(0,0,0,0.35)]")}>
+          <div className={cn("flex flex-wrap items-center justify-between gap-4 border-b px-5 py-4 sm:px-6", isDark ? "border-slate-800" : "border-slate-200")}>
             <div className="flex items-center gap-4">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-sm font-semibold tracking-[0.18em] text-sky-300">
+              <div className={cn("flex h-11 w-11 items-center justify-center rounded-full border text-sm font-semibold tracking-[0.18em] text-sky-300", strongSurface)}>
                 SU
               </div>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">Hidden route</p>
-                <h1 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-slate-100">Superuser control room</h1>
+                <p className={cn("text-[11px] font-semibold uppercase tracking-[0.28em]", subtleText)}>Hidden route</p>
+                <h1 className={cn("mt-1 text-2xl font-semibold tracking-[-0.03em]", sectionHeader)}>Superuser control room</h1>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex rounded-full border border-slate-800 bg-slate-900 p-1">
+              <div className={cn("inline-flex rounded-full border p-1", tabWrap)}>
                 {(["dashboard", "orgs", "errors"] as SuperuserTab[]).map((tab) => {
                   const active = activeTab === tab;
                   return (
@@ -213,11 +257,7 @@ export default function SuperuserPage() {
                       key={tab}
                       type="button"
                       onClick={() => setActiveTab(tab)}
-                      className={`rounded-full px-4 py-2 text-sm font-medium capitalize transition ${
-                        active
-                          ? "bg-slate-800 text-slate-100"
-                          : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-                      }`}
+                      className={cn("rounded-full px-4 py-2 text-sm font-medium capitalize transition", active ? tabActive : tabInactive)}
                     >
                       {tab}
                     </button>
@@ -226,15 +266,22 @@ export default function SuperuserPage() {
               </div>
               <button
                 type="button"
+                onClick={() => setTheme((current) => current === "light" ? "dark" : "light")}
+                className={neutralButton}
+              >
+                {isDark ? "Dark mode" : "Light mode"}
+              </button>
+              <button
+                type="button"
                 onClick={() => void loadDashboard(selectedOrgIdRef.current)}
-                className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-800"
+                className={neutralButton}
               >
                 {isLoading ? "Refreshing..." : "Refresh"}
               </button>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400"
+                className={primaryButton}
               >
                 Sign out
               </button>
@@ -244,21 +291,21 @@ export default function SuperuserPage() {
           <div className="px-5 py-5 sm:px-6">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div className="max-w-[70ch]">
-                <p className="text-sm leading-7 text-slate-400">
+                <p className={cn("text-sm leading-7", bodyText)}>
                   Platform-wide visibility across clinic organizations, user access, usage pressure, and backend failures.
                 </p>
                 {currentUser ? (
-                  <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">
+                  <p className={cn("mt-2 text-xs uppercase tracking-[0.18em]", subtleText)}>
                     Signed in as {currentUser.identifier}
                   </p>
                 ) : null}
               </div>
-              <div className="rounded-[24px] border border-slate-800 bg-slate-900 px-4 py-3 text-right">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Selected org</p>
-                <p className="mt-1 text-sm font-semibold text-slate-100">
+              <div className={cn("rounded-[24px] border px-4 py-3 text-right", softSurface)}>
+                <p className={cn("text-[11px] uppercase tracking-[0.2em]", subtleText)}>Selected org</p>
+                <p className={cn("mt-1 text-sm font-semibold", sectionHeader)}>
                   {selectedOrgSummary?.clinic_name || "No org selected"}
                 </p>
-                <p className="mt-1 text-xs text-slate-500">{selectedOrgSummary?.org_id || "Pick an org below"}</p>
+                <p className={cn("mt-1 text-xs", subtleText)}>{selectedOrgSummary?.org_id || "Pick an org below"}</p>
               </div>
             </div>
 
@@ -278,31 +325,23 @@ export default function SuperuserPage() {
               ].map(([label, value, copy], index) => (
                 <article
                   key={String(label)}
-                  className={`rounded-[30px] border px-5 py-5 shadow-[0_16px_40px_rgba(0,0,0,0.28)] ${
-                    index === 0
-                      ? "border-slate-800 bg-slate-925"
-                      : index === 1
-                        ? "border-slate-800 bg-slate-900"
-                        : index === 2
-                          ? "border-rose-900/40 bg-rose-950/30"
-                          : "border-slate-800 bg-slate-900"
-                  }`}
+                  className={cn("rounded-[30px] border px-5 py-5", index === 2 ? rosePanel : index === 0 ? surface : softSurface)}
                 >
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{label}</p>
-                  <p className="mt-5 text-4xl font-semibold tracking-[-0.05em] text-slate-100">{formatNumber(Number(value))}</p>
-                  <p className="mt-3 max-w-[26ch] text-sm leading-6 text-slate-400">{copy}</p>
+                  <p className={cn("text-[11px] uppercase tracking-[0.22em]", subtleText)}>{label}</p>
+                  <p className={cn("mt-5 text-4xl font-semibold tracking-[-0.05em]", sectionHeader)}>{formatNumber(Number(value))}</p>
+                  <p className={cn("mt-3 max-w-[26ch] text-sm leading-6", bodyText)}>{copy}</p>
                 </article>
               ))}
             </section>
 
             <section className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-              <article className="rounded-[30px] border border-slate-800 bg-slate-925 p-5 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
+              <article className={cn("rounded-[30px] border p-5", surface)}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Platform volume</p>
-                    <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-100">Operational totals</h2>
+                    <p className={cn("text-[11px] uppercase tracking-[0.22em]", subtleText)}>Platform volume</p>
+                    <h2 className={cn("mt-2 text-2xl font-semibold tracking-[-0.03em]", sectionHeader)}>Operational totals</h2>
                   </div>
-                  <div className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-medium text-slate-300">
+                  <div className={cn("rounded-full border px-3 py-1 text-xs font-medium", chip)}>
                     Manual refresh only
                   </div>
                 </div>
@@ -315,20 +354,20 @@ export default function SuperuserPage() {
                     ["Active orgs", overview.activeOrgs.length],
                     ["Recent errors", overview.errorCount],
                   ].map(([label, value]) => (
-                    <div key={String(label)} className="rounded-[22px] border border-slate-800 bg-slate-900 px-4 py-4">
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{label}</p>
-                      <p className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-slate-100">{formatNumber(Number(value))}</p>
+                    <div key={String(label)} className={cn("rounded-[22px] border px-4 py-4", softSurface)}>
+                      <p className={cn("text-[11px] uppercase tracking-[0.2em]", subtleText)}>{label}</p>
+                      <p className={cn("mt-3 text-2xl font-semibold tracking-[-0.03em]", sectionHeader)}>{formatNumber(Number(value))}</p>
                     </div>
                   ))}
                 </div>
               </article>
 
-              <article className="rounded-[30px] border border-slate-800 bg-slate-925 p-5 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
-                <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Current org</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-100">
+              <article className={cn("rounded-[30px] border p-5", surface)}>
+                <p className={cn("text-[11px] uppercase tracking-[0.22em]", subtleText)}>Current org</p>
+                <h2 className={cn("mt-2 text-2xl font-semibold tracking-[-0.03em]", sectionHeader)}>
                   {selectedOrgSummary?.clinic_name || "No org selected"}
                 </h2>
-                <p className="mt-2 max-w-[34ch] text-sm leading-6 text-slate-400">
+                <p className={cn("mt-2 max-w-[34ch] text-sm leading-6", bodyText)}>
                   Quick snapshot of the org you are currently drilling into.
                 </p>
                 <div className="mt-5 space-y-3">
@@ -341,25 +380,25 @@ export default function SuperuserPage() {
                         ["Invoices", selectedOrgDetail.summary.invoice_count],
                         ["Tokens", selectedOrgDetail.summary.total_tokens],
                       ].map(([label, value]) => (
-                        <div key={String(label)} className="flex items-center justify-between rounded-[20px] border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200">
+                        <div key={String(label)} className={cn("flex items-center justify-between rounded-[20px] border px-4 py-3 text-sm", softSurface, isDark ? "text-slate-200" : "text-slate-700")}>
                           <span>{label}</span>
                           <span className="font-semibold">{formatNumber(Number(value))}</span>
                         </div>
                       ))}
                     </>
                   ) : (
-                    <p className="text-sm text-slate-400">Pick an organization to see its detail snapshot.</p>
+                    <p className={cn("text-sm", bodyText)}>Pick an organization to see its detail snapshot.</p>
                   )}
                 </div>
               </article>
             </section>
 
             <section className="grid gap-5 xl:grid-cols-2">
-              <article className="rounded-[30px] border border-slate-800 bg-slate-925 p-5 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
+              <article className={cn("rounded-[30px] border p-5", surface)}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Highest usage</p>
-                    <h3 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-slate-100">Top token orgs</h3>
+                    <p className={cn("text-[11px] uppercase tracking-[0.22em]", subtleText)}>Highest usage</p>
+                    <h3 className={cn("mt-2 text-xl font-semibold tracking-[-0.03em]", sectionHeader)}>Top token orgs</h3>
                   </div>
                 </div>
                 <div className="mt-5 space-y-3">
@@ -371,42 +410,42 @@ export default function SuperuserPage() {
                         setActiveTab("orgs");
                         void handleSelectOrg(org.org_id);
                       }}
-                      className="flex w-full items-center justify-between rounded-[22px] border border-slate-800 bg-slate-900 px-4 py-4 text-left transition hover:bg-slate-800"
+                      className={cn("flex w-full items-center justify-between rounded-[22px] border px-4 py-4 text-left transition", softSurface, isDark ? "hover:bg-slate-800" : "hover:bg-slate-100")}
                     >
                       <div className="flex items-center gap-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-950 text-sm font-semibold text-sky-300">
+                        <div className={cn("flex h-10 w-10 items-center justify-center rounded-full border text-sm font-semibold text-sky-300", strongSurface)}>
                           {index + 1}
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-slate-100">{org.clinic_name}</p>
-                          <p className="mt-1 text-xs text-slate-500">{org.user_count} users • {org.invoice_count} invoices</p>
+                          <p className={cn("text-sm font-semibold", sectionHeader)}>{org.clinic_name}</p>
+                          <p className={cn("mt-1 text-xs", subtleText)}>{org.user_count} users • {org.invoice_count} invoices</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-semibold text-slate-100">{formatNumber(org.total_tokens)}</p>
-                        <p className="mt-1 text-xs text-slate-500">tokens</p>
+                        <p className={cn("text-sm font-semibold", sectionHeader)}>{formatNumber(org.total_tokens)}</p>
+                        <p className={cn("mt-1 text-xs", subtleText)}>tokens</p>
                       </div>
                     </button>
-                  )) : <p className="text-sm text-slate-400">No org usage data yet.</p>}
+                  )) : <p className={cn("text-sm", bodyText)}>No org usage data yet.</p>}
                 </div>
               </article>
 
-              <article className="rounded-[30px] border border-rose-900/40 bg-rose-950/25 p-5 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
-                <p className="text-[11px] uppercase tracking-[0.22em] text-rose-300/70">Recent failures</p>
-                <h3 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-slate-100">Error pulse</h3>
+              <article className={cn("rounded-[30px] border p-5", rosePanel)}>
+                <p className={cn("text-[11px] uppercase tracking-[0.22em]", roseMeta)}>Recent failures</p>
+                <h3 className={cn("mt-2 text-xl font-semibold tracking-[-0.03em]", sectionHeader)}>Error pulse</h3>
                 <div className="mt-5 space-y-3">
                   {errors.slice(0, 4).length ? errors.slice(0, 4).map((entry) => (
-                    <div key={entry.id} className="rounded-[22px] border border-rose-900/40 bg-slate-950/50 px-4 py-4">
+                    <div key={entry.id} className={cn("rounded-[22px] border px-4 py-4", roseCard)}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-rose-200">{entry.error_type}</p>
-                        <p className="text-xs text-rose-200/70">{formatDateTime(entry.created_at)}</p>
+                        <p className={cn("text-sm font-semibold", roseTitle)}>{entry.error_type}</p>
+                        <p className={cn("text-xs", roseMeta)}>{formatDateTime(entry.created_at)}</p>
                       </div>
-                      <p className="mt-2 text-sm leading-6 text-slate-300">{entry.message}</p>
-                      <p className="mt-2 text-xs uppercase tracking-[0.14em] text-rose-200/60">
+                      <p className={cn("mt-2 text-sm leading-6", isDark ? "text-slate-300" : "text-slate-700")}>{entry.message}</p>
+                      <p className={cn("mt-2 text-xs uppercase tracking-[0.14em]", roseMeta)}>
                         {entry.method} {entry.path}
                       </p>
                     </div>
-                  )) : <p className="text-sm text-slate-400">No recent errors recorded.</p>}
+                  )) : <p className={cn("text-sm", bodyText)}>No recent errors recorded.</p>}
                 </div>
               </article>
             </section>
@@ -415,10 +454,10 @@ export default function SuperuserPage() {
 
         {activeTab === "orgs" ? (
           <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-            <section className="rounded-[30px] border border-slate-800 bg-slate-925 p-5 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
+            <section className={cn("rounded-[30px] border p-5", surface)}>
               <div className="mb-4">
-                <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Organizations</p>
-                <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-slate-100">{orgs.length} orgs</h2>
+                <p className={cn("text-[11px] uppercase tracking-[0.22em]", subtleText)}>Organizations</p>
+                <h2 className={cn("mt-2 text-xl font-semibold tracking-[-0.03em]", sectionHeader)}>{orgs.length} orgs</h2>
               </div>
               <div className="space-y-3">
                 {orgs.map((org) => {
@@ -428,26 +467,24 @@ export default function SuperuserPage() {
                       key={org.org_id}
                       type="button"
                       onClick={() => void handleSelectOrg(org.org_id)}
-                      className={`w-full rounded-[24px] border px-4 py-4 text-left transition ${
-                        active ? "border-sky-500/50 bg-slate-900" : "border-slate-800 bg-slate-900 hover:bg-slate-800"
-                      }`}
+                      className={cn("w-full rounded-[24px] border px-4 py-4 text-left transition", active ? (isDark ? "border-sky-500/50 bg-slate-900" : "border-sky-400 bg-sky-50") : softSurface, !active && (isDark ? "hover:bg-slate-800" : "hover:bg-slate-100"))}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-slate-100">{org.clinic_name}</p>
-                          <p className="mt-1 text-xs text-slate-500">{org.org_id}</p>
+                          <p className={cn("text-sm font-semibold", sectionHeader)}>{org.clinic_name}</p>
+                          <p className={cn("mt-1 text-xs", subtleText)}>{org.org_id}</p>
                         </div>
-                        <span className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs font-medium text-slate-300">
+                        <span className={cn("rounded-full border px-3 py-1 text-xs font-medium", chip)}>
                           {org.user_count} users
                         </span>
                       </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-400">
+                      <div className={cn("mt-3 grid grid-cols-2 gap-2 text-xs", bodyText)}>
                         <span>{org.patient_count} patients</span>
                         <span>{org.note_count} notes</span>
                         <span>{org.invoice_count} invoices</span>
                         <span>{formatNumber(org.total_tokens)} tokens</span>
                       </div>
-                      <p className="mt-3 text-xs text-slate-500">Last activity: {formatDateTime(org.last_activity_at)}</p>
+                      <p className={cn("mt-3 text-xs", subtleText)}>Last activity: {formatDateTime(org.last_activity_at)}</p>
                     </button>
                   );
                 })}
@@ -455,24 +492,31 @@ export default function SuperuserPage() {
             </section>
 
             <div className="space-y-5">
-              <section className="rounded-[30px] border border-slate-800 bg-slate-925 p-5 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
+              <section className={cn("rounded-[30px] border p-5", surface)}>
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Organization detail</p>
-                    <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-100">{selectedOrgSummary?.clinic_name || "Select an org"}</h2>
-                    <p className="mt-1 text-sm text-slate-400">{selectedOrgSummary?.org_id || "Choose an org from the list."}</p>
+                    <p className={cn("text-[11px] uppercase tracking-[0.22em]", subtleText)}>Organization detail</p>
+                    <h2 className={cn("mt-2 text-2xl font-semibold tracking-[-0.03em]", sectionHeader)}>{selectedOrgSummary?.clinic_name || "Select an org"}</h2>
+                    <p className={cn("mt-1 text-sm", bodyText)}>{selectedOrgSummary?.org_id || "Choose an org from the list."}</p>
                   </div>
                   <button
                     type="button"
                     disabled={!selectedOrgDetail || isDeleting}
                     onClick={() => void handleDeleteOrg()}
-                    className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
+                    className={dangerButton}
                   >
                     Delete org
                   </button>
                 </div>
                 {selectedOrgDetail ? (
-                  <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
+                  <>
+                    <div className={cn("mt-5 rounded-[24px] border px-4 py-4", rosePanel)}>
+                      <p className={cn("text-[11px] uppercase tracking-[0.18em]", roseMeta)}>Danger zone</p>
+                      <p className={cn("mt-2 text-sm leading-6", isDark ? "text-slate-300" : "text-slate-700")}>
+                        Deleting an organization removes its users and the entire org record. Use this only for broken test orgs or explicit admin cleanup.
+                      </p>
+                    </div>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
                     {[
                       ["Users", selectedOrgDetail.summary.user_count],
                       ["Patients", selectedOrgDetail.summary.patient_count],
@@ -481,26 +525,33 @@ export default function SuperuserPage() {
                       ["Follow-ups", selectedOrgDetail.summary.follow_up_count],
                       ["Tokens", selectedOrgDetail.summary.total_tokens],
                     ].map(([label, value]) => (
-                      <div key={String(label)} className="rounded-[22px] border border-slate-800 bg-slate-900 px-4 py-3">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                        <p className="mt-2 text-lg font-semibold text-slate-100">{formatNumber(Number(value))}</p>
+                      <div key={String(label)} className={cn("rounded-[22px] border px-4 py-3", softSurface)}>
+                        <p className={cn("text-[11px] uppercase tracking-[0.16em]", subtleText)}>{label}</p>
+                        <p className={cn("mt-2 text-lg font-semibold", sectionHeader)}>{formatNumber(Number(value))}</p>
                       </div>
                     ))}
-                  </div>
+                    </div>
+                  </>
                 ) : null}
               </section>
 
-              <section className="rounded-[30px] border border-slate-800 bg-slate-925 p-5 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
-                <h3 className="text-lg font-semibold text-slate-100">Users</h3>
+              <section className={cn("rounded-[30px] border p-5", surface)}>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className={cn("text-lg font-semibold", sectionHeader)}>Users</h3>
+                  <span className={cn("rounded-full border px-3 py-1 text-xs font-medium", chip)}>
+                    {selectedOrgDetail?.users.length || 0} loaded
+                  </span>
+                </div>
                 <div className="mt-4 space-y-3">
                   {selectedOrgDetail?.users.length ? selectedOrgDetail.users.map((user) => (
-                    <div key={user.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-slate-800 bg-slate-900 px-4 py-3">
+                    <div key={user.id} className={cn("flex flex-wrap items-center justify-between gap-3 rounded-[22px] border px-4 py-3", softSurface)}>
                       <div>
-                        <p className="text-sm font-semibold text-slate-100">{user.name}</p>
-                        <p className="mt-1 text-xs text-slate-500">{user.identifier}</p>
+                        <p className={cn("text-sm font-semibold", sectionHeader)}>{user.name}</p>
+                        <p className={cn("mt-1 text-xs", subtleText)}>{user.identifier}</p>
+                        <p className={cn("mt-1 text-xs", bodyText)}>Created {formatDateTime(user.created_at)}</p>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs font-medium text-slate-300">{user.role}</span>
+                        <span className={cn("rounded-full border px-3 py-1 text-xs font-medium", chip)}>{user.role}</span>
                         <button
                           type="button"
                           disabled={isDeleting}
@@ -511,20 +562,20 @@ export default function SuperuserPage() {
                         </button>
                       </div>
                     </div>
-                  )) : <p className="text-sm text-slate-400">No users loaded.</p>}
+                  )) : <p className={cn("text-sm", bodyText)}>No users loaded.</p>}
                 </div>
               </section>
 
               <div className="grid gap-5 xl:grid-cols-2">
-                <section className="rounded-[30px] border border-slate-800 bg-slate-925 p-5 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
-                  <h3 className="text-lg font-semibold text-slate-100">Usage</h3>
-                  <div className="mt-4 rounded-[22px] border border-slate-800 bg-slate-900 px-4 py-3">
-                    <p className="text-sm text-slate-400">Total requests: {formatNumber(selectedOrgDetail?.usage.total_requests || 0)}</p>
-                    <p className="mt-1 text-sm text-slate-400">Total tokens: {formatNumber(selectedOrgDetail?.usage.total_tokens || 0)}</p>
+                <section className={cn("rounded-[30px] border p-5", surface)}>
+                  <h3 className={cn("text-lg font-semibold", sectionHeader)}>Usage</h3>
+                  <div className={cn("mt-4 rounded-[22px] border px-4 py-3", softSurface)}>
+                    <p className={cn("text-sm", bodyText)}>Total requests: {formatNumber(selectedOrgDetail?.usage.total_requests || 0)}</p>
+                    <p className={cn("mt-1 text-sm", bodyText)}>Total tokens: {formatNumber(selectedOrgDetail?.usage.total_tokens || 0)}</p>
                   </div>
                   <div className="mt-4 space-y-2">
                     {selectedOrgDetail ? Object.entries(selectedOrgDetail.usage.by_feature).map(([feature, tokens]) => (
-                      <div key={feature} className="flex items-center justify-between rounded-[18px] border border-slate-800 bg-slate-900 px-4 py-2 text-sm text-slate-200">
+                      <div key={feature} className={cn("flex items-center justify-between rounded-[18px] border px-4 py-2 text-sm", softSurface, isDark ? "text-slate-200" : "text-slate-700")}>
                         <span>{feature}</span>
                         <span>{formatNumber(tokens)}</span>
                       </div>
@@ -532,16 +583,16 @@ export default function SuperuserPage() {
                   </div>
                 </section>
 
-                <section className="rounded-[30px] border border-rose-900/40 bg-rose-950/25 p-5 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
-                  <h3 className="text-lg font-semibold text-slate-100">Recent org errors</h3>
+                <section className={cn("rounded-[30px] border p-5", rosePanel)}>
+                  <h3 className={cn("text-lg font-semibold", sectionHeader)}>Recent org errors</h3>
                   <div className="mt-4 space-y-3">
                     {selectedOrgDetail?.recent_errors.length ? selectedOrgDetail.recent_errors.map((entry) => (
-                      <div key={entry.id} className="rounded-[20px] border border-rose-900/40 bg-slate-950/50 px-4 py-3">
-                        <p className="text-sm font-semibold text-rose-200">{entry.error_type}</p>
-                        <p className="mt-1 text-sm text-slate-300">{entry.message}</p>
-                        <p className="mt-2 text-xs text-rose-200/70">{entry.method} {entry.path} • {formatDateTime(entry.created_at)}</p>
+                      <div key={entry.id} className={cn("rounded-[20px] border px-4 py-3", roseCard)}>
+                        <p className={cn("text-sm font-semibold", roseTitle)}>{entry.error_type}</p>
+                        <p className={cn("mt-1 text-sm", isDark ? "text-slate-300" : "text-slate-700")}>{entry.message}</p>
+                        <p className={cn("mt-2 text-xs", roseMeta)}>{entry.method} {entry.path} • {formatDateTime(entry.created_at)}</p>
                       </div>
-                    )) : <p className="text-sm text-slate-400">No recent org errors.</p>}
+                    )) : <p className={cn("text-sm", bodyText)}>No recent org errors.</p>}
                   </div>
                 </section>
               </div>
@@ -550,40 +601,40 @@ export default function SuperuserPage() {
         ) : null}
 
         {activeTab === "errors" ? (
-          <section className="rounded-[30px] border border-rose-900/40 bg-rose-950/25 p-5 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
+          <section className={cn("rounded-[30px] border p-5", rosePanel)}>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.22em] text-rose-300/70">Errors</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-100">Recent platform failures</h2>
-                <p className="mt-2 max-w-[65ch] text-sm leading-6 text-slate-400">
+                <p className={cn("text-[11px] uppercase tracking-[0.22em]", roseMeta)}>Errors</p>
+                <h2 className={cn("mt-2 text-2xl font-semibold tracking-[-0.03em]", sectionHeader)}>Recent platform failures</h2>
+                <p className={cn("mt-2 max-w-[65ch] text-sm leading-6", bodyText)}>
                   Durable error feed for backend failures across all orgs. Refresh when you want a fresh view.
                 </p>
               </div>
-              <div className="rounded-[22px] border border-rose-900/40 bg-slate-950/50 px-4 py-3 text-right">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-rose-200/70">Entries loaded</p>
-                <p className="mt-1 text-2xl font-semibold text-slate-100">{formatNumber(errors.length)}</p>
+              <div className={cn("rounded-[22px] border px-4 py-3 text-right", roseCard)}>
+                <p className={cn("text-[11px] uppercase tracking-[0.18em]", roseMeta)}>Entries loaded</p>
+                <p className={cn("mt-1 text-2xl font-semibold", sectionHeader)}>{formatNumber(errors.length)}</p>
               </div>
             </div>
             <div className="mt-5 space-y-3">
               {errors.length ? errors.map((entry) => (
-                <div key={entry.id} className="rounded-[22px] border border-rose-900/40 bg-slate-950/50 px-4 py-4">
+                <div key={entry.id} className={cn("rounded-[22px] border px-4 py-4", roseCard)}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-rose-200">{entry.error_type}</p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-rose-200/70">
+                      <p className={cn("text-sm font-semibold", roseTitle)}>{entry.error_type}</p>
+                      <p className={cn("mt-1 text-xs uppercase tracking-[0.14em]", roseMeta)}>
                         {entry.method} {entry.path}
                       </p>
                     </div>
-                    <p className="text-xs text-rose-200/70">{formatDateTime(entry.created_at)}</p>
+                    <p className={cn("text-xs", roseMeta)}>{formatDateTime(entry.created_at)}</p>
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-slate-300">{entry.message}</p>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-rose-200/80">
-                    {entry.identifier ? <span className="rounded-full border border-rose-900/40 bg-slate-950/50 px-3 py-1">{entry.identifier}</span> : null}
-                    {entry.org_id ? <span className="rounded-full border border-rose-900/40 bg-slate-950/50 px-3 py-1">{entry.org_id}</span> : null}
-                    {entry.status_code ? <span className="rounded-full border border-rose-900/40 bg-slate-950/50 px-3 py-1">HTTP {entry.status_code}</span> : null}
+                  <p className={cn("mt-3 text-sm leading-6", isDark ? "text-slate-300" : "text-slate-700")}>{entry.message}</p>
+                  <div className={cn("mt-3 flex flex-wrap gap-2 text-xs", roseMeta)}>
+                    {entry.identifier ? <span className={cn("rounded-full border px-3 py-1", roseCard)}>{entry.identifier}</span> : null}
+                    {entry.org_id ? <span className={cn("rounded-full border px-3 py-1", roseCard)}>{entry.org_id}</span> : null}
+                    {entry.status_code ? <span className={cn("rounded-full border px-3 py-1", roseCard)}>HTTP {entry.status_code}</span> : null}
                   </div>
                 </div>
-              )) : <p className="text-sm text-slate-400">No errors recorded.</p>}
+              )) : <p className={cn("text-sm", bodyText)}>No errors recorded.</p>}
             </div>
           </section>
         ) : null}

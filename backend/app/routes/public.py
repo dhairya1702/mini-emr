@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.api_errors import bad_request_error
 from app.db import SupabaseRepository, get_repository
 from app.schema_domains.patients import FollowUpBookingContextOut, FollowUpBookingRequest
 from app.services.auth_flow import enforce_rate_limit
@@ -29,7 +30,7 @@ async def get_follow_up_booking_context(
     except HTTPException:
         raise
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
 
 
 @router.post("/public/follow-up-booking", status_code=204)
@@ -43,4 +44,4 @@ async def book_follow_up(
     except HTTPException:
         raise
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc

@@ -6,16 +6,16 @@ from uuid import uuid4
 import pytest
 from PIL import Image, ImageDraw
 
-from test_app import auth_headers, auth_module, client, main_module, register
+from test_app import auth_headers_for_token, auth_module, client, main_module, register_test_clinic
 from app.services.signature_service import normalize_signature_image
 
 
 def test_auth_me_reissues_session_headers(client):
     test_client, _repo = client
-    session = register(test_client, identifier="session@clinic.com", clinic_name="Session Clinic")
+    session = register_test_clinic(test_client, identifier="session@clinic.com", clinic_name="Session Clinic")
     assert test_client.cookies.get(auth_module.SESSION_COOKIE_NAME) == session["token"]
 
-    response = test_client.get("/auth/me", headers=auth_headers(session["token"]))
+    response = test_client.get("/auth/me", headers=auth_headers_for_token(session["token"]))
     assert response.status_code == 200
     refreshed_token = response.headers.get("x-session-token")
     refreshed_expiry = response.headers.get("x-session-expires-at")
@@ -30,9 +30,9 @@ def test_auth_me_reissues_session_headers(client):
 
 def test_register_creates_clinic_settings_with_empty_specialty(client):
     test_client, _repo = client
-    session = register(test_client, identifier="specialty-register@clinic.com", clinic_name="Specialty Register Clinic")
+    session = register_test_clinic(test_client, identifier="specialty-register@clinic.com", clinic_name="Specialty Register Clinic")
 
-    response = test_client.get("/settings/clinic", headers=auth_headers(session["token"]))
+    response = test_client.get("/settings/clinic", headers=auth_headers_for_token(session["token"]))
 
     assert response.status_code == 200
     assert response.json()["clinic_specialty"] is None
@@ -40,9 +40,9 @@ def test_register_creates_clinic_settings_with_empty_specialty(client):
 
 def test_authenticated_non_auth_routes_reissue_session_headers(client):
     test_client, _repo = client
-    session = register(test_client, identifier="session-refresh@clinic.com", clinic_name="Session Refresh Clinic")
+    session = register_test_clinic(test_client, identifier="session-refresh@clinic.com", clinic_name="Session Refresh Clinic")
 
-    response = test_client.get("/patients", headers=auth_headers(session["token"]))
+    response = test_client.get("/patients", headers=auth_headers_for_token(session["token"]))
     assert response.status_code == 200
     refreshed_token = response.headers.get("x-session-token")
     refreshed_expiry = response.headers.get("x-session-expires-at")
@@ -57,7 +57,7 @@ def test_authenticated_non_auth_routes_reissue_session_headers(client):
 
 def test_auth_cookie_session_and_logout(client):
     test_client, _repo = client
-    register(test_client, identifier="cookie@clinic.com", clinic_name="Cookie Clinic")
+    register_test_clinic(test_client, identifier="cookie@clinic.com", clinic_name="Cookie Clinic")
 
     cookie_response = test_client.get("/auth/me")
     assert cookie_response.status_code == 200
@@ -95,7 +95,7 @@ def test_access_token_requires_explicit_auth_secret(monkeypatch: pytest.MonkeyPa
 
 def test_login_rate_limit_returns_429(client, monkeypatch: pytest.MonkeyPatch):
     test_client, _repo = client
-    register(test_client, identifier="ratelimit-login@clinic.com", clinic_name="Rate Limit Clinic")
+    register_test_clinic(test_client, identifier="ratelimit-login@clinic.com", clinic_name="Rate Limit Clinic")
     monkeypatch.setitem(main_module.RATE_LIMIT_WINDOWS, "auth_login", (1, 60.0))
     main_module.RATE_LIMIT_BUCKETS.clear()
 
@@ -114,8 +114,8 @@ def test_login_rate_limit_returns_429(client, monkeypatch: pytest.MonkeyPatch):
 
 def test_auth_me_can_update_account_details(client):
     test_client, _repo = client
-    session = register(test_client, identifier="account@clinic.com", clinic_name="Account Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="account@clinic.com", clinic_name="Account Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     response = test_client.patch(
         "/auth/me",
@@ -136,8 +136,8 @@ def test_auth_me_can_update_account_details(client):
 
 def test_auth_me_can_change_password(client):
     test_client, _repo = client
-    session = register(test_client, identifier="password-change@clinic.com", clinic_name="Password Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="password-change@clinic.com", clinic_name="Password Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     response = test_client.post(
         "/auth/me/password",
@@ -159,8 +159,8 @@ def test_auth_me_can_change_password(client):
 
 def test_auth_me_can_manage_own_signature(client):
     test_client, _repo = client
-    session = register(test_client, identifier="self-signature@clinic.com", clinic_name="Self Signature Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="self-signature@clinic.com", clinic_name="Self Signature Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     uploaded = test_client.post(
         "/auth/me/signature",

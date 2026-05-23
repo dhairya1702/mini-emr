@@ -13,6 +13,7 @@ type ContactLensModalProps = {
   onSave: () => void;
   onChange: (patch: Partial<ContactLensPayload>) => void;
   onEyeChange: (eye: "right" | "left", patch: Partial<ContactLensEyeEntry>) => void;
+  inline?: boolean;
 };
 
 export function ContactLensModal({
@@ -22,6 +23,7 @@ export function ContactLensModal({
   onSave,
   onChange,
   onEyeChange,
+  inline = false,
 }: ContactLensModalProps) {
   return (
     <OptometryModalShell
@@ -31,6 +33,7 @@ export function ContactLensModal({
       saveLabel="Save Contact Lens"
       onClose={onClose}
       onSave={onSave}
+      inline={inline}
     >
       <div>
         <p className="mb-3 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Assessment</p>

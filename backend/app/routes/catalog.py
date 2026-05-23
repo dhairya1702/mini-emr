@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.api_errors import bad_request_error
 from app.auth import require_admin
 from app.db import SupabaseRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
@@ -32,7 +33,7 @@ async def create_catalog_item(
     try:
         return await create_catalog_item_workflow(repo, current_user, payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
 
 
 @router.patch("/catalog/{item_id}/stock", response_model=CatalogItemOut)
@@ -45,7 +46,7 @@ async def update_catalog_stock(
     try:
         return await update_catalog_stock_workflow(repo, current_user, item_id, payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
 
 
 @router.delete("/catalog/{item_id}", status_code=204)
@@ -57,4 +58,4 @@ async def delete_catalog_item(
     try:
         await delete_catalog_item_workflow(repo, current_user, item_id)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc

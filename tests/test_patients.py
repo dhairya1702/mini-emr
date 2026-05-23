@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from test_app import auth_headers, client, register
+from test_app import auth_headers_for_token, client, register_test_clinic
 from app.services import billing_workflow
 
 
 def test_patient_timeline_includes_notes_and_billing_events(client, monkeypatch):
     test_client, repo = client
-    session = register(test_client, identifier="timeline@clinic.com", clinic_name="Timeline Clinic")
+    session = register_test_clinic(test_client, identifier="timeline@clinic.com", clinic_name="Timeline Clinic")
 
     async def fake_send_clinic_email_message(**_kwargs):
         return None
@@ -27,7 +27,7 @@ def test_patient_timeline_includes_notes_and_billing_events(client, monkeypatch)
             "height": 169,
             "temperature": 98.7,
         },
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     ).json()
 
     awaitable_note = repo.create_note(
@@ -50,18 +50,18 @@ def test_patient_timeline_includes_notes_and_billing_events(client, monkeypatch)
                 }
             ],
         },
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     ).json()
 
     test_client.post(
         "/send-invoice",
         json={"invoice_id": invoice["id"], "recipient_email": "patient@example.com"},
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     )
 
     timeline = test_client.get(
         f"/patients/{patient['id']}/timeline",
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     )
     assert timeline.status_code == 200
     timeline_events = timeline.json()
@@ -81,8 +81,8 @@ def test_patient_timeline_includes_notes_and_billing_events(client, monkeypatch)
 
 def test_existing_patient_can_record_a_new_visit_and_refresh_latest_snapshot(client):
     test_client, _repo = client
-    session = register(test_client, identifier="patient-visits@clinic.com", clinic_name="Patient Visits Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="patient-visits@clinic.com", clinic_name="Patient Visits Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     patient = test_client.post(
         "/patients",
@@ -140,8 +140,8 @@ def test_existing_patient_can_record_a_new_visit_and_refresh_latest_snapshot(cli
 
 def test_patient_email_and_address_are_saved_and_updatable(client):
     test_client, _repo = client
-    session = register(test_client, identifier="patient-contact@clinic.com", clinic_name="Patient Contact Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="patient-contact@clinic.com", clinic_name="Patient Contact Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     created = test_client.post(
         "/patients",
@@ -178,8 +178,8 @@ def test_patient_email_and_address_are_saved_and_updatable(client):
 
 def test_patient_lookup_returns_multiple_matches_for_same_phone(client):
     test_client, _repo = client
-    session = register(test_client, identifier="patients-lookup@clinic.com", clinic_name="Patient Lookup Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="patients-lookup@clinic.com", clinic_name="Patient Lookup Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     first = test_client.post(
         "/patients",
@@ -222,8 +222,8 @@ def test_patient_lookup_returns_multiple_matches_for_same_phone(client):
 
 def test_patient_lookup_returns_most_recent_matches_first_and_honors_limit(client):
     test_client, _repo = client
-    session = register(test_client, identifier="patients-lookup-limit@clinic.com", clinic_name="Patient Lookup Limit Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="patients-lookup-limit@clinic.com", clinic_name="Patient Lookup Limit Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     for name in ["Oldest Patient", "Middle Patient", "Newest Patient"]:
         created = test_client.post(
@@ -252,8 +252,8 @@ def test_patient_lookup_returns_most_recent_matches_first_and_honors_limit(clien
 
 def test_patient_phone_is_normalized_for_lookup_and_storage(client):
     test_client, _repo = client
-    session = register(test_client, identifier="patients-normalize@clinic.com", clinic_name="Patient Normalize Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="patients-normalize@clinic.com", clinic_name="Patient Normalize Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     created = test_client.post(
         "/patients",

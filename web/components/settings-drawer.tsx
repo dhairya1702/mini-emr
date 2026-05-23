@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, startTransition, useEffect, useMemo, useState } from "react";
+import { FormEvent, startTransition, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -34,6 +34,7 @@ import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-d
 import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { Appointment, AuditEvent, AuthUser, CatalogItem, ClinicSettings, ClinicSettingsUpdatePayload, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
+import { hasUserSignature } from "@/lib/setup-checklist";
 
 function createId() {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
@@ -42,7 +43,8 @@ function createId() {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-type SettingsTab = "settings" | "about" | "contact" | "billing" | "clinic" | "users" | "letter" | "catalog" | "appointments" | "audit" | "exports";
+export type SettingsTab = "settings" | "about" | "contact" | "billing" | "clinic" | "users" | "letter" | "catalog" | "appointments" | "audit" | "exports";
+export type ClinicSettingsSection = "specialty" | "hours" | "email" | "template";
 type DrawerMenuItem =
   | { href: string; label: string; icon: typeof Settings2 }
   | { tab: SettingsTab; label: string; icon: typeof Settings2 };
@@ -113,6 +115,8 @@ interface SettingsDrawerProps {
     payload: { status?: "scheduled" | "completed" | "cancelled"; scheduled_for?: string; notes?: string },
   ) => Promise<FollowUp>;
   onBillingComplete: (patientId: string) => void;
+  initialActiveTab?: SettingsTab;
+  initialClinicSection?: ClinicSettingsSection | null;
 }
 
 const emptyLetterForm = {
@@ -460,10 +464,12 @@ export function SettingsDrawer({
   onBillingComplete,
   onUpdateUserRole,
   onDeleteUser,
+  initialActiveTab = "clinic",
+  initialClinicSection = null,
 }: SettingsDrawerProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [activeTab, setActiveTab] = useState<SettingsTab>("clinic");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialActiveTab);
   const [form, setForm] = useState<ClinicFormState>(() => createClinicFormState());
   const [error, setError] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
@@ -533,6 +539,10 @@ export function SettingsDrawer({
   const [billingPatients, setBillingPatients] = useState<Patient[]>(patients);
   const [isBillingPatientsLoading, setIsBillingPatientsLoading] = useState(false);
   const [hasLoadedBillingPatients, setHasLoadedBillingPatients] = useState(false);
+  const specialtySectionRef = useRef<HTMLDivElement | null>(null);
+  const hoursSectionRef = useRef<HTMLDivElement | null>(null);
+  const emailSectionRef = useRef<HTMLDivElement | null>(null);
+  const templateSectionRef = useRef<HTMLDivElement | null>(null);
 
   const serviceItems = useMemo(
     () => catalogItems.filter((item) => item.item_type === "service"),
@@ -544,6 +554,19 @@ export function SettingsDrawer({
   );
   const selectedBillingPatient =
     billingPatients.find((patient) => patient.id === selectedBillingPatientId) ?? null;
+  const documentSetupWarnings = useMemo(() => {
+    const warnings: string[] = [];
+    if (!form.email_configured) {
+      warnings.push("Clinic sender email is not configured yet. Email send actions can fail until Clinic Settings is completed.");
+    }
+    if (!hasUserSignature(currentUser)) {
+      warnings.push("Your signature is missing. Generated letters and invoices will not include doctor signoff yet.");
+    }
+    if (!Boolean(form.document_template_name || form.document_template_url)) {
+      warnings.push("No clinic paper template is uploaded. PDFs will use the fallback header and footer layout.");
+    }
+    return warnings;
+  }, [currentUser, form.document_template_name, form.document_template_url, form.email_configured]);
   const invoiceSubtotal = invoiceItems.reduce(
     (sum, item) => sum + item.quantity * item.unit_price,
     0,
@@ -586,6 +609,13 @@ export function SettingsDrawer({
     setTemplateError("");
     setTemplateStatus("");
   }, [settings]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    setActiveTab(initialActiveTab);
+  }, [initialActiveTab, open]);
 
   useEffect(() => {
     if (!templatePreviewUrl) {
@@ -787,6 +817,25 @@ export function SettingsDrawer({
   }, [activeTab, open]);
 
   useEffect(() => {
+    if (!open || activeTab !== "clinic" || !initialClinicSection) {
+      return;
+    }
+
+    const sectionRef = {
+      specialty: specialtySectionRef,
+      hours: hoursSectionRef,
+      email: emailSectionRef,
+      template: templateSectionRef,
+    }[initialClinicSection];
+
+    const timeoutId = window.setTimeout(() => {
+      sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 40);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeTab, initialClinicSection, open]);
+
+  useEffect(() => {
     const shouldLoadPreview =
       open &&
       (activeTab === "clinic" || activeTab === "letter") &&
@@ -976,8 +1025,8 @@ export function SettingsDrawer({
       setUserError("Email or phone number is required.");
       return;
     }
-    if (userForm.password.length < 6) {
-      setUserError("Password must be at least 6 characters.");
+    if (userForm.password.length < 4) {
+      setUserError("Password must be at least 4 characters.");
       return;
     }
 
@@ -1402,14 +1451,14 @@ export function SettingsDrawer({
     const canEditClinic = currentUser?.role === "admin";
 
     return (
-      <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.82fr)_minmax(520px,1.18fr)]">
+      <div className="space-y-6">
         <form className="space-y-4" onSubmit={handleClinicSave}>
           <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
             <div className="max-w-3xl">
               <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Clinic Workspace</p>
               <h3 className="mt-2 text-xl font-semibold text-slate-900">Branding, document paper, and fit controls</h3>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Configure the clinic identity on the left and use the live page preview on the right to tune where generated content sits.
+                Configure the clinic identity here, then scroll to the live page preview below to tune where generated content sits.
               </p>
               {!canEditClinic ? (
                 <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
@@ -1464,7 +1513,8 @@ export function SettingsDrawer({
                 />
               </label>
 
-              <label className="block">
+              <div ref={specialtySectionRef}>
+                <label className="block">
                 <span className="mb-2 block text-sm font-medium text-slate-700">Specialty</span>
                 <select
                   value={form.clinic_specialty}
@@ -1486,7 +1536,8 @@ export function SettingsDrawer({
                 <p className="mt-2 text-xs leading-6 text-slate-500">
                   Existing clinics can set this here at any time. Specialty-specific modules will use this setting as the clinic-wide source of truth.
                 </p>
-              </label>
+                </label>
+              </div>
 
               {!form.clinic_specialty && canEditClinic ? (
                 <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -1494,7 +1545,7 @@ export function SettingsDrawer({
                 </p>
               ) : null}
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div ref={hoursSectionRef} className="grid gap-4 md:grid-cols-3">
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Opening Time</span>
                   <input
@@ -1541,7 +1592,7 @@ export function SettingsDrawer({
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+          <section ref={emailSectionRef} className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="max-w-3xl">
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Email Sending</p>
@@ -1596,7 +1647,7 @@ export function SettingsDrawer({
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+          <section ref={templateSectionRef} className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-2xl">
               <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Document Template</p>
@@ -1779,14 +1830,24 @@ export function SettingsDrawer({
           </div>
         </form>
 
-        <div className="xl:sticky xl:top-0 xl:self-start">
+        <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+          <div className="max-w-3xl">
+            <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Live Preview</p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-900">Document layout preview</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Scroll through the sample page below to check spacing, header placement, and where generated content begins on the paper.
+            </p>
+          </div>
+
+          <div className="mt-6">
           <ClinicDocumentPreview
             form={form}
             templatePreviewUrl={templatePreviewUrl}
             templatePreviewMimeType={templatePreviewMimeType}
             isTemplatePreviewLoading={isTemplatePreviewLoading}
           />
-        </div>
+          </div>
+        </section>
       </div>
     );
   }
@@ -1857,6 +1918,7 @@ export function SettingsDrawer({
           letterForm={letterForm}
           letterError={letterError}
           letterStatus={letterStatus}
+          setupWarnings={documentSetupWarnings}
           isGeneratingLetter={isGeneratingLetter}
           isPreparingLetterPdf={isPreparingLetterPdf}
           isSendingLetter={isSendingLetter}
@@ -1910,6 +1972,7 @@ export function SettingsDrawer({
             ? "Loading billable patients..."
             : billingStatus
         }
+        setupWarnings={documentSetupWarnings}
         isSavingInvoice={isSavingInvoice}
         isPreparingInvoicePdf={isPreparingInvoicePdf}
         isSendingInvoice={isSendingInvoice}

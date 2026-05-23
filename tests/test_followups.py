@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from test_app import auth_headers, client, register
+from test_app import auth_headers_for_token, client, register_test_clinic
 
 
 def _future_iso(*, days: int = 1, hour: int = 9, minute: int = 0) -> str:
@@ -13,7 +13,7 @@ def _future_iso(*, days: int = 1, hour: int = 9, minute: int = 0) -> str:
 
 def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
     test_client, _repo = client
-    session = register(test_client, identifier="followup@clinic.com", clinic_name="Follow Up Clinic")
+    session = register_test_clinic(test_client, identifier="followup@clinic.com", clinic_name="Follow Up Clinic")
 
     patient = test_client.post(
         "/patients",
@@ -26,7 +26,7 @@ def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
             "height": 166,
             "temperature": 98.5,
         },
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     ).json()
 
     create_follow_up = test_client.post(
@@ -35,7 +35,7 @@ def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
             "scheduled_for": _future_iso(days=1, hour=10, minute=30),
             "notes": "Review symptoms and blood pressure",
         },
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     )
     assert create_follow_up.status_code == 201
     follow_up = create_follow_up.json()
@@ -44,14 +44,14 @@ def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
 
     list_follow_ups = test_client.get(
         f"/follow-ups?scheduled_date={datetime.fromisoformat(follow_up['scheduled_for']).date().isoformat()}",
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     )
     assert list_follow_ups.status_code == 200
     assert len(list_follow_ups.json()) == 1
 
     timeline = test_client.get(
         f"/patients/{patient['id']}/timeline",
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     )
     assert timeline.status_code == 200
     timeline_events = timeline.json()
@@ -63,8 +63,8 @@ def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
 
 def test_follow_up_can_be_rescheduled_completed_and_cancelled(client):
     test_client, _repo = client
-    session = register(test_client, identifier="followup-manage@clinic.com", clinic_name="Follow Up Manage Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="followup-manage@clinic.com", clinic_name="Follow Up Manage Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     patient = test_client.post(
         "/patients",
@@ -121,8 +121,8 @@ def test_follow_up_can_be_rescheduled_completed_and_cancelled(client):
 
 def test_patient_timeline_includes_follow_up_completion_event(client):
     test_client, _repo = client
-    session = register(test_client, identifier="followup-timeline@clinic.com", clinic_name="Follow Up Timeline Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="followup-timeline@clinic.com", clinic_name="Follow Up Timeline Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     patient = test_client.post(
         "/patients",

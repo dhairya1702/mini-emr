@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from test_app import auth_headers, client, register
+from test_app import auth_headers_for_token, client, register_test_clinic
 
 
 def test_audit_events_list_tracks_core_changes(client):
     test_client, _repo = client
-    session = register(test_client, identifier="audit@clinic.com", clinic_name="Audit Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="audit@clinic.com", clinic_name="Audit Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     patient = test_client.post(
         "/patients",
@@ -47,8 +47,8 @@ def test_audit_events_list_tracks_core_changes(client):
 
 def test_audit_events_include_catalog_and_staff_changes(client):
     test_client, _repo = client
-    session = register(test_client, identifier="audit-admin@clinic.com", clinic_name="Audit Admin Clinic")
-    headers = auth_headers(session["token"])
+    session = register_test_clinic(test_client, identifier="audit-admin@clinic.com", clinic_name="Audit Admin Clinic")
+    headers = auth_headers_for_token(session["token"])
 
     create_staff = test_client.post(
         "/users/staff",

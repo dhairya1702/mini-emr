@@ -23,6 +23,8 @@ import {
   GenerateLetterPayload,
   GenerateLetterResponse,
   GenerateLetterPdfPayload,
+  GenerateParentHandoutPayload,
+  GenerateParentHandoutResponse,
   GenerateCaseStudyPayload,
   GenerateCaseStudyResponse,
   GeneratePdfPayload,
@@ -57,8 +59,33 @@ import {
   PlatformError,
 } from "@/lib/types";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
+function resolveApiBaseUrl() {
+  const configured = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
+  if (typeof window === "undefined") {
+    return configured;
+  }
+
+  try {
+    const configuredUrl = new URL(configured);
+    const currentHostname = window.location.hostname;
+    const configuredHostname = configuredUrl.hostname;
+    const isLoopbackConfigured =
+      configuredHostname === "127.0.0.1" || configuredHostname === "localhost";
+    const isLoopbackBrowser =
+      currentHostname === "127.0.0.1" || currentHostname === "localhost";
+
+    if (isLoopbackConfigured && !isLoopbackBrowser) {
+      configuredUrl.hostname = currentHostname;
+      return configuredUrl.toString().replace(/\/$/, "");
+    }
+
+    return configured.replace(/\/$/, "");
+  } catch {
+    return configured.replace(/\/$/, "");
+  }
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 const REQUEST_TIMEOUT_MS = 15000;
 const LONG_REQUEST_TIMEOUT_MS = 60000;
 const SAFE_REQUEST_RETRY_ATTEMPTS = 2;
@@ -230,7 +257,7 @@ async function request<T>(path: string, init?: RequestInit, options?: { timeoutM
           firstError.type === "string_too_short" &&
           ["password", "current_password", "new_password"].includes(fieldName)
         ) {
-          message = "Password must be at least 6 characters.";
+          message = "Password must be at least 4 characters.";
         } else {
           message = firstError.msg as string;
         }
@@ -557,6 +584,11 @@ export const api = {
     }),
   generateLetter: (payload: GenerateLetterPayload) =>
     request<GenerateLetterResponse>("/generate-letter", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  generateParentHandout: (payload: GenerateParentHandoutPayload) =>
+    request<GenerateParentHandoutResponse>("/generate-parent-handout", {
       method: "POST",
       body: JSON.stringify(payload),
     }),

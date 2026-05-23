@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from test_app import auth_headers, client, register
+from test_app import auth_headers_for_token, client, register_test_clinic
 
 
 def test_auth_org_isolation_and_admin_staff_rules(client):
     test_client, _repo = client
-    session_a = register(test_client, identifier="owner-a@clinic.com", clinic_name="Clinic A")
-    session_b = register(test_client, identifier="owner-b@clinic.com", clinic_name="Clinic B")
+    session_a = register_test_clinic(test_client, identifier="owner-a@clinic.com", clinic_name="Clinic A")
+    session_b = register_test_clinic(test_client, identifier="owner-b@clinic.com", clinic_name="Clinic B")
 
     patient_payload = {
         "name": "Patient One",
@@ -18,20 +18,20 @@ def test_auth_org_isolation_and_admin_staff_rules(client):
         "temperature": 99.5,
     }
 
-    response_a = test_client.post("/patients", json=patient_payload, headers=auth_headers(session_a["token"]))
-    response_b = test_client.post("/patients", json={**patient_payload, "name": "Patient Two"}, headers=auth_headers(session_b["token"]))
+    response_a = test_client.post("/patients", json=patient_payload, headers=auth_headers_for_token(session_a["token"]))
+    response_b = test_client.post("/patients", json={**patient_payload, "name": "Patient Two"}, headers=auth_headers_for_token(session_b["token"]))
     assert response_a.status_code == 201
     assert response_b.status_code == 201
 
-    list_a = test_client.get("/patients", headers=auth_headers(session_a["token"]))
-    list_b = test_client.get("/patients", headers=auth_headers(session_b["token"]))
+    list_a = test_client.get("/patients", headers=auth_headers_for_token(session_a["token"]))
+    list_b = test_client.get("/patients", headers=auth_headers_for_token(session_b["token"]))
     assert [patient["name"] for patient in list_a.json()] == ["Patient One"]
     assert [patient["name"] for patient in list_b.json()] == ["Patient Two"]
 
     create_staff = test_client.post(
         "/users/staff",
         json={"identifier": "staff-a@clinic.com", "password": "password123"},
-        headers=auth_headers(session_a["token"]),
+        headers=auth_headers_for_token(session_a["token"]),
     )
     assert create_staff.status_code == 201
 
@@ -44,19 +44,19 @@ def test_auth_org_isolation_and_admin_staff_rules(client):
     forbidden = test_client.post(
         "/users/staff",
         json={"identifier": "blocked@clinic.com", "password": "password123"},
-        headers=auth_headers(staff_login.json()["token"]),
+        headers=auth_headers_for_token(staff_login.json()["token"]),
     )
     assert forbidden.status_code == 403
 
 
 def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client):
     test_client, _repo = client
-    session = register(test_client, identifier="owner-perms@clinic.com", clinic_name="Perms Clinic")
+    session = register_test_clinic(test_client, identifier="owner-perms@clinic.com", clinic_name="Perms Clinic")
 
     create_staff = test_client.post(
         "/users/staff",
         json={"identifier": "staff-perms@clinic.com", "password": "password123"},
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     )
     assert create_staff.status_code == 201
 
@@ -65,7 +65,7 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
         json={"identifier": "staff-perms@clinic.com", "password": "password123"},
     )
     assert staff_login.status_code == 200
-    staff_headers = auth_headers(staff_login.json()["token"])
+    staff_headers = auth_headers_for_token(staff_login.json()["token"])
 
     patient = test_client.post(
         "/patients",
@@ -78,7 +78,7 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
             "height": 168,
             "temperature": 99.1,
         },
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     ).json()
     note = test_client.post(
         "/generate-note",
@@ -89,12 +89,12 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
             "medications": "Rest",
             "notes": "Hydration",
         },
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     ).json()
     finalized_note = test_client.post(
         "/notes/finalize",
         json={"note_id": note["note_id"]},
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     )
     assert finalized_note.status_code == 200
 
@@ -105,7 +105,7 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
             "payment_status": "paid",
             "items": [{"item_type": "service", "label": "Consultation", "quantity": 1, "unit_price": 500}],
         },
-        headers=auth_headers(session["token"]),
+        headers=auth_headers_for_token(session["token"]),
     ).json()
 
     invoices = test_client.get("/invoices", headers=staff_headers)
@@ -201,13 +201,13 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
 
 def test_admin_cannot_manage_users_across_organizations(client):
     test_client, _repo = client
-    session_a = register(test_client, identifier="owner-users-a@clinic.com", clinic_name="Users Clinic A")
-    session_b = register(test_client, identifier="owner-users-b@clinic.com", clinic_name="Users Clinic B")
+    session_a = register_test_clinic(test_client, identifier="owner-users-a@clinic.com", clinic_name="Users Clinic A")
+    session_b = register_test_clinic(test_client, identifier="owner-users-b@clinic.com", clinic_name="Users Clinic B")
 
     create_staff_b = test_client.post(
         "/users/staff",
         json={"identifier": "staff-users-b@clinic.com", "password": "password123"},
-        headers=auth_headers(session_b["token"]),
+        headers=auth_headers_for_token(session_b["token"]),
     )
     assert create_staff_b.status_code == 201
     foreign_user_id = create_staff_b.json()["id"]
@@ -215,31 +215,31 @@ def test_admin_cannot_manage_users_across_organizations(client):
     update_role = test_client.patch(
         f"/users/{foreign_user_id}",
         json={"role": "admin"},
-        headers=auth_headers(session_a["token"]),
+        headers=auth_headers_for_token(session_a["token"]),
     )
     assert update_role.status_code == 404
 
     upload_signature = test_client.post(
         f"/users/{foreign_user_id}/signature",
-        headers=auth_headers(session_a["token"]),
+        headers=auth_headers_for_token(session_a["token"]),
         files={"file": ("signature.png", b"\x89PNG\r\n\x1a\nfake", "image/png")},
     )
     assert upload_signature.status_code == 404
 
     remove_signature = test_client.delete(
         f"/users/{foreign_user_id}/signature",
-        headers=auth_headers(session_a["token"]),
+        headers=auth_headers_for_token(session_a["token"]),
     )
     assert remove_signature.status_code == 404
 
     download_signature = test_client.get(
         f"/users/{foreign_user_id}/signature/file",
-        headers=auth_headers(session_a["token"]),
+        headers=auth_headers_for_token(session_a["token"]),
     )
     assert download_signature.status_code == 404
 
     delete_user = test_client.delete(
         f"/users/{foreign_user_id}",
-        headers=auth_headers(session_a["token"]),
+        headers=auth_headers_for_token(session_a["token"]),
     )
     assert delete_user.status_code == 404

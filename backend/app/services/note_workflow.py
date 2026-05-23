@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import HTTPException
 
@@ -8,6 +8,8 @@ from app.formatting import format_display_datetime
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.documents import (
     FinalizeNoteRequest,
+    GenerateParentHandoutRequest,
+    GenerateParentHandoutResponse,
     GenerateNoteRequest,
     GenerateNoteResponse,
     SendNoteRequest,
@@ -23,6 +25,13 @@ from app.services.auth_flow import enforce_rate_limit
 from app.services.document_helpers import build_document_context_for_user, serialize_note_assets
 from app.services.email_service import send_clinic_email_message
 from app.services.pdf_service import build_letter_pdf, build_note_pdf
+
+PEDIATRIC_HANDOUT_TITLES = {
+    "fever_home_care": "Fever Home Care",
+    "nutrition_guidance": "Nutrition Guidance",
+    "well_visit_summary": "Well-Visit Summary",
+    "hydration_uri_home_care": "Hydration and Cold Care",
+}
 
 
 async def _record_note_delivery_failure(
@@ -196,6 +205,127 @@ async def generate_letter_content(
         content=content,
         clinic_context=clinic_context,
     )
+
+
+def _patient_display_name(patient: dict) -> str:
+    return str(patient.get("name") or "Patient").strip() or "Patient"
+
+
+def _clinic_display_name(clinic_settings: dict) -> str:
+    return str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
+
+
+def _pediatric_handout_body(
+    template_key: str,
+    *,
+    patient: dict,
+    clinic_name: str,
+    instructions: str,
+    well_child_visit: dict | None,
+) -> str:
+    patient_name = _patient_display_name(patient)
+    age = patient.get("age")
+    age_line = f"Age: {age}" if age is not None else "Age: Not recorded"
+    instructions_line = instructions.strip()
+    well_child_visit = well_child_visit or {}
+    visit_band = str(well_child_visit.get("visit_band") or "").replace("_", " ").strip()
+    assessment_summary = str(well_child_visit.get("assessment_summary") or "").strip()
+    parent_concerns = str(well_child_visit.get("parent_concerns") or "").strip()
+    nutrition_summary = str(well_child_visit.get("nutrition_summary") or "").strip()
+    sleep_summary = str(well_child_visit.get("sleep_summary") or "").strip()
+    elimination_summary = str(well_child_visit.get("elimination_summary") or "").strip()
+
+    common_lines = [
+        f"Clinic: {clinic_name}",
+        f"Patient: {patient_name}",
+        age_line,
+        "",
+    ]
+
+    if template_key == "fever_home_care":
+        lines = common_lines + [
+            "Fever Home Care",
+            "",
+            "What to do at home:",
+            "- Encourage frequent fluids in small amounts.",
+            "- Dress the child lightly and keep the room comfortably cool.",
+            "- Use fever medicine exactly as advised by your clinician.",
+            "- Let the child rest and monitor urine output and activity.",
+            "",
+            "Call the clinic urgently if:",
+            "- Fever is not improving, the child is unusually sleepy, breathing is difficult, or fluids are not staying down.",
+            "- There are seizures, persistent vomiting, severe pain, or signs of dehydration.",
+        ]
+    elif template_key == "nutrition_guidance":
+        lines = common_lines + [
+            "Nutrition Guidance",
+            "",
+            "Home goals:",
+            "- Offer balanced meals with protein, fruit, vegetables, grains, and dairy or equivalent calcium sources.",
+            "- Keep sugary drinks limited and prioritize water through the day.",
+            "- Maintain predictable snack and meal timing.",
+            "- Review growth again if appetite, weight, or energy changes noticeably.",
+        ]
+        if nutrition_summary:
+            lines.extend(["", f"Today's nutrition notes: {nutrition_summary}"])
+    elif template_key == "well_visit_summary":
+        lines = common_lines + [
+            "Well-Visit Summary",
+            "",
+            f"Visit band: {visit_band or 'General pediatric review'}",
+            f"Assessment: {assessment_summary or 'Routine pediatric review completed.'}",
+            f"Parent concerns: {parent_concerns or 'No additional concerns recorded.'}",
+            f"Nutrition: {nutrition_summary or 'Discussed routine nutrition guidance.'}",
+            f"Sleep: {sleep_summary or 'Discussed age-appropriate sleep routine.'}",
+            f"Elimination: {elimination_summary or 'No specific elimination concerns recorded.'}",
+            "",
+            "Next steps:",
+            "- Continue routine monitoring at home.",
+            "- Follow the clinic plan for growth, symptoms, and the next review.",
+        ]
+    elif template_key == "hydration_uri_home_care":
+        lines = common_lines + [
+            "Hydration and Cold Care",
+            "",
+            "Home care reminders:",
+            "- Encourage frequent sips of water, ORS, milk, or other tolerated fluids.",
+            "- Use saline, steam, or humidified air if advised for congestion.",
+            "- Keep meals simple and focus on hydration while appetite is reduced.",
+            "- Rest and observe breathing, urine output, and activity level.",
+            "",
+            "Contact the clinic if symptoms worsen, breathing becomes difficult, or hydration drops.",
+        ]
+    else:
+        raise HTTPException(status_code=400, detail="Unknown pediatric handout template.")
+
+    if instructions_line:
+        lines.extend(["", f"Clinic notes: {instructions_line}"])
+
+    lines.extend([
+        "",
+        f"Prepared by {clinic_name} on {datetime.now(UTC).strftime('%b %d, %Y')}.",
+    ])
+    return "\n".join(lines).strip()
+
+
+async def generate_parent_handout_workflow(
+    repo: SupabaseRepository,
+    current_user: UserOut,
+    payload: GenerateParentHandoutRequest,
+) -> GenerateParentHandoutResponse:
+    patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
+    clinic_settings = await build_document_context_for_user(repo, current_user)
+    title = PEDIATRIC_HANDOUT_TITLES.get(payload.template_key)
+    if not title:
+        raise HTTPException(status_code=400, detail="Unknown pediatric handout template.")
+    content = _pediatric_handout_body(
+        payload.template_key,
+        patient=patient,
+        clinic_name=_clinic_display_name(clinic_settings),
+        instructions=payload.instructions,
+        well_child_visit=payload.well_child_visit.model_dump(mode="json") if payload.well_child_visit else None,
+    )
+    return GenerateParentHandoutResponse(title=title, content=content)
 
 
 async def send_letter_workflow(

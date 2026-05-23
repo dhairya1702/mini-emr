@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
 from app.db import SupabaseRepository, get_repository
 from app.exports import build_history_visit_rows
@@ -50,7 +51,7 @@ async def get_patients(
         rows = await repo.list_patients(str(current_user.org_id))
         return [PatientOut(**row) for row in rows]
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="get_patients") from exc
 
 
 @router.get("/visits", response_model=list[PatientVisitOut])
@@ -63,7 +64,7 @@ async def get_patient_visits(
         patients = await repo.list_patients(str(current_user.org_id))
         return build_history_visit_rows(visits, patients)
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="get_patient_visits") from exc
 
 
 @router.get("/patients/lookup", response_model=list[PatientMatchOut])
@@ -77,7 +78,7 @@ async def lookup_patients_by_phone(
         matches = await repo.list_patient_matches_by_phone(str(current_user.org_id), phone, limit=limit)
         return [PatientMatchOut(**match) for match in matches]
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="lookup_patients_by_phone") from exc
 
 
 @router.post("/patients", response_model=PatientOut, status_code=201)
@@ -89,7 +90,7 @@ async def create_patient(
     try:
         return await create_patient_workflow(repo, current_user, payload)
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="create_patient") from exc
 
 
 @router.post("/patients/{patient_id}/visits", response_model=PatientOut)
@@ -102,9 +103,9 @@ async def create_patient_visit(
     try:
         return await record_patient_visit_workflow(repo, current_user, patient_id, payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="create_patient_visit") from exc
 
 
 @router.patch("/patients/{patient_id}", response_model=PatientOut)
@@ -123,7 +124,7 @@ async def update_patient(
     try:
         return await update_patient_workflow(repo, current_user, patient_id, payload)
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="update_patient") from exc
 
 
 @router.get("/patients/{patient_id}/timeline", response_model=list[PatientTimelineEvent])
@@ -135,9 +136,9 @@ async def get_patient_timeline(
     try:
         return await build_patient_timeline_view(repo, str(current_user.org_id), patient_id)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="get_patient_timeline") from exc
 
 
 @router.get("/patients/{patient_id}/myopia-history", response_model=MyopiaHistoryOut)
@@ -149,9 +150,9 @@ async def get_patient_myopia_history(
     try:
         return await build_patient_myopia_history_view(repo, str(current_user.org_id), patient_id)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="get_patient_myopia_history") from exc
 
 
 @router.get("/patients/{patient_id}/growth-history", response_model=PediatricGrowthSummaryOut)
@@ -163,9 +164,9 @@ async def get_patient_growth_history(
     try:
         return await build_patient_growth_history_view(repo, str(current_user.org_id), patient_id)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="get_patient_growth_history") from exc
 
 
 @router.post("/patients/{patient_id}/growth-records", response_model=PediatricGrowthMeasurementOut, status_code=201)
@@ -193,9 +194,9 @@ async def create_patient_growth_record(
         history = await build_patient_growth_history_view(repo, str(current_user.org_id), patient_id)
         return history.records[-1]
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="create_patient_growth_record") from exc
 
 
 @router.patch("/patients/{patient_id}/growth-records/{record_id}", response_model=PediatricGrowthMeasurementOut)
@@ -227,9 +228,9 @@ async def update_patient_growth_record(
             raise ValueError("Growth record not found for this patient.")
         return updated
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="update_patient_growth_record") from exc
 
 
 @router.post("/patients/{patient_id}/myopia-records", response_model=MyopiaMeasurementOut, status_code=201)
@@ -243,9 +244,9 @@ async def create_patient_myopia_record(
         row = await repo.create_myopia_measurement(str(current_user.org_id), patient_id, payload)
         return MyopiaMeasurementOut(**row)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="create_patient_myopia_record") from exc
 
 
 @router.patch("/patients/{patient_id}/myopia-records/{record_id}", response_model=MyopiaMeasurementOut)
@@ -263,9 +264,9 @@ async def update_patient_myopia_record(
         row = await repo.update_myopia_measurement(str(current_user.org_id), patient_id, record_id, updates)
         return MyopiaMeasurementOut(**row)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="update_patient_myopia_record") from exc
 
 
 @router.get("/patients/{patient_id}/notes", response_model=list[NoteOut])
@@ -277,9 +278,9 @@ async def list_patient_notes(
     try:
         return await list_patient_notes_view(repo, str(current_user.org_id), patient_id)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="list_patient_notes") from exc
 
 
 @router.get("/patients/{patient_id}/case-study-source", response_model=PatientCaseStudySourceOut)
@@ -291,9 +292,9 @@ async def get_patient_case_study_source(
     try:
         return await build_case_study_source_view(repo, str(current_user.org_id), patient_id, anonymized=False)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="get_patient_case_study_source") from exc
 
 
 @router.get("/patients/{patient_id}/invoices", response_model=list[InvoiceOut])
@@ -305,6 +306,6 @@ async def list_patient_invoices(
     try:
         return await list_patient_invoices_view(repo, str(current_user.org_id), patient_id)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise internal_server_error(exc, context="list_patient_invoices") from exc

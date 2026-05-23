@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from test_app import auth_headers, auth_module, client, config_module, register
+from test_app import auth_headers_for_token, auth_module, client, config_module, register_test_clinic
 
 
 @pytest.fixture(autouse=True)
@@ -14,7 +14,7 @@ def _restore_settings_cache():
 
 def test_superuser_orgs_requires_allowlisted_identifier(client, monkeypatch: pytest.MonkeyPatch):
     test_client, _repo = client
-    session = register(test_client, identifier="owner@clinic.com", clinic_name="Owner Clinic")
+    session = register_test_clinic(test_client, identifier="owner@clinic.com", clinic_name="Owner Clinic")
     monkeypatch.setattr(
         auth_module,
         "get_settings",
@@ -28,7 +28,7 @@ def test_superuser_orgs_requires_allowlisted_identifier(client, monkeypatch: pyt
         )(),
     )
 
-    response = test_client.get("/superuser/orgs", headers=auth_headers(session["token"]))
+    response = test_client.get("/superuser/orgs", headers=auth_headers_for_token(session["token"]))
 
     assert response.status_code == 200
     rows = response.json()
@@ -38,7 +38,7 @@ def test_superuser_orgs_requires_allowlisted_identifier(client, monkeypatch: pyt
 
 def test_superuser_orgs_denies_non_allowlisted_identifier(client, monkeypatch: pytest.MonkeyPatch):
     test_client, _repo = client
-    session = register(test_client, identifier="staff@clinic.com", clinic_name="Staff Clinic")
+    session = register_test_clinic(test_client, identifier="staff@clinic.com", clinic_name="Staff Clinic")
     monkeypatch.setattr(
         auth_module,
         "get_settings",
@@ -52,6 +52,6 @@ def test_superuser_orgs_denies_non_allowlisted_identifier(client, monkeypatch: p
         )(),
     )
 
-    response = test_client.get("/superuser/orgs", headers=auth_headers(session["token"]))
+    response = test_client.get("/superuser/orgs", headers=auth_headers_for_token(session["token"]))
 
     assert response.status_code == 403

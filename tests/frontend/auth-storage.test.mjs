@@ -22,8 +22,9 @@ function createStorage() {
 }
 
 test("authStorage does not persist raw session tokens", async () => {
-  const storage = createStorage();
-  globalThis.window = { localStorage: storage, setTimeout, clearTimeout };
+  const localStorage = createStorage();
+  const sessionStorage = createStorage();
+  globalThis.window = { localStorage, sessionStorage, setTimeout, clearTimeout };
 
   const { authStorage } = await importWebModule("lib/auth.ts");
   authStorage.setSession(
@@ -34,14 +35,17 @@ test("authStorage does not persist raw session tokens", async () => {
     Date.now() + 60_000,
   );
 
-  assert.equal(storage.getItem("clinic_auth_token"), null);
-  assert.equal(authStorage.getToken(), "");
-  assert.equal(JSON.parse(storage.getItem("clinic_auth_user")).identifier, "owner@clinic.com");
+  assert.equal(localStorage.getItem("clinic_auth_token"), null);
+  assert.equal(sessionStorage.getItem("clinic_auth_token"), "secret-token");
+  assert.equal(authStorage.getToken(), "secret-token");
+  assert.equal(JSON.parse(localStorage.getItem("clinic_auth_user")).identifier, "owner@clinic.com");
 });
 
-test("api browser requests omit Authorization when using cookie sessions", async () => {
-  const storage = createStorage();
-  globalThis.window = { localStorage: storage, setTimeout, clearTimeout };
+test("api browser requests attach sessionStorage bearer fallback", async () => {
+  const localStorage = createStorage();
+  const sessionStorage = createStorage();
+  sessionStorage.setItem("clinic_auth_token", "fallback-token");
+  globalThis.window = { localStorage, sessionStorage, setTimeout, clearTimeout };
 
   let capturedHeaders = null;
   globalThis.fetch = async (_url, init) => {
@@ -68,5 +72,5 @@ test("api browser requests omit Authorization when using cookie sessions", async
   await api.getCurrentUser();
 
   assert.ok(capturedHeaders);
-  assert.equal("Authorization" in capturedHeaders, false);
+  assert.equal(capturedHeaders.Authorization, "Bearer fallback-token");
 });

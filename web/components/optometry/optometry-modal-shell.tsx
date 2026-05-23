@@ -12,6 +12,7 @@ type OptometryModalShellProps = {
   onSave: () => void;
   children: ReactNode;
   isSaving?: boolean;
+  inline?: boolean;
 };
 
 export function OptometryModalShell({
@@ -23,9 +24,23 @@ export function OptometryModalShell({
   onSave,
   children,
   isSaving = false,
+  inline = false,
 }: OptometryModalShellProps) {
   if (!open) {
     return null;
+  }
+
+  if (inline) {
+    return (
+      <div className="space-y-5">
+        {children}
+        <div className="flex justify-end">
+          <button type="button" disabled={isSaving} onClick={onSave} className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60">
+            {isSaving ? "Saving..." : saveLabel}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

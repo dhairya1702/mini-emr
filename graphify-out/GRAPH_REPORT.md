@@ -1,426 +1,547 @@
-# Graph Report - /Users/dhairyalalwani/PycharmProjects/mr  (2026-05-03)
+# Graph Report - .  (2026-05-22)
 
 ## Corpus Check
-- 114 files · ~152,706 words
+- 177 files · ~190,686 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 967 nodes · 1973 edges · 59 communities detected
-- Extraction: 65% EXTRACTED · 35% INFERRED · 0% AMBIGUOUS · INFERRED: 700 edges (avg confidence: 0.79)
+- 1201 nodes · 2503 edges · 80 communities detected
+- Extraction: 61% EXTRACTED · 39% INFERRED · 0% AMBIGUOUS · INFERRED: 970 edges (avg confidence: 0.74)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_Community 0|Community 0]]
-- [[_COMMUNITY_Community 1|Community 1]]
-- [[_COMMUNITY_Community 2|Community 2]]
-- [[_COMMUNITY_Community 3|Community 3]]
-- [[_COMMUNITY_Community 4|Community 4]]
-- [[_COMMUNITY_Community 5|Community 5]]
-- [[_COMMUNITY_Community 6|Community 6]]
-- [[_COMMUNITY_Community 7|Community 7]]
-- [[_COMMUNITY_Community 8|Community 8]]
-- [[_COMMUNITY_Community 9|Community 9]]
-- [[_COMMUNITY_Community 10|Community 10]]
-- [[_COMMUNITY_Community 11|Community 11]]
-- [[_COMMUNITY_Community 12|Community 12]]
-- [[_COMMUNITY_Community 13|Community 13]]
-- [[_COMMUNITY_Community 14|Community 14]]
-- [[_COMMUNITY_Community 15|Community 15]]
-- [[_COMMUNITY_Community 16|Community 16]]
-- [[_COMMUNITY_Community 17|Community 17]]
-- [[_COMMUNITY_Community 18|Community 18]]
-- [[_COMMUNITY_Community 19|Community 19]]
-- [[_COMMUNITY_Community 20|Community 20]]
-- [[_COMMUNITY_Community 21|Community 21]]
-- [[_COMMUNITY_Community 22|Community 22]]
-- [[_COMMUNITY_Community 23|Community 23]]
-- [[_COMMUNITY_Community 24|Community 24]]
-- [[_COMMUNITY_Community 25|Community 25]]
-- [[_COMMUNITY_Community 26|Community 26]]
-- [[_COMMUNITY_Community 27|Community 27]]
-- [[_COMMUNITY_Community 28|Community 28]]
-- [[_COMMUNITY_Community 29|Community 29]]
-- [[_COMMUNITY_Community 30|Community 30]]
-- [[_COMMUNITY_Community 31|Community 31]]
-- [[_COMMUNITY_Community 32|Community 32]]
-- [[_COMMUNITY_Community 33|Community 33]]
-- [[_COMMUNITY_Community 34|Community 34]]
-- [[_COMMUNITY_Community 35|Community 35]]
-- [[_COMMUNITY_Community 36|Community 36]]
-- [[_COMMUNITY_Community 37|Community 37]]
-- [[_COMMUNITY_Community 38|Community 38]]
-- [[_COMMUNITY_Community 39|Community 39]]
-- [[_COMMUNITY_Community 40|Community 40]]
-- [[_COMMUNITY_Community 41|Community 41]]
-- [[_COMMUNITY_Community 42|Community 42]]
-- [[_COMMUNITY_Community 43|Community 43]]
-- [[_COMMUNITY_Community 44|Community 44]]
-- [[_COMMUNITY_Community 45|Community 45]]
-- [[_COMMUNITY_Community 46|Community 46]]
-- [[_COMMUNITY_Community 47|Community 47]]
-- [[_COMMUNITY_Community 48|Community 48]]
-- [[_COMMUNITY_Community 49|Community 49]]
-- [[_COMMUNITY_Community 50|Community 50]]
-- [[_COMMUNITY_Community 51|Community 51]]
-- [[_COMMUNITY_Community 52|Community 52]]
-- [[_COMMUNITY_Community 53|Community 53]]
-- [[_COMMUNITY_Community 54|Community 54]]
-- [[_COMMUNITY_Community 55|Community 55]]
-- [[_COMMUNITY_Community 56|Community 56]]
-- [[_COMMUNITY_Community 57|Community 57]]
-- [[_COMMUNITY_Community 58|Community 58]]
+- [[_COMMUNITY_Backend Errors Settings|Backend Errors Settings]]
+- [[_COMMUNITY_Appointments Audit Workflows|Appointments Audit Workflows]]
+- [[_COMMUNITY_Repository Test Doubles|Repository Test Doubles]]
+- [[_COMMUNITY_Auth Sessions Signatures|Auth Sessions Signatures]]
+- [[_COMMUNITY_Backend Regression Tests|Backend Regression Tests]]
+- [[_COMMUNITY_Consultation Specialty UI|Consultation Specialty UI]]
+- [[_COMMUNITY_Documents PDF Export|Documents PDF Export]]
+- [[_COMMUNITY_Billing Specialty Models|Billing Specialty Models]]
+- [[_COMMUNITY_AI Generation Usage|AI Generation Usage]]
+- [[_COMMUNITY_Queue Billing UI|Queue Billing UI]]
+- [[_COMMUNITY_Pilot QA Failures|Pilot QA Failures]]
+- [[_COMMUNITY_Superuser Audit Admin|Superuser Audit Admin]]
+- [[_COMMUNITY_CSV Export Flows|CSV Export Flows]]
+- [[_COMMUNITY_Audit Event Recording|Audit Event Recording]]
+- [[_COMMUNITY_Registration Admin UI|Registration Admin UI]]
+- [[_COMMUNITY_API Client Session|API Client Session]]
+- [[_COMMUNITY_Follow-Up Scheduling|Follow-Up Scheduling]]
+- [[_COMMUNITY_Patient Timeline Myopia|Patient Timeline Myopia]]
+- [[_COMMUNITY_E2E Mock Fixtures|E2E Mock Fixtures]]
+- [[_COMMUNITY_PDF Canvas Drawing|PDF Canvas Drawing]]
+- [[_COMMUNITY_Frontend Module Tests|Frontend Module Tests]]
+- [[_COMMUNITY_Setup Step Modal|Setup Step Modal]]
+- [[_COMMUNITY_Patient Intake Modal|Patient Intake Modal]]
+- [[_COMMUNITY_Audit History Page|Audit History Page]]
+- [[_COMMUNITY_Account Profile Page|Account Profile Page]]
+- [[_COMMUNITY_Clinic Shell State|Clinic Shell State]]
+- [[_COMMUNITY_Next Segment Stub|Next Segment Stub]]
+- [[_COMMUNITY_Architecture Tests|Architecture Tests]]
+- [[_COMMUNITY_CSP Dev Origins|CSP Dev Origins]]
+- [[_COMMUNITY_Catalog Inventory UI|Catalog Inventory UI]]
+- [[_COMMUNITY_Settings Drawer Preview|Settings Drawer Preview]]
+- [[_COMMUNITY_Settings Users Panel|Settings Users Panel]]
+- [[_COMMUNITY_Patient Event Details|Patient Event Details]]
+- [[_COMMUNITY_Setup Flow Routing|Setup Flow Routing]]
+- [[_COMMUNITY_Myopia Chart Helpers|Myopia Chart Helpers]]
+- [[_COMMUNITY_Low Vision Modal|Low Vision Modal]]
+- [[_COMMUNITY_Myopia Modal Values|Myopia Modal Values]]
+- [[_COMMUNITY_Specialty Module Registry|Specialty Module Registry]]
+- [[_COMMUNITY_Auth Browser Storage|Auth Browser Storage]]
+- [[_COMMUNITY_Root Layout|Root Layout]]
+- [[_COMMUNITY_Add User Page|Add User Page]]
+- [[_COMMUNITY_Patient Card|Patient Card]]
+- [[_COMMUNITY_Letters Settings Panel|Letters Settings Panel]]
+- [[_COMMUNITY_Myopia Modal|Myopia Modal]]
+- [[_COMMUNITY_Optometry Modal Shell|Optometry Modal Shell]]
+- [[_COMMUNITY_Health Endpoint|Health Endpoint]]
+- [[_COMMUNITY_Next Type Declarations|Next Type Declarations]]
+- [[_COMMUNITY_Clinic Visual Theme|Clinic Visual Theme]]
+- [[_COMMUNITY_Playwright Config|Playwright Config]]
+- [[_COMMUNITY_PostCSS Config|PostCSS Config]]
+- [[_COMMUNITY_ESLint Config|ESLint Config]]
+- [[_COMMUNITY_Lazy Settings Drawer|Lazy Settings Drawer]]
+- [[_COMMUNITY_Inventory Panel Split|Inventory Panel Split]]
+- [[_COMMUNITY_App Header|App Header]]
+- [[_COMMUNITY_Patient Column|Patient Column]]
+- [[_COMMUNITY_Billing Settings Panel|Billing Settings Panel]]
+- [[_COMMUNITY_Patient Timeline Panel|Patient Timeline Panel]]
+- [[_COMMUNITY_Patient Bio Panel|Patient Bio Panel]]
+- [[_COMMUNITY_Contact Lens Modal|Contact Lens Modal]]
+- [[_COMMUNITY_Myopia Progression Chart|Myopia Progression Chart]]
+- [[_COMMUNITY_Clinic Specialty Types|Clinic Specialty Types]]
+- [[_COMMUNITY_Myopia Reference Data|Myopia Reference Data]]
+- [[_COMMUNITY_Recent Patients Store|Recent Patients Store]]
+- [[_COMMUNITY_Shared Types|Shared Types]]
+- [[_COMMUNITY_Follow-Up E2E Spec|Follow-Up E2E Spec]]
+- [[_COMMUNITY_Consultation E2E Spec|Consultation E2E Spec]]
+- [[_COMMUNITY_Login E2E Spec|Login E2E Spec]]
+- [[_COMMUNITY_Patient Chart E2E Spec|Patient Chart E2E Spec]]
+- [[_COMMUNITY_Queue E2E Spec|Queue E2E Spec]]
+- [[_COMMUNITY_Onboarding E2E Spec|Onboarding E2E Spec]]
+- [[_COMMUNITY_Case Study E2E Spec|Case Study E2E Spec]]
+- [[_COMMUNITY_Pytest Fixtures|Pytest Fixtures]]
+- [[_COMMUNITY_Backend Package Init|Backend Package Init]]
+- [[_COMMUNITY_Backend Schemas|Backend Schemas]]
+- [[_COMMUNITY_Routes Package Init|Routes Package Init]]
+- [[_COMMUNITY_Repositories Package Init|Repositories Package Init]]
+- [[_COMMUNITY_Workflows Package Init|Workflows Package Init]]
+- [[_COMMUNITY_Common Backend Types|Common Backend Types]]
+- [[_COMMUNITY_Services Package Init|Services Package Init]]
+- [[_COMMUNITY_Tests Package Init|Tests Package Init]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `FakeRepo` - 77 edges
-2. `register()` - 53 edges
-3. `auth_headers()` - 50 edges
-4. `write_audit_event()` - 41 edges
-5. `RecordsRepositoryMixin` - 29 edges
-6. `build_note_pdf()` - 28 edges
-7. `_now()` - 27 edges
-8. `AuthSettingsRepositoryMixin` - 26 edges
+1. `FakeRepo` - 81 edges
+2. `register()` - 62 edges
+3. `auth_headers()` - 59 edges
+4. `internal_server_error()` - 42 edges
+5. `bad_request_error()` - 37 edges
+6. `_now()` - 28 edges
+7. `build_note_pdf()` - 28 edges
+8. `AuthSettingsRepositoryMixin` - 27 edges
 9. `PatientFlowRepositoryMixin` - 24 edges
 10. `build_invoice_pdf()` - 22 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `normalizeVisit()` --calls--> `Boolean()`  [INFERRED]
-  /Users/dhairyalalwani/PycharmProjects/mr/web/app/history/page.tsx → /Users/dhairyalalwani/PycharmProjects/mr/web/components/consultation-drawer.tsx
-- `test_pdf_template_page_size_is_read_from_uploaded_pdf()` --calls--> `_page_size_for_template()`  [INFERRED]
-  /Users/dhairyalalwani/PycharmProjects/mr/tests/test_settings.py → /Users/dhairyalalwani/PycharmProjects/mr/backend/app/services/pdf_service.py
 - `build_csv_response()` --calls--> `format_export_datetime()`  [INFERRED]
-  /Users/dhairyalalwani/PycharmProjects/mr/backend/app/exports.py → /Users/dhairyalalwani/PycharmProjects/mr/backend/app/formatting.py
-- `UserOut` --calls--> `update_user_role()`  [INFERRED]
-  /Users/dhairyalalwani/PycharmProjects/mr/backend/app/schemas.py → /Users/dhairyalalwani/PycharmProjects/mr/backend/app/routes/users.py
+  backend/app/exports.py → /Users/dhairyalalwani/PycharmProjects/mr/backend/app/formatting.py
+- `Post-Deploy Smoke Check` --semantically_similar_to--> `P0 Smoke Suite`  [INFERRED] [semantically similar]
+  PILOT_RUNBOOK.md → QA_REGRESSION_PLAN.md
+- `Daily Pilot Checks` --semantically_similar_to--> `Release Gate Recommendation`  [INFERRED] [semantically similar]
+  PILOT_RUNBOOK.md → QA_REGRESSION_PLAN.md
 - `handleSubmit()` --calls--> `register()`  [INFERRED]
-  /Users/dhairyalalwani/PycharmProjects/mr/web/app/follow-up/page.tsx → /Users/dhairyalalwani/PycharmProjects/mr/tests/test_app.py
+  /Users/dhairyalalwani/PycharmProjects/mr/web/app/follow-up/page.tsx → tests/test_app.py
+- `test_public_follow_up_booking_reschedules_and_creates_appointment()` --calls--> `update()`  [INFERRED]
+  tests/test_app.py → web/components/optometry/binocular-vision-modal.tsx
 
 ## Hyperedges (group relationships)
-- **Clinic Shell Pages** — app_page_queue_board_workflow, app_patients_page_registry_search_export, app_history_page_visit_archive_quick_reopen, app_earnings_page_collection_dashboard, app_inventory_page_catalog_manager, app_users_page_staff_manager, app_audit_page_system_activity_feed, app_billing_page_invoice_workbench [INFERRED 0.90]
-- **Settings Drawer Panels** — components_settings_drawer_hub, components_settings_drawer_appointments_panel, components_settings_drawer_inventory_panel, components_settings_drawer_users_panel [INFERRED 0.95]
-- **Patient Intake Duplicate Resolution** — components_add_patient_modal_intake_matching, components_settings_drawer_appointments_panel, app_patients_page_registry_search_export [INFERRED 0.84]
-- **Clinic Shell Surface** — app_header_component, patient_column_component, patient_details_drawer_component, consultation_drawer_component, settings_drawer_letter_panel_component, settings_drawer_billing_panel_component, clinic_shell_hook [INFERRED 0.86]
-- **Consultation Note Delivery Flow** — consultation_drawer_component, clinic_shell_hook, anthropic_generation_service, pdf_rendering_service, backend_consultation_note_schema [INFERRED 0.90]
+- **Clinic EMR Runtime Architecture** — readme_nextjs_frontend, readme_fastapi_backend, readme_supabase_postgresql, readme_anthropic_claude [EXTRACTED 1.00]
+- **Pilot Operational Release Controls** — pilot_before_go_live, pilot_post_deploy_smoke_check, pilot_daily_checks, pilot_rollback, qa_release_gate_recommendation [INFERRED 0.82]
+- **Playwright Strict Locator Failures** — consultation_error_strict_start_locator, consultation_error_queue_card_button, patient_chart_error_visit_locator, patient_chart_error_duplicate_visit_buttons [EXTRACTED 1.00]
 
 ## Communities
 
-### Community 0 - "Community 0"
-Cohesion: 0.04
-Nodes (76): check_in_appointment_workflow(), create_appointment_workflow(), update_appointment_workflow(), check_in_appointment(), create_appointment(), list_appointments(), update_appointment(), get_actor_name() (+68 more)
+### Community 0 - "Backend Errors Settings"
+Cohesion: 0.03
+Nodes (111): AppError, bad_request_error(), ConflictError, ForbiddenBusinessActionError, IntegrationFailureError, internal_server_error(), InvalidStateError, not_found_error() (+103 more)
 
-### Community 1 - "Community 1"
-Cohesion: 0.04
-Nodes (8): update(), validate_appointments_per_hour(), validate_booking_window(), client(), FakeRepo, _normalize_phone(), _now(), ValueError
+### Community 1 - "Appointments Audit Workflows"
+Cohesion: 0.03
+Nodes (69): AIUsageRepositoryMixin, check_in_appointment_workflow(), create_appointment_workflow(), update_appointment_workflow(), check_in_appointment(), create_appointment(), list_appointments(), preview_check_in_appointment() (+61 more)
 
-### Community 2 - "Community 2"
+### Community 2 - "Repository Test Doubles"
+Cohesion: 0.04
+Nodes (6): update(), client(), FakeRepo, _normalize_phone(), _now(), ValueError
+
+### Community 3 - "Auth Sessions Signatures"
 Cohesion: 0.05
-Nodes (72): list_audit_events(), DuplicateCheckInCandidateError, BaseModel, AppointmentCheckInRequest, AppointmentCreate, AppointmentUpdate, AuditEventOut, BinocularVisionInput (+64 more)
+Nodes (57): _b64decode(), _b64encode(), _build_access_token_payload(), clear_session(), create_access_token(), decode_access_token(), delete_my_signature(), download_my_signature() (+49 more)
 
-### Community 3 - "Community 3"
+### Community 4 - "Backend Regression Tests"
+Cohesion: 0.06
+Nodes (65): auth_headers(), register(), test_case_study_generation_storage_and_pdf(), test_case_study_source_is_generic_for_non_optometry_clinics(), test_generate_parent_handout_returns_pediatric_content(), test_myopia_measurements_create_history_and_timeline(), test_pediatric_growth_records_create_history_and_timeline(), test_public_follow_up_booking_rate_limits_context_requests() (+57 more)
+
+### Community 5 - "Consultation Specialty UI"
+Cohesion: 0.04
+Nodes (36): Boolean(), buildBinocularVisionSummary(), buildLowVisionSummary(), buildMyopiaManagementSummary(), createEmptyBinocularVision(), createEmptyContactLens(), createEmptyLowVision(), createEmptyMyopiaManagement() (+28 more)
+
+### Community 6 - "Documents PDF Export"
 Cohesion: 0.09
 Nodes (54): downloadBlob(), handleExportPdf(), handleGenerate(), handleSelectPatient(), resetDraft(), _append_pdf_bytes(), _apply_pdf_template(), build_case_study_pdf() (+46 more)
 
-### Community 4 - "Community 4"
-Cohesion: 0.07
-Nodes (56): auth_headers(), register(), test_case_study_generation_storage_and_pdf(), test_myopia_measurements_create_history_and_timeline(), test_public_follow_up_booking_reschedules_and_creates_appointment(), test_schedule_lists_auto_cancel_expired_items(), _future_iso(), test_appointment_can_be_created_listed_and_checked_into_queue() (+48 more)
+### Community 7 - "Billing Specialty Models"
+Cohesion: 0.12
+Nodes (61): BaseModel, CatalogItemBase, CatalogItemCreate, CatalogStockUpdate, InvoiceCreate, InvoiceItemInput, InvoiceItemOut, SendInvoiceRequest (+53 more)
 
-### Community 5 - "Community 5"
-Cohesion: 0.07
-Nodes (41): _b64decode(), _b64encode(), _build_access_token_payload(), clear_session(), create_access_token(), decode_access_token(), delete_my_signature(), download_my_signature() (+33 more)
+### Community 8 - "AI Generation Usage"
+Cohesion: 0.05
+Nodes (43): anthropic_usage_from_response(), record_anthropic_usage(), AIUsageRepositoryMixin, build_fallback_case_study(), build_fallback_letter(), build_fallback_note(), _extract_pipe_table_blocks(), generate_case_study_document() (+35 more)
 
-### Community 6 - "Community 6"
+### Community 9 - "Queue Billing UI"
 Cohesion: 0.06
-Nodes (31): build_clinic_context(), build_measurements_context(), build_patient_context(), _render_pipe_table(), _build_sender(), send_clinic_email_message(), generate_letter_content(), generate_note_workflow() (+23 more)
-
-### Community 7 - "Community 7"
-Cohesion: 0.09
-Nodes (42): user_names_by_id(), list_invoices_with_user_names(), create_case_study(), _document_context_for_current_user(), generate_case_study(), generate_case_study_pdf(), get_case_study(), list_case_studies() (+34 more)
-
-### Community 8 - "Community 8"
-Cohesion: 0.06
-Nodes (27): Boolean(), buildBinocularVisionSummary(), buildLowVisionSummary(), buildMyopiaManagementSummary(), clearWorkspace(), createEmptyBinocularVision(), createEmptyForm(), createEmptyLowVision() (+19 more)
-
-### Community 9 - "Community 9"
-Cohesion: 0.07
 Nodes (20): async(), buildAutoDraftInvoiceItems(), createEmptyQueueOrder(), createId(), extractMedicineSuggestions(), extractStructuredPrescriptionItems(), handleAdvancePatient(), handleCreateBill() (+12 more)
 
-### Community 10 - "Community 10"
-Cohesion: 0.06
-Nodes (22): AIUsageRepositoryMixin, AIUsageRepositoryMixin, AuditRepositoryMixin, AuditRepositoryMixin, AuthSettingsRepositoryMixin, BaseSupabaseRepository, BaseSupabaseRepository, BillingRepositoryMixin (+14 more)
+### Community 10 - "Pilot QA Failures"
+Cohesion: 0.08
+Nodes (40): Queue Card Button Accessible Name Collision, Consultation Smoke Strict Start Locator Failure, Duplicate Visit Buttons Across Timeline And Visit History, Patient Chart Strict Visit Locator Failure, Before Go-Live Checklist, Pilot Breakage Triage, Daily Pilot Checks, Post-Deploy Smoke Check (+32 more)
 
-### Community 11 - "Community 11"
-Cohesion: 0.09
-Nodes (26): anthropic_usage_from_response(), record_anthropic_usage(), build_fallback_case_study(), build_fallback_letter(), build_fallback_note(), _extract_pipe_table_blocks(), generate_case_study_document(), generate_clinic_letter() (+18 more)
+### Community 11 - "Superuser Audit Admin"
+Cohesion: 0.15
+Nodes (14): ExportRow, PlatformErrorOut, SuperuserOrgDetailOut, SuperuserOrgSummaryOut, SuperuserOrgUserOut, SuperuserUsageSummaryOut, list_audit_events(), AuditEventOut (+6 more)
 
-### Community 12 - "Community 12"
-Cohesion: 0.09
-Nodes (19): preview_check_in_appointment(), attach_invoice_balances(), find_check_in_matches(), normalize_invoice_amount_paid(), normalize_phone_number(), round_money(), visit_payload(), build_csv_response() (+11 more)
+### Community 12 - "CSV Export Flows"
+Cohesion: 0.15
+Nodes (18): build_csv_response(), build_history_visit_rows(), export_invoices_csv(), export_patients_csv(), export_visits_csv(), filter_rows_by_created_at(), get_export_range_start(), get_patient_visits() (+10 more)
 
-### Community 13 - "Community 13"
-Cohesion: 0.1
-Nodes (4): createEmptyHistoricalMyopia(), formatLocalDateTimeInput(), getPhoneDigits(), handleSave()
+### Community 13 - "Audit Event Recording"
+Cohesion: 0.17
+Nodes (19): get_actor_name(), record_appointment_checked_in(), record_appointment_created(), record_appointment_updated(), record_catalog_item_created(), record_catalog_item_deleted(), record_catalog_stock_adjusted(), record_follow_up_created() (+11 more)
 
-### Community 14 - "Community 14"
-Cohesion: 0.12
-Nodes (10): useClinicShell(), formatDateTime(), handleContinueRegistration(), handleModeChange(), handleSubmit(), loadContext(), resetRegisterFields(), SuperuserPage() (+2 more)
+### Community 14 - "Registration Admin UI"
+Cohesion: 0.15
+Nodes (9): cn(), formatDateTime(), formatNumber(), handleContinueRegistration(), handleModeChange(), handleSubmit(), loadContext(), resetRegisterFields() (+1 more)
 
-### Community 15 - "Community 15"
+### Community 15 - "API Client Session"
+Cohesion: 0.27
+Nodes (14): buildRequestHeaders(), canRetrySafely(), createTimeoutSignal(), delay(), getActiveToken(), getRequestMethod(), isSessionErrorMessage(), performFetch() (+6 more)
+
+### Community 16 - "Follow-Up Scheduling"
 Cohesion: 0.13
 Nodes (2): handleCheckIn(), handleStartCheckIn()
 
-### Community 16 - "Community 16"
-Cohesion: 0.3
-Nodes (14): buildRequestHeaders(), canRetrySafely(), createTimeoutSignal(), delay(), getActiveToken(), getRequestMethod(), isSessionErrorMessage(), performFetch() (+6 more)
+### Community 17 - "Patient Timeline Myopia"
+Cohesion: 0.15
+Nodes (2): getPhoneDigits(), handleSave()
 
-### Community 17 - "Community 17"
+### Community 18 - "E2E Mock Fixtures"
+Cohesion: 0.26
+Nodes (10): buildCaseStudySource(), buildClinicSettings(), buildPatient(), buildUser(), fulfillJson(), jsonHeaders(), mockClinicBootstrap(), mockLoginFlow() (+2 more)
+
+### Community 19 - "PDF Canvas Drawing"
 Cohesion: 0.15
 Nodes (1): _RecordingCanvas
 
-### Community 18 - "Community 18"
+### Community 20 - "Frontend Module Tests"
+Cohesion: 0.21
+Nodes (4): compileModule(), ensureTsPath(), importWebModule(), resolveSourceSpecifier()
+
+### Community 21 - "Setup Step Modal"
+Cohesion: 0.2
+Nodes (2): buildSettingsPayload(), handleSubmit()
+
+### Community 22 - "Patient Intake Modal"
 Cohesion: 0.36
 Nodes (8): getPhoneDigits(), handleClose(), handleSearchExistingPatient(), handleSubmit(), resetForm(), submitPatient(), toCentimeters(), toFahrenheit()
 
-### Community 19 - "Community 19"
-Cohesion: 0.36
-Nodes (8): _literal_values(), _parse_ts_interfaces(), _parse_ts_unions(), _schema_properties(), _schema_property_set(), test_frontend_enum_unions_match_backend_openapi(), test_frontend_request_contracts_match_backend_openapi(), test_frontend_response_contracts_match_backend_openapi()
-
-### Community 20 - "Community 20"
+### Community 23 - "Audit History Page"
 Cohesion: 0.32
 Nodes (3): getAuditSummary(), getPatientName(), inferPatientNameFromSummary()
 
-### Community 21 - "Community 21"
+### Community 24 - "Account Profile Page"
 Cohesion: 0.25
-Nodes (0): 
+Nodes (0):
 
-### Community 22 - "Community 22"
+### Community 25 - "Clinic Shell State"
 Cohesion: 0.33
-Nodes (0): 
+Nodes (2): useClinicShell(), useClinicShellPage()
 
-### Community 23 - "Community 23"
+### Community 26 - "Next Segment Stub"
+Cohesion: 0.33
+Nodes (0):
+
+### Community 27 - "Architecture Tests"
+Cohesion: 0.4
+Nodes (0):
+
+### Community 28 - "CSP Dev Origins"
+Cohesion: 0.67
+Nodes (2): buildDevConnectSources(), unique()
+
+### Community 29 - "Catalog Inventory UI"
 Cohesion: 0.5
+Nodes (0):
+
+### Community 30 - "Settings Drawer Preview"
+Cohesion: 0.67
 Nodes (2): normalizePreviewMargin(), previewInsetStyles()
 
-### Community 24 - "Community 24"
-Cohesion: 0.4
-Nodes (0): 
-
-### Community 25 - "Community 25"
+### Community 31 - "Settings Users Panel"
 Cohesion: 0.5
-Nodes (0): 
+Nodes (0):
 
-### Community 26 - "Community 26"
+### Community 32 - "Patient Event Details"
 Cohesion: 0.5
-Nodes (0): 
+Nodes (0):
 
-### Community 27 - "Community 27"
+### Community 33 - "Setup Flow Routing"
+Cohesion: 0.5
+Nodes (0):
+
+### Community 34 - "Myopia Chart Helpers"
+Cohesion: 0.83
+Nodes (3): buildModeledPoints(), buildMyopiaChartModel(), buildPath()
+
+### Community 35 - "Low Vision Modal"
+Cohesion: 0.67
+Nodes (0):
+
+### Community 36 - "Myopia Modal Values"
+Cohesion: 0.67
+Nodes (0):
+
+### Community 37 - "Specialty Module Registry"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): getSpecialtyModules(), specialtyHasModule()
 
-### Community 28 - "Community 28"
+### Community 38 - "Auth Browser Storage"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): getSessionStorage(), isBrowser()
 
-### Community 29 - "Community 29"
+### Community 39 - "Root Layout"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 30 - "Community 30"
+### Community 40 - "Add User Page"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 31 - "Community 31"
+### Community 41 - "Patient Card"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 32 - "Community 32"
+### Community 42 - "Letters Settings Panel"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 33 - "Community 33"
+### Community 43 - "Myopia Modal"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 34 - "Community 34"
+### Community 44 - "Optometry Modal Shell"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 35 - "Community 35"
+### Community 45 - "Health Endpoint"
+Cohesion: 1.0
+Nodes (0):
+
+### Community 46 - "Next Type Declarations"
+Cohesion: 1.0
+Nodes (0):
+
+### Community 47 - "Clinic Visual Theme"
 Cohesion: 1.0
 Nodes (1): Clinic Visual Theme
 
-### Community 36 - "Community 36"
+### Community 48 - "Playwright Config"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 37 - "Community 37"
+### Community 49 - "PostCSS Config"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 38 - "Community 38"
+### Community 50 - "ESLint Config"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 39 - "Community 39"
+### Community 51 - "Lazy Settings Drawer"
+Cohesion: 1.0
+Nodes (0):
+
+### Community 52 - "Inventory Panel Split"
 Cohesion: 1.0
 Nodes (1): Inventory Panel Catalog Split
 
-### Community 40 - "Community 40"
+### Community 53 - "App Header"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 41 - "Community 41"
+### Community 54 - "Patient Column"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 42 - "Community 42"
+### Community 55 - "Billing Settings Panel"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 43 - "Community 43"
+### Community 56 - "Patient Timeline Panel"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 44 - "Community 44"
+### Community 57 - "Patient Bio Panel"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 45 - "Community 45"
+### Community 58 - "Contact Lens Modal"
+Cohesion: 1.0
+Nodes (0):
+
+### Community 59 - "Myopia Progression Chart"
+Cohesion: 1.0
+Nodes (0):
+
+### Community 60 - "Clinic Specialty Types"
+Cohesion: 1.0
+Nodes (0):
+
+### Community 61 - "Myopia Reference Data"
+Cohesion: 1.0
+Nodes (0):
+
+### Community 62 - "Recent Patients Store"
 Cohesion: 1.0
 Nodes (1): Recent Patients Store
 
-### Community 46 - "Community 46"
+### Community 63 - "Shared Types"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 47 - "Community 47"
+### Community 64 - "Follow-Up E2E Spec"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 48 - "Community 48"
+### Community 65 - "Consultation E2E Spec"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 49 - "Community 49"
+### Community 66 - "Login E2E Spec"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 50 - "Community 50"
+### Community 67 - "Patient Chart E2E Spec"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 51 - "Community 51"
+### Community 68 - "Queue E2E Spec"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 52 - "Community 52"
+### Community 69 - "Onboarding E2E Spec"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (0):
 
-### Community 53 - "Community 53"
+### Community 70 - "Case Study E2E Spec"
 Cohesion: 1.0
-Nodes (1): Clinic EMR MVP
+Nodes (0):
 
-### Community 54 - "Community 54"
+### Community 71 - "Pytest Fixtures"
 Cohesion: 1.0
-Nodes (1): HTTP-only Frontend Boundary
+Nodes (0):
 
-### Community 55 - "Community 55"
+### Community 72 - "Backend Package Init"
 Cohesion: 1.0
-Nodes (1): Backend Owns Database and AI Integrations
+Nodes (0):
 
-### Community 56 - "Community 56"
+### Community 73 - "Backend Schemas"
 Cohesion: 1.0
-Nodes (1): Deterministic SOAP Note Fallback
+Nodes (0):
 
-### Community 57 - "Community 57"
+### Community 74 - "Routes Package Init"
 Cohesion: 1.0
-Nodes (1): Settings and Auth Endpoints
+Nodes (0):
 
-### Community 58 - "Community 58"
+### Community 75 - "Repositories Package Init"
 Cohesion: 1.0
-Nodes (1): Backend Dependency Stack
+Nodes (0):
+
+### Community 76 - "Workflows Package Init"
+Cohesion: 1.0
+Nodes (0):
+
+### Community 77 - "Common Backend Types"
+Cohesion: 1.0
+Nodes (0):
+
+### Community 78 - "Services Package Init"
+Cohesion: 1.0
+Nodes (0):
+
+### Community 79 - "Tests Package Init"
+Cohesion: 1.0
+Nodes (0):
 
 ## Knowledge Gaps
-- **9 isolated node(s):** `Clinic Visual Theme`, `Inventory Panel Catalog Split`, `Recent Patients Store`, `Clinic EMR MVP`, `HTTP-only Frontend Boundary` (+4 more)
+- **9 isolated node(s):** `Clinic Visual Theme`, `Inventory Panel Catalog Split`, `Recent Patients Store`, `Backend Source Of Truth Rationale`, `Pilot Rollback` (+4 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **Thin community `Community 27`** (2 nodes): `RootLayout()`, `layout.tsx`
+- **Thin community `Root Layout`** (2 nodes): `RootLayout()`, `layout.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 28`** (2 nodes): `handleAddUser()`, `page.tsx`
+- **Thin community `Add User Page`** (2 nodes): `handleAddUser()`, `page.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 29`** (2 nodes): `PatientCard()`, `patient-card.tsx`
+- **Thin community `Patient Card`** (2 nodes): `PatientCard()`, `patient-card.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 30`** (2 nodes): `SettingsDrawerLetterPanel()`, `settings-drawer-letter-panel.tsx`
+- **Thin community `Letters Settings Panel`** (2 nodes): `SettingsDrawerLetterPanel()`, `settings-drawer-letter-panel.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 31`** (2 nodes): `isBrowser()`, `auth.ts`
+- **Thin community `Myopia Modal`** (2 nodes): `MyopiaManagementModal()`, `myopia-management-modal.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 32`** (2 nodes): `health()`, `health.py`
+- **Thin community `Optometry Modal Shell`** (2 nodes): `OptometryModalShell()`, `optometry-modal-shell.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 33`** (1 nodes): `next.config.mjs`
+- **Thin community `Health Endpoint`** (2 nodes): `health()`, `health.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 34`** (1 nodes): `next-env.d.ts`
+- **Thin community `Next Type Declarations`** (1 nodes): `next-env.d.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 35`** (1 nodes): `Clinic Visual Theme`
+- **Thin community `Clinic Visual Theme`** (1 nodes): `Clinic Visual Theme`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 36`** (1 nodes): `postcss.config.js`
+- **Thin community `Playwright Config`** (1 nodes): `playwright.config.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 37`** (1 nodes): `eslint.config.mjs`
+- **Thin community `PostCSS Config`** (1 nodes): `postcss.config.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 38`** (1 nodes): `lazy-settings-drawer.tsx`
+- **Thin community `ESLint Config`** (1 nodes): `eslint.config.mjs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 39`** (1 nodes): `Inventory Panel Catalog Split`
+- **Thin community `Lazy Settings Drawer`** (1 nodes): `lazy-settings-drawer.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 40`** (1 nodes): `app-header.tsx`
+- **Thin community `Inventory Panel Split`** (1 nodes): `Inventory Panel Catalog Split`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 41`** (1 nodes): `patient-column.tsx`
+- **Thin community `App Header`** (1 nodes): `app-header.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 42`** (1 nodes): `settings-drawer-billing-panel.tsx`
+- **Thin community `Patient Column`** (1 nodes): `patient-column.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 43`** (1 nodes): `clinic-specialty.ts`
+- **Thin community `Billing Settings Panel`** (1 nodes): `settings-drawer-billing-panel.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 44`** (1 nodes): `myopia-reference.ts`
+- **Thin community `Patient Timeline Panel`** (1 nodes): `patient-timeline-panel.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 45`** (1 nodes): `Recent Patients Store`
+- **Thin community `Patient Bio Panel`** (1 nodes): `patient-bio-data-panel.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 46`** (1 nodes): `types.ts`
+- **Thin community `Contact Lens Modal`** (1 nodes): `contact-lens-modal.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 47`** (1 nodes): `conftest.py`
+- **Thin community `Myopia Progression Chart`** (1 nodes): `myopia-progression-chart.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 48`** (1 nodes): `__init__.py`
+- **Thin community `Clinic Specialty Types`** (1 nodes): `clinic-specialty.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 49`** (1 nodes): `__init__.py`
+- **Thin community `Myopia Reference Data`** (1 nodes): `myopia-reference.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 50`** (1 nodes): `__init__.py`
+- **Thin community `Recent Patients Store`** (1 nodes): `Recent Patients Store`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 51`** (1 nodes): `__init__.py`
+- **Thin community `Shared Types`** (1 nodes): `types.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 52`** (1 nodes): `__init__.py`
+- **Thin community `Follow-Up E2E Spec`** (1 nodes): `follow-up.spec.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 53`** (1 nodes): `Clinic EMR MVP`
+- **Thin community `Consultation E2E Spec`** (1 nodes): `consultation.spec.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 54`** (1 nodes): `HTTP-only Frontend Boundary`
+- **Thin community `Login E2E Spec`** (1 nodes): `login.spec.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 55`** (1 nodes): `Backend Owns Database and AI Integrations`
+- **Thin community `Patient Chart E2E Spec`** (1 nodes): `patient-chart.spec.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 56`** (1 nodes): `Deterministic SOAP Note Fallback`
+- **Thin community `Queue E2E Spec`** (1 nodes): `queue.spec.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 57`** (1 nodes): `Settings and Auth Endpoints`
+- **Thin community `Onboarding E2E Spec`** (1 nodes): `onboarding.spec.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 58`** (1 nodes): `Backend Dependency Stack`
+- **Thin community `Case Study E2E Spec`** (1 nodes): `case-study.spec.ts`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Pytest Fixtures`** (1 nodes): `conftest.py`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Backend Package Init`** (1 nodes): `__init__.py`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Backend Schemas`** (1 nodes): `schemas.py`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Routes Package Init`** (1 nodes): `__init__.py`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Repositories Package Init`** (1 nodes): `__init__.py`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Workflows Package Init`** (1 nodes): `__init__.py`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Common Backend Types`** (1 nodes): `common.py`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Services Package Init`** (1 nodes): `__init__.py`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Tests Package Init`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `update()` connect `Community 1` to `Community 8`, `Community 4`, `Community 12`?**
-  _High betweenness centrality (0.151) - this node is a cross-community bridge._
-- **Why does `PatientFlowRepositoryMixin` connect `Community 12` to `Community 0`, `Community 10`, `Community 2`, `Community 7`?**
-  _High betweenness centrality (0.087) - this node is a cross-community bridge._
-- **Why does `register()` connect `Community 4` to `Community 14`?**
-  _High betweenness centrality (0.086) - this node is a cross-community bridge._
-- **Are the 48 inferred relationships involving `register()` (e.g. with `handleSubmit()` and `test_billing_finalize_marks_patient_and_deducts_stock_once()`) actually correct?**
-  _`register()` has 48 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 45 inferred relationships involving `auth_headers()` (e.g. with `test_billing_finalize_marks_patient_and_deducts_stock_once()` and `test_invoice_can_be_created_with_partial_payment_status()`) actually correct?**
-  _`auth_headers()` has 45 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 26 inferred relationships involving `write_audit_event()` (e.g. with `create_staff_user_workflow()` and `.create_audit_event()`) actually correct?**
-  _`write_audit_event()` has 26 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `update()` connect `Repository Test Doubles` to `Backend Errors Settings`, `Appointments Audit Workflows`, `Backend Regression Tests`?**
+  _High betweenness centrality (0.148) - this node is a cross-community bridge._
+- **Why does `Boolean()` connect `Consultation Specialty UI` to `Queue Billing UI`, `Repository Test Doubles`, `Setup Step Modal`?**
+  _High betweenness centrality (0.142) - this node is a cross-community bridge._
+- **Why does `register()` connect `Backend Regression Tests` to `Registration Admin UI`?**
+  _High betweenness centrality (0.066) - this node is a cross-community bridge._
+- **Are the 52 inferred relationships involving `register()` (e.g. with `handleSubmit()` and `test_unexpected_route_errors_return_generic_500()`) actually correct?**
+  _`register()` has 52 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 49 inferred relationships involving `auth_headers()` (e.g. with `test_unexpected_route_errors_return_generic_500()` and `test_billing_finalize_marks_patient_and_deducts_stock_once()`) actually correct?**
+  _`auth_headers()` has 49 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 40 inferred relationships involving `internal_server_error()` (e.g. with `generate_invoice_pdf()` and `download_user_signature()`) actually correct?**
+  _`internal_server_error()` has 40 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `Clinic Visual Theme`, `Inventory Panel Catalog Split`, `Recent Patients Store` to the rest of the system?**
   _9 weakly-connected nodes found - possible documentation gaps or missing edges._

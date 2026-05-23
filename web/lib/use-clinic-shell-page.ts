@@ -46,6 +46,7 @@ export function useClinicShellPage<T>({
   const shell = useClinicShell();
   const {
     applyClinicSettings: applyShellClinicSettings,
+    applyCurrentUser: applyShellCurrentUser,
     clinicSettings,
     currentUser,
     error: shellError,
@@ -62,6 +63,8 @@ export function useClinicShellPage<T>({
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [pageError, setPageError] = useState("");
+  const [isPageDataLoaded, setIsPageDataLoaded] = useState(false);
+  const [isUsersLoaded, setIsUsersLoaded] = useState(false);
 
   useEffect(() => {
     canLoadPageDataRef.current = canLoadPageData;
@@ -87,6 +90,7 @@ export function useClinicShellPage<T>({
 
       if (active) {
         setPageError("");
+        setIsPageDataLoaded(false);
       }
 
       try {
@@ -95,6 +99,7 @@ export function useClinicShellPage<T>({
             const pageData = await loadPageDataRef.current();
             if (active) {
               onPageDataRef.current(pageData);
+              setIsPageDataLoaded(true);
             }
             return;
           } catch (loadError) {
@@ -158,9 +163,14 @@ export function useClinicShellPage<T>({
     applyShellClinicSettings(settings);
   }, [applyShellClinicSettings]);
 
+  const applyCurrentUser = useCallback((user: AuthUser | null) => {
+    applyShellCurrentUser(user);
+  }, [applyShellCurrentUser]);
+
   const loadUsers = useCallback(async () => {
     const loadedUsers = await api.listUsers();
     setUsers(loadedUsers);
+    setIsUsersLoaded(true);
     return loadedUsers;
   }, []);
 
@@ -173,28 +183,33 @@ export function useClinicShellPage<T>({
   const handleAddStaffUser = useCallback(async (payload: { identifier: string; password: string }) => {
     const created = await api.createStaffUser(payload);
     setUsers((current) => [...current, created]);
+    setIsUsersLoaded(true);
   }, []);
 
   const handleUpdateUserRole = useCallback(async (userId: string, role: "admin" | "staff") => {
     const updated = await api.updateUserRole(userId, { role });
     setUsers((current) => current.map((user) => (user.id === userId ? updated : user)));
+    setIsUsersLoaded(true);
     return updated;
   }, []);
 
   const handleDeleteUser = useCallback(async (userId: string) => {
     await api.deleteUser(userId);
     setUsers((current) => current.filter((user) => user.id !== userId));
+    setIsUsersLoaded(true);
   }, []);
 
   const handleUploadUserSignature = useCallback(async (userId: string, file: File) => {
     const updated = await api.uploadUserSignature(userId, file);
     setUsers((current) => current.map((user) => (user.id === userId ? updated : user)));
+    setIsUsersLoaded(true);
     return updated;
   }, []);
 
   const handleRemoveUserSignature = useCallback(async (userId: string) => {
     const updated = await api.removeUserSignature(userId);
     setUsers((current) => current.map((user) => (user.id === userId ? updated : user)));
+    setIsUsersLoaded(true);
     return updated;
   }, []);
 
@@ -269,9 +284,12 @@ export function useClinicShellPage<T>({
     setError: setPageError,
     isAuthReady,
     isRedirectingToLogin,
+    isPageDataLoaded,
+    isUsersLoaded,
     handleLogout,
     handleSaveClinicSettings,
     applyClinicSettings,
+    applyCurrentUser,
     handleAddStaffUser,
     handleUpdateUserRole,
     handleDeleteUser,

@@ -199,6 +199,20 @@ export function PatientDetailsDrawer({
     });
   }
 
+  function formatSignedDelta(value: number | null | undefined, unit: string) {
+    if (typeof value !== "number" || Number.isNaN(value)) {
+      return `0 ${unit}`;
+    }
+    return `${value >= 0 ? "+" : ""}${value} ${unit}`;
+  }
+
+  function formatSignedNumber(value: number | null | undefined) {
+    if (typeof value !== "number" || Number.isNaN(value)) {
+      return "0";
+    }
+    return `${value >= 0 ? "+" : ""}${value}`;
+  }
+
   function getEventTitle(event: PatientTimelineEvent) {
     if (event.type === "visit_recorded" && event.title.trim().toLowerCase() === "visit recorded") {
       return "Visit";
@@ -463,6 +477,24 @@ export function PatientDetailsDrawer({
                     <div className="rounded-2xl border border-amber-100 bg-amber-50/35 p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Trend</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">{growthHistory?.trend_summary || "No trend yet"}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-amber-100 bg-white p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Previous Measurement</p>
+                      <p className="mt-2 text-sm font-medium text-slate-900">
+                        {growthHistory?.previous_measurement
+                          ? `${growthHistory.previous_measurement.height_cm} cm · ${growthHistory.previous_measurement.weight_kg} kg · BMI ${growthHistory.previous_measurement.bmi}`
+                          : "No previous data"}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-amber-100 bg-white p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Interval Change</p>
+                      <p className="mt-2 text-sm font-medium text-slate-900">
+                        {growthHistory?.interval_change
+                          ? `Height ${formatSignedDelta(growthHistory.interval_change.height_cm, "cm")} · Weight ${formatSignedDelta(growthHistory.interval_change.weight_kg, "kg")} · BMI ${formatSignedNumber(growthHistory.interval_change.bmi)}`
+                          : "Need at least 2 readings"}
+                      </p>
                     </div>
                   </div>
                   {growthHistory?.flags.length ? (

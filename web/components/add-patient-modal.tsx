@@ -9,6 +9,7 @@ import { PatientMatch } from "@/lib/types";
 interface AddPatientModalProps {
   open: boolean;
   onClose: () => void;
+  onSubmitted?: () => void;
   onSubmit: (payload: {
     entryType: "queue" | "appointment";
     existingPatientId?: string;
@@ -28,6 +29,7 @@ interface AddPatientModalProps {
 export function AddPatientModal({
   open,
   onClose,
+  onSubmitted,
   onSubmit,
 }: AddPatientModalProps) {
   const [form, setForm] = useState({
@@ -263,6 +265,7 @@ export function AddPatientModal({
       resetForm();
       setExistingMatches([]);
       setError("");
+      onSubmitted?.();
       onClose();
     } catch (submitError) {
       setError(
