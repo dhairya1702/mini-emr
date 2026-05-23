@@ -1,6 +1,7 @@
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 
 export type SpecialtyModuleKey =
+  | "eye_exam"
   | "contact_lens"
   | "binocular_vision"
   | "low_vision"
@@ -13,6 +14,7 @@ export type SpecialtyModuleKey =
 const SPECIALTY_MODULES: Record<Exclude<ClinicSpecialty, null>, SpecialtyModuleKey[]> = {
   general_physician: [],
   optometry: [
+    "eye_exam",
     "contact_lens",
     "binocular_vision",
     "low_vision",

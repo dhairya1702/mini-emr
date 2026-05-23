@@ -200,7 +200,6 @@ type ConsultationWorkspaceSnapshot = {
     lowVision: boolean;
     myopiaManagement: boolean;
   };
-  pediatricSectionsOpen?: PediatricSectionsOpen;
   selectedMedicineIds: string[];
   medicineSearch: string;
   currentNoteId: string;
@@ -211,21 +210,8 @@ type ConsultationWorkspaceSnapshot = {
   isFollowUpOpen: boolean;
 };
 
-type PediatricSectionsOpen = {
-  growth: boolean;
-  wellChild: boolean;
-  parentHandout: boolean;
-  pediatricFollowUp: boolean;
-};
-
-function createClosedPediatricSections(): PediatricSectionsOpen {
-  return {
-    growth: false,
-    wellChild: false,
-    parentHandout: false,
-    pediatricFollowUp: false,
-  };
-}
+type InlineModuleKey = "vitals" | "medicines";
+type PediatricModuleKey = "growth" | "wellChild" | "parentHandout" | "pediatricFollowUp";
 
 function createClosedConsultationSections() {
   return {
@@ -314,6 +300,82 @@ function ConsultationExpandableCard({
   );
 }
 
+function ConsultationModuleRailItem({
+  title,
+  description,
+  active = false,
+  onSelect,
+}: {
+  title: string;
+  description: string;
+  active?: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`block w-full border-t border-sky-100 px-4 py-4 text-left transition first:border-t-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sky-300 ${
+        active ? "bg-sky-50/70" : "bg-white hover:bg-sky-50/60"
+      }`}
+    >
+      <span className="block text-base font-semibold leading-tight text-slate-900">{title}</span>
+      <span className="mt-1 block text-sm leading-5 text-slate-500">{description}</span>
+    </button>
+  );
+}
+
+function ConsultationModuleDetail({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-[28px] border border-sky-200 bg-white/90 p-4">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</p>
+      {children}
+    </section>
+  );
+}
+
+function SpecialtyModuleModal({
+  open,
+  title,
+  description,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[32px] border border-sky-200 bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Specialty Module</p>
+            <h3 className="mt-2 text-2xl font-semibold text-slate-900">{title}</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{description}</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-sky-50">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="mt-6">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export function ConsultationDrawer({
   patient,
   currentUser = null,
@@ -327,14 +389,15 @@ export function ConsultationDrawer({
   onGeneratePdf,
   onSend,
 }: ConsultationDrawerProps) {
-  const isOptometryClinic = specialtyHasModule(clinicSpecialty, "contact_lens");
+  const isOptometryClinic = specialtyHasModule(clinicSpecialty, "eye_exam");
   const isPediatricsClinic = specialtyHasModule(clinicSpecialty, "pediatric_growth_measurement");
   const [form, setForm] = useState(createEmptyForm);
   const [openSections, setOpenSections] = useState(createClosedConsultationSections);
+  const [activeInlineModule, setActiveInlineModule] = useState<InlineModuleKey | null>(null);
+  const [activePediatricModule, setActivePediatricModule] = useState<PediatricModuleKey | null>(null);
   const [medicineItems, setMedicineItems] = useState<CatalogItem[]>([]);
   const [medicineSearch, setMedicineSearch] = useState("");
   const [selectedMedicineIds, setSelectedMedicineIds] = useState<string[]>([]);
-  const [pediatricSectionsOpen, setPediatricSectionsOpen] = useState<PediatricSectionsOpen>(() => createClosedPediatricSections());
   const [statusMessage, setStatusMessage] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -391,6 +454,11 @@ export function ConsultationDrawer({
     setIsGeneratingHandoutPdf(false);
     setIsCompleting(false);
     setIsSending(false);
+    setIsEyeExamOpen(false);
+    setIsContactLensOpen(false);
+    setIsBinocularVisionOpen(false);
+    setIsLowVisionOpen(false);
+    setIsMyopiaManagementOpen(false);
     setMedicineSearch(cachedWorkspace?.medicineSearch ?? "");
     setForm(
       cachedForm
@@ -452,10 +520,11 @@ export function ConsultationDrawer({
         ...(cachedWorkspace?.openSections ?? {}),
       },
     );
+    setActiveInlineModule(null);
+    setActivePediatricModule(null);
     setSelectedMedicineIds(
       cachedWorkspace?.selectedMedicineIds ?? cachedWorkspace?.form.prescriptions.map((entry) => entry.itemId) ?? [],
     );
-    setPediatricSectionsOpen(cachedWorkspace?.pediatricSectionsOpen ?? createClosedPediatricSections());
     setIsFollowUpOpen(cachedWorkspace?.isFollowUpOpen ?? false);
     setHasGeneratedNote(cachedWorkspace?.hasGeneratedNote ?? false);
     setCurrentNoteId(cachedWorkspace?.currentNoteId ?? "");
@@ -507,7 +576,6 @@ export function ConsultationDrawer({
     writeConsultationWorkspace(workspaceScope, {
       form,
       openSections,
-      pediatricSectionsOpen,
       selectedMedicineIds,
       medicineSearch,
       currentNoteId,
@@ -526,7 +594,6 @@ export function ConsultationDrawer({
     medicineSearch,
     noteStatus,
     openSections,
-    pediatricSectionsOpen,
     patient,
     recipientEmail,
     selectedMedicineIds,
@@ -671,9 +738,11 @@ export function ConsultationDrawer({
         test_scores: form.testScores
           .filter((entry) => entry.label.trim() && entry.value.trim())
           .map((entry) => ({ label: entry.label.trim(), value: entry.value.trim() })),
-        eye_exam: form.eyeExam.filter((entry) =>
-          entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim(),
-        ),
+        eye_exam: isOptometryClinic
+          ? form.eyeExam.filter((entry) =>
+              entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim(),
+            )
+          : [],
         contact_lens: isOptometryClinic && hasContactLensData(form.contactLens)
           ? {
               ...form.contactLens,
@@ -812,13 +881,6 @@ export function ConsultationDrawer({
     } finally {
       setIsCompleting(false);
     }
-  }
-
-  function togglePediatricSection(section: keyof PediatricSectionsOpen) {
-    setPediatricSectionsOpen((current) => ({
-      ...current,
-      [section]: !current[section],
-    }));
   }
 
   function toggleConsultationSection(section: keyof ReturnType<typeof createClosedConsultationSections>) {
@@ -1225,21 +1287,6 @@ export function ConsultationDrawer({
     image.src = previous;
   }
 
-  const hasVitals =
-    Boolean(form.bloodPressureSystolic.trim()) ||
-    Boolean(form.bloodPressureDiastolic.trim()) ||
-    Boolean(form.pulse.trim()) ||
-    Boolean(form.spo2.trim()) ||
-    Boolean(form.bloodSugar.trim());
-  const filledEyeExam = form.eyeExam.filter(
-    (entry) => entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim(),
-  );
-  const hasEyeExam = filledEyeExam.length > 0;
-  const hasContactLens = hasContactLensData(form.contactLens);
-  const hasBinocularVision = hasBinocularVisionData(form.binocularVision);
-  const hasLowVision = hasLowVisionData(form.lowVision);
-  const hasMyopiaManagement = hasMyopiaManagementData(form.myopiaManagement);
-
   const lifecycleLabel =
     noteStatus === "sent"
       ? "Sent and locked"
@@ -1479,154 +1526,6 @@ export function ConsultationDrawer({
               </ConsultationExpandableCard>
             </div>
 
-            {isPediatricsClinic ? (
-              <div className="grid gap-4 xl:grid-cols-2">
-                <ConsultationExpandableCard
-                  title="Growth Tracking"
-                  description="Pediatric height, weight, BMI, and head circumference."
-                  open={pediatricSectionsOpen.growth}
-                  onToggle={() => togglePediatricSection("growth")}
-                  badge={
-                    form.growthMeasurement.savedRecord ? (
-                      <span className="rounded-full border border-amber-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-amber-700">
-                        Saved
-                      </span>
-                    ) : null
-                  }
-                >
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="block">
-                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Measured At</span>
-                      <input type="datetime-local" value={form.growthMeasurement.measured_at} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, measured_at: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
-                    </label>
-                    <label className="block">
-                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Height (cm)</span>
-                      <input value={form.growthMeasurement.height_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, height_cm: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
-                    </label>
-                    <label className="block">
-                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Weight (kg)</span>
-                      <input value={form.growthMeasurement.weight_kg} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, weight_kg: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
-                    </label>
-                    <label className="block">
-                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Head Circumference (cm)</span>
-                      <input value={form.growthMeasurement.head_circumference_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, head_circumference_cm: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
-                    </label>
-                  </div>
-                  <label className="mt-3 block">
-                    <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Visit Notes</span>
-                    <textarea rows={3} value={form.growthMeasurement.visit_notes} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, visit_notes: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
-                  </label>
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <p className="text-xs text-slate-500">
-                      {form.growthMeasurement.savedRecord ? `Latest BMI ${form.growthMeasurement.savedRecord.bmi.toFixed(2)}` : "Save to add the growth record to the patient timeline."}
-                    </p>
-                    <button type="button" onClick={() => void saveGrowthMeasurement()} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
-                      Save Growth
-                    </button>
-                  </div>
-                </ConsultationExpandableCard>
-
-                <ConsultationExpandableCard
-                  title="Well-Child Visit"
-                  description="Nutrition, sleep, elimination, behavior, concerns, and visit summary."
-                  open={pediatricSectionsOpen.wellChild}
-                  onToggle={() => togglePediatricSection("wellChild")}
-                >
-                  <div className="grid gap-3">
-                    <select value={form.wellChildVisit.visit_band} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, visit_band: event.target.value } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
-                      <option value="infant">Infant</option>
-                      <option value="toddler">Toddler</option>
-                      <option value="preschool">Preschool</option>
-                      <option value="school_age">School-age</option>
-                      <option value="adolescent">Adolescent</option>
-                    </select>
-                    {[
-                      ["nutrition_summary", "Nutrition / Feeding"],
-                      ["sleep_summary", "Sleep"],
-                      ["elimination_summary", "Elimination"],
-                      ["school_behavior_summary", "School / Behavior"],
-                      ["parent_concerns", "Parent Concerns"],
-                      ["assessment_summary", "Review Summary"],
-                    ].map(([field, label]) => (
-                      <label key={field} className="block">
-                        <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">{label}</span>
-                        <textarea rows={2} value={form.wellChildVisit[field as keyof WellChildVisitPayload] as string} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, [field]: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
-                      </label>
-                    ))}
-                  </div>
-                </ConsultationExpandableCard>
-
-                <ConsultationExpandableCard
-                  title="Parent Handout"
-                  description="Generate parent-facing instructions and export them as a PDF."
-                  open={pediatricSectionsOpen.parentHandout}
-                  onToggle={() => togglePediatricSection("parentHandout")}
-                  badge={
-                    form.parentHandoutRequest.generated_content.trim() ? (
-                      <span className="rounded-full border border-amber-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-amber-700">
-                        Ready
-                      </span>
-                    ) : null
-                  }
-                >
-                  <div className="grid gap-3">
-                    <select value={form.parentHandoutRequest.template_key} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, template_key: event.target.value, generated_title: "", generated_content: "" } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
-                      <option value="fever_home_care">Fever home care</option>
-                      <option value="nutrition_guidance">Nutrition guidance</option>
-                      <option value="well_visit_summary">Well-visit summary</option>
-                      <option value="hydration_uri_home_care">Hydration / URI home care</option>
-                    </select>
-                    <textarea rows={3} value={form.parentHandoutRequest.instructions} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, instructions: event.target.value, generated_title: "", generated_content: "" } }))} placeholder="Optional context for the handout" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
-                    <div className="flex flex-wrap gap-3">
-                      <button type="button" onClick={() => void handleGenerateParentHandout()} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
-                        {isGeneratingHandout ? "Generating..." : "Generate Handout"}
-                      </button>
-                      <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("preview")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50 disabled:opacity-60">
-                        {isGeneratingHandoutPdf ? "Preparing..." : "Preview PDF"}
-                      </button>
-                      <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("download")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50 disabled:opacity-60">
-                        Download PDF
-                      </button>
-                    </div>
-                    {form.parentHandoutRequest.generated_content.trim() ? (
-                      <div className="rounded-[22px] border border-amber-100 bg-amber-50/30 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                          {form.parentHandoutRequest.generated_title || "Generated handout"}
-                        </p>
-                        <pre className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{form.parentHandoutRequest.generated_content}</pre>
-                      </div>
-                    ) : null}
-                  </div>
-                </ConsultationExpandableCard>
-
-                <ConsultationExpandableCard
-                  title="Pediatric Follow-up Preset"
-                  description="Apply common pediatric follow-up timing into the main follow-up section."
-                  open={pediatricSectionsOpen.pediatricFollowUp}
-                  onToggle={() => togglePediatricSection("pediatricFollowUp")}
-                >
-                  <div className="grid gap-3">
-                    <select value={form.pediatricFollowUpPlan.preset_key} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, preset_key: event.target.value } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
-                      <option value="routine_review">Routine review</option>
-                      <option value="growth_recheck">Growth recheck</option>
-                      <option value="symptom_follow_up">Symptom follow-up</option>
-                      <option value="counseling_review">Counseling review</option>
-                    </select>
-                    <input value={form.pediatricFollowUpPlan.suggested_interval} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, suggested_interval: event.target.value } }))} placeholder="Suggested interval, e.g. 3 months" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
-                    <input value={form.pediatricFollowUpPlan.notes} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, notes: event.target.value } }))} placeholder="Scheduling notes" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs text-slate-500">
-                        Apply this preset to the real follow-up section below. Marking the consultation done will create the follow-up record.
-                      </p>
-                      <button type="button" onClick={applyPediatricFollowUpPreset} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
-                        Apply to Follow-up
-                      </button>
-                    </div>
-                  </div>
-                </ConsultationExpandableCard>
-              </div>
-            ) : null}
-
             <div className="rounded-[28px] border border-sky-200 bg-sky-50/50 p-4">
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1664,19 +1563,79 @@ export function ConsultationDrawer({
             </div>
           </div>
           <div className="space-y-4">
-            <ConsultationExpandableCard
-              title="Vitals For Note"
-              description="Filled vitals are inserted as a structured table in the generated note."
-              open={openSections.vitals}
-              onToggle={() => toggleConsultationSection("vitals")}
-              badge={
-                hasVitals ? (
-                    <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">
-                      Included
-                    </span>
-                ) : null
-              }
-            >
+            <section className="overflow-hidden rounded-[28px] border border-sky-200 bg-white/90">
+              <div className="border-b border-sky-100 px-4 py-4">
+                <p className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-600">Modules</p>
+              </div>
+              <ConsultationModuleRailItem
+                title="Vitals"
+                description="Structured table for the note"
+                active={activeInlineModule === "vitals"}
+                onSelect={() => setActiveInlineModule((current) => (current === "vitals" ? null : "vitals"))}
+              />
+              <ConsultationModuleRailItem
+                title="Medicines"
+                description="Inventory and treatment schedule"
+                active={activeInlineModule === "medicines"}
+                onSelect={() => setActiveInlineModule((current) => (current === "medicines" ? null : "medicines"))}
+              />
+              {isOptometryClinic ? (
+                <>
+                  <ConsultationModuleRailItem
+                    title="Eye exam"
+                    description="Refraction and vision entries"
+                    onSelect={openEyeExamModule}
+                  />
+                  <ConsultationModuleRailItem
+                    title="Contact lens"
+                    description="Trial fit and order details"
+                    onSelect={() => openOptometryModule("contactLens")}
+                  />
+                  <ConsultationModuleRailItem
+                    title="Binocular vision"
+                    description="Symptoms, alignment, vergence"
+                    onSelect={() => openOptometryModule("binocularVision")}
+                  />
+                  <ConsultationModuleRailItem
+                    title="Low vision"
+                    description="Functional vision and aids"
+                    onSelect={() => openOptometryModule("lowVision")}
+                  />
+                  <ConsultationModuleRailItem
+                    title="Myopia management"
+                    description="Axial length and treatment"
+                    onSelect={() => openOptometryModule("myopiaManagement")}
+                  />
+                </>
+              ) : null}
+              {isPediatricsClinic ? (
+                <>
+                  <ConsultationModuleRailItem
+                    title="Growth tracking"
+                    description="Height, weight, BMI, and head circumference"
+                    onSelect={() => setActivePediatricModule("growth")}
+                  />
+                  <ConsultationModuleRailItem
+                    title="Well-child visit"
+                    description="Nutrition, sleep, behavior, and concerns"
+                    onSelect={() => setActivePediatricModule("wellChild")}
+                  />
+                  <ConsultationModuleRailItem
+                    title="Parent handout"
+                    description="Parent-facing instructions and PDF"
+                    onSelect={() => setActivePediatricModule("parentHandout")}
+                  />
+                  <ConsultationModuleRailItem
+                    title="Pediatric follow-up"
+                    description="Apply common follow-up timing"
+                    onSelect={() => setActivePediatricModule("pediatricFollowUp")}
+                  />
+                </>
+              ) : null}
+            </section>
+
+            {activeInlineModule === "vitals" ? (
+              <ConsultationModuleDetail title="Vitals">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block">
                     <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">BP Systolic</span>
@@ -1729,197 +1688,145 @@ export function ConsultationDrawer({
                     />
                   </label>
                 </div>
-            </ConsultationExpandableCard>
+              </ConsultationModuleDetail>
+            ) : null}
 
-            <ConsultationExpandableCard
-              title="Medicines & Suggestions"
-              description="Pick from inventory, then fill quantity and schedule for the treatment table."
-              open={openSections.medicines}
-              onToggle={() => toggleConsultationSection("medicines")}
-              tone="emerald"
-              badge={
-                <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-medium text-emerald-700">
-                  {form.prescriptions.length} selected
-                </span>
-              }
-            >
-              <input
-                value={medicineSearch}
-                onChange={(event) => setMedicineSearch(event.target.value)}
-                placeholder="Search medicines by name or unit"
-                className="w-full rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
-              />
-              {form.prescriptions.length ? (
-                <div className="mt-3 space-y-3">
-                  {form.prescriptions.map((entry) => (
-                    <div key={entry.itemId} className="rounded-[22px] border border-emerald-100 bg-white p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">{entry.name}</p>
-                          <p className="mt-1 text-xs text-slate-500">{entry.unit || "unit not set"}</p>
+            {activeInlineModule === "medicines" ? (
+              <ConsultationModuleDetail title="Medicines">
+                <input
+                  value={medicineSearch}
+                  onChange={(event) => setMedicineSearch(event.target.value)}
+                  placeholder="Search medicines by name or unit"
+                  className="w-full rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
+                />
+                {form.prescriptions.length ? (
+                  <div className="mt-3 space-y-3">
+                    {form.prescriptions.map((entry) => (
+                      <div key={entry.itemId} className="rounded-[22px] border border-emerald-100 bg-white p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">{entry.name}</p>
+                            <p className="mt-1 text-xs text-slate-500">{entry.unit || "unit not set"}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removePrescription(entry.itemId)}
+                            className="rounded-full border border-emerald-200 p-2 text-slate-600 transition hover:bg-emerald-50"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removePrescription(entry.itemId)}
-                          className="rounded-full border border-emerald-200 p-2 text-slate-600 transition hover:bg-emerald-50"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label className="block">
-                          <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Quantity</span>
-                          <input
-                            value={entry.quantity}
-                            inputMode="decimal"
-                            onChange={(event) => updatePrescription(entry.itemId, { quantity: event.target.value })}
-                            placeholder="10"
-                            className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Duration</span>
-                          <input
-                            value={entry.duration}
-                            onChange={(event) => updatePrescription(entry.itemId, { duration: event.target.value })}
-                            placeholder="5 days"
-                            className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
-                          />
-                        </label>
-                      </div>
-                      <div className="mt-3">
-                        <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Notes</p>
-                        <div className="flex flex-wrap gap-2">
-                          {PRESCRIPTION_NOTE_OPTIONS.map((option) => {
-                            const active = normalizePrescriptionNotes(entry.notes).includes(option);
-                            return (
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <label className="block">
+                            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Quantity</span>
+                            <input
+                              value={entry.quantity}
+                              inputMode="decimal"
+                              onChange={(event) => updatePrescription(entry.itemId, { quantity: event.target.value })}
+                              placeholder="10"
+                              className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Duration</span>
+                            <input
+                              value={entry.duration}
+                              onChange={(event) => updatePrescription(entry.itemId, { duration: event.target.value })}
+                              placeholder="5 days"
+                              className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                            />
+                          </label>
+                        </div>
+                        <div className="mt-3">
+                          <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Notes</p>
+                          <div className="flex flex-wrap gap-2">
+                            {PRESCRIPTION_NOTE_OPTIONS.map((option) => {
+                              const active = normalizePrescriptionNotes(entry.notes).includes(option);
+                              return (
+                                <button
+                                  key={option}
+                                  type="button"
+                                  onClick={() =>
+                                    updatePrescription(entry.itemId, {
+                                      notes: togglePrescriptionNoteValue(entry.notes, option),
+                                    })
+                                  }
+                                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                    active
+                                      ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                                      : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
+                                  }`}
+                                >
+                                  {option}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Schedule</p>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              { key: "morning" as const, label: "Morning" },
+                              { key: "afternoon" as const, label: "Afternoon" },
+                              { key: "night" as const, label: "Night" },
+                            ].map((slot) => (
                               <button
-                                key={option}
+                                key={slot.key}
                                 type="button"
-                                onClick={() =>
-                                  updatePrescription(entry.itemId, {
-                                    notes: togglePrescriptionNoteValue(entry.notes, option),
-                                  })
-                                }
+                                onClick={() => updatePrescription(entry.itemId, { [slot.key]: !entry[slot.key] })}
                                 className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                                  active
+                                  entry[slot.key]
                                     ? "border-emerald-300 bg-emerald-100 text-emerald-800"
                                     : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
                                 }`}
                               >
-                                {option}
+                                {slot.label}
                               </button>
-                            );
-                          })}
+                            ))}
+                          </div>
                         </div>
                       </div>
-                      <div className="mt-3">
-                        <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Schedule</p>
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            { key: "morning" as const, label: "Morning" },
-                            { key: "afternoon" as const, label: "Afternoon" },
-                            { key: "night" as const, label: "Night" },
-                          ].map((slot) => (
-                            <button
-                              key={slot.key}
-                              type="button"
-                              onClick={() => updatePrescription(entry.itemId, { [slot.key]: !entry[slot.key] })}
-                              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                                entry[slot.key]
-                                  ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                                  : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
-                              }`}
-                            >
-                              {slot.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                ) : null}
+                <div className="mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1">
+                  {filteredMedicineItems.length ? (
+                    filteredMedicineItems.slice(0, 12).map((item) => {
+                      const active = selectedMedicineIds.includes(item.id);
+                      const outOfStock = item.track_inventory && item.stock_quantity <= 0;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => toggleMedicine(item.id)}
+                          disabled={outOfStock}
+                          className={`flex w-full items-center justify-between gap-3 rounded-[22px] border px-4 py-3 text-left transition ${
+                            active
+                              ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                              : "border-emerald-100 bg-white text-slate-700 hover:bg-emerald-50"
+                          } disabled:cursor-not-allowed disabled:opacity-50`}
+                        >
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">{item.name}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {item.default_price.toFixed(2)}{item.unit ? ` · ${item.unit}` : ""}
+                              {item.track_inventory ? ` · Stock ${item.stock_quantity}` : ""}
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-emerald-200 px-3 py-1 text-xs font-medium">
+                            {active ? "Selected" : outOfStock ? "Out of stock" : "Add"}
+                          </span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="rounded-[22px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">
+                      No medicines match this search.
+                    </p>
+                  )}
                 </div>
-              ) : null}
-              <div className="mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1">
-                {filteredMedicineItems.length ? (
-                  filteredMedicineItems.slice(0, 12).map((item) => {
-                    const active = selectedMedicineIds.includes(item.id);
-                    const outOfStock = item.track_inventory && item.stock_quantity <= 0;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => toggleMedicine(item.id)}
-                        disabled={outOfStock}
-                        className={`flex w-full items-center justify-between gap-3 rounded-[22px] border px-4 py-3 text-left transition ${
-                          active
-                            ? "border-emerald-300 bg-emerald-100 text-emerald-900"
-                            : "border-emerald-100 bg-white text-slate-700 hover:bg-emerald-50"
-                        } disabled:cursor-not-allowed disabled:opacity-50`}
-                      >
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">{item.name}</p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {item.default_price.toFixed(2)}{item.unit ? ` · ${item.unit}` : ""}
-                            {item.track_inventory ? ` · Stock ${item.stock_quantity}` : ""}
-                          </p>
-                        </div>
-                        <span className="rounded-full border border-emerald-200 px-3 py-1 text-xs font-medium">
-                          {active ? "Selected" : outOfStock ? "Out of stock" : "Add"}
-                        </span>
-                      </button>
-                    );
-                  })
-                ) : (
-                  <p className="rounded-[22px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">
-                    No medicines match this search.
-                  </p>
-                )}
-              </div>
-            </ConsultationExpandableCard>
-
-            <ConsultationExpandableCard
-              title="Eye Exam"
-              description="Capture refraction and vision entries for the right and left eye."
-              open={false}
-              onToggle={openEyeExamModule}
-              badge={hasEyeExam ? <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">Added</span> : null}
-            />
-
-            {isOptometryClinic ? (
-              <>
-                <ConsultationExpandableCard
-                  title="Contact Lens"
-                  description="Assessment, trial fit, and vendor-facing order details."
-                  open={false}
-                  onToggle={() => openOptometryModule("contactLens")}
-                  badge={hasContactLens ? <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">Added</span> : null}
-                />
-
-                <ConsultationExpandableCard
-                  title="Binocular Vision"
-                  description="Capture symptoms, alignment, convergence, stereopsis, accommodation, and management plan."
-                  open={false}
-                  onToggle={() => openOptometryModule("binocularVision")}
-                  badge={hasBinocularVision ? <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">Added</span> : null}
-                />
-
-                <ConsultationExpandableCard
-                  title="Low Vision"
-                  description="Capture needs, core measures, functional vision, aids trial, and support planning."
-                  open={false}
-                  onToggle={() => openOptometryModule("lowVision")}
-                  badge={hasLowVision ? <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">Added</span> : null}
-                />
-
-                <ConsultationExpandableCard
-                  title="Myopia Management"
-                  description="Record axial length, treatment, and refraction for longitudinal myopia tracking."
-                  open={false}
-                  onToggle={() => openOptometryModule("myopiaManagement")}
-                  badge={hasMyopiaManagement ? <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">Added</span> : null}
-                />
-              </>
+              </ConsultationModuleDetail>
             ) : null}
 
             <div className="border-t border-sky-200 pt-4">
@@ -2024,8 +1931,138 @@ export function ConsultationDrawer({
           </div>
         </form>
       </div>
+      <SpecialtyModuleModal
+        open={isPediatricsClinic && activePediatricModule === "growth"}
+        title="Growth Tracking"
+        description="Pediatric height, weight, BMI, and head circumference."
+        onClose={() => setActivePediatricModule(null)}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Measured At</span>
+            <input type="datetime-local" value={form.growthMeasurement.measured_at} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, measured_at: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Height (cm)</span>
+            <input value={form.growthMeasurement.height_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, height_cm: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Weight (kg)</span>
+            <input value={form.growthMeasurement.weight_kg} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, weight_kg: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Head Circumference (cm)</span>
+            <input value={form.growthMeasurement.head_circumference_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, head_circumference_cm: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          </label>
+        </div>
+        <label className="mt-3 block">
+          <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Visit Notes</span>
+          <textarea rows={3} value={form.growthMeasurement.visit_notes} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, visit_notes: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+        </label>
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <p className="text-xs text-slate-500">
+            {form.growthMeasurement.savedRecord ? `Latest BMI ${form.growthMeasurement.savedRecord.bmi.toFixed(2)}` : "Save to add the growth record to the patient timeline."}
+          </p>
+          <button type="button" onClick={() => void saveGrowthMeasurement()} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
+            Save Growth
+          </button>
+        </div>
+      </SpecialtyModuleModal>
+
+      <SpecialtyModuleModal
+        open={isPediatricsClinic && activePediatricModule === "wellChild"}
+        title="Well-Child Visit"
+        description="Nutrition, sleep, elimination, behavior, concerns, and visit summary."
+        onClose={() => setActivePediatricModule(null)}
+      >
+        <div className="grid gap-3">
+          <select value={form.wellChildVisit.visit_band} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, visit_band: event.target.value } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
+            <option value="infant">Infant</option>
+            <option value="toddler">Toddler</option>
+            <option value="preschool">Preschool</option>
+            <option value="school_age">School-age</option>
+            <option value="adolescent">Adolescent</option>
+          </select>
+          {[
+            ["nutrition_summary", "Nutrition / Feeding"],
+            ["sleep_summary", "Sleep"],
+            ["elimination_summary", "Elimination"],
+            ["school_behavior_summary", "School / Behavior"],
+            ["parent_concerns", "Parent Concerns"],
+            ["assessment_summary", "Review Summary"],
+          ].map(([field, label]) => (
+            <label key={field} className="block">
+              <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">{label}</span>
+              <textarea rows={2} value={form.wellChildVisit[field as keyof WellChildVisitPayload] as string} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, [field]: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+            </label>
+          ))}
+        </div>
+      </SpecialtyModuleModal>
+
+      <SpecialtyModuleModal
+        open={isPediatricsClinic && activePediatricModule === "parentHandout"}
+        title="Parent Handout"
+        description="Generate parent-facing instructions and export them as a PDF."
+        onClose={() => setActivePediatricModule(null)}
+      >
+        <div className="grid gap-3">
+          <select value={form.parentHandoutRequest.template_key} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, template_key: event.target.value, generated_title: "", generated_content: "" } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
+            <option value="fever_home_care">Fever home care</option>
+            <option value="nutrition_guidance">Nutrition guidance</option>
+            <option value="well_visit_summary">Well-visit summary</option>
+            <option value="hydration_uri_home_care">Hydration / URI home care</option>
+          </select>
+          <textarea rows={3} value={form.parentHandoutRequest.instructions} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, instructions: event.target.value, generated_title: "", generated_content: "" } }))} placeholder="Optional context for the handout" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          <div className="flex flex-wrap gap-3">
+            <button type="button" onClick={() => void handleGenerateParentHandout()} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
+              {isGeneratingHandout ? "Generating..." : "Generate Handout"}
+            </button>
+            <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("preview")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50 disabled:opacity-60">
+              {isGeneratingHandoutPdf ? "Preparing..." : "Preview PDF"}
+            </button>
+            <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("download")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50 disabled:opacity-60">
+              Download PDF
+            </button>
+          </div>
+          {form.parentHandoutRequest.generated_content.trim() ? (
+            <div className="rounded-[22px] border border-amber-100 bg-amber-50/30 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                {form.parentHandoutRequest.generated_title || "Generated handout"}
+              </p>
+              <pre className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{form.parentHandoutRequest.generated_content}</pre>
+            </div>
+          ) : null}
+        </div>
+      </SpecialtyModuleModal>
+
+      <SpecialtyModuleModal
+        open={isPediatricsClinic && activePediatricModule === "pediatricFollowUp"}
+        title="Pediatric Follow-up"
+        description="Apply common pediatric follow-up timing into the main follow-up section."
+        onClose={() => setActivePediatricModule(null)}
+      >
+        <div className="grid gap-3">
+          <select value={form.pediatricFollowUpPlan.preset_key} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, preset_key: event.target.value } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
+            <option value="routine_review">Routine review</option>
+            <option value="growth_recheck">Growth recheck</option>
+            <option value="symptom_follow_up">Symptom follow-up</option>
+            <option value="counseling_review">Counseling review</option>
+          </select>
+          <input value={form.pediatricFollowUpPlan.suggested_interval} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, suggested_interval: event.target.value } }))} placeholder="Suggested interval, e.g. 3 months" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          <input value={form.pediatricFollowUpPlan.notes} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, notes: event.target.value } }))} placeholder="Scheduling notes" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">
+              Apply this preset to the real follow-up section below. Marking the consultation done will create the follow-up record.
+            </p>
+            <button type="button" onClick={applyPediatricFollowUpPreset} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
+              Apply to Follow-up
+            </button>
+          </div>
+        </div>
+      </SpecialtyModuleModal>
+
       <ContactLensModal
-        open={isContactLensOpen}
+        open={isOptometryClinic && isContactLensOpen}
         value={form.contactLens}
         onClose={() => setIsContactLensOpen(false)}
         onSave={() => {
@@ -2035,7 +2072,7 @@ export function ConsultationDrawer({
         onChange={updateContactLens}
         onEyeChange={updateContactLensEye}
       />
-      {isEyeExamOpen ? (
+      {isOptometryClinic && isEyeExamOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
           <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[32px] border border-sky-200 bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
             <div className="flex items-start justify-between gap-4">
@@ -2075,7 +2112,7 @@ export function ConsultationDrawer({
         </div>
       ) : null}
       <BinocularVisionModal
-        open={isBinocularVisionOpen}
+        open={isOptometryClinic && isBinocularVisionOpen}
         value={form.binocularVision}
         onClose={() => setIsBinocularVisionOpen(false)}
         onSave={(next) => {
@@ -2084,7 +2121,7 @@ export function ConsultationDrawer({
         }}
       />
       <LowVisionModal
-        open={isLowVisionOpen}
+        open={isOptometryClinic && isLowVisionOpen}
         value={form.lowVision}
         onClose={() => setIsLowVisionOpen(false)}
         onSave={(next) => {
@@ -2093,7 +2130,7 @@ export function ConsultationDrawer({
         }}
       />
       <MyopiaManagementModal
-        open={isMyopiaManagementOpen}
+        open={isOptometryClinic && isMyopiaManagementOpen}
         value={form.myopiaManagement}
         patientAge={currentPatient.age}
         onClose={() => setIsMyopiaManagementOpen(false)}
