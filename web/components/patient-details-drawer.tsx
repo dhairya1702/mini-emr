@@ -12,6 +12,7 @@ import { MyopiaManagementModal } from "@/components/optometry/myopia/myopia-mana
 import { api } from "@/lib/api";
 import { formatMillimeterDelta } from "@/lib/optometry/myopia/shared";
 import { specialtyHasModule } from "@/lib/specialty";
+import { createTrainingId } from "@/lib/training-mode";
 import { MyopiaHistory, MyopiaMeasurementPayload, Patient, PatientTimelineEvent, PediatricGrowthSummary } from "@/lib/types";
 
 interface PatientDetailsDrawerProps {
@@ -21,6 +22,7 @@ interface PatientDetailsDrawerProps {
   onLoadTimeline: (patientId: string) => Promise<PatientTimelineEvent[]>;
   onLoadMyopiaHistory?: (patientId: string) => Promise<MyopiaHistory>;
   onLoadGrowthHistory?: (patientId: string) => Promise<PediatricGrowthSummary>;
+  isTrainingMode?: boolean;
   readOnly?: boolean;
   onSave: (payloadPatientId: string, payload: {
     name: string;
@@ -50,6 +52,7 @@ export function PatientDetailsDrawer({
   onLoadTimeline,
   onLoadMyopiaHistory,
   onLoadGrowthHistory,
+  isTrainingMode = false,
   readOnly = false,
   onSave,
 }: PatientDetailsDrawerProps) {
@@ -274,6 +277,37 @@ export function PatientDetailsDrawer({
     setIsMyopiaLoading(true);
     setMyopiaError("");
     try {
+      if (isTrainingMode) {
+        const saved = {
+          ...payload,
+          id: createTrainingId("myopia"),
+          org_id: "training",
+          patient_id: patientId,
+          created_at: new Date().toISOString(),
+        };
+        setMyopiaHistory((current) => ({
+          patient_id: patientId,
+          records: [...(current?.records ?? []), saved],
+          baseline_delta: current?.baseline_delta ?? null,
+          last_delta: current?.last_delta ?? null,
+          annualized_growth: current?.annualized_growth ?? null,
+          overlay_version: current?.overlay_version ?? "training",
+        }));
+        setTimeline((current) => [
+          {
+            id: `myopia-${saved.id}`,
+            type: "myopia_measurement",
+            title: "Training myopia measurement",
+            timestamp: saved.measured_at,
+            description: "This measurement was saved locally in Training Mode.",
+            entity_type: "training_myopia_measurement",
+            entity_id: saved.id,
+          },
+          ...current,
+        ]);
+        setSelectedEventId(`myopia-${saved.id}`);
+        return;
+      }
       const saved = await api.createPatientMyopiaRecord(patientId, payload);
       const { events, nextMyopiaHistory } = await loadPatientHistory(patientId);
       setTimeline(events);

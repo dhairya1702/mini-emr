@@ -1,50 +1,50 @@
 "use client";
 
+import { Plus } from "lucide-react";
+
 import { PatientCard } from "@/components/patient-card";
 import { Patient, PatientStatus } from "@/lib/types";
 
 interface PatientColumnProps {
   title: string;
-  status: PatientStatus;
   patients: Patient[];
   onOpen: (patient: Patient) => void;
   onAdvance: (patient: Patient, next: PatientStatus) => void;
   onRemoveFromQueue: (patient: Patient) => void;
+  onAddPatient?: () => void;
   canAdvance?: (patient: Patient) => boolean;
 }
 
 export function PatientColumn({
   title,
-  status,
   patients,
   onOpen,
   onAdvance,
   onRemoveFromQueue,
+  onAddPatient,
   canAdvance,
 }: PatientColumnProps) {
-  const statusLabel = status === "done" ? "billing" : status;
-  const statusTone =
-    status === "waiting"
-      ? "border-amber-200 bg-amber-50 text-amber-700"
-      : status === "consultation"
-        ? "border-sky-200 bg-sky-50 text-sky-700"
-        : "border-emerald-200 bg-emerald-50 text-emerald-700";
-
   return (
-    <section className="rounded-[28px] border border-sky-200 bg-white/95 p-4 shadow-[0_18px_50px_rgba(125,211,252,0.14)] xl:min-h-[680px]">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <section className="flex min-h-0 flex-col rounded-[28px] border border-sky-200 bg-white/95 p-4 shadow-[0_18px_50px_rgba(125,211,252,0.14)]">
+      <div className="mb-4 flex shrink-0 items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
           <p className="text-sm text-slate-500">{patients.length} patients</p>
         </div>
-        <span
-          className={`rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${statusTone}`}
-        >
-          {statusLabel}
-        </span>
+        {onAddPatient ? (
+          <button
+            type="button"
+            onClick={onAddPatient}
+            aria-label="Add patient"
+            title="Add patient"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 transition hover:bg-sky-200"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        ) : null}
       </div>
 
-      <div className="space-y-3">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {patients.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-sky-200 bg-sky-50/50 px-4 py-10 text-center">
             <p className="text-sm font-medium text-slate-600">No patients in this stage.</p>

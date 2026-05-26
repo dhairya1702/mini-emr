@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Menu, Plus } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import Link from "next/link";
 
 import { AuthUser } from "@/lib/types";
@@ -10,7 +10,6 @@ interface AppHeaderProps {
   currentUser: AuthUser | null;
   active: "queue" | "patients" | "history" | "earnings" | "billing" | "users" | "audit" | "inventory" | "account" | "case-study";
   onLogout: () => void;
-  onAddPatient?: () => void;
   onOpenSettings?: () => void;
 }
 
@@ -19,7 +18,6 @@ export function AppHeader({
   currentUser,
   active,
   onLogout,
-  onAddPatient,
   onOpenSettings,
 }: AppHeaderProps) {
   const navItems = [
@@ -43,10 +41,11 @@ export function AppHeader({
             <button
               type="button"
               onClick={onOpenSettings}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-200 bg-white px-5 py-3 text-sm font-medium text-slate-800 transition hover:border-sky-300 hover:bg-sky-50"
+              aria-label="Open menu"
+              title="Menu"
+              className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-sky-200 bg-white text-slate-800 transition hover:border-sky-300 hover:bg-sky-50"
             >
               <Menu className="h-4 w-4" />
-              Menu
             </button>
           ) : null}
         </div>
@@ -58,7 +57,6 @@ export function AppHeader({
           >
             {clinicName}
           </Link>
-          <p className="mt-1 text-sm text-slate-500">Clinic operations dashboard</p>
         </div>
 
         <div className="flex flex-wrap items-center justify-start gap-3 lg:justify-end">
@@ -67,23 +65,14 @@ export function AppHeader({
               {currentUser.role === "admin" ? "Admin" : "Staff"}
             </div>
           ) : null}
-          {onAddPatient ? (
-            <button
-              type="button"
-              onClick={onAddPatient}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-sky-500 px-5 py-3 text-sm font-medium text-white transition hover:bg-sky-600"
-            >
-              <Plus className="h-4 w-4" />
-              Add Patient
-            </button>
-          ) : null}
           <button
             type="button"
             onClick={onLogout}
-            className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-sky-50"
+            aria-label="Logout"
+            title="Logout"
+            className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-sky-200 bg-white text-slate-700 transition hover:bg-sky-50"
           >
             <LogOut className="h-4 w-4" />
-            Logout
           </button>
         </div>
       </div>

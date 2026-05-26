@@ -14,11 +14,19 @@ import { SetupStepModal } from "@/components/setup/setup-step-modal";
 import { api } from "@/lib/api";
 import { buildClinicSetupChecklist, ClinicSetupStep, ClinicSetupStepKey, hasClinicDocumentTemplate, hasUserSignature } from "@/lib/setup-checklist";
 import { findNextSetupStep as findNextSetupStepFromChecklist, setupQueryForStep, setupStepFromQuery } from "@/lib/setup-flow";
+import {
+  createTrainingNote,
+  createTrainingPatient,
+  createTrainingTimeline,
+  readTrainingPatients,
+  trainingQueueOrderStorageKey,
+  writeTrainingPatients,
+} from "@/lib/training-mode";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { Patient, PatientStatus, PatientTimelineEvent } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
-const queueOrderStorageKey = "clinic_queue_order_v1";
+const liveQueueOrderStorageKey = "clinic_queue_order_v1";
 const QUEUE_REFRESH_INTERVAL_MS = 5000;
 
 type QueueOrder = Record<PatientStatus, string[]>;
@@ -31,13 +39,13 @@ function createEmptyQueueOrder(): QueueOrder {
   };
 }
 
-function loadQueueOrder(): QueueOrder {
+function loadQueueOrder(storageKey: string): QueueOrder {
   if (typeof window === "undefined") {
     return createEmptyQueueOrder();
   }
 
   try {
-    const raw = window.localStorage.getItem(queueOrderStorageKey);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) {
       return createEmptyQueueOrder();
     }
@@ -216,7 +224,18 @@ export default function HomePage() {
   const [activeSetupStep, setActiveSetupStep] = useState<ClinicSetupStepKey | null>(null);
   const [highlightedSetupStep, setHighlightedSetupStep] = useState<ClinicSetupStepKey | null>(null);
   const [queueOrder, setQueueOrder] = useState<QueueOrder>(() => createEmptyQueueOrder());
-  const loadPageData = useCallback(() => api.listPatients(), []);
+  const loadedQueueOrderKeyRef = useRef("");
+  const hydratingQueueOrderRef = useRef("");
+  const previousQueueOrderSaveKeyRef = useRef("");
+  const loadPageData = useCallback((context: {
+    isTrainingMode: boolean;
+    trainingScope: string | null;
+  }) => {
+    if (context.isTrainingMode) {
+      return Promise.resolve(readTrainingPatients(context.trainingScope));
+    }
+    return api.listPatients();
+  }, []);
   const onPageData = useCallback((data: Patient[]) => {
     setPatients(data);
   }, []);
@@ -235,6 +254,11 @@ export default function HomePage() {
     isRedirectingToLogin,
     isPageDataLoaded,
     isUsersLoaded,
+    isTrainingMode,
+    trainingScope,
+    enterTrainingMode,
+    exitTrainingMode,
+    resetTrainingMode,
     handleLogout,
     handleSaveClinicSettings,
     applyClinicSettings,
@@ -257,6 +281,11 @@ export default function HomePage() {
     onPageData,
   });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
+  const queueOrderStorageKey = useMemo(() => (
+    isTrainingMode && trainingScope
+      ? trainingQueueOrderStorageKey(trainingScope)
+      : liveQueueOrderStorageKey
+  ), [isTrainingMode, trainingScope]);
   const isSetupChecklistReady = Boolean(
     currentUser &&
       clinicSettings &&
@@ -291,8 +320,11 @@ export default function HomePage() {
   }, [checklist]);
 
   useEffect(() => {
-    setQueueOrder(loadQueueOrder());
-  }, []);
+    const nextQueueOrder = loadQueueOrder(queueOrderStorageKey);
+    hydratingQueueOrderRef.current = JSON.stringify(nextQueueOrder);
+    loadedQueueOrderKeyRef.current = queueOrderStorageKey;
+    setQueueOrder(nextQueueOrder);
+  }, [queueOrderStorageKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -305,11 +337,23 @@ export default function HomePage() {
     if (typeof window === "undefined") {
       return;
     }
-    window.localStorage.setItem(queueOrderStorageKey, JSON.stringify(queueOrder));
-  }, [queueOrder]);
+    if (loadedQueueOrderKeyRef.current !== queueOrderStorageKey) {
+      return;
+    }
+    if (previousQueueOrderSaveKeyRef.current !== queueOrderStorageKey) {
+      previousQueueOrderSaveKeyRef.current = queueOrderStorageKey;
+      return;
+    }
+    const serializedQueueOrder = JSON.stringify(queueOrder);
+    if (hydratingQueueOrderRef.current === serializedQueueOrder) {
+      hydratingQueueOrderRef.current = "";
+      return;
+    }
+    window.localStorage.setItem(queueOrderStorageKey, serializedQueueOrder);
+  }, [queueOrder, queueOrderStorageKey]);
 
   useEffect(() => {
-    if (!isAuthReady || isRedirectingToLogin) {
+    if (!isAuthReady || isRedirectingToLogin || isTrainingMode) {
       return;
     }
 
@@ -351,7 +395,7 @@ export default function HomePage() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [isAuthReady, isRedirectingToLogin]);
+  }, [isAuthReady, isRedirectingToLogin, isTrainingMode]);
 
   useEffect(() => {
     if (!isAuthReady || currentUser?.role !== "admin") {
@@ -433,6 +477,23 @@ export default function HomePage() {
     }
   }
 
+  function commitTrainingPatients(updater: Patient[] | ((current: Patient[]) => Patient[])) {
+    setPatients((current) => {
+      const nextPatients = typeof updater === "function" ? updater(current) : updater;
+      writeTrainingPatients(trainingScope, nextPatients);
+      return nextPatients;
+    });
+  }
+
+  function handleResetTrainingMode() {
+    resetTrainingMode();
+    setPatients([]);
+    setQueueOrder(createEmptyQueueOrder());
+    setSelectedPatient(null);
+    setDrawerMode(null);
+    setError("");
+  }
+
   async function handleCreatePatient(payload: {
     entryType: "queue" | "appointment";
     existingPatientId?: string;
@@ -447,6 +508,33 @@ export default function HomePage() {
     temperature: number | null;
     scheduled_for?: string;
   }) {
+    if (isTrainingMode) {
+      if (payload.entryType === "appointment") {
+        setError("Training Mode supports queue practice only. Appointment scheduling is disabled.");
+        return;
+      }
+
+      const trainingPatient = createTrainingPatient({
+        id: payload.existingPatientId,
+        name: payload.name,
+        phone: payload.phone,
+        email: payload.email,
+        address: payload.address,
+        reason: payload.reason,
+        age: payload.age,
+        weight: payload.weight,
+        height: payload.height,
+        temperature: payload.temperature,
+      });
+
+      commitTrainingPatients((current) => [
+        trainingPatient,
+        ...current.filter((patient) => patient.id !== trainingPatient.id),
+      ]);
+      setError("");
+      return;
+    }
+
     if (payload.entryType === "appointment") {
       try {
         await api.createAppointment({
@@ -538,6 +626,22 @@ export default function HomePage() {
       return;
     }
     const previousStatus = patient.status;
+    if (isTrainingMode) {
+      const updatedPatient = {
+        ...patient,
+        status: nextStatus,
+        last_visit_at: new Date().toISOString(),
+      };
+      commitTrainingPatients((current) =>
+        current.map((entry) => (entry.id === patient.id ? updatedPatient : entry)),
+      );
+      if (selectedPatient?.id === patient.id) {
+        setSelectedPatient(updatedPatient);
+      }
+      setError("");
+      return;
+    }
+
     setPatients((current) =>
       current.map((entry) =>
         entry.id === patient.id ? { ...entry, status: nextStatus } : entry,
@@ -567,6 +671,17 @@ export default function HomePage() {
     const previousPatients = patients;
     const previousSelectedPatient = selectedPatient;
     const removedPatient = { ...patient, status: "done" as PatientStatus, billed: true };
+
+    if (isTrainingMode) {
+      commitTrainingPatients((current) =>
+        current.map((entry) => (entry.id === patient.id ? removedPatient : entry)),
+      );
+      if (selectedPatient?.id === patient.id) {
+        setSelectedPatient(removedPatient);
+      }
+      setError("");
+      return;
+    }
 
     setPatients((current) =>
       current.map((entry) =>
@@ -622,6 +737,17 @@ export default function HomePage() {
     }
 
     const optimistic = { ...updatedPatient, ...payload };
+    if (isTrainingMode) {
+      commitTrainingPatients((current) =>
+        current.map((patient) => (patient.id === patientId ? optimistic : patient)),
+      );
+      if (selectedPatient?.id === patientId) {
+        setSelectedPatient(optimistic);
+      }
+      setError("");
+      return;
+    }
+
     setPatients((current) =>
       current.map((patient) => (patient.id === patientId ? optimistic : patient)),
     );
@@ -657,6 +783,10 @@ export default function HomePage() {
   }
 
   async function handleLoadPatientTimeline(patientId: string): Promise<PatientTimelineEvent[]> {
+    if (isTrainingMode) {
+      const patient = patients.find((entry) => entry.id === patientId);
+      return patient ? createTrainingTimeline(patient) : [];
+    }
     return api.getPatientTimeline(patientId);
   }
 
@@ -681,14 +811,13 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1600px]">
+    <main className="h-screen overflow-hidden px-4 py-5 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-full max-w-[1600px] flex-col">
         <AppHeader
           clinicName={clinicName}
           currentUser={currentUser}
           active="queue"
           onOpenSettings={() => setIsSettingsOpen(true)}
-          onAddPatient={() => setIsModalOpen(true)}
           onLogout={handleLogout}
         />
 
@@ -698,7 +827,31 @@ export default function HomePage() {
           </div>
         ) : null}
 
-        {currentUser?.role === "admin" && isSetupChecklistReady && !checklist.allRequiredComplete ? (
+        {isTrainingMode ? (
+          <div className="mb-4 flex flex-col gap-3 rounded-[28px] border border-amber-200 bg-amber-50/90 px-5 py-4 text-sm text-amber-900 shadow-[0_16px_45px_rgba(251,191,36,0.12)] sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold">Training Mode</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleResetTrainingMode}
+                className="rounded-full border border-amber-300 bg-white px-4 py-2 font-medium text-amber-900 transition hover:bg-amber-100"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={exitTrainingMode}
+                className="rounded-full bg-amber-500 px-4 py-2 font-medium text-white transition hover:bg-amber-600"
+              >
+                Exit
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {currentUser?.role === "admin" && isSetupChecklistReady && !checklist.allRequiredComplete && !isTrainingMode ? (
           <div ref={setupChecklistRef}>
             <SetupChecklistCard
               checklist={checklist}
@@ -708,19 +861,18 @@ export default function HomePage() {
           </div>
         ) : null}
 
-        <div className="grid gap-4 xl:grid-cols-3">
+        <div className="grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-3">
           <PatientColumn
             title="Waiting"
-            status="waiting"
             patients={groupedPatients.waiting}
             onOpen={handleOpenPatient}
             onAdvance={handleAdvancePatient}
             onRemoveFromQueue={handleRemoveFromQueue}
+            onAddPatient={() => setIsModalOpen(true)}
             canAdvance={() => currentUser?.role === "admin"}
           />
           <PatientColumn
             title="Consultation"
-            status="consultation"
             patients={groupedPatients.consultation}
             onOpen={handleOpenPatient}
             onAdvance={handleAdvancePatient}
@@ -729,7 +881,6 @@ export default function HomePage() {
           />
           <PatientColumn
             title="Billing"
-            status="done"
             patients={groupedPatients.done}
             onOpen={handleOpenPatient}
             onAdvance={handleAdvancePatient}
@@ -777,6 +928,16 @@ export default function HomePage() {
           catalogItems={catalogItems}
           onLoadCatalogItems={loadCatalogItems}
           onClose={handleCloseSettingsDrawer}
+          isTrainingMode={isTrainingMode}
+          onEnterTrainingMode={() => {
+            enterTrainingMode();
+            setIsSettingsOpen(false);
+          }}
+          onExitTrainingMode={() => {
+            exitTrainingMode();
+            setIsSettingsOpen(false);
+          }}
+          onResetTrainingMode={handleResetTrainingMode}
           onSaveClinic={handleSaveClinicSettings}
           onClinicSettingsChange={applyClinicSettings}
           onAddUser={handleAddStaffUser}
@@ -821,9 +982,33 @@ export default function HomePage() {
       <PatientDetailsDrawer
         patient={drawerMode === "details" ? selectedPatient : null}
         clinicSpecialty={clinicSettings?.clinic_specialty ?? null}
+        isTrainingMode={isTrainingMode}
         onLoadTimeline={handleLoadPatientTimeline}
-        onLoadMyopiaHistory={(patientId) => api.getPatientMyopiaHistory(patientId)}
-        onLoadGrowthHistory={(patientId) => api.getPatientGrowthHistory(patientId)}
+        onLoadMyopiaHistory={(patientId) => (
+          isTrainingMode
+            ? Promise.resolve({
+                patient_id: patientId,
+                records: [],
+                baseline_delta: null,
+                last_delta: null,
+                annualized_growth: null,
+                overlay_version: "training",
+              })
+            : api.getPatientMyopiaHistory(patientId)
+        )}
+        onLoadGrowthHistory={(patientId) => (
+          isTrainingMode
+            ? Promise.resolve({
+                patient_id: patientId,
+                latest_measurement: null,
+                previous_measurement: null,
+                interval_change: null,
+                trend_summary: "Training Mode growth history is local only.",
+                flags: [],
+                records: [],
+              })
+            : api.getPatientGrowthHistory(patientId)
+        )}
         onSave={handleUpdatePatient}
         onClose={() => {
           setSelectedPatient(null);
@@ -838,24 +1023,35 @@ export default function HomePage() {
         emailConfigured={Boolean(clinicSettings?.email_configured)}
         hasUserSignature={hasUserSignature(currentUser)}
         hasClinicDocumentTemplate={hasClinicDocumentTemplate(clinicSettings)}
+        isTrainingMode={isTrainingMode}
         onClose={() => {
           setSelectedPatient(null);
           setDrawerMode(null);
         }}
         onDone={async (patient, followUp) => {
-          if (followUp) {
+          if (followUp && !isTrainingMode) {
             await api.createFollowUp(patient.id, followUp);
           }
           await handleAdvancePatient(patient, "done");
         }}
         onGenerate={async (payload) => {
+          if (isTrainingMode) {
+            const response = createTrainingNote(payload);
+            return { content: response.content, noteId: response.noteId, status: response.status };
+          }
           const response = await api.generateNote(payload);
           return { content: response.content, noteId: response.note_id, status: response.status };
         }}
-        onGeneratePdf={(payload) => (
-          payload.note_id ? api.generateSavedNotePdf(payload.note_id) : api.generateNotePdf(payload)
-        )}
+        onGeneratePdf={(payload) => {
+          if (isTrainingMode) {
+            return Promise.reject(new Error("Disabled in Training Mode. Nothing is sent or saved to the clinic."));
+          }
+          return payload.note_id ? api.generateSavedNotePdf(payload.note_id) : api.generateNotePdf(payload);
+        }}
         onSend={async (payload) => {
+          if (isTrainingMode) {
+            throw new Error("Disabled in Training Mode. Nothing is sent or saved to the clinic.");
+          }
           const response = await api.sendNote(payload);
           return response.message;
         }}

@@ -88,6 +88,7 @@ interface ConsultationDrawerProps {
   emailConfigured?: boolean;
   hasUserSignature?: boolean;
   hasClinicDocumentTemplate?: boolean;
+  isTrainingMode?: boolean;
   onClose: () => void;
   onDone: (
     patient: Patient,
@@ -305,23 +306,28 @@ function ConsultationModuleRailItem({
   description,
   active = false,
   onSelect,
+  children,
 }: {
   title: string;
   description: string;
   active?: boolean;
   onSelect: () => void;
+  children?: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`block w-full border-t border-sky-100 px-4 py-4 text-left transition first:border-t-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sky-300 ${
-        active ? "bg-sky-50/70" : "bg-white hover:bg-sky-50/60"
-      }`}
-    >
-      <span className="block text-base font-semibold leading-tight text-slate-900">{title}</span>
-      <span className="mt-1 block text-sm leading-5 text-slate-500">{description}</span>
-    </button>
+    <div className="border-t border-sky-100 first:border-t-0">
+      <button
+        type="button"
+        onClick={onSelect}
+        className={`block w-full px-4 py-4 text-left transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sky-300 ${
+          active ? "bg-sky-50/70" : "bg-white hover:bg-sky-50/60"
+        }`}
+      >
+        <span className="block text-base font-semibold leading-tight text-slate-900">{title}</span>
+        <span className="mt-1 block text-sm leading-5 text-slate-500">{description}</span>
+      </button>
+      {active && children ? <div className="bg-sky-50/30 px-3 pb-3">{children}</div> : null}
+    </div>
   );
 }
 
@@ -383,6 +389,7 @@ export function ConsultationDrawer({
   emailConfigured = false,
   hasUserSignature = false,
   hasClinicDocumentTemplate = false,
+  isTrainingMode = false,
   onClose,
   onDone,
   onGenerate,
@@ -532,7 +539,10 @@ export function ConsultationDrawer({
     setIsSent(cachedWorkspace?.isSent ?? false);
     setRecipientEmail(cachedWorkspace?.recipientEmail ?? patient.email ?? "");
 
-    void Promise.all([api.listCatalogItems(), api.listPatientNotes(patient.id)])
+    void Promise.all([
+      api.listCatalogItems(),
+      isTrainingMode ? Promise.resolve([]) : api.listPatientNotes(patient.id),
+    ])
       .then(([items, notes]) => {
         if (!active) {
           return;
@@ -566,7 +576,7 @@ export function ConsultationDrawer({
     return () => {
       active = false;
     };
-  }, [patient, workspaceScope]);
+  }, [isTrainingMode, patient, workspaceScope]);
 
   useEffect(() => {
     if (!patient || !workspaceScope) {
@@ -959,6 +969,21 @@ export function ConsultationDrawer({
       refraction_right: next.refraction_right.trim(),
       refraction_left: next.refraction_left.trim(),
     };
+    if (isTrainingMode) {
+      const recordId = next.record_id || createId();
+      setForm((current) => ({
+        ...current,
+        myopiaManagement: {
+          ...next,
+          record_id: recordId,
+        },
+      }));
+      setStatusMessage(buildMyopiaManagementSummary({
+        ...next,
+        record_id: recordId,
+      }));
+      return;
+    }
     const saved = next.record_id
       ? await api.updatePatientMyopiaRecord(currentPatient.id, next.record_id, payload)
       : await api.createPatientMyopiaRecord(currentPatient.id, payload);
@@ -995,6 +1020,18 @@ export function ConsultationDrawer({
       head_circumference_cm: form.growthMeasurement.head_circumference_cm ? Number(form.growthMeasurement.head_circumference_cm) : null,
       visit_notes: form.growthMeasurement.visit_notes.trim(),
     };
+    if (isTrainingMode) {
+      const bmi = payload.weight_kg / ((payload.height_cm / 100) ** 2);
+      setForm((current) => ({
+        ...current,
+        growthMeasurement: {
+          ...current.growthMeasurement,
+          savedRecord: { bmi, track_id: "training" },
+        },
+      }));
+      setStatusMessage(`Growth saved in Training Mode · BMI ${bmi.toFixed(2)}`);
+      return;
+    }
     const saved = await api.createPatientGrowthRecord(currentPatient.id, payload);
     setForm((current) => ({
       ...current,
@@ -1018,6 +1055,27 @@ export function ConsultationDrawer({
     setIsGeneratingHandout(true);
     setStatusMessage("");
     try {
+      if (isTrainingMode) {
+        const title = "Training Parent Handout";
+        const content = [
+          title,
+          "",
+          `Patient: ${currentPatient.name}`,
+          form.parentHandoutRequest.instructions.trim() || "Practice instructions entered in Training Mode.",
+          "",
+          "This handout was generated locally in Training Mode.",
+        ].join("\n");
+        setForm((current) => ({
+          ...current,
+          parentHandoutRequest: {
+            ...current.parentHandoutRequest,
+            generated_title: title,
+            generated_content: content,
+          },
+        }));
+        setStatusMessage(`${title} generated.`);
+        return;
+      }
       const response = await api.generateParentHandout({
         patient_id: currentPatient.id,
         template_key: form.parentHandoutRequest.template_key,
@@ -1047,6 +1105,10 @@ export function ConsultationDrawer({
     }
     setIsGeneratingHandoutPdf(true);
     try {
+      if (isTrainingMode) {
+        setStatusMessage("Disabled in Training Mode. Nothing is sent or saved to the clinic.");
+        return;
+      }
       const blob = await api.generateLetterPdf({
         content: form.parentHandoutRequest.generated_content,
       });
@@ -1572,13 +1634,204 @@ export function ConsultationDrawer({
                 description="Structured table for the note"
                 active={activeInlineModule === "vitals"}
                 onSelect={() => setActiveInlineModule((current) => (current === "vitals" ? null : "vitals"))}
-              />
+              >
+                <ConsultationModuleDetail title="Vitals">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">BP Systolic</span>
+                      <input
+                        value={form.bloodPressureSystolic}
+                        inputMode="numeric"
+                        onChange={(event) => setForm((current) => ({ ...current, bloodPressureSystolic: event.target.value }))}
+                        placeholder="120"
+                        className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">BP Diastolic</span>
+                      <input
+                        value={form.bloodPressureDiastolic}
+                        inputMode="numeric"
+                        onChange={(event) => setForm((current) => ({ ...current, bloodPressureDiastolic: event.target.value }))}
+                        placeholder="80"
+                        className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Pulse</span>
+                      <input
+                        value={form.pulse}
+                        inputMode="numeric"
+                        onChange={(event) => setForm((current) => ({ ...current, pulse: event.target.value }))}
+                        placeholder="72"
+                        className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">SpO2</span>
+                      <input
+                        value={form.spo2}
+                        inputMode="numeric"
+                        onChange={(event) => setForm((current) => ({ ...current, spo2: event.target.value }))}
+                        placeholder="98"
+                        className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                      />
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Blood Sugar</span>
+                      <input
+                        value={form.bloodSugar}
+                        inputMode="decimal"
+                        onChange={(event) => setForm((current) => ({ ...current, bloodSugar: event.target.value }))}
+                        placeholder="110"
+                        className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                      />
+                    </label>
+                  </div>
+                </ConsultationModuleDetail>
+              </ConsultationModuleRailItem>
               <ConsultationModuleRailItem
                 title="Medicines"
                 description="Inventory and treatment schedule"
                 active={activeInlineModule === "medicines"}
                 onSelect={() => setActiveInlineModule((current) => (current === "medicines" ? null : "medicines"))}
-              />
+              >
+                <ConsultationModuleDetail title="Medicines">
+                  <input
+                    value={medicineSearch}
+                    onChange={(event) => setMedicineSearch(event.target.value)}
+                    placeholder="Search medicines by name or unit"
+                    className="w-full rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
+                  />
+                  {form.prescriptions.length ? (
+                    <div className="mt-3 space-y-3">
+                      {form.prescriptions.map((entry) => (
+                        <div key={entry.itemId} className="rounded-[22px] border border-emerald-100 bg-white p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium text-slate-900">{entry.name}</p>
+                              <p className="mt-1 text-xs text-slate-500">{entry.unit || "unit not set"}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removePrescription(entry.itemId)}
+                              className="rounded-full border border-emerald-200 p-2 text-slate-600 transition hover:bg-emerald-50"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            <label className="block">
+                              <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Quantity</span>
+                              <input
+                                value={entry.quantity}
+                                inputMode="decimal"
+                                onChange={(event) => updatePrescription(entry.itemId, { quantity: event.target.value })}
+                                placeholder="10"
+                                className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Duration</span>
+                              <input
+                                value={entry.duration}
+                                onChange={(event) => updatePrescription(entry.itemId, { duration: event.target.value })}
+                                placeholder="5 days"
+                                className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                              />
+                            </label>
+                          </div>
+                          <div className="mt-3">
+                            <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Notes</p>
+                            <div className="flex flex-wrap gap-2">
+                              {PRESCRIPTION_NOTE_OPTIONS.map((option) => {
+                                const active = normalizePrescriptionNotes(entry.notes).includes(option);
+                                return (
+                                  <button
+                                    key={option}
+                                    type="button"
+                                    onClick={() =>
+                                      updatePrescription(entry.itemId, {
+                                        notes: togglePrescriptionNoteValue(entry.notes, option),
+                                      })
+                                    }
+                                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                      active
+                                        ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                                        : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
+                                    }`}
+                                  >
+                                    {option}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <div className="mt-3">
+                            <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Schedule</p>
+                            <div className="flex flex-wrap gap-2">
+                              {[
+                                { key: "morning" as const, label: "Morning" },
+                                { key: "afternoon" as const, label: "Afternoon" },
+                                { key: "night" as const, label: "Night" },
+                              ].map((slot) => (
+                                <button
+                                  key={slot.key}
+                                  type="button"
+                                  onClick={() => updatePrescription(entry.itemId, { [slot.key]: !entry[slot.key] })}
+                                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                    entry[slot.key]
+                                      ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                                      : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
+                                  }`}
+                                >
+                                  {slot.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1">
+                    {filteredMedicineItems.length ? (
+                      filteredMedicineItems.slice(0, 12).map((item) => {
+                        const active = selectedMedicineIds.includes(item.id);
+                        const outOfStock = item.track_inventory && item.stock_quantity <= 0;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => toggleMedicine(item.id)}
+                            disabled={outOfStock}
+                            className={`flex w-full items-center justify-between gap-3 rounded-[22px] border px-4 py-3 text-left transition ${
+                              active
+                                ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                                : "border-emerald-100 bg-white text-slate-700 hover:bg-emerald-50"
+                            } disabled:cursor-not-allowed disabled:opacity-50`}
+                          >
+                            <div>
+                              <p className="text-sm font-medium text-slate-900">{item.name}</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {item.default_price.toFixed(2)}{item.unit ? ` · ${item.unit}` : ""}
+                                {item.track_inventory ? ` · Stock ${item.stock_quantity}` : ""}
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-emerald-200 px-3 py-1 text-xs font-medium">
+                              {active ? "Selected" : outOfStock ? "Out of stock" : "Add"}
+                            </span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <p className="rounded-[22px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">
+                        No medicines match this search.
+                      </p>
+                    )}
+                  </div>
+                </ConsultationModuleDetail>
+              </ConsultationModuleRailItem>
               {isOptometryClinic ? (
                 <>
                   <ConsultationModuleRailItem
@@ -1633,201 +1886,6 @@ export function ConsultationDrawer({
                 </>
               ) : null}
             </section>
-
-            {activeInlineModule === "vitals" ? (
-              <ConsultationModuleDetail title="Vitals">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">BP Systolic</span>
-                    <input
-                      value={form.bloodPressureSystolic}
-                      inputMode="numeric"
-                      onChange={(event) => setForm((current) => ({ ...current, bloodPressureSystolic: event.target.value }))}
-                      placeholder="120"
-                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">BP Diastolic</span>
-                    <input
-                      value={form.bloodPressureDiastolic}
-                      inputMode="numeric"
-                      onChange={(event) => setForm((current) => ({ ...current, bloodPressureDiastolic: event.target.value }))}
-                      placeholder="80"
-                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Pulse</span>
-                    <input
-                      value={form.pulse}
-                      inputMode="numeric"
-                      onChange={(event) => setForm((current) => ({ ...current, pulse: event.target.value }))}
-                      placeholder="72"
-                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">SpO2</span>
-                    <input
-                      value={form.spo2}
-                      inputMode="numeric"
-                      onChange={(event) => setForm((current) => ({ ...current, spo2: event.target.value }))}
-                      placeholder="98"
-                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
-                  <label className="block sm:col-span-2">
-                    <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Blood Sugar</span>
-                    <input
-                      value={form.bloodSugar}
-                      inputMode="decimal"
-                      onChange={(event) => setForm((current) => ({ ...current, bloodSugar: event.target.value }))}
-                      placeholder="110"
-                      className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
-                    />
-                  </label>
-                </div>
-              </ConsultationModuleDetail>
-            ) : null}
-
-            {activeInlineModule === "medicines" ? (
-              <ConsultationModuleDetail title="Medicines">
-                <input
-                  value={medicineSearch}
-                  onChange={(event) => setMedicineSearch(event.target.value)}
-                  placeholder="Search medicines by name or unit"
-                  className="w-full rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
-                />
-                {form.prescriptions.length ? (
-                  <div className="mt-3 space-y-3">
-                    {form.prescriptions.map((entry) => (
-                      <div key={entry.itemId} className="rounded-[22px] border border-emerald-100 bg-white p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-slate-900">{entry.name}</p>
-                            <p className="mt-1 text-xs text-slate-500">{entry.unit || "unit not set"}</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removePrescription(entry.itemId)}
-                            className="rounded-full border border-emerald-200 p-2 text-slate-600 transition hover:bg-emerald-50"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </div>
-                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                          <label className="block">
-                            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Quantity</span>
-                            <input
-                              value={entry.quantity}
-                              inputMode="decimal"
-                              onChange={(event) => updatePrescription(entry.itemId, { quantity: event.target.value })}
-                              placeholder="10"
-                              className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Duration</span>
-                            <input
-                              value={entry.duration}
-                              onChange={(event) => updatePrescription(entry.itemId, { duration: event.target.value })}
-                              placeholder="5 days"
-                              className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
-                            />
-                          </label>
-                        </div>
-                        <div className="mt-3">
-                          <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Notes</p>
-                          <div className="flex flex-wrap gap-2">
-                            {PRESCRIPTION_NOTE_OPTIONS.map((option) => {
-                              const active = normalizePrescriptionNotes(entry.notes).includes(option);
-                              return (
-                                <button
-                                  key={option}
-                                  type="button"
-                                  onClick={() =>
-                                    updatePrescription(entry.itemId, {
-                                      notes: togglePrescriptionNoteValue(entry.notes, option),
-                                    })
-                                  }
-                                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                                    active
-                                      ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                                      : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
-                                  }`}
-                                >
-                                  {option}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        <div className="mt-3">
-                          <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Schedule</p>
-                          <div className="flex flex-wrap gap-2">
-                            {[
-                              { key: "morning" as const, label: "Morning" },
-                              { key: "afternoon" as const, label: "Afternoon" },
-                              { key: "night" as const, label: "Night" },
-                            ].map((slot) => (
-                              <button
-                                key={slot.key}
-                                type="button"
-                                onClick={() => updatePrescription(entry.itemId, { [slot.key]: !entry[slot.key] })}
-                                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                                  entry[slot.key]
-                                    ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                                    : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
-                                }`}
-                              >
-                                {slot.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                <div className="mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1">
-                  {filteredMedicineItems.length ? (
-                    filteredMedicineItems.slice(0, 12).map((item) => {
-                      const active = selectedMedicineIds.includes(item.id);
-                      const outOfStock = item.track_inventory && item.stock_quantity <= 0;
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => toggleMedicine(item.id)}
-                          disabled={outOfStock}
-                          className={`flex w-full items-center justify-between gap-3 rounded-[22px] border px-4 py-3 text-left transition ${
-                            active
-                              ? "border-emerald-300 bg-emerald-100 text-emerald-900"
-                              : "border-emerald-100 bg-white text-slate-700 hover:bg-emerald-50"
-                          } disabled:cursor-not-allowed disabled:opacity-50`}
-                        >
-                          <div>
-                            <p className="text-sm font-medium text-slate-900">{item.name}</p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {item.default_price.toFixed(2)}{item.unit ? ` · ${item.unit}` : ""}
-                              {item.track_inventory ? ` · Stock ${item.stock_quantity}` : ""}
-                            </p>
-                          </div>
-                          <span className="rounded-full border border-emerald-200 px-3 py-1 text-xs font-medium">
-                            {active ? "Selected" : outOfStock ? "Out of stock" : "Add"}
-                          </span>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <p className="rounded-[22px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">
-                      No medicines match this search.
-                    </p>
-                  )}
-                </div>
-              </ConsultationModuleDetail>
-            ) : null}
 
             <div className="border-t border-sky-200 pt-4">
               <div className="flex flex-col gap-4">

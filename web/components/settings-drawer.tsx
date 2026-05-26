@@ -14,6 +14,7 @@ import {
   Info,
   LayoutDashboard,
   Mail,
+  GraduationCap,
   Search,
   Settings2,
   Stethoscope,
@@ -43,7 +44,7 @@ function createId() {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export type SettingsTab = "settings" | "about" | "contact" | "billing" | "clinic" | "users" | "letter" | "catalog" | "appointments" | "audit" | "exports";
+export type SettingsTab = "settings" | "training" | "about" | "contact" | "billing" | "clinic" | "users" | "letter" | "catalog" | "appointments" | "audit" | "exports";
 export type ClinicSettingsSection = "specialty" | "hours" | "email" | "template";
 type DrawerMenuItem =
   | { href: string; label: string; icon: typeof Settings2 }
@@ -115,6 +116,10 @@ interface SettingsDrawerProps {
     payload: { status?: "scheduled" | "completed" | "cancelled"; scheduled_for?: string; notes?: string },
   ) => Promise<FollowUp>;
   onBillingComplete: (patientId: string) => void;
+  isTrainingMode?: boolean;
+  onEnterTrainingMode?: () => void;
+  onExitTrainingMode?: () => void;
+  onResetTrainingMode?: () => void;
   initialActiveTab?: SettingsTab;
   initialClinicSection?: ClinicSettingsSection | null;
 }
@@ -464,6 +469,10 @@ export function SettingsDrawer({
   onBillingComplete,
   onUpdateUserRole,
   onDeleteUser,
+  isTrainingMode = false,
+  onEnterTrainingMode,
+  onExitTrainingMode,
+  onResetTrainingMode,
   initialActiveTab = "clinic",
   initialClinicSection = null,
 }: SettingsDrawerProps) {
@@ -578,8 +587,12 @@ export function SettingsDrawer({
         ? 0
         : Number(amountPaidInput || "0");
   const balanceDue = Math.max(invoiceSubtotal - normalizedAmountPaid, 0);
-  const menuItems: DrawerMenuItem[] = [
+  const menuItems: DrawerMenuItem[] = isTrainingMode ? [
     { href: "/", label: "Queue", icon: LayoutDashboard },
+    { tab: "training" as SettingsTab, label: "Training Mode", icon: GraduationCap },
+  ] : [
+    { href: "/", label: "Queue", icon: LayoutDashboard },
+    { tab: "training" as SettingsTab, label: "Training Mode", icon: GraduationCap },
     { href: "/patients", label: "Patients", icon: Search },
     { href: "/case-study", label: "Case Study", icon: FileText },
     { tab: "appointments" as SettingsTab, label: "Appointments", icon: CalendarClock },
@@ -595,7 +608,7 @@ export function SettingsDrawer({
     { tab: "contact" as SettingsTab, label: "Contact Us", icon: Mail },
   ];
 
-  if (currentUser?.role === "admin") {
+  if (!isTrainingMode && currentUser?.role === "admin") {
     menuItems.splice(3, 0, { href: "/earnings", label: "Earnings", icon: BarChart3 });
   }
 
@@ -614,8 +627,8 @@ export function SettingsDrawer({
     if (!open) {
       return;
     }
-    setActiveTab(initialActiveTab);
-  }, [initialActiveTab, open]);
+    setActiveTab(isTrainingMode ? "training" : initialActiveTab);
+  }, [initialActiveTab, isTrainingMode, open]);
 
   useEffect(() => {
     if (!templatePreviewUrl) {
@@ -2111,6 +2124,62 @@ export function SettingsDrawer({
     );
   }
 
+  function renderTrainingTab() {
+    return (
+      <div className="rounded-[28px] border border-amber-200 bg-amber-50/60 p-5 shadow-[0_16px_45px_rgba(251,191,36,0.12)]">
+        <div className="max-w-2xl">
+          <p className="text-sm uppercase tracking-[0.2em] text-amber-700">Training Mode</p>
+          <h3 className="mt-2 text-xl font-semibold text-slate-900">
+            {isTrainingMode ? "Sandbox is active" : "Practice without touching clinic data"}
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-slate-700">
+            {isTrainingMode
+              ? "Queue and consultation changes stay in this browser. Real clinic data, billing, users, inventory, email, and PDFs are protected while this mode is active."
+              : "Use the normal queue workflow as a sandbox. Add patients, move them through consultation, and complete practice visits without saving to the real clinic."}
+          </p>
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          {isTrainingMode ? (
+            <>
+              <button
+                type="button"
+                onClick={onExitTrainingMode}
+                className="rounded-full bg-amber-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-amber-600 disabled:opacity-60"
+                disabled={!onExitTrainingMode}
+              >
+                Exit Training Mode
+              </button>
+              <button
+                type="button"
+                onClick={onResetTrainingMode}
+                className="rounded-full border border-amber-300 bg-white px-5 py-2.5 text-sm font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-60"
+                disabled={!onResetTrainingMode}
+              >
+                Reset Sandbox
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={onEnterTrainingMode}
+              className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+              disabled={!onEnterTrainingMode}
+            >
+              Enter Training Mode
+            </button>
+          )}
+        </div>
+
+        {isTrainingMode ? (
+          <div className="mt-6 rounded-[24px] border border-amber-200 bg-white/80 p-4 text-sm leading-6 text-amber-900">
+            Settings sections that can change real clinic data are hidden until you exit Training Mode.
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   function renderSimplePanel(title: string, text: string) {
     return (
       <div className="rounded-[28px] border border-sky-200 bg-sky-50/40 p-5">
@@ -2121,6 +2190,7 @@ export function SettingsDrawer({
   }
 
   function renderContent() {
+    if (activeTab === "training") return renderTrainingTab();
     if (activeTab === "clinic") return renderClinicTab();
     if (activeTab === "catalog") return renderCatalogTab();
     if (activeTab === "users") return renderUsersTab();
@@ -2130,7 +2200,7 @@ export function SettingsDrawer({
     if (activeTab === "billing") return renderBillingTab();
     if (activeTab === "exports") return renderExportsTab();
 
-    const copy: Record<Exclude<SettingsTab, "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments" | "audit" | "exports">, { title: string; text: string }> = {
+    const copy: Record<Exclude<SettingsTab, "training" | "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments" | "audit" | "exports">, { title: string; text: string }> = {
       settings: {
         title: "Settings",
         text: "Core clinic configuration, inventory management, users, letters, and billing all live in this drawer.",
@@ -2145,7 +2215,7 @@ export function SettingsDrawer({
       },
     };
 
-    const item = copy[activeTab as Exclude<SettingsTab, "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments" | "audit" | "exports">];
+    const item = copy[activeTab as Exclude<SettingsTab, "training" | "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments" | "audit" | "exports">];
     return renderSimplePanel(item.title, item.text);
   }
 

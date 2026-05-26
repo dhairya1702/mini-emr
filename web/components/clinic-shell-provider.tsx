@@ -14,6 +14,7 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
+import { createTrainingScope, readTrainingMode, resetTrainingData, writeTrainingMode } from "@/lib/training-mode";
 import { AuthUser, ClinicSettings } from "@/lib/types";
 
 const SESSION_EXPIRED_REDIRECT = "/login?reason=session-expired";
@@ -33,6 +34,11 @@ type ClinicShellContextValue = {
   applyCurrentUser: (user: AuthUser | null) => void;
   redirectToLogin: (message: string) => void;
   handleLogout: () => void;
+  isTrainingMode: boolean;
+  trainingScope: string | null;
+  enterTrainingMode: () => void;
+  exitTrainingMode: () => void;
+  resetTrainingMode: () => void;
 };
 
 const ClinicShellContext = createContext<ClinicShellContextValue | null>(null);
@@ -55,8 +61,10 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isRedirectingToLogin, setIsRedirectingToLogin] = useState(false);
+  const [isTrainingMode, setIsTrainingMode] = useState(false);
   const hasBootstrappedRef = useRef(false);
   const bootstrapPromiseRef = useRef<Promise<void> | null>(null);
+  const trainingScope = useMemo(() => createTrainingScope(currentUser), [currentUser]);
 
   const delay = useCallback(async (ms: number) => {
     await new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -66,6 +74,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
     authStorage.clear();
     setCurrentUser(null);
     setClinicSettings(null);
+    setIsTrainingMode(false);
     setError(
       message === "Token expired." || message === "Session expired."
         ? SESSION_EXPIRED_MESSAGE
@@ -81,6 +90,10 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
         : "/login",
     );
   }, [router]);
+
+  useEffect(() => {
+    setIsTrainingMode(readTrainingMode(trainingScope));
+  }, [trainingScope]);
 
   const loadShell = useCallback(async (force = false) => {
     const isPublicPath = PUBLIC_PATHS.has(pathname);
@@ -204,10 +217,26 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
         authStorage.clear();
         setCurrentUser(null);
         setClinicSettings(null);
+        setIsTrainingMode(false);
         hasBootstrappedRef.current = false;
         router.replace("/login");
       });
   }, [router]);
+
+  const enterTrainingMode = useCallback(() => {
+    writeTrainingMode(trainingScope, true);
+    setIsTrainingMode(true);
+    router.replace("/");
+  }, [router, trainingScope]);
+
+  const exitTrainingMode = useCallback(() => {
+    writeTrainingMode(trainingScope, false);
+    setIsTrainingMode(false);
+  }, [trainingScope]);
+
+  const resetTrainingMode = useCallback(() => {
+    resetTrainingData(trainingScope);
+  }, [trainingScope]);
 
   const value = useMemo<ClinicShellContextValue>(() => ({
     currentUser,
@@ -220,17 +249,27 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
     applyCurrentUser,
     redirectToLogin,
     handleLogout,
+    isTrainingMode,
+    trainingScope,
+    enterTrainingMode,
+    exitTrainingMode,
+    resetTrainingMode,
   }), [
     applyClinicSettings,
     applyCurrentUser,
     clinicSettings,
     currentUser,
     error,
+    enterTrainingMode,
+    exitTrainingMode,
     handleLogout,
     isAuthReady,
     isRedirectingToLogin,
+    isTrainingMode,
     redirectToLogin,
     refreshShell,
+    resetTrainingMode,
+    trainingScope,
   ]);
 
   return (

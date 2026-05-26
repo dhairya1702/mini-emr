@@ -34,7 +34,11 @@ export type ClinicInvoicePayload = {
 
 type UseClinicShellPageOptions<T> = {
   canLoadPageData?: (currentUser: AuthUser) => boolean;
-  loadPageData: () => Promise<T>;
+  loadPageData: (context: {
+    currentUser: AuthUser;
+    isTrainingMode: boolean;
+    trainingScope: string | null;
+  }) => Promise<T>;
   onPageData: (data: T) => void;
 };
 
@@ -53,8 +57,10 @@ export function useClinicShellPage<T>({
     handleLogout: handleShellLogout,
     isAuthReady,
     isRedirectingToLogin,
+    isTrainingMode,
     refreshShell,
     redirectToLogin,
+    trainingScope,
   } = shell;
   const canLoadPageDataRef = useRef(canLoadPageData);
   const loadPageDataRef = useRef(loadPageData);
@@ -96,7 +102,11 @@ export function useClinicShellPage<T>({
       try {
         for (let attempt = 1; attempt <= PAGE_LOAD_MAX_ATTEMPTS; attempt += 1) {
           try {
-            const pageData = await loadPageDataRef.current();
+            const pageData = await loadPageDataRef.current({
+              currentUser,
+              isTrainingMode,
+              trainingScope,
+            });
             if (active) {
               onPageDataRef.current(pageData);
               setIsPageDataLoaded(true);
@@ -149,7 +159,7 @@ export function useClinicShellPage<T>({
     return () => {
       active = false;
     };
-  }, [currentUser, isAuthReady, isRedirectingToLogin, redirectToLogin, refreshShell]);
+  }, [currentUser, isAuthReady, isRedirectingToLogin, isTrainingMode, redirectToLogin, refreshShell, trainingScope]);
 
   const handleSaveClinicSettings = useCallback(async (
     payload: ClinicSettingsUpdatePayload,
@@ -286,6 +296,11 @@ export function useClinicShellPage<T>({
     isRedirectingToLogin,
     isPageDataLoaded,
     isUsersLoaded,
+    isTrainingMode,
+    trainingScope,
+    enterTrainingMode: shell.enterTrainingMode,
+    exitTrainingMode: shell.exitTrainingMode,
+    resetTrainingMode: shell.resetTrainingMode,
     handleLogout,
     handleSaveClinicSettings,
     applyClinicSettings,
