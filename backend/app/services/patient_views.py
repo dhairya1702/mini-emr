@@ -135,6 +135,14 @@ async def build_patient_name_map(repo: SupabaseRepository, org_id: str) -> dict[
     }
 
 
+async def build_patient_name_map_for_ids(repo: SupabaseRepository, org_id: str, patient_ids: list[str]) -> dict[str, str]:
+    patients = await repo.list_patients_by_ids(org_id, patient_ids)
+    return {
+        str(patient["id"]): str(patient.get("name") or "").strip()
+        for patient in patients
+    }
+
+
 def enrich_notes_with_sender_names(notes: list[dict], names: dict[str, str]) -> list[dict]:
     return [
         {
@@ -173,10 +181,10 @@ async def list_patient_notes_view(repo: SupabaseRepository, org_id: str, patient
 
 
 async def list_patient_invoices_view(repo: SupabaseRepository, org_id: str, patient_id: str) -> list[InvoiceOut]:
-    await repo.get_patient(org_id, patient_id)
+    patient = await repo.get_patient(org_id, patient_id)
     invoices = await repo.list_invoices_for_patient(org_id, patient_id)
     names = await build_user_name_map(repo, org_id)
-    patient_names = await build_patient_name_map(repo, org_id)
+    patient_names = {patient_id: str(patient.get("name") or "").strip()}
     enriched = enrich_invoices_with_patient_names(
         enrich_invoices_with_completer_names(invoices, names),
         patient_names,
@@ -189,26 +197,22 @@ async def build_patient_timeline_view(
     org_id: str,
     patient_id: str,
 ) -> list[PatientTimelineEvent]:
-    patient = await repo.get_patient(org_id, patient_id)
-    clinic_settings = await repo.get_clinic_settings(org_id)
-    visits = await repo.list_patient_visits_for_patient(org_id, patient_id)
-    notes = await repo.list_notes_for_patient(org_id, patient_id)
-    myopia_measurements = await repo.list_myopia_measurements_for_patient(org_id, patient_id)
-    longitudinal_tracks = await repo.list_longitudinal_tracks_for_patient(org_id, patient_id)
-    invoices = await repo.list_invoices_for_patient(org_id, patient_id)
-    follow_ups = await repo.list_follow_ups_for_patient(org_id, patient_id)
-    appointments = await repo.list_appointments_for_patient(org_id, patient_id)
-    names = await build_user_name_map(repo, org_id)
-    patient_names = await build_patient_name_map(repo, org_id)
+    source = await repo.get_patient_timeline_source(org_id, patient_id)
+    patient = source.get("patient") or {}
+    clinic_settings = source.get("clinic_settings") or {}
+    visits = source.get("visits") or []
+    notes = source.get("notes") or []
+    myopia_measurements = source.get("myopia_measurements") or []
+    longitudinal_tracks = source.get("longitudinal_tracks") or []
+    invoices = source.get("invoices") or []
+    follow_ups = source.get("follow_ups") or []
+    appointments = source.get("appointments") or []
     return build_patient_timeline(
         patient=patient,
         visits=visits,
-        notes=enrich_notes_with_sender_names(notes, names),
+        notes=notes,
         myopia_measurements=myopia_measurements,
-        invoices=enrich_invoices_with_patient_names(
-            enrich_invoices_with_completer_names(invoices, names),
-            patient_names,
-        ),
+        invoices=invoices,
         follow_ups=follow_ups,
         appointments=appointments,
         longitudinal_tracks=longitudinal_tracks,

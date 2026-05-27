@@ -10,7 +10,13 @@ import {
 } from "./support/mock-clinic-api";
 
 test("consultation smoke generates a note and completes the patient flow", async ({ page }) => {
-  const user = buildUser();
+  const user = buildUser({ doctor_signature_name: "Dr. Rivera" });
+  const staffUser = buildUser({
+    id: "user-staff-1",
+    identifier: "staff@clinic.test",
+    name: "Front Desk",
+    role: "staff",
+  });
   const patient = buildPatient({
     id: "patient-consult-1",
     name: "Avery Stone",
@@ -21,6 +27,7 @@ test("consultation smoke generates a note and completes the patient flow", async
   await seedSession(page, { user });
   await mockClinicBootstrap(page, {
     user,
+    users: [user, staffUser],
     clinicSettings: buildClinicSettings({ clinic_specialty: "general_physician" }),
     patients: [patient],
   });
@@ -28,11 +35,11 @@ test("consultation smoke generates a note and completes the patient flow", async
 
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Start", exact: true }).click();
-  await page.getByText("Avery Stone", { exact: true }).click();
+  await page.getByRole("button", { name: "Start consultation for Avery Stone" }).click();
+  await page.getByRole("button", { name: "Open chart for Avery Stone" }).click();
 
   await expect(page.getByRole("heading", { name: "Avery Stone" })).toBeVisible();
-  await expect(page.getByText("Consultation", { exact: true })).toBeVisible();
+  await expect(page.getByRole("complementary").getByText("Consultation", { exact: true })).toBeVisible();
 
   await page.getByLabel("Symptoms").fill("Headache for three days");
   await page.getByLabel("Diagnosis").fill("Tension headache");
@@ -44,5 +51,5 @@ test("consultation smoke generates a note and completes the patient flow", async
   await page.getByRole("button", { name: "Done" }).click();
 
   await expect(page.getByRole("heading", { name: "Avery Stone" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Start" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Start consultation for Avery Stone" })).toHaveCount(0);
 });

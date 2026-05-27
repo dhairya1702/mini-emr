@@ -530,16 +530,24 @@ add column if not exists address text not null default '';
 create unique index if not exists clinic_settings_org_id_key on public.clinic_settings (org_id);
 create index if not exists patients_org_status_idx on public.patients (org_id, status, created_at desc);
 create index if not exists patients_org_last_visit_idx on public.patients (org_id, last_visit_at desc);
+create index if not exists patients_org_phone_last_visit_idx on public.patients (org_id, phone, last_visit_at desc);
 create index if not exists patient_visits_patient_created_idx on public.patient_visits (patient_id, created_at desc);
+create index if not exists patient_visits_org_created_idx on public.patient_visits (org_id, created_at desc);
+create index if not exists patient_visits_org_patient_created_idx on public.patient_visits (org_id, patient_id, created_at desc);
 create index if not exists notes_org_patient_id_idx on public.notes (org_id, patient_id, created_at desc);
 create index if not exists clinic_users_org_role_idx on public.clinic_users (org_id, role, created_at desc);
 create index if not exists catalog_items_org_type_idx on public.catalog_items (org_id, item_type, name);
 create index if not exists invoices_org_patient_idx on public.invoices (org_id, patient_id, created_at desc);
+create index if not exists invoices_org_created_idx on public.invoices (org_id, created_at desc);
 create index if not exists invoice_items_invoice_idx on public.invoice_items (invoice_id, created_at asc);
 create index if not exists audit_events_org_created_idx on public.audit_events (org_id, created_at desc);
 create index if not exists follow_ups_org_status_scheduled_idx on public.follow_ups (org_id, status, scheduled_for asc);
 create index if not exists follow_ups_patient_idx on public.follow_ups (patient_id, created_at desc);
+create index if not exists follow_ups_org_patient_scheduled_idx on public.follow_ups (org_id, patient_id, scheduled_for desc);
+create index if not exists follow_ups_due_reminder_idx on public.follow_ups (org_id, scheduled_for asc)
+  where status = 'scheduled' and reminder_sent_at is null;
 create index if not exists appointments_org_status_scheduled_idx on public.appointments (org_id, status, scheduled_for asc);
+create index if not exists appointments_org_checked_in_patient_created_idx on public.appointments (org_id, checked_in_patient_id, created_at desc);
 
 drop function if exists public.check_in_appointment_atomic(uuid, uuid);
 drop function if exists public.check_in_appointment_atomic(uuid, uuid, boolean, uuid);
@@ -937,4 +945,337 @@ begin
     'already_finalized', false
   );
 end;
+$$;
+
+create or replace function public.list_invoices_with_details(
+  p_org_id uuid
+) returns jsonb
+language sql
+stable
+as $$
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', invoice_rows.id,
+        'org_id', invoice_rows.org_id,
+        'patient_id', invoice_rows.patient_id,
+        'patient_name', invoice_rows.patient_name,
+        'subtotal', invoice_rows.subtotal,
+        'total', invoice_rows.total,
+        'payment_status', invoice_rows.payment_status,
+        'amount_paid', invoice_rows.amount_paid,
+        'balance_due', invoice_rows.balance_due,
+        'paid_at', invoice_rows.paid_at,
+        'completed_at', invoice_rows.completed_at,
+        'completed_by', invoice_rows.completed_by,
+        'completed_by_name', invoice_rows.completed_by_name,
+        'sent_at', invoice_rows.sent_at,
+        'created_at', invoice_rows.created_at,
+        'items', invoice_rows.items
+      )
+      order by invoice_rows.created_at desc
+    ),
+    '[]'::jsonb
+  )
+  from (
+    select
+      i.*,
+      coalesce(nullif(trim(p.name), ''), 'Unknown patient') as patient_name,
+      case
+        when cu.id is null then null
+        else coalesce(
+          nullif(trim(cu.name), ''),
+          nullif(initcap(replace(replace(split_part(cu.identifier, '@', 1), '.', ' '), '_', ' ')), ''),
+          cu.identifier,
+          'User'
+        )
+      end as completed_by_name,
+      greatest(round((i.total - i.amount_paid)::numeric, 2)::double precision, 0) as balance_due,
+      coalesce(
+        (
+          select jsonb_agg(
+            jsonb_build_object(
+              'id', ii.id,
+              'invoice_id', ii.invoice_id,
+              'catalog_item_id', ii.catalog_item_id,
+              'item_type', ii.item_type,
+              'label', ii.label,
+              'quantity', ii.quantity,
+              'unit_price', ii.unit_price,
+              'line_total', ii.line_total,
+              'created_at', ii.created_at
+            )
+            order by ii.created_at asc
+          )
+          from public.invoice_items ii
+          where ii.invoice_id = i.id
+        ),
+        '[]'::jsonb
+      ) as items
+    from public.invoices i
+    join public.patients p
+      on p.id = i.patient_id
+     and p.org_id = p_org_id
+    left join public.clinic_users cu
+      on cu.id = i.completed_by
+     and cu.org_id = p_org_id
+    where i.org_id = p_org_id
+  ) invoice_rows;
+$$;
+
+create or replace function public.get_patient_timeline_source(
+  p_org_id uuid,
+  p_patient_id uuid
+) returns jsonb
+language sql
+stable
+as $$
+  select jsonb_build_object(
+    'patient', to_jsonb(p),
+    'clinic_settings', coalesce(
+      (
+        select to_jsonb(cs)
+        from public.clinic_settings cs
+        where cs.org_id = p_org_id
+        limit 1
+      ),
+      '{}'::jsonb
+    ),
+    'visits', coalesce(
+      (
+        select jsonb_agg(to_jsonb(pv) order by pv.created_at desc)
+        from public.patient_visits pv
+        where pv.org_id = p_org_id
+          and pv.patient_id = p_patient_id
+      ),
+      '[]'::jsonb
+    ),
+    'notes', coalesce(
+      (
+        select jsonb_agg(
+          to_jsonb(n) || jsonb_build_object(
+            'sent_by_name',
+            case
+              when cu.id is null then null
+              else coalesce(
+                nullif(trim(cu.name), ''),
+                nullif(initcap(replace(replace(split_part(cu.identifier, '@', 1), '.', ' '), '_', ' ')), ''),
+                cu.identifier,
+                'User'
+              )
+            end
+          )
+          order by n.created_at desc
+        )
+        from public.notes n
+        left join public.clinic_users cu
+          on cu.id = n.sent_by
+        where n.org_id = p_org_id
+          and n.patient_id = p_patient_id
+      ),
+      '[]'::jsonb
+    ),
+    'myopia_measurements', coalesce(
+      (
+        select jsonb_agg(to_jsonb(mm) order by mm.measured_at asc)
+        from public.myopia_measurements mm
+        where mm.org_id = p_org_id
+          and mm.patient_id = p_patient_id
+      ),
+      '[]'::jsonb
+    ),
+    'longitudinal_tracks', coalesce(
+      (
+        select jsonb_agg(to_jsonb(lt) order by lt.measured_at asc)
+        from public.longitudinal_tracks lt
+        where lt.org_id = p_org_id
+          and lt.patient_id = p_patient_id
+      ),
+      '[]'::jsonb
+    ),
+    'invoices', coalesce(
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'id', invoice_rows.id,
+            'org_id', invoice_rows.org_id,
+            'patient_id', invoice_rows.patient_id,
+            'patient_name', invoice_rows.patient_name,
+            'subtotal', invoice_rows.subtotal,
+            'total', invoice_rows.total,
+            'payment_status', invoice_rows.payment_status,
+            'amount_paid', invoice_rows.amount_paid,
+            'balance_due', invoice_rows.balance_due,
+            'paid_at', invoice_rows.paid_at,
+            'completed_at', invoice_rows.completed_at,
+            'completed_by', invoice_rows.completed_by,
+            'completed_by_name', invoice_rows.completed_by_name,
+            'sent_at', invoice_rows.sent_at,
+            'created_at', invoice_rows.created_at,
+            'items', invoice_rows.items
+          )
+          order by invoice_rows.created_at desc
+        )
+        from (
+          select
+            i.*,
+            coalesce(nullif(trim(p.name), ''), 'Unknown patient') as patient_name,
+            case
+              when cu.id is null then null
+              else coalesce(
+                nullif(trim(cu.name), ''),
+                nullif(initcap(replace(replace(split_part(cu.identifier, '@', 1), '.', ' '), '_', ' ')), ''),
+                cu.identifier,
+                'User'
+              )
+            end as completed_by_name,
+            greatest(round((i.total - i.amount_paid)::numeric, 2)::double precision, 0) as balance_due,
+            coalesce(
+              (
+                select jsonb_agg(
+                  jsonb_build_object(
+                    'id', ii.id,
+                    'invoice_id', ii.invoice_id,
+                    'catalog_item_id', ii.catalog_item_id,
+                    'item_type', ii.item_type,
+                    'label', ii.label,
+                    'quantity', ii.quantity,
+                    'unit_price', ii.unit_price,
+                    'line_total', ii.line_total,
+                    'created_at', ii.created_at
+                  )
+                  order by ii.created_at asc
+                )
+                from public.invoice_items ii
+                where ii.invoice_id = i.id
+              ),
+              '[]'::jsonb
+            ) as items
+          from public.invoices i
+          join public.patients p
+            on p.id = i.patient_id
+           and p.org_id = p_org_id
+          left join public.clinic_users cu
+            on cu.id = i.completed_by
+           and cu.org_id = p_org_id
+          where i.org_id = p_org_id
+            and i.patient_id = p_patient_id
+        ) invoice_rows
+      ),
+      '[]'::jsonb
+    ),
+    'follow_ups', coalesce(
+      (
+        select jsonb_agg(to_jsonb(fu) order by fu.scheduled_for desc)
+        from public.follow_ups fu
+        where fu.org_id = p_org_id
+          and fu.patient_id = p_patient_id
+      ),
+      '[]'::jsonb
+    ),
+    'appointments', coalesce(
+      (
+        select jsonb_agg(to_jsonb(a) order by a.created_at desc)
+        from public.appointments a
+        where a.org_id = p_org_id
+          and a.checked_in_patient_id = p_patient_id
+      ),
+      '[]'::jsonb
+    )
+  )
+  from public.patients p
+  where p.org_id = p_org_id
+    and p.id = p_patient_id;
+$$;
+
+create or replace function public.list_superuser_org_summaries()
+returns jsonb
+language sql
+stable
+as $$
+  with user_stats as (
+    select org_id, count(*)::int as user_count, max(created_at) as last_activity_at
+    from public.clinic_users
+    group by org_id
+  ),
+  patient_stats as (
+    select org_id, count(*)::int as patient_count, max(coalesce(last_visit_at, created_at)) as last_activity_at
+    from public.patients
+    group by org_id
+  ),
+  note_stats as (
+    select org_id, count(*)::int as note_count, max(created_at) as last_activity_at
+    from public.notes
+    group by org_id
+  ),
+  invoice_stats as (
+    select org_id, count(*)::int as invoice_count, max(created_at) as last_activity_at
+    from public.invoices
+    group by org_id
+  ),
+  follow_up_stats as (
+    select org_id, count(*)::int as follow_up_count, max(coalesce(scheduled_for, created_at)) as last_activity_at
+    from public.follow_ups
+    group by org_id
+  ),
+  audit_stats as (
+    select org_id, max(created_at) as last_activity_at
+    from public.audit_events
+    group by org_id
+  ),
+  usage_stats as (
+    select org_id, coalesce(sum(total_tokens), 0) as total_tokens
+    from public.ai_usage_events
+    group by org_id
+  ),
+  rows as (
+    select
+      o.id as org_id,
+      coalesce(nullif(trim(cs.clinic_name), ''), nullif(trim(o.name), ''), 'Clinic') as clinic_name,
+      o.created_at,
+      coalesce(us.user_count, 0) as user_count,
+      coalesce(ps.patient_count, 0) as patient_count,
+      coalesce(ns.note_count, 0) as note_count,
+      coalesce(inv.invoice_count, 0) as invoice_count,
+      coalesce(fus.follow_up_count, 0) as follow_up_count,
+      coalesce(ugs.total_tokens, 0) as total_tokens,
+      greatest(
+        o.created_at,
+        coalesce(cs.updated_at, o.created_at),
+        coalesce(us.last_activity_at, o.created_at),
+        coalesce(ps.last_activity_at, o.created_at),
+        coalesce(ns.last_activity_at, o.created_at),
+        coalesce(inv.last_activity_at, o.created_at),
+        coalesce(fus.last_activity_at, o.created_at),
+        coalesce(aus.last_activity_at, o.created_at)
+      ) as last_activity_at
+    from public.organizations o
+    left join public.clinic_settings cs on cs.org_id = o.id
+    left join user_stats us on us.org_id = o.id
+    left join patient_stats ps on ps.org_id = o.id
+    left join note_stats ns on ns.org_id = o.id
+    left join invoice_stats inv on inv.org_id = o.id
+    left join follow_up_stats fus on fus.org_id = o.id
+    left join audit_stats aus on aus.org_id = o.id
+    left join usage_stats ugs on ugs.org_id = o.id
+  )
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'org_id', rows.org_id,
+        'clinic_name', rows.clinic_name,
+        'created_at', rows.created_at,
+        'user_count', rows.user_count,
+        'patient_count', rows.patient_count,
+        'note_count', rows.note_count,
+        'invoice_count', rows.invoice_count,
+        'follow_up_count', rows.follow_up_count,
+        'total_tokens', rows.total_tokens,
+        'last_activity_at', rows.last_activity_at
+      )
+      order by rows.last_activity_at desc
+    ),
+    '[]'::jsonb
+  )
+  from rows;
 $$;

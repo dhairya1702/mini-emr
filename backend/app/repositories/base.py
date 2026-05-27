@@ -62,6 +62,39 @@ def rpc_single(result: Any) -> dict[str, Any]:
     return result or {}
 
 
+def rpc_json_array(result: Any, key: str) -> list[dict[str, Any]]:
+    if result is None:
+        return []
+    if isinstance(result, list):
+        if len(result) == 1 and isinstance(result[0], dict) and key in result[0]:
+            value = result[0].get(key)
+            return value if isinstance(value, list) else []
+        return result
+    if isinstance(result, dict):
+        value = result.get(key)
+        return value if isinstance(value, list) else []
+    return []
+
+
+def rpc_json_object(result: Any, key: str) -> dict[str, Any]:
+    if result is None:
+        return {}
+    if isinstance(result, list):
+        if not result:
+            return {}
+        first = result[0]
+        if isinstance(first, dict) and key in first:
+            value = first.get(key)
+            return value if isinstance(value, dict) else {}
+        return first if isinstance(first, dict) else {}
+    if isinstance(result, dict):
+        if key in result:
+            value = result.get(key)
+            return value if isinstance(value, dict) else {}
+        return result
+    return {}
+
+
 def escape_ilike(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_").replace(",", "\\,")
 

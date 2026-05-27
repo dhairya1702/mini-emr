@@ -162,7 +162,7 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
 
     try:
-        user = await repo.get_user(user_id)
+        user = await repo.get_auth_user(user_id)
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.") from exc
     current_user = UserOut(**user)

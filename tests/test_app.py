@@ -412,6 +412,24 @@ class FakeRepo:
             "created_at": user["created_at"],
         }
 
+    async def get_auth_user(self, user_id: str) -> dict:
+        user = self.users[user_id]
+        return {
+            "id": user["id"],
+            "org_id": user["org_id"],
+            "identifier": user["identifier"],
+            "name": user["name"],
+            "role": user["role"],
+            "doctor_dob": user.get("doctor_dob"),
+            "doctor_address": user.get("doctor_address", ""),
+            "doctor_signature_name": user.get("doctor_signature_name"),
+            "doctor_signature_content_type": user.get("doctor_signature_content_type"),
+            "doctor_signature_url": (
+                f"/users/{user_id}/signature/file" if user.get("doctor_signature_name") else None
+            ),
+            "created_at": user["created_at"],
+        }
+
     async def get_user_for_org(self, org_id: str, user_id: str) -> dict:
         user = self.users[user_id]
         if user["org_id"] != org_id:
@@ -542,11 +560,31 @@ class FakeRepo:
         self.appointments[appointment_id] = appointment
         return appointment
 
-    async def list_appointments(self, org_id: str, status: str | None = None, query: str | None = None, limit: int = 200) -> list[dict]:
+    async def list_appointments(
+        self,
+        org_id: str,
+        status: str | None = None,
+        query: str | None = None,
+        limit: int = 200,
+        scheduled_from: str | None = None,
+        scheduled_to: str | None = None,
+    ) -> list[dict]:
         rows = [
             appointment for appointment in self.appointments.values()
             if appointment["org_id"] == org_id and (status is None or appointment["status"] == status)
         ]
+        if scheduled_from:
+            start = datetime.fromisoformat(scheduled_from.replace("Z", "+00:00"))
+            rows = [
+                appointment for appointment in rows
+                if _as_utc_minute(appointment["scheduled_for"]) >= start
+            ]
+        if scheduled_to:
+            end = datetime.fromisoformat(scheduled_to.replace("Z", "+00:00"))
+            rows = [
+                appointment for appointment in rows
+                if _as_utc_minute(appointment["scheduled_for"]) < end
+            ]
         normalized_query = (query or "").strip().lower()
         if normalized_query:
             rows = [
@@ -555,6 +593,7 @@ class FakeRepo:
                 or normalized_query in appointment["phone"].lower()
                 or normalized_query in appointment["reason"].lower()
             ]
+        rows.sort(key=lambda appointment: _as_utc_minute(appointment["scheduled_for"]))
         return rows[:limit]
 
     async def cancel_expired_appointments(self, org_id: str, stale_before_iso: str) -> int:
@@ -685,6 +724,14 @@ class FakeRepo:
             key=lambda patient: patient["last_visit_at"],
             reverse=True,
         )
+
+    async def list_patients_by_ids(self, org_id: str, patient_ids: list[str]) -> list[dict]:
+        allowed = {str(patient_id) for patient_id in patient_ids}
+        return [
+            {"id": patient["id"], "name": patient["name"]}
+            for patient in self.patients.values()
+            if patient["org_id"] == org_id and patient["id"] in allowed
+        ]
 
     async def create_patient_visit(self, org_id: str, patient_id: str, payload) -> dict:
         patient = self.patients[patient_id]
@@ -1063,10 +1110,57 @@ class FakeRepo:
         ]
 
     async def list_invoices(self, org_id: str) -> list[dict]:
-        return [
-            invoice for invoice in self.invoices.values()
-            if invoice["org_id"] == org_id
-        ]
+        rows = []
+        for invoice in self.invoices.values():
+            if invoice["org_id"] != org_id:
+                continue
+            patient = self.patients.get(invoice["patient_id"])
+            completed_by = self.users.get(str(invoice.get("completed_by") or ""))
+            rows.append(
+                {
+                    **invoice,
+                    "patient_name": patient["name"] if patient else None,
+                    "completed_by_name": completed_by["name"] if completed_by else None,
+                    "balance_due": round(max(float(invoice.get("total") or 0) - float(invoice.get("amount_paid") or 0), 0), 2),
+                    "items": invoice.get("items", []),
+                }
+            )
+        rows.sort(key=lambda row: row["created_at"], reverse=True)
+        return rows
+
+    async def get_patient_timeline_source(self, org_id: str, patient_id: str) -> dict:
+        patient = await self.get_patient(org_id, patient_id)
+        user_names = {
+            user_id: user["name"]
+            for user_id, user in self.users.items()
+            if user["org_id"] == org_id
+        }
+        invoices = []
+        for invoice in await self.list_invoices_for_patient(org_id, patient_id):
+            completed_by = str(invoice.get("completed_by") or "")
+            invoices.append(
+                {
+                    **invoice,
+                    "patient_name": patient["name"],
+                    "completed_by_name": user_names.get(completed_by),
+                    "balance_due": round(max(float(invoice.get("total") or 0) - float(invoice.get("amount_paid") or 0), 0), 2),
+                    "items": invoice.get("items", []),
+                }
+            )
+        return {
+            "patient": patient,
+            "clinic_settings": self.clinic_settings.get(org_id, {}),
+            "visits": await self.list_patient_visits_for_patient(org_id, patient_id),
+            "notes": [
+                {**note, "sent_by_name": user_names.get(str(note.get("sent_by") or ""))}
+                for note in await self.list_notes_for_patient(org_id, patient_id)
+            ],
+            "myopia_measurements": await self.list_myopia_measurements_for_patient(org_id, patient_id),
+            "longitudinal_tracks": await self.list_longitudinal_tracks_for_patient(org_id, patient_id),
+            "invoices": invoices,
+            "follow_ups": await self.list_follow_ups_for_patient(org_id, patient_id),
+            "appointments": await self.list_appointments_for_patient(org_id, patient_id),
+        }
 
     async def finalize_invoice(self, org_id: str, invoice_id: str, *, completed_by: str) -> dict:
         invoice = self.invoices[invoice_id]
@@ -1140,19 +1234,35 @@ class FakeRepo:
         self.follow_ups[follow_up_id] = row
         return row
 
-    async def list_follow_ups(self, org_id: str, status: str | None = None, query: str | None = None, limit: int = 200) -> list[dict]:
+    async def list_follow_ups(
+        self,
+        org_id: str,
+        status: str | None = None,
+        query: str | None = None,
+        limit: int = 200,
+        scheduled_from: str | None = None,
+        scheduled_to: str | None = None,
+    ) -> list[dict]:
         rows = []
         normalized_query = (query or "").strip().lower()
+        start = datetime.fromisoformat(scheduled_from.replace("Z", "+00:00")) if scheduled_from else None
+        end = datetime.fromisoformat(scheduled_to.replace("Z", "+00:00")) if scheduled_to else None
         for follow_up in self.follow_ups.values():
             if follow_up["org_id"] != org_id:
                 continue
             if status is not None and follow_up["status"] != status:
+                continue
+            scheduled_for = _as_utc_minute(follow_up["scheduled_for"])
+            if start and scheduled_for < start:
+                continue
+            if end and scheduled_for >= end:
                 continue
             patient = self.patients.get(follow_up["patient_id"])
             patient_name = patient["name"] if patient else ""
             if normalized_query and normalized_query not in patient_name.lower() and normalized_query not in follow_up["notes"].lower():
                 continue
             rows.append({**follow_up, "patient_name": patient_name})
+        rows.sort(key=lambda follow_up: _as_utc_minute(follow_up["scheduled_for"]))
         return rows[:limit]
 
     async def cancel_expired_follow_ups(self, org_id: str, stale_before_iso: str) -> int:
@@ -1474,7 +1584,7 @@ def test_public_follow_up_booking_rate_limits_context_requests(client, monkeypat
     assert second.status_code == 429
 
 
-def test_schedule_lists_auto_cancel_expired_items(client):
+def test_schedule_lists_filter_by_requested_date_without_mutating_expired_items(client):
     test_client, repo = client
     session = register_test_clinic(test_client, identifier="cleanup@example.com", clinic_name="Cleanup Clinic")
     token = session["token"]
@@ -1562,7 +1672,7 @@ def test_schedule_lists_auto_cancel_expired_items(client):
     appointment_ids = {row["id"] for row in appointments_response.json()}
     assert future_appointment_body["id"] in appointment_ids
     assert old_appointment_body["id"] not in appointment_ids
-    assert repo.appointments[old_appointment_body["id"]]["status"] == "cancelled"
+    assert repo.appointments[old_appointment_body["id"]]["status"] == "scheduled"
 
     follow_ups_response = test_client.get(
         f"/follow-ups?scheduled_date={tomorrow.date().isoformat()}",
@@ -1572,7 +1682,7 @@ def test_schedule_lists_auto_cancel_expired_items(client):
     follow_up_ids = {row["id"] for row in follow_ups_response.json()}
     assert future_follow_up_body["id"] in follow_up_ids
     assert old_follow_up_body["id"] not in follow_up_ids
-    assert repo.follow_ups[old_follow_up_body["id"]]["status"] == "cancelled"
+    assert repo.follow_ups[old_follow_up_body["id"]]["status"] == "scheduled"
 
 
 def test_myopia_measurements_create_history_and_timeline(client):

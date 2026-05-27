@@ -9,12 +9,6 @@ from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import InvoiceCreate, InvoiceOut, SendInvoiceRequest
 from app.schema_domains.documents import SendNoteResponse
 from app.services.audit_service import record_invoice_created, record_invoice_shared
-from app.services.patient_views import (
-    build_patient_name_map,
-    build_user_name_map,
-    enrich_invoices_with_completer_names,
-    enrich_invoices_with_patient_names,
-)
 
 
 async def _record_invoice_delivery_failure(
@@ -58,13 +52,7 @@ async def create_invoice_workflow(
 
 async def list_invoices_with_user_names(repo: SupabaseRepository, org_id: str) -> list[InvoiceOut]:
     invoices = await repo.list_invoices(org_id)
-    user_names = await build_user_name_map(repo, org_id)
-    patient_names = await build_patient_name_map(repo, org_id)
-    enriched = enrich_invoices_with_patient_names(
-        enrich_invoices_with_completer_names(invoices, user_names),
-        patient_names,
-    )
-    return [InvoiceOut(**invoice) for invoice in enriched]
+    return [InvoiceOut(**invoice) for invoice in invoices]
 
 
 async def send_invoice_workflow(

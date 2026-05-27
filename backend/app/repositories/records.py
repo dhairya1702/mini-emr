@@ -192,11 +192,23 @@ class RecordsRepositoryMixin(BaseSupabaseRepository):
 
         return await asyncio.to_thread(_create)
 
-    async def list_follow_ups(self, org_id: str, status: str | None = None, query: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+    async def list_follow_ups(
+        self,
+        org_id: str,
+        status: str | None = None,
+        query: str | None = None,
+        limit: int = 200,
+        scheduled_from: str | None = None,
+        scheduled_to: str | None = None,
+    ) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
             follow_ups_query = self.client.table("follow_ups").select("*").eq("org_id", org_id)
             if status:
                 follow_ups_query = follow_ups_query.eq("status", status)
+            if scheduled_from:
+                follow_ups_query = follow_ups_query.gte("scheduled_for", scheduled_from)
+            if scheduled_to:
+                follow_ups_query = follow_ups_query.lt("scheduled_for", scheduled_to)
             follow_ups = follow_ups_query.order("scheduled_for", desc=False).limit(limit).execute().data
             if not follow_ups:
                 return []

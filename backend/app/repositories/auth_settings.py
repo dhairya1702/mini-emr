@@ -216,6 +216,19 @@ class AuthSettingsRepositoryMixin(BaseSupabaseRepository):
         user["doctor_signature_url"] = "/users/{}/signature/file".format(user_id) if user.get("doctor_signature_name") and user.get("doctor_signature_data_base64") else None
         return user
 
+    async def get_auth_user(self, user_id: str) -> dict[str, Any]:
+        user = await asyncio.to_thread(
+            lambda: self.client.table("clinic_users")
+            .select("id, org_id, identifier, name, role, doctor_dob, doctor_address, doctor_signature_name, doctor_signature_content_type, created_at")
+            .eq("id", user_id)
+            .single()
+            .execute()
+            .data
+        )
+        user["name"] = display_name(user)
+        user["doctor_signature_url"] = "/users/{}/signature/file".format(user_id) if user.get("doctor_signature_name") else None
+        return user
+
     async def get_user_for_org(self, org_id: str, user_id: str) -> dict[str, Any]:
         def _get() -> dict[str, Any]:
             rows = (

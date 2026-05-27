@@ -10,6 +10,7 @@ from app.repositories.base import (
     escape_ilike,
     find_check_in_matches,
     normalize_phone_number,
+    rpc_json_object,
     rpc_single,
     visit_payload,
 )
@@ -24,34 +25,14 @@ from app.schema_domains.patients import (
 
 class PatientFlowRepositoryMixin(BaseSupabaseRepository):
     async def list_patients(self, org_id: str) -> list[dict[str, Any]]:
-        def _list() -> list[dict[str, Any]]:
-            patients = self.client.table("patients").select("*").eq("org_id", org_id).execute().data
-            visits = (
-                self.client.table("patient_visits")
-                .select("patient_id,created_at")
-                .eq("org_id", org_id)
-                .order("created_at", desc=True)
-                .execute()
-                .data
-            )
-            latest_visit_by_patient: dict[str, str] = {}
-            for visit in visits:
-                patient_id = str(visit.get("patient_id") or "")
-                created_at = str(visit.get("created_at") or "")
-                if patient_id and created_at and patient_id not in latest_visit_by_patient:
-                    latest_visit_by_patient[patient_id] = created_at
-
-            enriched: list[dict[str, Any]] = []
-            for patient in patients:
-                effective_last_visit_at = latest_visit_by_patient.get(
-                    str(patient.get("id") or ""),
-                    str(patient.get("created_at") or patient.get("last_visit_at") or ""),
-                )
-                enriched.append({**patient, "last_visit_at": effective_last_visit_at})
-            enriched.sort(key=lambda patient: str(patient.get("last_visit_at") or ""), reverse=True)
-            return enriched
-
-        return await asyncio.to_thread(_list)
+        return await asyncio.to_thread(
+            lambda: self.client.table("patients")
+            .select("*")
+            .eq("org_id", org_id)
+            .order("last_visit_at", desc=True)
+            .execute()
+            .data
+        )
 
     async def create_patient(self, org_id: str, payload: PatientCreate) -> dict[str, Any]:
         def _create() -> dict[str, Any]:
@@ -122,11 +103,23 @@ class PatientFlowRepositoryMixin(BaseSupabaseRepository):
             .data[0]
         )
 
-    async def list_appointments(self, org_id: str, status: str | None = None, query: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+    async def list_appointments(
+        self,
+        org_id: str,
+        status: str | None = None,
+        query: str | None = None,
+        limit: int = 200,
+        scheduled_from: str | None = None,
+        scheduled_to: str | None = None,
+    ) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
             db_query = self.client.table("appointments").select("*").eq("org_id", org_id)
             if status:
                 db_query = db_query.eq("status", status)
+            if scheduled_from:
+                db_query = db_query.gte("scheduled_for", scheduled_from)
+            if scheduled_to:
+                db_query = db_query.lt("scheduled_for", scheduled_to)
             normalized_query = (query or "").strip()
             if normalized_query:
                 escaped_query = escape_ilike(normalized_query)
@@ -288,8 +281,16 @@ class PatientFlowRepositoryMixin(BaseSupabaseRepository):
         normalized_phone = normalize_phone_number(phone)
         if not normalized_phone:
             return []
-        patients = await self.list_patients(org_id)
-        return [patient for patient in patients if normalize_phone_number(patient.get("phone")) == normalized_phone][:limit]
+        return await asyncio.to_thread(
+            lambda: self.client.table("patients")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("phone", normalized_phone)
+            .order("last_visit_at", desc=True)
+            .limit(limit)
+            .execute()
+            .data
+        )
 
     async def get_patient(self, org_id: str, patient_id: str) -> dict[str, Any]:
         return await asyncio.to_thread(
@@ -301,3 +302,33 @@ class PatientFlowRepositoryMixin(BaseSupabaseRepository):
             .execute()
             .data
         )
+
+    async def list_patients_by_ids(self, org_id: str, patient_ids: list[str]) -> list[dict[str, Any]]:
+        unique_ids = sorted({str(patient_id) for patient_id in patient_ids if str(patient_id)})
+        if not unique_ids:
+            return []
+        return await asyncio.to_thread(
+            lambda: self.client.table("patients")
+            .select("id, name")
+            .eq("org_id", org_id)
+            .in_("id", unique_ids)
+            .execute()
+            .data
+        )
+
+    async def get_patient_timeline_source(self, org_id: str, patient_id: str) -> dict[str, Any]:
+        def _get() -> dict[str, Any]:
+            result = self.execute_with_retry(
+                lambda: self.client.rpc(
+                    "get_patient_timeline_source",
+                    {"p_org_id": org_id, "p_patient_id": patient_id},
+                )
+                .execute()
+                .data
+            )
+            payload = rpc_json_object(result, "get_patient_timeline_source")
+            if not payload:
+                raise ValueError("Patient not found for this organization.")
+            return payload
+
+        return await asyncio.to_thread(_get)

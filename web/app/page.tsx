@@ -1,5 +1,18 @@
 "use client";
 
+import {
+  closestCorners,
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { CheckCircle2, CircleDashed, FileText, Mail, PenLine, Settings2, UserPlus, Users } from "lucide-react";
@@ -9,9 +22,17 @@ import { AppHeader } from "@/components/app-header";
 import { ConsultationDrawer } from "@/components/consultation-drawer";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
+import { PatientCard } from "@/components/patient-card";
 import { PatientColumn } from "@/components/patient-column";
 import { SetupStepModal } from "@/components/setup/setup-step-modal";
 import { api } from "@/lib/api";
+import {
+  canMovePatientStatus,
+  createEmptyQueueOrder,
+  movePatientBetweenQueueColumns,
+  QueueOrder,
+  reorderQueueColumn,
+} from "@/lib/queue-dnd";
 import { buildClinicSetupChecklist, ClinicSetupStep, ClinicSetupStepKey, hasClinicDocumentTemplate, hasUserSignature } from "@/lib/setup-checklist";
 import { findNextSetupStep as findNextSetupStepFromChecklist, setupQueryForStep, setupStepFromQuery } from "@/lib/setup-flow";
 import {
@@ -28,16 +49,6 @@ import { Patient, PatientStatus, PatientTimelineEvent } from "@/lib/types";
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
 const liveQueueOrderStorageKey = "clinic_queue_order_v1";
 const QUEUE_REFRESH_INTERVAL_MS = 5000;
-
-type QueueOrder = Record<PatientStatus, string[]>;
-
-function createEmptyQueueOrder(): QueueOrder {
-  return {
-    waiting: [],
-    consultation: [],
-    done: [],
-  };
-}
 
 function loadQueueOrder(storageKey: string): QueueOrder {
   if (typeof window === "undefined") {
@@ -224,9 +235,26 @@ export default function HomePage() {
   const [activeSetupStep, setActiveSetupStep] = useState<ClinicSetupStepKey | null>(null);
   const [highlightedSetupStep, setHighlightedSetupStep] = useState<ClinicSetupStepKey | null>(null);
   const [queueOrder, setQueueOrder] = useState<QueueOrder>(() => createEmptyQueueOrder());
+  const [draggedPatient, setDraggedPatient] = useState<Patient | null>(null);
   const loadedQueueOrderKeyRef = useRef("");
   const hydratingQueueOrderRef = useRef("");
   const previousQueueOrderSaveKeyRef = useRef("");
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 180,
+        tolerance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
   const loadPageData = useCallback((context: {
     isTrainingMode: boolean;
     trainingScope: string | null;
@@ -667,6 +695,101 @@ export default function HomePage() {
     }
   }
 
+  function statusFromDroppableId(overId: string): PatientStatus | null {
+    if ((statusOrder as string[]).includes(overId)) {
+      return overId as PatientStatus;
+    }
+    return patients.find((patient) => patient.id === overId)?.status ?? null;
+  }
+
+  function handleDragStart(event: DragStartEvent) {
+    const patientId = String(event.active.id);
+    setDraggedPatient(patients.find((patient) => patient.id === patientId) ?? null);
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    setDraggedPatient(null);
+
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : "";
+    if (!overId || activeId === overId) {
+      return;
+    }
+
+    const patient = patients.find((entry) => entry.id === activeId);
+    const targetStatus = statusFromDroppableId(overId);
+    if (!patient || !targetStatus) {
+      return;
+    }
+
+    const sourceStatus = patient.status;
+    const visibleQueueOrder = statusOrder.reduce<QueueOrder>((accumulator, status) => {
+      accumulator[status] = groupedPatients[status].map((entry) => entry.id);
+      return accumulator;
+    }, createEmptyQueueOrder());
+
+    if (!canMovePatientStatus(currentUser?.role, sourceStatus, targetStatus)) {
+      if (sourceStatus !== targetStatus) {
+        setError("Only admins can move patients through consultation in order.");
+      }
+      return;
+    }
+
+    if (sourceStatus === targetStatus) {
+      setQueueOrder(reorderQueueColumn(visibleQueueOrder, sourceStatus, activeId, overId));
+      setError("");
+      return;
+    }
+
+    const previousPatients = patients;
+    const previousQueueOrder = queueOrder;
+    const targetPatient = patients.find((entry) => entry.id === overId);
+    const nextQueueOrder = movePatientBetweenQueueColumns(
+      visibleQueueOrder,
+      sourceStatus,
+      targetStatus,
+      activeId,
+      targetPatient?.id,
+    );
+    const movedPatient = { ...patient, status: targetStatus };
+
+    setQueueOrder(nextQueueOrder);
+
+    if (isTrainingMode) {
+      commitTrainingPatients((current) =>
+        current.map((entry) => (entry.id === patient.id ? movedPatient : entry)),
+      );
+      if (selectedPatient?.id === patient.id) {
+        setSelectedPatient(movedPatient);
+      }
+      setError("");
+      return;
+    }
+
+    setPatients((current) =>
+      current.map((entry) => (entry.id === patient.id ? movedPatient : entry)),
+    );
+    if (selectedPatient?.id === patient.id) {
+      setSelectedPatient(movedPatient);
+    }
+
+    try {
+      await api.updatePatientStatus(patient.id, targetStatus);
+      setError("");
+    } catch (updateError) {
+      setQueueOrder(previousQueueOrder);
+      setPatients(previousPatients);
+      if (selectedPatient?.id === patient.id) {
+        setSelectedPatient(patient);
+      }
+      setError(updateError instanceof Error ? updateError.message : "Failed to update status.");
+    }
+  }
+
+  function handleDragCancel() {
+    setDraggedPatient(null);
+  }
+
   async function handleRemoveFromQueue(patient: Patient) {
     const previousPatients = patients;
     const previousSelectedPatient = selectedPatient;
@@ -861,32 +984,58 @@ export default function HomePage() {
           </div>
         ) : null}
 
-        <div className="grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-3">
-          <PatientColumn
-            title="Waiting"
-            patients={groupedPatients.waiting}
-            onOpen={handleOpenPatient}
-            onAdvance={handleAdvancePatient}
-            onRemoveFromQueue={handleRemoveFromQueue}
-            onAddPatient={() => setIsModalOpen(true)}
-            canAdvance={() => currentUser?.role === "admin"}
-          />
-          <PatientColumn
-            title="Consultation"
-            patients={groupedPatients.consultation}
-            onOpen={handleOpenPatient}
-            onAdvance={handleAdvancePatient}
-            onRemoveFromQueue={handleRemoveFromQueue}
-            canAdvance={() => currentUser?.role === "admin"}
-          />
-          <PatientColumn
-            title="Billing"
-            patients={groupedPatients.done}
-            onOpen={handleOpenPatient}
-            onAdvance={handleAdvancePatient}
-            onRemoveFromQueue={handleRemoveFromQueue}
-          />
-        </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragEnd={(event) => {
+            void handleDragEnd(event);
+          }}
+          onDragCancel={handleDragCancel}
+        >
+          <div className="grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-3">
+            <PatientColumn
+              status="waiting"
+              title="Waiting"
+              patients={groupedPatients.waiting}
+              onOpen={handleOpenPatient}
+              onAdvance={handleAdvancePatient}
+              onRemoveFromQueue={handleRemoveFromQueue}
+              onAddPatient={() => setIsModalOpen(true)}
+              canAdvance={() => currentUser?.role === "admin"}
+            />
+            <PatientColumn
+              status="consultation"
+              title="Consultation"
+              patients={groupedPatients.consultation}
+              onOpen={handleOpenPatient}
+              onAdvance={handleAdvancePatient}
+              onRemoveFromQueue={handleRemoveFromQueue}
+              canAdvance={() => currentUser?.role === "admin"}
+            />
+            <PatientColumn
+              status="done"
+              title="Billing"
+              patients={groupedPatients.done}
+              onOpen={handleOpenPatient}
+              onAdvance={handleAdvancePatient}
+              onRemoveFromQueue={handleRemoveFromQueue}
+            />
+          </div>
+          <DragOverlay>
+            {draggedPatient ? (
+              <div className="w-[min(320px,80vw)]">
+                <PatientCard
+                  patient={draggedPatient}
+                  onOpen={() => undefined}
+                  onAdvance={() => undefined}
+                  onRemoveFromQueue={() => undefined}
+                  canAdvance={false}
+                />
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       </div>
 
       <AddPatientModal

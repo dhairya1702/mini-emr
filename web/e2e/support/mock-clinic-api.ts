@@ -278,12 +278,14 @@ export async function mockClinicBootstrap(
   options: {
     user?: MockAuthUser;
     clinicSettings?: MockClinicSettings;
+    users?: MockAuthUser[];
     patients?: MockPatient[];
     caseStudies?: MockCaseStudy[];
     caseStudySource?: MockCaseStudySource | null;
   } = {},
 ) {
   const user = options.user ?? buildUser();
+  const users = options.users ?? [user];
   let clinicSettings = options.clinicSettings ?? buildClinicSettings();
   const patients = options.patients ?? [];
   const caseStudies = options.caseStudies ?? [];
@@ -352,7 +354,7 @@ export async function mockClinicBootstrap(
     });
   });
   await page.route(`${API_ORIGIN}/users`, async (route) => {
-    await fulfillJson(route, [user]);
+    await fulfillJson(route, users);
   });
   await page.route(`${API_ORIGIN}/audit-events*`, async (route) => {
     await fulfillJson(route, []);
@@ -505,7 +507,7 @@ export async function mockConsultationFlow(page: Page) {
 }
 
 export async function mockPublicFollowUpBooking(page: Page) {
-  let scheduledFor = "2026-05-20T14:00:00.000Z";
+  let scheduledFor = "2026-05-28T14:00:00.000Z";
 
   await page.route(`${API_ORIGIN}/public/follow-up-booking?token=valid-token`, async (route) => {
     await fulfillJson(route, {
@@ -516,8 +518,8 @@ export async function mockPublicFollowUpBooking(page: Page) {
       notes: "Review symptoms and blood pressure",
       booking_token: "valid-token",
       suggested_slots: [
-        "2026-05-20T14:30:00.000Z",
-        "2026-05-20T15:00:00.000Z",
+        "2026-05-28T14:30:00.000Z",
+        "2026-05-28T15:00:00.000Z",
       ],
     });
   });

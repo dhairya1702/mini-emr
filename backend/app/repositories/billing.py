@@ -8,6 +8,7 @@ from app.repositories.base import (
     attach_invoice_balances,
     normalize_invoice_amount_paid,
     round_money,
+    rpc_json_array,
     rpc_single,
 )
 from app.schema_domains.billing import CatalogItemCreate, CatalogStockUpdate, InvoiceCreate
@@ -132,25 +133,10 @@ class BillingRepositoryMixin(BaseSupabaseRepository):
 
     async def list_invoices(self, org_id: str) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
-            invoices = self.execute_with_retry(
-                lambda: self.client.table("invoices").select("*").eq("org_id", org_id).order("created_at", desc=True).execute().data
+            result = self.execute_with_retry(
+                lambda: self.client.rpc("list_invoices_with_details", {"p_org_id": org_id}).execute().data
             )
-            invoice_ids = [invoice["id"] for invoice in invoices]
-            items_by_invoice_id: dict[str, list[dict[str, Any]]] = {str(invoice_id): [] for invoice_id in invoice_ids}
-            if invoice_ids:
-                invoice_items = self.execute_with_retry(
-                    lambda: self.client.table("invoice_items")
-                    .select("*")
-                    .in_("invoice_id", invoice_ids)
-                    .order("created_at", desc=False)
-                    .execute()
-                    .data
-                )
-                for item in invoice_items:
-                    items_by_invoice_id.setdefault(str(item["invoice_id"]), []).append(item)
-            for invoice in invoices:
-                invoice["items"] = items_by_invoice_id.get(str(invoice["id"]), [])
-            return [attach_invoice_balances(invoice) for invoice in invoices]
+            return [attach_invoice_balances(invoice) for invoice in rpc_json_array(result, "list_invoices_with_details")]
 
         return await asyncio.to_thread(_list)
 

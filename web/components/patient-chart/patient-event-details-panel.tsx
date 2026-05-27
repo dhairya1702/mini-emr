@@ -24,7 +24,7 @@ export function PatientEventDetailsPanel({
   formatDateTime: (value: string) => string;
 }) {
   return (
-    <div className="rounded-[28px] border border-sky-100 bg-white p-5">
+    <section aria-label="Selected event details" className="rounded-[28px] border border-sky-100 bg-white p-5">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Selected Event</p>
@@ -260,6 +260,6 @@ export function PatientEventDetailsPanel({
           Select a timeline event from the left to inspect its details.
         </div>
       )}
-    </div>
+    </section>
   );
 }

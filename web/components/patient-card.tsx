@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowRight, Check, Trash2 } from "lucide-react";
+import { ArrowRight, Check, GripVertical, Trash2 } from "lucide-react";
+import type { ButtonHTMLAttributes } from "react";
 
 import { Patient, PatientStatus } from "@/lib/types";
 
@@ -22,6 +23,12 @@ interface PatientCardProps {
   onAdvance: (patient: Patient, next: PatientStatus) => void;
   onRemoveFromQueue: (patient: Patient) => void;
   canAdvance?: boolean;
+  dragHandleProps?: {
+    attributes?: ButtonHTMLAttributes<HTMLButtonElement>;
+    listeners?: ButtonHTMLAttributes<HTMLButtonElement>;
+    setActivatorNodeRef?: (node: HTMLButtonElement | null) => void;
+    disabled?: boolean;
+  };
 }
 
 export function PatientCard({
@@ -30,6 +37,7 @@ export function PatientCard({
   onAdvance,
   onRemoveFromQueue,
   canAdvance = true,
+  dragHandleProps,
 }: PatientCardProps) {
   const target = nextStatus[patient.status];
   const createdAt = new Date(patient.last_visit_at).toLocaleTimeString([], {
@@ -40,6 +48,7 @@ export function PatientCard({
   return (
     <div
       role="button"
+      aria-label={`Open chart for ${patient.name}`}
       tabIndex={0}
       onClick={() => onOpen(patient)}
       onKeyDown={(event) => {
@@ -51,8 +60,23 @@ export function PatientCard({
       className="w-full rounded-[18px] border border-sky-200 bg-white px-3 py-2.5 text-left shadow-[0_8px_18px_rgba(125,211,252,0.08)] transition hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-[0_14px_30px_rgba(125,211,252,0.14)]"
     >
       <div className="flex items-start justify-between gap-2.5">
-        <div className="min-w-0">
-          <p className="truncate text-[15px] font-semibold leading-5 text-slate-800">{patient.name}</p>
+        <div className="flex min-w-0 items-start gap-2">
+          {dragHandleProps ? (
+            <button
+              type="button"
+              ref={dragHandleProps.setActivatorNodeRef}
+              aria-label={`Drag ${patient.name}`}
+              title="Drag patient"
+              disabled={dragHandleProps.disabled}
+              className="mt-[-1px] inline-flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-full text-slate-400 transition hover:bg-sky-50 hover:text-sky-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={(event) => event.stopPropagation()}
+              {...dragHandleProps.attributes}
+              {...dragHandleProps.listeners}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          ) : null}
+          <p className="min-w-0 truncate text-[15px] font-semibold leading-5 text-slate-800">{patient.name}</p>
         </div>
         <span className="rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[10px] font-medium text-slate-500">
           {createdAt}
