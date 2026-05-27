@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowRight, Check, GripVertical, Trash2 } from "lucide-react";
-import type { ButtonHTMLAttributes } from "react";
+import type { HTMLAttributes } from "react";
 
 import { Patient, PatientStatus } from "@/lib/types";
 
@@ -17,6 +17,16 @@ const actionLabel: Record<PatientStatus, string> = {
   done: "Billing done",
 };
 
+function formatPatientMetadata(patient: Patient) {
+  const reason = patient.reason.trim();
+  const age =
+    typeof patient.age === "number" && Number.isFinite(patient.age)
+      ? `${patient.age}y`
+      : "";
+  const metadata = [age, reason].filter(Boolean).join(" · ");
+  return metadata || "No reason added";
+}
+
 interface PatientCardProps {
   patient: Patient;
   onOpen: (patient: Patient) => void;
@@ -24,9 +34,9 @@ interface PatientCardProps {
   onRemoveFromQueue: (patient: Patient) => void;
   canAdvance?: boolean;
   dragHandleProps?: {
-    attributes?: ButtonHTMLAttributes<HTMLButtonElement>;
-    listeners?: ButtonHTMLAttributes<HTMLButtonElement>;
-    setActivatorNodeRef?: (node: HTMLButtonElement | null) => void;
+    attributes?: HTMLAttributes<HTMLElement>;
+    listeners?: HTMLAttributes<HTMLElement>;
+    setActivatorNodeRef?: (node: HTMLElement | null) => void;
     disabled?: boolean;
   };
 }
@@ -44,9 +54,13 @@ export function PatientCard({
     hour: "numeric",
     minute: "2-digit",
   });
+  const patientMetadata = formatPatientMetadata(patient);
 
   return (
     <div
+      ref={dragHandleProps?.setActivatorNodeRef}
+      {...dragHandleProps?.attributes}
+      {...dragHandleProps?.listeners}
       role="button"
       aria-label={`Open chart for ${patient.name}`}
       tabIndex={0}
@@ -57,40 +71,38 @@ export function PatientCard({
           onOpen(patient);
         }
       }}
-      className="w-full rounded-[18px] border border-sky-200 bg-white px-3 py-2.5 text-left shadow-[0_8px_18px_rgba(125,211,252,0.08)] transition hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-[0_14px_30px_rgba(125,211,252,0.14)]"
+      className={`group w-full rounded-[14px] border border-[#bfd7e8] bg-white px-3 py-2.5 text-left shadow-[0_7px_18px_rgba(64,131,181,0.06)] transition hover:border-[#9fc7e1] hover:shadow-[0_12px_26px_rgba(64,131,181,0.1)] ${
+        dragHandleProps && !dragHandleProps.disabled ? "cursor-grab active:cursor-grabbing" : ""
+      }`}
     >
       <div className="flex items-start justify-between gap-2.5">
         <div className="flex min-w-0 items-start gap-2">
           {dragHandleProps ? (
-            <button
-              type="button"
-              ref={dragHandleProps.setActivatorNodeRef}
-              aria-label={`Drag ${patient.name}`}
+            <span
+              aria-hidden="true"
               title="Drag patient"
-              disabled={dragHandleProps.disabled}
-              className="mt-[-1px] inline-flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-full text-slate-400 transition hover:bg-sky-50 hover:text-sky-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
-              onClick={(event) => event.stopPropagation()}
-              {...dragHandleProps.attributes}
-              {...dragHandleProps.listeners}
+              className={`mt-[-1px] inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition ${
+                dragHandleProps.disabled ? "opacity-40" : "group-hover:bg-[#edf5fa] group-hover:text-[#2a6fa8]"
+              }`}
             >
               <GripVertical className="h-4 w-4" />
-            </button>
+            </span>
           ) : null}
           <p className="min-w-0 truncate text-[15px] font-semibold leading-5 text-slate-800">{patient.name}</p>
         </div>
-        <span className="rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[10px] font-medium text-slate-500">
+        <span className="rounded-lg border border-[#dbe7ef] bg-[#edf5fa] px-2.5 py-1 text-[10px] font-medium text-slate-500">
           {createdAt}
         </span>
       </div>
 
       <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <p className="line-clamp-1 min-w-0 text-[13px] text-slate-700">
-          <span className="font-semibold text-slate-500">Reason:</span> {patient.reason}
+          {patientMetadata}
         </p>
         <div className="flex shrink-0 justify-end gap-1.5">
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-700 transition hover:bg-rose-100"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-700 transition hover:bg-rose-100"
             onClick={(event) => {
               event.stopPropagation();
               onRemoveFromQueue(patient);
@@ -103,7 +115,7 @@ export function PatientCard({
           {target && canAdvance ? (
             <button
               type="button"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-sky-500 text-white transition hover:bg-sky-600"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[#2f8fd3] text-white transition hover:bg-[#287fc0]"
               onClick={(event) => {
                 event.stopPropagation();
                 onAdvance(patient, target);
@@ -115,7 +127,7 @@ export function PatientCard({
             </button>
           ) : (
             <span
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-sky-700"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[#edf5fa] text-[#2a6fa8]"
               aria-label={`${target ? "View patient" : actionLabel[patient.status]} for ${patient.name}`}
               title={target ? "View patient" : actionLabel[patient.status]}
             >

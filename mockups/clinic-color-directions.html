@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Clinic Color Directions</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #172033;
+      background: #eef6fb;
+    }
+    main {
+      width: min(1500px, calc(100vw - 48px));
+      margin: 0 auto;
+      padding: 32px 0 72px;
+    }
+    .intro {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: end;
+      margin-bottom: 22px;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 28px; }
+    .intro p {
+      margin-top: 8px;
+      color: #667085;
+      max-width: 760px;
+      line-height: 1.55;
+    }
+    .note {
+      border: 1px solid #d7e5ee;
+      border-radius: 14px;
+      background: rgba(255,255,255,.75);
+      padding: 12px 14px;
+      color: #667085;
+      font-size: 14px;
+    }
+    .direction {
+      margin-top: 26px;
+      border-radius: 22px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      background: var(--page);
+      box-shadow: 0 18px 46px var(--shadow);
+    }
+    .direction-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: start;
+      margin-bottom: 16px;
+    }
+    .direction h2 { font-size: 20px; }
+    .direction .caption {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+    .swatch {
+      width: 28px;
+      height: 28px;
+      border-radius: 9px;
+      border: 1px solid rgba(0,0,0,.08);
+      background: var(--c);
+    }
+    .app {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--bg);
+      padding: 16px;
+    }
+    .topbar {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 16px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+      padding: 14px;
+      box-shadow: 0 12px 32px var(--soft-shadow);
+    }
+    .brand {
+      text-align: center;
+      font-size: 27px;
+      font-weight: 750;
+      color: var(--ink);
+    }
+    .btn {
+      display: inline-grid;
+      place-items: center;
+      height: 40px;
+      min-width: 40px;
+      border-radius: 12px;
+      border: 1px solid var(--line-strong);
+      background: var(--surface);
+      color: var(--ink);
+      font-weight: 700;
+    }
+    .role {
+      display: inline-flex;
+      align-items: center;
+      height: 40px;
+      padding: 0 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+      color: var(--accent-ink);
+      font-weight: 700;
+      margin-right: 8px;
+    }
+    .nav {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+      padding-top: 12px;
+      margin-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .nav span {
+      padding: 9px 12px;
+      border-radius: 11px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .nav .active {
+      background: var(--accent);
+      color: var(--accent-text);
+      box-shadow: 0 8px 18px var(--accent-shadow);
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 16px;
+    }
+    .column {
+      min-height: 430px;
+      border: 1px solid var(--line-strong);
+      border-radius: 18px;
+      background: var(--surface);
+      padding: 16px;
+      box-shadow: 0 12px 30px var(--soft-shadow);
+    }
+    .column-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .column h3 {
+      font-size: 19px;
+      color: var(--ink);
+    }
+    .count {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .patient {
+      margin-top: 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 14px;
+      background: var(--card);
+      padding: 12px;
+      box-shadow: 0 8px 18px var(--soft-shadow);
+    }
+    .patient-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .name {
+      font-weight: 760;
+      color: var(--ink);
+    }
+    .time {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--soft);
+      color: var(--muted);
+      padding: 6px 10px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .meta {
+      margin-top: 14px;
+      color: var(--muted-strong);
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .actions {
+      display: flex;
+      justify-content: end;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .danger {
+      color: var(--danger);
+      background: var(--danger-soft);
+      border-color: var(--danger-line);
+    }
+    .primary {
+      color: var(--accent-text);
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .empty {
+      display: grid;
+      place-items: center;
+      min-height: 110px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 14px;
+      background: var(--empty);
+      text-align: center;
+      color: var(--muted);
+      padding: 14px;
+    }
+    .empty strong {
+      display: block;
+      color: var(--muted-strong);
+      margin-bottom: 4px;
+    }
+
+    .blue-neutral {
+      --page: #f4f9fc;
+      --bg: #f7fafc;
+      --surface: #ffffff;
+      --card: #ffffff;
+      --empty: #f5f9fc;
+      --soft: #edf5fa;
+      --ink: #172033;
+      --muted: #667085;
+      --muted-strong: #4c5a70;
+      --line: #dbe7ef;
+      --line-strong: #bfd7e8;
+      --accent: #2f8fd3;
+      --accent-ink: #2a6fa8;
+      --accent-text: #ffffff;
+      --accent-shadow: rgba(47,143,211,.2);
+      --soft-shadow: rgba(64,131,181,.08);
+      --shadow: rgba(64,131,181,.1);
+      --danger: #d94c63;
+      --danger-soft: #fff2f4;
+      --danger-line: #f6bcc7;
+    }
+    .teal-clinic {
+      --page: #f3f8f7;
+      --bg: #f7faf9;
+      --surface: #ffffff;
+      --card: #ffffff;
+      --empty: #f4f8f7;
+      --soft: #eaf5f3;
+      --ink: #16242a;
+      --muted: #66767a;
+      --muted-strong: #4b5f64;
+      --line: #d8e8e5;
+      --line-strong: #b7d8d0;
+      --accent: #248c83;
+      --accent-ink: #1d716b;
+      --accent-text: #ffffff;
+      --accent-shadow: rgba(36,140,131,.2);
+      --soft-shadow: rgba(54,116,110,.08);
+      --shadow: rgba(54,116,110,.1);
+      --danger: #cf5263;
+      --danger-soft: #fff2f3;
+      --danger-line: #f1c2c9;
+    }
+    .sage-pediatric {
+      --page: #f7f8f3;
+      --bg: #fbfbf7;
+      --surface: #ffffff;
+      --card: #ffffff;
+      --empty: #f8f9f1;
+      --soft: #eef3e6;
+      --ink: #1f261d;
+      --muted: #6d7465;
+      --muted-strong: #555f4c;
+      --line: #e1e8d7;
+      --line-strong: #c5d7b4;
+      --accent: #3c88bf;
+      --accent-ink: #2f6c98;
+      --accent-text: #ffffff;
+      --accent-shadow: rgba(60,136,191,.18);
+      --soft-shadow: rgba(84,108,61,.08);
+      --shadow: rgba(84,108,61,.1);
+      --danger: #c75a62;
+      --danger-soft: #fff4f4;
+      --danger-line: #efc2c6;
+    }
+    .slate-blue {
+      --page: #f5f7fa;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --card: #ffffff;
+      --empty: #f6f8fb;
+      --soft: #eef2f7;
+      --ink: #172033;
+      --muted: #687386;
+      --muted-strong: #4a5568;
+      --line: #e0e7ef;
+      --line-strong: #c5d2df;
+      --accent: #286fb3;
+      --accent-ink: #245f98;
+      --accent-text: #ffffff;
+      --accent-shadow: rgba(40,111,179,.2);
+      --soft-shadow: rgba(37,61,89,.08);
+      --shadow: rgba(37,61,89,.1);
+      --danger: #cc4b5f;
+      --danger-soft: #fff3f5;
+      --danger-line: #edc1ca;
+    }
+    @media (max-width: 980px) {
+      main { width: min(100vw - 24px, 760px); }
+      .intro, .direction-head { display: block; }
+      .swatches { margin-top: 12px; }
+      .board { grid-template-columns: 1fr; }
+      .topbar { grid-template-columns: auto 1fr; }
+      .user { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="intro">
+      <div>
+        <h1>Clinic color directions</h1>
+        <p>Same Option A structure, different palettes. The goal is to reduce “baby blue everywhere” without losing the clean clinic feeling.</p>
+      </div>
+      <div class="note">Standalone mockup in <code>mockups/</code>. No app UI changed.</div>
+    </section>
+
+    <section class="direction blue-neutral">
+      <div class="direction-head">
+        <div>
+          <h2>1. Mature blue-neutral</h2>
+          <p class="caption">Recommended. Keeps your current identity but turns the baby blue into a calmer blue-gray base.</p>
+        </div>
+        <div class="swatches">
+          <span class="swatch" style="--c:#f7fafc"></span>
+          <span class="swatch" style="--c:#dbe7ef"></span>
+          <span class="swatch" style="--c:#2f8fd3"></span>
+          <span class="swatch" style="--c:#172033"></span>
+        </div>
+      </div>
+      <div class="app">
+        <div class="topbar"><button class="btn">≡</button><div class="brand">Fika Clinic</div><div class="user"><span class="role">Admin</span><button class="btn">↪</button></div></div>
+        <div class="nav"><span class="active">Queue</span><span>Patients</span><span>History</span><span>Billing</span><span>Inventory</span><span>Users</span><span>Account</span><span>Audit</span><span>Earnings</span></div>
+        <div class="board">
+          <div class="column"><div class="column-head"><div><h3>Waiting</h3><div class="count">0 patients</div></div><button class="btn primary">+</button></div><div class="empty"><div><strong>No patients here</strong>New arrivals will appear here.</div></div></div>
+          <div class="column"><div class="column-head"><div><h3>Consultation</h3><div class="count">2 patients</div></div></div><article class="patient"><div class="patient-row"><span class="name">DL</span><span class="time">1:07 PM</span></div><div class="meta">8y · fever</div><div class="actions"><button class="btn danger">⌫</button><button class="btn primary">→</button></div></article><article class="patient"><div class="patient-row"><span class="name">loli</span><span class="time">1:53 PM</span></div><div class="meta">6y · fever</div><div class="actions"><button class="btn danger">⌫</button><button class="btn primary">→</button></div></article></div>
+          <div class="column"><div class="column-head"><div><h3>Billing</h3><div class="count">0 patients</div></div></div><div class="empty"><div><strong>No patients here</strong>Completed visits move here.</div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="direction teal-clinic">
+      <div class="direction-head">
+        <div>
+          <h2>2. Teal clinical</h2>
+          <p class="caption">More distinctive and medical. Feels mature, but it shifts the brand away from the current blue.</p>
+        </div>
+        <div class="swatches">
+          <span class="swatch" style="--c:#f7faf9"></span>
+          <span class="swatch" style="--c:#d8e8e5"></span>
+          <span class="swatch" style="--c:#248c83"></span>
+          <span class="swatch" style="--c:#16242a"></span>
+        </div>
+      </div>
+      <div class="app">
+        <div class="topbar"><button class="btn">≡</button><div class="brand">Fika Clinic</div><div class="user"><span class="role">Admin</span><button class="btn">↪</button></div></div>
+        <div class="nav"><span class="active">Queue</span><span>Patients</span><span>History</span><span>Billing</span><span>Inventory</span><span>Users</span><span>Account</span><span>Audit</span><span>Earnings</span></div>
+        <div class="board">
+          <div class="column"><div class="column-head"><div><h3>Waiting</h3><div class="count">0 patients</div></div><button class="btn primary">+</button></div><div class="empty"><div><strong>No patients here</strong>New arrivals will appear here.</div></div></div>
+          <div class="column"><div class="column-head"><div><h3>Consultation</h3><div class="count">2 patients</div></div></div><article class="patient"><div class="patient-row"><span class="name">DL</span><span class="time">1:07 PM</span></div><div class="meta">8y · fever</div><div class="actions"><button class="btn danger">⌫</button><button class="btn primary">→</button></div></article><article class="patient"><div class="patient-row"><span class="name">loli</span><span class="time">1:53 PM</span></div><div class="meta">6y · fever</div><div class="actions"><button class="btn danger">⌫</button><button class="btn primary">→</button></div></article></div>
+          <div class="column"><div class="column-head"><div><h3>Billing</h3><div class="count">0 patients</div></div></div><div class="empty"><div><strong>No patients here</strong>Completed visits move here.</div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="direction sage-pediatric">
+      <div class="direction-head">
+        <div>
+          <h2>3. Sage pediatric</h2>
+          <p class="caption">Warmer and friendlier. Good for pediatrics, but it may feel a bit wellness/spa if overused.</p>
+        </div>
+        <div class="swatches">
+          <span class="swatch" style="--c:#fbfbf7"></span>
+          <span class="swatch" style="--c:#e1e8d7"></span>
+          <span class="swatch" style="--c:#3c88bf"></span>
+          <span class="swatch" style="--c:#1f261d"></span>
+        </div>
+      </div>
+      <div class="app">
+        <div class="topbar"><button class="btn">≡</button><div class="brand">Fika Clinic</div><div class="user"><span class="role">Admin</span><button class="btn">↪</button></div></div>
+        <div class="nav"><span class="active">Queue</span><span>Patients</span><span>History</span><span>Billing</span><span>Inventory</span><span>Users</span><span>Account</span><span>Audit</span><span>Earnings</span></div>
+        <div class="board">
+          <div class="column"><div class="column-head"><div><h3>Waiting</h3><div class="count">0 patients</div></div><button class="btn primary">+</button></div><div class="empty"><div><strong>No patients here</strong>New arrivals will appear here.</div></div></div>
+          <div class="column"><div class="column-head"><div><h3>Consultation</h3><div class="count">2 patients</div></div></div><article class="patient"><div class="patient-row"><span class="name">DL</span><span class="time">1:07 PM</span></div><div class="meta">8y · fever</div><div class="actions"><button class="btn danger">⌫</button><button class="btn primary">→</button></div></article><article class="patient"><div class="patient-row"><span class="name">loli</span><span class="time">1:53 PM</span></div><div class="meta">6y · fever</div><div class="actions"><button class="btn danger">⌫</button><button class="btn primary">→</button></div></article></div>
+          <div class="column"><div class="column-head"><div><h3>Billing</h3><div class="count">0 patients</div></div></div><div class="empty"><div><strong>No patients here</strong>Completed visits move here.</div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="direction slate-blue">
+      <div class="direction-head">
+        <div>
+          <h2>4. Slate operations</h2>
+          <p class="caption">Most professional and least cute. Strongest contrast, less soft. Best if you want it to feel like serious clinic software.</p>
+        </div>
+        <div class="swatches">
+          <span class="swatch" style="--c:#f8fafc"></span>
+          <span class="swatch" style="--c:#e0e7ef"></span>
+          <span class="swatch" style="--c:#286fb3"></span>
+          <span class="swatch" style="--c:#172033"></span>
+        </div>
+      </div>
+      <div class="app">
+        <div class="topbar"><button class="btn">≡</button><div class="brand">Fika Clinic</div><div class="user"><span class="role">Admin</span><button class="btn">↪</button></div></div>
+        <div class="nav"><span class="active">Queue</span><span>Patients</span><span>History</span><span>Billing</span><span>Inventory</span><span>Users</span><span>Account</span><span>Audit</span><span>Earnings</span></div>
+        <div class="board">
+          <div class="column"><div class="column-head"><div><h3>Waiting</h3><div class="count">0 patients</div></div><button class="btn primary">+</button></div><div class="empty"><div><strong>No patients here</strong>New arrivals will appear here.</div></div></div>
+          <div class="column"><div class="column-head"><div><h3>Consultation</h3><div class="count">2 patients</div></div></div><article class="patient"><div class="patient-row"><span class="name">DL</span><span class="time">1:07 PM</span></div><div class="meta">8y · fever</div><div class="actions"><button class="btn danger">⌫</button><button class="btn primary">→</button></div></article><article class="patient"><div class="patient-row"><span class="name">loli</span><span class="time">1:53 PM</span></div><div class="meta">6y · fever</div><div class="actions"><button class="btn danger">⌫</button><button class="btn primary">→</button></div></article></div>
+          <div class="column"><div class="column-head"><div><h3>Billing</h3><div class="count">0 patients</div></div></div><div class="empty"><div><strong>No patients here</strong>Completed visits move here.</div></div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

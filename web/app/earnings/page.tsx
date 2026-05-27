@@ -112,6 +112,7 @@ export default function EarningsPage() {
       (invoice.patient_name || "Patient").toLowerCase().includes(query),
     );
   }, [invoiceSearch, paidInvoices]);
+  const visiblePaidInvoices = filteredPaidInvoices.slice(0, 5);
 
   const chartData = useMemo(() => {
     const now = new Date();
@@ -382,18 +383,6 @@ export default function EarningsPage() {
           </div>
         ) : null}
 
-        <div className="mb-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void handleExport("invoices", handleExportInvoicesCsv)}
-            disabled={isExporting === "invoices"}
-            className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
-          >
-            <Download className="h-4 w-4" />
-            {isExporting === "invoices" ? "Preparing..." : "Export"}
-          </button>
-        </div>
-
         {exportError ? (
           <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {exportError}
@@ -569,27 +558,43 @@ export default function EarningsPage() {
           </div>
 
           <div className="rounded-[32px] border border-sky-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
-            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3">
                 <ReceiptIndianRupee className="h-5 w-5 text-sky-700" />
-                <div>
-                  <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Recent Bills</p>
-                  <h2 className="mt-1 text-lg font-semibold text-slate-900">Latest paid invoices</h2>
+                <h2 className="text-lg font-semibold text-slate-900">Latest paid invoices</h2>
+              </div>
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <label className="relative block w-full sm:max-w-[420px]">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={invoiceSearch}
+                    onChange={(event) => setInvoiceSearch(event.target.value)}
+                    placeholder="Search patient"
+                    className="h-11 w-full rounded-full border border-sky-200 bg-sky-50/70 pl-10 pr-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-sky-300 focus:bg-white"
+                  />
+                </label>
+                <div className="flex items-center gap-2">
+                  {filteredPaidInvoices.length > visiblePaidInvoices.length ? (
+                    <p className="hidden text-sm text-slate-500 sm:block">
+                      Showing {visiblePaidInvoices.length} of {filteredPaidInvoices.length}
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void handleExport("invoices", handleExportInvoicesCsv)}
+                    disabled={isExporting === "invoices"}
+                    aria-label="Export invoices"
+                    title={isExporting === "invoices" ? "Preparing export" : "Export invoices"}
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-sky-300 bg-white text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                  >
+                    <Download className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
-              <label className="relative block w-full md:w-[320px]">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={invoiceSearch}
-                  onChange={(event) => setInvoiceSearch(event.target.value)}
-                  placeholder="Search patient"
-                  className="h-11 w-full rounded-full border border-sky-200 bg-sky-50/70 pl-10 pr-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-sky-300 focus:bg-white"
-                />
-              </label>
             </div>
 
             <div className="mt-5 overflow-hidden rounded-[26px] border border-sky-100">
-              {filteredPaidInvoices.length ? (
+              {visiblePaidInvoices.length ? (
                 <div>
                   <div className="grid grid-cols-4 gap-6 bg-sky-50/80 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     <p>Patient</p>
@@ -597,7 +602,7 @@ export default function EarningsPage() {
                     <p>Paid On</p>
                     <p className="text-right">Amount</p>
                   </div>
-                  {filteredPaidInvoices.slice(0, 12).map((invoice, index) => (
+                  {visiblePaidInvoices.map((invoice, index) => (
                     <button
                       key={invoice.id}
                       type="button"
@@ -639,6 +644,17 @@ export default function EarningsPage() {
                 </div>
               )}
             </div>
+            {paidInvoices.length ? (
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => router.push("/billing")}
+                  className="rounded-full border border-sky-200 bg-sky-50/70 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-100"
+                >
+                  View all invoices
+                </button>
+              </div>
+            ) : null}
           </div>
         </section>
       </div>

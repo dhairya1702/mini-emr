@@ -592,24 +592,24 @@ export function SettingsDrawer({
     { tab: "training" as SettingsTab, label: "Training Mode", icon: GraduationCap },
   ] : [
     { href: "/", label: "Queue", icon: LayoutDashboard },
-    { tab: "training" as SettingsTab, label: "Training Mode", icon: GraduationCap },
-    { href: "/patients", label: "Patients", icon: Search },
-    { href: "/case-study", label: "Case Study", icon: FileText },
     { tab: "appointments" as SettingsTab, label: "Appointments", icon: CalendarClock },
+    { href: "/patients", label: "Patients", icon: Search },
     { href: "/billing", label: "Billing", icon: CreditCard },
-    { href: "/history", label: "History", icon: History },
     { href: "/inventory", label: "Inventory", icon: Stethoscope },
+    { href: "/history", label: "History", icon: History },
+    { tab: "letter" as SettingsTab, label: "Generate Letter", icon: FilePenLine },
+    { href: "/case-study", label: "Case Study", icon: FileText },
     { href: "/users", label: "Users", icon: UserPlus },
+    { tab: "clinic" as SettingsTab, label: "Clinic", icon: Building2 },
     { href: "/account", label: "Account", icon: User },
     { href: "/audit", label: "Audit", icon: Settings2 },
-    { tab: "clinic" as SettingsTab, label: "Clinic", icon: Building2 },
-    { tab: "letter" as SettingsTab, label: "Generate Letter", icon: FilePenLine },
+    { tab: "training" as SettingsTab, label: "Training Mode", icon: GraduationCap },
     { tab: "about" as SettingsTab, label: "About", icon: Info },
     { tab: "contact" as SettingsTab, label: "Contact Us", icon: Mail },
   ];
 
   if (!isTrainingMode && currentUser?.role === "admin") {
-    menuItems.splice(3, 0, { href: "/earnings", label: "Earnings", icon: BarChart3 });
+    menuItems.splice(7, 0, { href: "/earnings", label: "Earnings", icon: BarChart3 });
   }
 
   useEffect(() => {
@@ -950,7 +950,6 @@ export function SettingsDrawer({
         appointment_start_time: form.appointment_start_time,
         appointment_end_time: form.appointment_end_time,
         appointments_per_hour: appointmentsPerHour,
-        doctor_name: form.doctor_name.trim(),
         sender_name: form.sender_name.trim(),
         sender_email: form.sender_email.trim(),
         email_configured: form.email_configured,
@@ -1462,17 +1461,16 @@ export function SettingsDrawer({
   function renderClinicTab() {
     const hasDocumentTemplate = Boolean(form.document_template_name || form.document_template_url);
     const canEditClinic = currentUser?.role === "admin";
+    const specialtyLabel = form.clinic_specialty
+      ? CLINIC_SPECIALTY_OPTIONS.find((option) => option.value === form.clinic_specialty)?.label
+      : "";
 
     return (
       <div className="space-y-6">
         <form className="space-y-4" onSubmit={handleClinicSave}>
           <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
-            <div className="max-w-3xl">
-              <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Clinic Workspace</p>
-              <h3 className="mt-2 text-xl font-semibold text-slate-900">Branding, document paper, and fit controls</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Configure the clinic identity here, then scroll to the live page preview below to tune where generated content sits.
-              </p>
+            <div>
+              <h3 className="text-xl font-semibold text-slate-900">Clinic settings</h3>
               {!canEditClinic ? (
                 <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
                   Clinic settings are admin-only. You can view them here, but only admins can save changes.
@@ -1480,76 +1478,49 @@ export function SettingsDrawer({
               ) : null}
             </div>
 
-            <div className="mt-6 grid gap-4">
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Clinic Name</span>
-                <input
-                  value={form.clinic_name}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, clinic_name: event.target.value }))
-                  }
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                />
-              </label>
+            <div className="mt-6 space-y-6">
+              <div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Clinic Name</span>
+                    <input
+                      value={form.clinic_name}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, clinic_name: event.target.value }))
+                      }
+                      className="h-11 w-full rounded-xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
 
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Doctor Name</span>
-                <input
-                  value={form.doctor_name}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, doctor_name: event.target.value }))
-                  }
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                />
-              </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Clinic Phone</span>
+                    <input
+                      value={form.clinic_phone}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, clinic_phone: event.target.value }))
+                      }
+                      className="h-11 w-full rounded-xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
 
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Address</span>
-                <textarea
-                  rows={3}
-                  value={form.clinic_address}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, clinic_address: event.target.value }))
-                  }
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                />
-              </label>
+                  <div ref={specialtySectionRef}>
+                    <p className="mb-2 text-sm font-medium text-slate-700">Specialty</p>
+                    <div className="flex h-11 items-center rounded-xl border border-sky-100 bg-sky-50/60 px-4 text-slate-800">
+                      {specialtyLabel || "Not set"}
+                    </div>
+                  </div>
 
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Clinic Phone</span>
-                <input
-                  value={form.clinic_phone}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, clinic_phone: event.target.value }))
-                  }
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                />
-              </label>
-
-              <div ref={specialtySectionRef}>
-                <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Specialty</span>
-                <select
-                  value={form.clinic_specialty}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      clinic_specialty: event.target.value as ClinicSpecialty | "",
-                    }))
-                  }
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                >
-                  <option value="">Select a specialty</option>
-                  {CLINIC_SPECIALTY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-2 text-xs leading-6 text-slate-500">
-                  Existing clinics can set this here at any time. Specialty-specific modules will use this setting as the clinic-wide source of truth.
-                </p>
-                </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Address</span>
+                    <input
+                      value={form.clinic_address}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, clinic_address: event.target.value }))
+                      }
+                      className="h-11 w-full rounded-xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+                </div>
               </div>
 
               {!form.clinic_specialty && canEditClinic ? (
@@ -1558,50 +1529,52 @@ export function SettingsDrawer({
                 </p>
               ) : null}
 
-              <div ref={hoursSectionRef} className="grid gap-4 md:grid-cols-3">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Opening Time</span>
-                  <input
-                    type="time"
-                    value={form.appointment_start_time}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, appointment_start_time: event.target.value }))
-                    }
-                    className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                  />
-                </label>
+              <div ref={hoursSectionRef}>
+                <h4 className="text-sm font-semibold text-slate-900">Working hours</h4>
+                <div className="mt-3 grid gap-4 md:grid-cols-3">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Opening Time</span>
+                    <input
+                      type="time"
+                      value={form.appointment_start_time}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, appointment_start_time: event.target.value }))
+                      }
+                      className="h-11 w-full rounded-xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
 
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Closing Time</span>
-                  <input
-                    type="time"
-                    value={form.appointment_end_time}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, appointment_end_time: event.target.value }))
-                    }
-                    className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                  />
-                </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Closing Time</span>
+                    <input
+                      type="time"
+                      value={form.appointment_end_time}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, appointment_end_time: event.target.value }))
+                      }
+                      className="h-11 w-full rounded-xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
 
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Appointments / Hour</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="12"
-                    step="1"
-                    value={form.appointments_per_hour}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, appointments_per_hour: event.target.value }))
-                    }
-                    className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                  />
-                </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Appointments / Hour</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="12"
+                      step="1"
+                      value={form.appointments_per_hour}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, appointments_per_hour: event.target.value }))
+                      }
+                      className="h-11 w-full rounded-xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition focus:border-sky-400"
+                    />
+                  </label>
+                </div>
+                <p className="mt-2 text-xs leading-6 text-slate-500">
+                  Public follow-up booking uses these hours and hourly capacity limits.
+                </p>
               </div>
-
-              <p className="text-xs leading-6 text-slate-500">
-                Public follow-up booking uses these hours and hourly capacity limits. Suggested times start at opening whenever that first slot is still free.
-              </p>
             </div>
           </section>
 
@@ -2288,9 +2261,11 @@ export function SettingsDrawer({
           </div>
 
           <div className={`overflow-y-auto ${isWorkspaceTab ? "p-6 xl:p-8" : "p-5 sm:p-6"}`}>
-            <div className="mb-6">
-              <p className="text-sm uppercase tracking-[0.2em] text-slate-500">{activeTab}</p>
-            </div>
+            {activeTab !== "clinic" ? (
+              <div className="mb-6">
+                <p className="text-sm uppercase tracking-[0.2em] text-slate-500">{activeTab}</p>
+              </div>
+            ) : null}
             {renderContent()}
           </div>
         </div>

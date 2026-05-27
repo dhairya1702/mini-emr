@@ -1,32 +1,66 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertTriangle, Boxes, PackagePlus, Pill, Plus, Search, Stethoscope, Trash2, X } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
-import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/settings-drawer-inventory-panel";
+import type { CatalogFormState } from "@/components/settings-drawer-inventory-panel";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { api } from "@/lib/api";
+import type { CatalogItem, CatalogItemType } from "@/lib/types";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
+
+type InventoryFilter = "all" | CatalogItemType | "tracked" | "low_stock";
+
+const filterOptions: Array<{ value: InventoryFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "service", label: "Services" },
+  { value: "medicine", label: "Medicines" },
+  { value: "tracked", label: "Stock tracked" },
+  { value: "low_stock", label: "Low stock" },
+];
+
+function emptyCatalogForm(itemType: CatalogItemType = "service"): CatalogFormState {
+  return {
+    name: "",
+    item_type: itemType,
+    default_price: "",
+    track_inventory: itemType === "medicine",
+    stock_quantity: "",
+    low_stock_threshold: "",
+    unit: "",
+  };
+}
+
+function itemTypeLabel(value: CatalogItemType) {
+  return value === "service" ? "Service" : "Medicine";
+}
+
+function stockLabel(item: CatalogItem) {
+  if (!item.track_inventory) {
+    return "-";
+  }
+  return `${item.stock_quantity}`;
+}
+
+function isLowStock(item: CatalogItem) {
+  return item.track_inventory && item.stock_quantity <= item.low_stock_threshold;
+}
 
 export default function InventoryPage() {
   const router = useRouter();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [catalogForm, setCatalogForm] = useState<CatalogFormState>({
-    name: "",
-    item_type: "service",
-    default_price: "",
-    track_inventory: false,
-    stock_quantity: "",
-    low_stock_threshold: "",
-    unit: "",
-  });
+  const [isCatalogDrawerOpen, setIsCatalogDrawerOpen] = useState(false);
+  const [catalogForm, setCatalogForm] = useState<CatalogFormState>(() => emptyCatalogForm());
   const [catalogError, setCatalogError] = useState("");
   const [catalogStatus, setCatalogStatus] = useState("");
   const [isSavingCatalog, setIsSavingCatalog] = useState(false);
   const [stockAdjustments, setStockAdjustments] = useState<Record<string, string>>({});
   const [adjustingStockId, setAdjustingStockId] = useState("");
   const [deletingCatalogId, setDeletingCatalogId] = useState("");
+  const [inventorySearch, setInventorySearch] = useState("");
+  const [inventoryFilter, setInventoryFilter] = useState<InventoryFilter>("all");
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(async () => null, []);
   const onPageData = useCallback(() => undefined, []);
@@ -66,6 +100,42 @@ export default function InventoryPage() {
     onPageData,
   });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
+  const sortedCatalogItems = useMemo(
+    () =>
+      [...catalogItems].sort((left, right) => {
+        if (left.item_type !== right.item_type) {
+          return left.item_type === "service" ? -1 : 1;
+        }
+        return left.name.localeCompare(right.name);
+      }),
+    [catalogItems],
+  );
+  const filteredCatalogItems = useMemo(() => {
+    const query = inventorySearch.trim().toLowerCase();
+    return sortedCatalogItems.filter((item) => {
+      const matchesSearch =
+        !query ||
+        item.name.toLowerCase().includes(query) ||
+        item.unit.toLowerCase().includes(query) ||
+        item.item_type.toLowerCase().includes(query);
+      if (!matchesSearch) {
+        return false;
+      }
+      if (inventoryFilter === "tracked") {
+        return item.track_inventory;
+      }
+      if (inventoryFilter === "low_stock") {
+        return isLowStock(item);
+      }
+      if (inventoryFilter === "service" || inventoryFilter === "medicine") {
+        return item.item_type === inventoryFilter;
+      }
+      return true;
+    });
+  }, [inventoryFilter, inventorySearch, sortedCatalogItems]);
+  const serviceCount = catalogItems.filter((item) => item.item_type === "service").length;
+  const medicineCount = catalogItems.filter((item) => item.item_type === "medicine").length;
+  const lowStockCount = catalogItems.filter(isLowStock).length;
 
   useEffect(() => {
     if (isAuthReady && currentUser?.role === "staff") {
@@ -114,15 +184,8 @@ export default function InventoryPage() {
         unit: catalogForm.unit.trim(),
       });
       setCatalogStatus(catalogForm.item_type === "service" ? "Service saved." : "Medicine saved.");
-      setCatalogForm({
-        name: "",
-        item_type: catalogForm.item_type,
-        default_price: "",
-        track_inventory: catalogForm.item_type === "medicine",
-        stock_quantity: "",
-        low_stock_threshold: "",
-        unit: "",
-      });
+      setCatalogForm(emptyCatalogForm(catalogForm.item_type));
+      setIsCatalogDrawerOpen(false);
     } catch (saveError) {
       setCatalogError(saveError instanceof Error ? saveError.message : "Failed to save catalog item.");
     } finally {
@@ -174,24 +237,297 @@ export default function InventoryPage() {
       <div className="mx-auto max-w-[1600px]">
         <AppHeader clinicName={clinicName} currentUser={currentUser} active="inventory" onOpenSettings={() => setIsSettingsOpen(true)} onLogout={handleLogout} />
         {error ? <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
-        <SettingsDrawerInventoryPanel
-          currentUser={currentUser}
-          catalogForm={catalogForm}
-          catalogError={catalogError}
-          catalogStatus={catalogStatus}
-          isSavingCatalog={isSavingCatalog}
-          serviceItems={catalogItems.filter((item) => item.item_type === "service")}
-          medicineItems={catalogItems.filter((item) => item.item_type === "medicine")}
-          stockAdjustments={stockAdjustments}
-          adjustingStockId={adjustingStockId}
-          deletingCatalogId={deletingCatalogId}
-          onSubmit={handleSaveCatalogItem}
-          onCatalogFormChange={(patch) => setCatalogForm((current) => ({ ...current, ...patch }))}
-          onStockAdjustmentChange={(itemId, value) => setStockAdjustments((current) => ({ ...current, [itemId]: value }))}
-          onAdjustStock={handleAdjustStock}
-          onDeleteCatalogItem={handleDeleteCatalog}
-        />
+
+        {catalogError ? <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{catalogError}</div> : null}
+        {catalogStatus ? <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{catalogStatus}</div> : null}
+
+        <section className="rounded-[32px] border border-sky-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="flex items-center gap-3">
+                <Boxes className="h-5 w-5 text-sky-700" />
+                <h1 className="text-xl font-semibold text-slate-900">Inventory</h1>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2 text-sm">
+                <span className="rounded-full bg-sky-50 px-3 py-1 text-slate-600">{serviceCount} services</span>
+                <span className="rounded-full bg-sky-50 px-3 py-1 text-slate-600">{medicineCount} medicines</span>
+                {lowStockCount ? (
+                  <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">{lowStockCount} low stock</span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex w-full gap-2 xl:max-w-[480px]">
+              <label className="relative block min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={inventorySearch}
+                  onChange={(event) => setInventorySearch(event.target.value)}
+                  placeholder="Search item, unit, or type"
+                  className="h-11 w-full rounded-full border border-sky-200 bg-sky-50/70 pl-10 pr-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-sky-300 focus:bg-white"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setCatalogError("");
+                  setCatalogStatus("");
+                  setCatalogForm(emptyCatalogForm());
+                  setIsCatalogDrawerOpen(true);
+                }}
+                aria-label="Add inventory item"
+                title="Add inventory item"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-500 text-white transition hover:bg-sky-600 active:scale-[0.99]"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {filterOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setInventoryFilter(option.value)}
+                  className={`rounded-full border px-3.5 py-2 text-sm font-medium transition ${
+                    inventoryFilter === option.value
+                      ? "border-sky-300 bg-sky-500 text-white"
+                      : "border-sky-200 bg-sky-50/70 text-slate-700 hover:bg-sky-100"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-5 overflow-x-auto rounded-[26px] border border-sky-100">
+            {filteredCatalogItems.length ? (
+              <div>
+                <div className="grid min-w-[980px] grid-cols-[minmax(0,1.4fr)_120px_120px_120px_150px_96px] gap-4 bg-sky-50/80 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <p>Name</p>
+                  <p>Type</p>
+                  <p>Unit</p>
+                  <p className="text-right">Price</p>
+                  <p>Stock</p>
+                  <p className="text-right">Actions</p>
+                </div>
+                {filteredCatalogItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="grid min-w-[980px] grid-cols-[minmax(0,1.4fr)_120px_120px_120px_150px_96px] items-center gap-4 border-t border-sky-100 px-5 py-3.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{item.name}</p>
+                      {isLowStock(item) ? (
+                        <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-amber-700">
+                          <AlertTriangle className="h-3 w-3" />
+                          Low stock threshold reached
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-slate-700">
+                      {item.item_type === "service" ? <Stethoscope className="h-4 w-4 text-sky-700" /> : <Pill className="h-4 w-4 text-sky-700" />}
+                      {itemTypeLabel(item.item_type)}
+                    </div>
+                    <p className="truncate text-sm text-slate-600">{item.unit || "per entry"}</p>
+                    <p className="text-right text-sm font-semibold tabular-nums text-slate-900">{item.default_price.toFixed(2)}</p>
+                    <div>
+                      <p className={`text-sm tabular-nums ${isLowStock(item) ? "font-semibold text-amber-700" : "text-slate-700"}`}>
+                        {stockLabel(item)}
+                      </p>
+                      {item.track_inventory ? (
+                        <div className="mt-2 flex gap-1.5">
+                          <input
+                            value={stockAdjustments[item.id] ?? ""}
+                            inputMode="decimal"
+                            onChange={(event) => setStockAdjustments((current) => ({ ...current, [item.id]: event.target.value }))}
+                            placeholder="+10 / -2"
+                            className="h-8 w-20 rounded-full border border-sky-200 bg-white px-2.5 text-xs text-slate-800 outline-none transition focus:border-sky-300"
+                          />
+                          <button
+                            type="button"
+                            disabled={adjustingStockId === item.id || currentUser?.role !== "admin"}
+                            onClick={() => void handleAdjustStock(item.id)}
+                            className="h-8 rounded-full border border-sky-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-50"
+                          >
+                            {adjustingStockId === item.id ? "..." : "Adjust"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        disabled={deletingCatalogId === item.id || currentUser?.role !== "admin"}
+                        onClick={() => void handleDeleteCatalog(item.id)}
+                        aria-label={`Delete ${item.name}`}
+                        title={`Delete ${item.name}`}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-sky-200 bg-white text-slate-600 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : catalogItems.length ? (
+              <div className="rounded-[28px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-16 text-center text-sm text-slate-500">
+                No inventory items match the current search or filter.
+              </div>
+            ) : (
+              <div className="rounded-[28px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-16 text-center">
+                <PackagePlus className="mx-auto h-8 w-8 text-sky-700" />
+                <p className="mt-3 text-sm font-semibold text-slate-900">No inventory items yet</p>
+                <p className="mt-1 text-sm text-slate-500">Add services and medicines so staff can bill from the catalog.</p>
+                <button
+                  type="button"
+                  onClick={() => setIsCatalogDrawerOpen(true)}
+                  className="mt-5 rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600"
+                >
+                  Add item
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
       </div>
+      {isCatalogDrawerOpen ? (
+        <div className="fixed inset-0 z-30 bg-slate-950/35 backdrop-blur-sm">
+          <button
+            type="button"
+            aria-label="Close add item drawer"
+            className="absolute inset-0"
+            onClick={() => setIsCatalogDrawerOpen(false)}
+          />
+          <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col overflow-hidden bg-white shadow-[0_35px_90px_rgba(15,23,42,0.22)]">
+            <div className="flex items-start justify-between gap-4 border-b border-sky-100 px-6 py-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Inventory item</p>
+                <h2 className="mt-2 text-xl font-semibold text-slate-900">Add item</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCatalogDrawerOpen(false)}
+                aria-label="Close"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-sky-100 text-slate-500 transition hover:bg-sky-50 hover:text-slate-900"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSaveCatalogItem}>
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+                {catalogError ? (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {catalogError}
+                  </div>
+                ) : null}
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Name</span>
+                  <input
+                    value={catalogForm.name}
+                    onChange={(event) => setCatalogForm((current) => ({ ...current, name: event.target.value }))}
+                    placeholder="Consultation, Injection, Paracetamol"
+                    className="h-11 w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400"
+                  />
+                </label>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Type</span>
+                    <select
+                      value={catalogForm.item_type}
+                      onChange={(event) => {
+                        const nextType = event.target.value as CatalogItemType;
+                        setCatalogForm((current) => ({
+                          ...current,
+                          item_type: nextType,
+                          track_inventory: nextType === "medicine" ? true : current.track_inventory,
+                        }));
+                      }}
+                      className="h-11 w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition focus:border-sky-400"
+                    >
+                      <option value="service">Service</option>
+                      <option value="medicine">Medicine</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Default price</span>
+                    <input
+                      value={catalogForm.default_price}
+                      inputMode="decimal"
+                      onChange={(event) => setCatalogForm((current) => ({ ...current, default_price: event.target.value }))}
+                      placeholder="500"
+                      className="h-11 w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400"
+                    />
+                  </label>
+                </div>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Unit</span>
+                  <input
+                    value={catalogForm.unit}
+                    onChange={(event) => setCatalogForm((current) => ({ ...current, unit: event.target.value }))}
+                    placeholder="per visit, each, strip, bottle"
+                    className="h-11 w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400"
+                  />
+                </label>
+
+                <label className="flex items-center gap-3 rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={catalogForm.track_inventory}
+                    onChange={(event) => setCatalogForm((current) => ({ ...current, track_inventory: event.target.checked }))}
+                  />
+                  Track stock for this item
+                </label>
+
+                {catalogForm.track_inventory ? (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-medium text-slate-700">Opening stock</span>
+                      <input
+                        value={catalogForm.stock_quantity}
+                        inputMode="decimal"
+                        onChange={(event) => setCatalogForm((current) => ({ ...current, stock_quantity: event.target.value }))}
+                        placeholder="100"
+                        className="h-11 w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-medium text-slate-700">Low stock alert</span>
+                      <input
+                        value={catalogForm.low_stock_threshold}
+                        inputMode="decimal"
+                        onChange={(event) => setCatalogForm((current) => ({ ...current, low_stock_threshold: event.target.value }))}
+                        placeholder="10"
+                        className="h-11 w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400"
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex items-center justify-end gap-3 border-t border-sky-100 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => setIsCatalogDrawerOpen(false)}
+                  className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingCatalog || currentUser?.role !== "admin"}
+                  className="rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                >
+                  {isSavingCatalog ? "Saving..." : "Save item"}
+                </button>
+              </div>
+            </form>
+          </aside>
+        </div>
+      ) : null}
       {isSettingsOpen ? (
         <LazySettingsDrawer
           open={isSettingsOpen}

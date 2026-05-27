@@ -47,8 +47,8 @@ export function PatientColumn({
   return (
     <section
       aria-label={`${title} queue`}
-      className={`flex min-h-0 flex-col rounded-[28px] border bg-white/95 p-4 shadow-[0_18px_50px_rgba(125,211,252,0.14)] transition ${
-        isOver ? "border-sky-400 ring-2 ring-sky-200" : "border-sky-200"
+      className={`flex min-h-0 flex-col rounded-[18px] border bg-white/95 p-4 shadow-[0_14px_38px_rgba(64,131,181,0.09)] transition ${
+        isOver ? "border-[#2f8fd3] ring-2 ring-[#d8ebf7]" : "border-[#bfd7e8]"
       }`}
     >
       <div className="mb-4 flex shrink-0 items-start justify-between gap-3">
@@ -62,7 +62,7 @@ export function PatientColumn({
             onClick={onAddPatient}
             aria-label="Add patient"
             title="Add patient"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 transition hover:bg-sky-200"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#edf5fa] text-[#2a6fa8] transition hover:bg-[#dbeaf4]"
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -73,7 +73,7 @@ export function PatientColumn({
         <SortableContext items={patients.map((patient) => patient.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-3">
             {patients.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-sky-200 bg-sky-50/50 px-4 py-10 text-center">
+              <div className="rounded-[14px] border border-dashed border-[#bfd7e8] bg-[#f5f9fc] px-4 py-8 text-center">
                 <p className="text-sm font-medium text-slate-600">No patients in this stage.</p>
                 <p className="mt-1 text-xs text-slate-500">New arrivals and transitions will appear here.</p>
               </div>

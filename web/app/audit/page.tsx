@@ -254,7 +254,15 @@ export default function AuditPage() {
                   <option value="invoice_shared">Invoice sent</option>
                   <option value="catalog_stock_adjusted">Stock changed</option>
                 </select>
-                <button type="button" onClick={() => void handleRefreshAudit()} className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50"><RefreshCw className="h-4 w-4" />Refresh</button>
+                <button
+                  type="button"
+                  onClick={() => void handleRefreshAudit()}
+                  aria-label="Refresh audit log"
+                  title="Refresh audit log"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-sky-200 bg-white text-slate-700 transition hover:bg-sky-50"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </button>
                 <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">{visibleAuditEvents.length} event{visibleAuditEvents.length === 1 ? "" : "s"}</div>
               </div>
             </div>

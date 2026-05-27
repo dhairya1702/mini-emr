@@ -4,10 +4,10 @@
 
 :root {
   color-scheme: light;
-  --page-bg-start: #ffffff;
-  --page-bg-end: #eef7ff;
-  --page-halo-left: rgba(125, 211, 252, 0.3);
-  --page-halo-right: rgba(191, 219, 254, 0.56);
+  --page-bg-start: #fbfdff;
+  --page-bg-end: #f4f9fc;
+  --page-halo-left: rgba(178, 211, 232, 0.22);
+  --page-halo-right: rgba(216, 231, 239, 0.54);
 }
 
 body {
@@ -23,5 +23,5 @@ body {
 }
 
 * {
-  scrollbar-color: #9fcdf0 transparent;
+  scrollbar-color: #bfd7e8 transparent;
 }

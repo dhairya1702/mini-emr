@@ -812,7 +812,7 @@ export interface ClinicSettingsUpdatePayload {
   appointment_start_time: string;
   appointment_end_time: string;
   appointments_per_hour: number;
-  doctor_name: string;
+  doctor_name?: string;
   sender_name: string;
   sender_email: string;
   sender_email_app_password?: string;
