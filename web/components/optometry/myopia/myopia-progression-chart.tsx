@@ -34,7 +34,7 @@ export function MyopiaProgressionChart({ history }: { history: MyopiaHistory | n
   const projectedTwelveMonthLeft = model.projectedTwelveMonthLeft;
 
   return (
-    <div className="rounded-[24px] border border-sky-100 bg-white p-4">
+    <div className="rounded-[16px] border border-[#dbe7ef] bg-white p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="text-sm font-medium text-slate-900">Axial length trend with reference band</p>
         <p className="text-xs uppercase tracking-[0.14em] text-slate-500">{model.overlayVersion}</p>
@@ -262,7 +262,7 @@ export function MyopiaProgressionChart({ history }: { history: MyopiaHistory | n
               <text x={tooltipX + 12} y={tooltipY + 18} className="fill-white text-[11px] font-medium">
                 {hoveredPoint.title}
               </text>
-              <text x={tooltipX + 12} y={tooltipY + 36} className="fill-sky-100 text-[12px]">
+              <text x={tooltipX + 12} y={tooltipY + 36} className="fill-[#dbe7ef] text-[12px]">
                 {hoveredPoint.value}
               </text>
             </g>
@@ -272,7 +272,7 @@ export function MyopiaProgressionChart({ history }: { history: MyopiaHistory | n
       <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-600">
         <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-teal-700" /> OD</span>
         <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-blue-600" /> OS</span>
-        <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-sky-200" /> Reference band</span>
+        <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#bfd7e8]" /> Reference band</span>
         <span className="inline-flex items-center gap-2"><span className="h-0.5 w-4 border-t-2 border-dashed border-emerald-600" /> Expected untreated</span>
         <span className="inline-flex items-center gap-2"><span className="h-0.5 w-4 border-t-2 border-dashed border-violet-600" /> Expected treated</span>
         <span className="inline-flex items-center gap-2"><span className="h-0.5 w-4 border-t-2 border-dashed border-slate-500" /> Projection</span>

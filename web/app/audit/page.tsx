@@ -210,31 +210,31 @@ export default function AuditPage() {
   }
 
   if (isRedirectingToLogin) {
-    return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">Redirecting to login...</div></main>;
+    return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to login...</div></main>;
   }
   if (!isAuthReady) {
-    return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">Loading ClinicOS...</div></main>;
+    return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Loading ClinicOS...</div></main>;
   }
   if (currentUser?.role === "staff") {
-    return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">Redirecting to queue...</div></main>;
+    return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to queue...</div></main>;
   }
 
   return (
-    <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1600px]">
+    <main className="clinic-page">
+      <div className="clinic-container">
         <AppHeader clinicName={clinicName} currentUser={currentUser} active="audit" onOpenSettings={() => setIsSettingsOpen(true)} onLogout={handleLogout} />
-        {error ? <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+        {error ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
         {isAuditLoading ? (
-          <div className="rounded-[28px] border border-sky-200 bg-sky-50/40 p-5 text-sm text-slate-700">Loading recent clinic activity...</div>
+          <div className="rounded-[18px] border border-[#bfd7e8] bg-[#f3f8fb]/40 p-5 text-sm text-slate-700">Loading recent clinic activity...</div>
         ) : (
-          <div className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+          <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">Audit Log</h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Click any row to inspect the full event details.</p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <select value={entityFilter} onChange={(event) => setEntityFilter(event.target.value)} className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm text-slate-700">
+                <select value={entityFilter} onChange={(event) => setEntityFilter(event.target.value)} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm text-slate-700">
                   <option value="all">All sections</option>
                   <option value="note">Consultation</option>
                   <option value="invoice">Billing</option>
@@ -244,7 +244,7 @@ export default function AuditPage() {
                   <option value="user">Users</option>
                   <option value="appointment">Appointments</option>
                 </select>
-                <select value={actionFilter} onChange={(event) => setActionFilter(event.target.value)} className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm text-slate-700">
+                <select value={actionFilter} onChange={(event) => setActionFilter(event.target.value)} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm text-slate-700">
                   <option value="all">All actions</option>
                   <option value="consultation_note_created">Created</option>
                   <option value="consultation_note_updated">Updated</option>
@@ -259,18 +259,18 @@ export default function AuditPage() {
                   onClick={() => void handleRefreshAudit()}
                   aria-label="Refresh audit log"
                   title="Refresh audit log"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-sky-200 bg-white text-slate-700 transition hover:bg-sky-50"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#bfd7e8] bg-white text-slate-700 transition hover:bg-[#f3f8fb]"
                 >
                   <RefreshCw className="h-4 w-4" />
                 </button>
-                <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">{visibleAuditEvents.length} event{visibleAuditEvents.length === 1 ? "" : "s"}</div>
+                <div className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-4 py-2 text-sm font-medium text-[#2a6fa8]">{visibleAuditEvents.length} event{visibleAuditEvents.length === 1 ? "" : "s"}</div>
               </div>
             </div>
             {auditError ? <p className="mt-4 text-sm font-medium text-rose-600">{auditError}</p> : null}
-            <div className="mt-5 overflow-hidden rounded-[22px] border border-sky-200">
+            <div className="mt-5 overflow-hidden rounded-[22px] border border-[#bfd7e8]">
               {visibleAuditEvents.length ? (
                 <table className="w-full border-collapse text-sm">
-                  <thead className="bg-sky-50/80 text-slate-600">
+                  <thead className="bg-[#f3f8fb]/80 text-slate-600">
                     <tr>
                       <th className="px-4 py-3 text-left font-semibold">User</th>
                       <th className="px-4 py-3 text-left font-semibold">Patient</th>
@@ -284,7 +284,7 @@ export default function AuditPage() {
                     {visibleAuditEvents.map((event) => (
                       <tr
                         key={event.id}
-                        className="cursor-pointer border-t border-sky-100 first:border-t-0 transition hover:bg-sky-50/50"
+                        className="cursor-pointer border-t border-[#dbe7ef] first:border-t-0 transition hover:bg-[#f3f8fb]/50"
                         onClick={() => setSelectedEvent(event)}
                       >
                         <td className="px-4 py-3 text-slate-800">{event.actor_name || "System"}</td>
@@ -298,7 +298,7 @@ export default function AuditPage() {
                   </tbody>
                 </table>
               ) : (
-                <div className="rounded-[24px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-12 text-center text-sm text-slate-500">No audit events match these filters.</div>
+                <div className="rounded-[16px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/20 px-6 py-12 text-center text-sm text-slate-500">No audit events match these filters.</div>
               )}
             </div>
           </div>
@@ -312,7 +312,7 @@ export default function AuditPage() {
             onClick={() => setSelectedEvent(null)}
             className="absolute inset-0"
           />
-          <div className="relative z-10 w-full max-w-2xl rounded-[28px] border border-sky-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
+          <div className="relative z-10 w-full max-w-2xl rounded-[18px] border border-[#bfd7e8] bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-xl font-semibold text-slate-900">{getAuditSummary(selectedEvent)}</h3>
@@ -321,40 +321,40 @@ export default function AuditPage() {
               <button
                 type="button"
                 onClick={() => setSelectedEvent(null)}
-                className="rounded-full border border-sky-200 p-2 text-slate-500 transition hover:text-slate-900"
+                className="rounded-xl border border-[#bfd7e8] p-2 text-slate-500 transition hover:text-slate-900"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/30 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">User</p>
                 <p className="mt-2 text-sm font-medium text-slate-900">{selectedEvent.actor_name || "System"}</p>
               </div>
-              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/30 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Patient</p>
                 <p className="mt-2 text-sm font-medium text-slate-900">{getPatientName(selectedEvent) || "—"}</p>
               </div>
-              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/30 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Section</p>
                 <p className="mt-2 text-sm font-medium text-slate-900">{getSectionLabel(selectedEvent.entity_type)}</p>
               </div>
-              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/30 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Action</p>
                 <p className="mt-2 text-sm font-medium text-slate-900">{getActionLabel(selectedEvent.action)}</p>
               </div>
-              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/30 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Date</p>
                 <p className="mt-2 text-sm font-medium text-slate-900">{formatDate(selectedEvent.created_at)}</p>
               </div>
-              <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/30 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Time</p>
                 <p className="mt-2 text-sm font-medium text-slate-900">{formatTime(selectedEvent.created_at)}</p>
               </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-sky-100 bg-white p-4">
+            <div className="mt-4 rounded-xl border border-[#dbe7ef] bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Summary</p>
               <p className="mt-2 text-sm leading-6 text-slate-700">{getAuditSummary(selectedEvent)}</p>
             </div>

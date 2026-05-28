@@ -35,7 +35,7 @@ export function MyopiaManagementModal({
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
-      <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-[32px] border border-sky-200 bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+      <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-[20px] border border-[#bfd7e8] bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Optometry Module</p>
@@ -49,12 +49,12 @@ export function MyopiaManagementModal({
               <button
                 type="button"
                 onClick={onAddPastReading}
-                className="rounded-full border border-sky-200 bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.14em] text-slate-700 transition hover:bg-sky-50"
+                className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.14em] text-slate-700 transition hover:bg-[#f3f8fb]"
               >
                 Add Past Reading
               </button>
             ) : null}
-            <button type="button" onClick={onClose} className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-sky-50">
+            <button type="button" onClick={onClose} className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-[#f3f8fb]">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -65,19 +65,19 @@ export function MyopiaManagementModal({
         {measurementCount ? (
           <div className="mt-6 space-y-5">
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-sky-100 bg-sky-50/35 p-4">
+              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/35 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Baseline Delta</p>
                 <p className="mt-2 text-sm font-medium text-slate-900">
                   OD {formatMillimeterDelta(history?.baseline_delta?.right_mm)} · OS {formatMillimeterDelta(history?.baseline_delta?.left_mm)}
                 </p>
               </div>
-              <div className="rounded-2xl border border-sky-100 bg-sky-50/35 p-4">
+              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/35 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Last Visit Delta</p>
                 <p className="mt-2 text-sm font-medium text-slate-900">
                   OD {formatMillimeterDelta(history?.last_delta?.right_mm)} · OS {formatMillimeterDelta(history?.last_delta?.left_mm)}
                 </p>
               </div>
-              <div className="rounded-2xl border border-sky-100 bg-sky-50/35 p-4">
+              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/35 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Annualized Growth</p>
                 <p className="mt-2 text-sm font-medium text-slate-900">
                   OD {formatMillimeterDelta(history?.annualized_growth?.right_mm)} · OS {formatMillimeterDelta(history?.annualized_growth?.left_mm)}
@@ -86,19 +86,19 @@ export function MyopiaManagementModal({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-sky-100 bg-emerald-50/40 p-4">
+              <div className="rounded-xl border border-[#dbe7ef] bg-emerald-50/40 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Expected Untreated</p>
                 <p className="mt-2 text-sm font-medium text-slate-900">
                   OD {chartModel?.expectedUntreatedDelta ? formatMillimeterValue(chartModel.expectedUntreatedDelta.right) : "—"} · OS {chartModel?.expectedUntreatedDelta ? formatMillimeterValue(chartModel.expectedUntreatedDelta.left) : "—"}
                 </p>
               </div>
-              <div className="rounded-2xl border border-sky-100 bg-violet-50/40 p-4">
+              <div className="rounded-xl border border-[#dbe7ef] bg-violet-50/40 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Expected Treated</p>
                 <p className="mt-2 text-sm font-medium text-slate-900">
                   OD {chartModel?.expectedTreatedDelta ? formatMillimeterValue(chartModel.expectedTreatedDelta.right) : "—"} · OS {chartModel?.expectedTreatedDelta ? formatMillimeterValue(chartModel.expectedTreatedDelta.left) : "—"}
                 </p>
               </div>
-              <div className="rounded-2xl border border-sky-100 bg-amber-50/50 p-4">
+              <div className="rounded-xl border border-[#dbe7ef] bg-amber-50/50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Observed Efficacy</p>
                 <p className="mt-2 text-sm font-medium text-slate-900">
                   OD {chartModel?.efficacyRight !== null && chartModel?.efficacyRight !== undefined ? `${Math.round(chartModel.efficacyRight)}%` : "—"} · OS {chartModel?.efficacyLeft !== null && chartModel?.efficacyLeft !== undefined ? `${Math.round(chartModel.efficacyLeft)}%` : "—"}
@@ -106,19 +106,19 @@ export function MyopiaManagementModal({
               </div>
             </div>
 
-            <div className="rounded-[24px] border border-amber-200 bg-amber-50/40 p-4">
+            <div className="rounded-[16px] border border-amber-200 bg-amber-50/40 p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-medium text-slate-900">Projection</p>
                 <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Trend-Based</p>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-amber-100 bg-white/80 p-4">
+                <div className="rounded-xl border border-amber-100 bg-white/80 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Projected 6 Months</p>
                   <p className="mt-2 text-sm font-medium text-slate-900">
                     OD {formatMillimeterValue(chartModel?.projectedSixMonthRight)} · OS {formatMillimeterValue(chartModel?.projectedSixMonthLeft)}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-amber-100 bg-white/80 p-4">
+                <div className="rounded-xl border border-amber-100 bg-white/80 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Projected 12 Months</p>
                   <p className="mt-2 text-sm font-medium text-slate-900">
                     OD {formatMillimeterValue(chartModel?.projectedTwelveMonthRight)} · OS {formatMillimeterValue(chartModel?.projectedTwelveMonthLeft)}
@@ -134,12 +134,12 @@ export function MyopiaManagementModal({
 
             <div className="space-y-3">
               {myopiaRecords.slice().reverse().map((record) => (
-                <div key={record.id} className="rounded-2xl border border-sky-100 bg-white p-4">
+                <div key={record.id} className="rounded-xl border border-[#dbe7ef] bg-white p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-sm font-semibold text-slate-900">
                       {new Date(record.measured_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })} · age {record.age_years.toFixed(1)}y
                     </p>
-                    <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-slate-700">
+                    <span className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-3 py-1 text-xs font-medium text-slate-700">
                       {record.treatment_type || "No treatment tagged"}
                     </span>
                   </div>
@@ -161,7 +161,7 @@ export function MyopiaManagementModal({
             </div>
           </div>
         ) : !isLoading ? (
-          <div className="mt-6 rounded-2xl border border-dashed border-sky-200 bg-sky-50/20 px-4 py-8 text-center text-sm text-slate-500">
+          <div className="mt-6 rounded-xl border border-dashed border-[#bfd7e8] bg-[#f3f8fb]/20 px-4 py-8 text-center text-sm text-slate-500">
             No axial length history yet. Add the first measurement to begin the visualisation.
           </div>
         ) : (

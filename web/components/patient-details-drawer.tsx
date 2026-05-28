@@ -228,7 +228,7 @@ export function PatientDetailsDrawer({
       return <CalendarClock className="h-4 w-4 text-amber-600" />;
     }
     if (type === "appointment_booked" || type === "appointment_checked_in") {
-      return <CalendarClock className="h-4 w-4 text-sky-600" />;
+      return <CalendarClock className="h-4 w-4 text-[#2f8fd3]" />;
     }
     if (type === "myopia_measurement") {
       return <Clock3 className="h-4 w-4 text-emerald-600" />;
@@ -236,8 +236,8 @@ export function PatientDetailsDrawer({
     if (type === "growth_measurement" || type === "well_child_visit") {
       return <Clock3 className="h-4 w-4 text-amber-600" />;
     }
-    if (type === "visit_recorded") return <UserRound className="h-4 w-4 text-sky-600" />;
-    return <Clock3 className="h-4 w-4 text-sky-600" />;
+    if (type === "visit_recorded") return <UserRound className="h-4 w-4 text-[#2f8fd3]" />;
+    return <Clock3 className="h-4 w-4 text-[#2f8fd3]" />;
   }
 
   function getPhoneDigits(value: string) {
@@ -401,8 +401,8 @@ export function PatientDetailsDrawer({
 
   return (
     <div className="fixed inset-0 z-30 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5">
-      <div className="mx-auto flex h-full max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-[34px] border border-sky-100 bg-white shadow-[0_35px_90px_rgba(15,23,42,0.18)]">
-        <div className="flex items-start justify-between gap-4 border-b border-sky-100 px-5 py-5 sm:px-7">
+      <div className="mx-auto flex h-full max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-[20px] border border-[#dbe7ef] bg-white shadow-[0_35px_90px_rgba(15,23,42,0.18)]">
+        <div className="flex items-start justify-between gap-4 border-b border-[#dbe7ef] px-5 py-5 sm:px-7">
           <div>
             <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Patient Chart</p>
             <h2 className="mt-2 text-3xl font-semibold text-slate-900">{currentPatient.name}</h2>
@@ -416,7 +416,7 @@ export function PatientDetailsDrawer({
               setError("");
               onClose();
             }}
-            className="rounded-full border border-sky-100 p-2 text-slate-500 transition hover:text-slate-800"
+            className="rounded-xl border border-[#dbe7ef] p-2 text-slate-500 transition hover:text-slate-800"
           >
             <X className="h-4 w-4" />
           </button>
@@ -446,7 +446,7 @@ export function PatientDetailsDrawer({
               />
 
               {isOptometryClinic ? (
-                <div className="rounded-[28px] border border-sky-100 bg-white p-5">
+                <div className="rounded-[18px] border border-[#dbe7ef] bg-white p-5">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Myopia Management</p>
@@ -457,7 +457,7 @@ export function PatientDetailsDrawer({
                       <button
                         type="button"
                         onClick={() => setIsMyopiaManagementOpen(true)}
-                        className="rounded-full border border-sky-200 bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.14em] text-slate-700 transition hover:bg-sky-50"
+                        className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.14em] text-slate-700 transition hover:bg-[#f3f8fb]"
                       >
                         Open Myopia Management
                       </button>
@@ -467,11 +467,11 @@ export function PatientDetailsDrawer({
                   {myopiaError ? <p className="mt-3 text-sm text-rose-600">{myopiaError}</p> : null}
 
                   <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-2xl border border-sky-100 bg-sky-50/35 p-4">
+                    <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/35 p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Readings</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">{measurementCount || 0} recorded</p>
                     </div>
-                    <div className="rounded-2xl border border-sky-100 bg-sky-50/35 p-4">
+                    <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/35 p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Latest Reading</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">
                         {latestMyopiaRecord
@@ -479,7 +479,7 @@ export function PatientDetailsDrawer({
                           : "No data yet"}
                       </p>
                     </div>
-                    <div className="rounded-2xl border border-sky-100 bg-sky-50/35 p-4">
+                    <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/35 p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Trend Since Baseline</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">
                         OD {formatMillimeterDelta(myopiaHistory?.baseline_delta?.right_mm)} · OS {formatMillimeterDelta(myopiaHistory?.baseline_delta?.left_mm)}
@@ -490,7 +490,7 @@ export function PatientDetailsDrawer({
               ) : null}
 
               {isPediatricsClinic ? (
-                <div className="rounded-[28px] border border-amber-100 bg-white p-5">
+                <div className="rounded-[18px] border border-amber-100 bg-white p-5">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Pediatric Growth</p>
@@ -498,23 +498,23 @@ export function PatientDetailsDrawer({
                     </div>
                   </div>
                   <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-2xl border border-amber-100 bg-amber-50/35 p-4">
+                    <div className="rounded-xl border border-amber-100 bg-amber-50/35 p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Readings</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">{growthRecords.length} recorded</p>
                     </div>
-                    <div className="rounded-2xl border border-amber-100 bg-amber-50/35 p-4">
+                    <div className="rounded-xl border border-amber-100 bg-amber-50/35 p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Latest Measurement</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">
                         {latestGrowthRecord ? `${latestGrowthRecord.height_cm} cm · ${latestGrowthRecord.weight_kg} kg · BMI ${latestGrowthRecord.bmi}` : "No data yet"}
                       </p>
                     </div>
-                    <div className="rounded-2xl border border-amber-100 bg-amber-50/35 p-4">
+                    <div className="rounded-xl border border-amber-100 bg-amber-50/35 p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Trend</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">{growthHistory?.trend_summary || "No trend yet"}</p>
                     </div>
                   </div>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl border border-amber-100 bg-white p-4">
+                    <div className="rounded-xl border border-amber-100 bg-white p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Previous Measurement</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">
                         {growthHistory?.previous_measurement
@@ -522,7 +522,7 @@ export function PatientDetailsDrawer({
                           : "No previous data"}
                       </p>
                     </div>
-                    <div className="rounded-2xl border border-amber-100 bg-white p-4">
+                    <div className="rounded-xl border border-amber-100 bg-white p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Interval Change</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">
                         {growthHistory?.interval_change
@@ -532,7 +532,7 @@ export function PatientDetailsDrawer({
                     </div>
                   </div>
                   {growthHistory?.flags.length ? (
-                    <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                       {growthHistory.flags.join(" ")}
                     </div>
                   ) : null}
@@ -546,7 +546,7 @@ export function PatientDetailsDrawer({
               />
 
               {readOnly ? (
-                <div className="rounded-[28px] border border-sky-100 bg-white p-5">
+                <div className="rounded-[18px] border border-[#dbe7ef] bg-white p-5">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Current Visit</p>
@@ -557,7 +557,7 @@ export function PatientDetailsDrawer({
 
                   {currentVisitEvent ? (
                     <div className="mt-5 space-y-4">
-                      <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+                      <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/30 p-4">
                         <p className="text-sm leading-6 text-slate-700">{currentVisitEvent.description}</p>
                       </div>
                       {(() => {
@@ -576,7 +576,7 @@ export function PatientDetailsDrawer({
                               ["Height", heightValue ? `${heightValue} cm` : "—"],
                               ["Temperature", temperatureValue ? `${temperatureValue} F` : "—"],
                             ].map(([label, value]) => (
-                              <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                              <div key={String(label)} className="rounded-xl border border-[#dbe7ef] bg-white p-4">
                                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
                                 <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
                               </div>
@@ -586,13 +586,13 @@ export function PatientDetailsDrawer({
                       })()}
                     </div>
                   ) : (
-                    <div className="mt-5 rounded-2xl border border-dashed border-sky-200 bg-sky-50/20 px-4 py-8 text-center text-sm text-slate-500">
+                    <div className="mt-5 rounded-xl border border-dashed border-[#bfd7e8] bg-[#f3f8fb]/20 px-4 py-8 text-center text-sm text-slate-500">
                       No visits recorded yet.
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="rounded-[28px] border border-sky-100 bg-white p-5">
+                <div className="rounded-[18px] border border-[#dbe7ef] bg-white p-5">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Visits</p>
@@ -612,12 +612,12 @@ export function PatientDetailsDrawer({
                           onClick={() => setSelectedEventId(event.id)}
                           className={`block w-full rounded-[22px] border px-4 py-4 text-left ${
                             event.id === selectedEventId
-                              ? "border-sky-300 bg-white shadow-[0_14px_32px_rgba(125,211,252,0.18)]"
-                              : "border-sky-100 bg-sky-50/35"
+                              ? "border-[#9fc7e1] bg-white shadow-[0_14px_32px_rgba(64,131,181,0.10)]"
+                              : "border-[#dbe7ef] bg-[#f3f8fb]/35"
                           }`}
                         >
                           <div className="flex items-start gap-3">
-                            <div className="rounded-full bg-white p-2 shadow-sm ring-1 ring-sky-100">
+                            <div className="rounded-full bg-white p-2 shadow-sm ring-1 ring-[#dbe7ef]">
                               {getTimelineIcon(event.type)}
                             </div>
                             <div className="min-w-0 flex-1">
@@ -631,7 +631,7 @@ export function PatientDetailsDrawer({
                         </button>
                       ))
                     ) : !isTimelineLoading ? (
-                      <div className="rounded-2xl border border-dashed border-sky-200 bg-sky-50/20 px-4 py-8 text-center text-sm text-slate-500">
+                      <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f3f8fb]/20 px-4 py-8 text-center text-sm text-slate-500">
                         No visits recorded yet.
                       </div>
                     ) : null}
@@ -642,7 +642,7 @@ export function PatientDetailsDrawer({
           </section>
         </div>
 
-        <div className="border-t border-sky-100 px-5 py-4 sm:px-7">
+        <div className="border-t border-[#dbe7ef] px-5 py-4 sm:px-7">
           {error ? <p className="mb-3 text-sm font-medium text-rose-600">{error}</p> : null}
           <div className="flex justify-end gap-3">
             <button
@@ -651,7 +651,7 @@ export function PatientDetailsDrawer({
                 setError("");
                 onClose();
               }}
-              className="rounded-full border border-sky-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:text-slate-900"
+              className="rounded-xl border border-[#bfd7e8] px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:text-slate-900"
             >
               Close
             </button>
@@ -660,7 +660,7 @@ export function PatientDetailsDrawer({
                 type="button"
                 disabled={isSaving}
                 onClick={handleSave}
-                className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
               >
                 {isSaving ? "Saving..." : "Save Changes"}
               </button>

@@ -159,7 +159,7 @@ function FollowUpBookingPageContent() {
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#eaf6ff_0%,#f8fcff_45%,#fefefe_100%)] px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-3xl rounded-[36px] border border-sky-100 bg-white/95 p-7 shadow-[0_25px_80px_rgba(125,211,252,0.14)] sm:p-10">
+      <div className="mx-auto max-w-3xl rounded-[22px] border border-[#dbe7ef] bg-white/95 p-7 shadow-[0_14px_38px_rgba(64,131,181,0.09)] sm:p-10">
         <div className="flex items-start justify-between gap-6">
           <div>
             <p className="text-sm uppercase tracking-[0.24em] text-slate-500">
@@ -173,22 +173,22 @@ function FollowUpBookingPageContent() {
               immediately.
             </p>
           </div>
-          <div className="rounded-full bg-sky-50 p-3 text-sky-700">
+          <div className="rounded-xl bg-[#f3f8fb] p-3 text-[#2a6fa8]">
             <Calendar className="h-6 w-6" />
           </div>
         </div>
 
         {isLoading ? (
-          <div className="mt-10 rounded-[28px] border border-sky-100 bg-sky-50/70 px-5 py-6 text-sm text-slate-600">
+          <div className="mt-10 rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/70 px-5 py-6 text-sm text-slate-600">
             Loading booking details...
           </div>
         ) : error && !context ? (
-          <div className="mt-10 rounded-[28px] border border-rose-200 bg-rose-50 px-5 py-6 text-sm text-rose-700">
+          <div className="mt-10 rounded-[18px] border border-rose-200 bg-rose-50 px-5 py-6 text-sm text-rose-700">
             {error}
           </div>
         ) : context ? (
           <div className="mt-10 space-y-6">
-            <section className="grid gap-4 rounded-[28px] border border-sky-100 bg-sky-50/70 p-5 sm:grid-cols-2">
+            <section className="grid gap-4 rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/70 p-5 sm:grid-cols-2">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Clinic</p>
                 <p className="mt-2 text-lg font-semibold text-slate-900">{context.clinic_name}</p>
@@ -200,7 +200,7 @@ function FollowUpBookingPageContent() {
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Current time</p>
                 <p className="mt-2 inline-flex items-center gap-2 text-sm text-slate-700">
-                  <Clock3 className="h-4 w-4 text-sky-700" />
+                  <Clock3 className="h-4 w-4 text-[#2a6fa8]" />
                   {formatDateTime(context.scheduled_for)}
                 </p>
               </div>
@@ -214,7 +214,7 @@ function FollowUpBookingPageContent() {
 
             <form
               onSubmit={handleSubmit}
-              className="rounded-[28px] border border-sky-100 bg-white p-5 shadow-[0_18px_40px_rgba(148,163,184,0.08)]"
+              className="rounded-[18px] border border-[#dbe7ef] bg-white p-5 shadow-[0_8px_24px_rgba(64,131,181,0.06)]"
             >
               {context.suggested_slots.length ? (
                 <div className="mb-5">
@@ -227,10 +227,10 @@ function FollowUpBookingPageContent() {
                           key={slot}
                           type="button"
                           onClick={() => setScheduledFor(toLocalDateTimeInput(slot))}
-                          className={`rounded-full border px-4 py-2 text-sm transition ${
+                          className={`rounded-xl border px-4 py-2 text-sm transition ${
                             active
-                              ? "border-sky-300 bg-sky-500 text-white"
-                              : "border-sky-200 bg-sky-50 text-slate-700 hover:bg-sky-100"
+                              ? "border-[#9fc7e1] bg-[#2f8fd3] text-white"
+                              : "border-[#bfd7e8] bg-[#f3f8fb] text-slate-700 hover:bg-[#dbeaf4]"
                           }`}
                         >
                           {formatDateTime(slot)}
@@ -249,18 +249,18 @@ function FollowUpBookingPageContent() {
                   value={scheduledFor}
                   min={minimumDateTime}
                   onChange={(event) => setScheduledFor(event.target.value)}
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 />
               </label>
 
               {error ? (
-                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   {error}
                 </div>
               ) : null}
 
               {successMessage ? (
-                <div className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                <div className="mt-4 inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
                   <CheckCircle2 className="h-4 w-4" />
                   {successMessage}
                 </div>
@@ -270,7 +270,7 @@ function FollowUpBookingPageContent() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-5 py-3 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#2f8fd3] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSubmitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
                   {isSubmitting ? "Saving..." : "Confirm follow-up"}
@@ -292,8 +292,8 @@ export default function FollowUpBookingPage() {
     <Suspense
       fallback={
         <main className="min-h-screen bg-[linear-gradient(180deg,#eaf6ff_0%,#f8fcff_45%,#fefefe_100%)] px-4 py-10 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-3xl rounded-[36px] border border-sky-100 bg-white/95 p-7 shadow-[0_25px_80px_rgba(125,211,252,0.14)] sm:p-10">
-            <div className="rounded-[28px] border border-sky-100 bg-sky-50/70 px-5 py-6 text-sm text-slate-600">
+          <div className="mx-auto max-w-3xl rounded-[22px] border border-[#dbe7ef] bg-white/95 p-7 shadow-[0_14px_38px_rgba(64,131,181,0.09)] sm:p-10">
+            <div className="rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/70 px-5 py-6 text-sm text-slate-600">
               Loading booking details...
             </div>
           </div>

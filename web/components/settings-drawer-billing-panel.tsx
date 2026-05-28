@@ -85,9 +85,9 @@ export function SettingsDrawerBillingPanel({
 }: SettingsDrawerBillingPanelProps) {
   return (
     <div className="grid gap-4 xl:grid-cols-[300px_1fr]">
-      <div className="rounded-[28px] border border-sky-200 bg-white p-5">
+      <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
         <div className="mb-4 flex items-center gap-2">
-          <ReceiptIndianRupee className="h-4 w-4 text-sky-700" />
+          <ReceiptIndianRupee className="h-4 w-4 text-[#2a6fa8]" />
           <div>
             <h3 className="text-base font-semibold text-slate-900">Patients</h3>
             <p className="mt-1 text-sm text-slate-600">Select a patient to prepare billing.</p>
@@ -101,8 +101,8 @@ export function SettingsDrawerBillingPanel({
                 key={patient.id}
                 type="button"
                 onClick={() => onSelectPatient(patient.id)}
-                className={`w-full rounded-[24px] border px-4 py-3 text-left transition ${
-                  active ? "border-sky-300 bg-sky-50" : "border-sky-100 bg-white hover:bg-sky-50/50"
+                className={`w-full rounded-[16px] border px-4 py-3 text-left transition ${
+                  active ? "border-[#9fc7e1] bg-[#f3f8fb]" : "border-[#dbe7ef] bg-white hover:bg-[#f3f8fb]/50"
                 }`}
               >
                 <p className="text-sm font-semibold text-slate-900">{patient.name}</p>
@@ -114,7 +114,7 @@ export function SettingsDrawerBillingPanel({
       </div>
 
       <div className="space-y-4">
-        <div className="rounded-[28px] border border-sky-200 bg-white p-5">
+        <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
           <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h3 className="text-base font-semibold text-slate-900">
@@ -127,16 +127,16 @@ export function SettingsDrawerBillingPanel({
                   key={status}
                   type="button"
                   onClick={() => onPaymentStatusChange(status)}
-                  className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                  className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
                     paymentStatus === status
-                      ? "border-sky-300 bg-sky-100 text-sky-800"
-                      : "border-sky-200 bg-white text-slate-700 hover:bg-sky-50"
+                      ? "border-[#9fc7e1] bg-[#dbeaf4] text-[#235f8e]"
+                      : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"
                   }`}
                 >
                   {status.charAt(0).toUpperCase() + status.slice(1)}
                 </button>
               ))}
-              <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
+              <span className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-3 py-1 text-xs font-medium text-[#2a6fa8]">
                 {invoiceItems.length} item{invoiceItems.length === 1 ? "" : "s"}
               </span>
             </div>
@@ -144,14 +144,14 @@ export function SettingsDrawerBillingPanel({
 
           <div className="space-y-3">
             {setupWarnings.length ? (
-              <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-4 text-sm leading-6 text-amber-900">
+              <div className="rounded-[16px] border border-amber-200 bg-amber-50/80 p-4 text-sm leading-6 text-amber-900">
                 {setupWarnings.map((warning) => (
                   <p key={warning}>{warning}</p>
                 ))}
               </div>
             ) : null}
             {invoiceItems.length ? invoiceItems.map((item) => (
-              <div key={item.id} className="grid gap-3 rounded-[24px] border border-sky-100 bg-sky-50/30 p-4 md:grid-cols-[1.3fr_120px_140px_44px]">
+              <div key={item.id} className="grid gap-3 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/30 p-4 md:grid-cols-[1.3fr_120px_140px_44px]">
                 <div>
                   <p className="text-sm font-medium text-slate-900">{item.label}</p>
                   <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{item.item_type}</p>
@@ -160,18 +160,18 @@ export function SettingsDrawerBillingPanel({
                   value={item.quantity}
                   inputMode="decimal"
                   onChange={(event) => onUpdateInvoiceItem(item.id, { quantity: Number(event.target.value) || 0 })}
-                  className="rounded-2xl border border-sky-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none"
+                  className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm text-slate-800 outline-none"
                 />
                 <input
                   value={item.unit_price}
                   inputMode="decimal"
                   onChange={(event) => onUpdateInvoiceItem(item.id, { unit_price: Number(event.target.value) || 0 })}
-                  className="rounded-2xl border border-sky-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none"
+                  className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm text-slate-800 outline-none"
                 />
                 <button
                   type="button"
                   onClick={() => onRemoveInvoiceItem(item.id)}
-                  className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-white"
+                  className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-white"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -179,7 +179,7 @@ export function SettingsDrawerBillingPanel({
             )) : <p className="text-sm text-slate-600">Add services or medicines from the inventory to start billing.</p>}
           </div>
 
-          <div className="mt-5 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
+          <div className="mt-5 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
               <label className="flex-1">
                 <span className="mb-2 block text-sm font-medium text-slate-700">Item</span>
@@ -187,7 +187,7 @@ export function SettingsDrawerBillingPanel({
                   value={customItemLabel}
                   onChange={(event) => onCustomItemLabelChange(event.target.value)}
                   placeholder="e.g. Procedure charge, dressing, emergency fee"
-                  className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                  className="w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
                 />
               </label>
               <label>
@@ -196,7 +196,7 @@ export function SettingsDrawerBillingPanel({
                   value={customItemQuantity}
                   inputMode="decimal"
                   onChange={(event) => onCustomItemQuantityChange(event.target.value)}
-                  className="w-24 rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                  className="w-24 rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
                 />
               </label>
               <label>
@@ -205,20 +205,20 @@ export function SettingsDrawerBillingPanel({
                   value={customItemUnitPrice}
                   inputMode="decimal"
                   onChange={(event) => onCustomItemUnitPriceChange(event.target.value)}
-                  className="w-32 rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                  className="w-32 rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
                 />
               </label>
               <button
                 type="button"
                 onClick={onAddCustomItem}
-                className="rounded-full bg-sky-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-sky-600"
+                className="rounded-xl bg-[#2f8fd3] px-4 py-3 text-sm font-medium text-white transition hover:bg-[#287fc0]"
               >
                 Add
               </button>
             </div>
           </div>
 
-          <div className="mt-5 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
+          <div className="mt-5 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
             <div className="flex items-center justify-between text-sm text-slate-700">
               <span>Subtotal</span>
               <span>{invoiceSubtotal.toFixed(2)}</span>
@@ -238,7 +238,7 @@ export function SettingsDrawerBillingPanel({
           </div>
 
           {paymentStatus === "partial" ? (
-            <div className="mt-4 rounded-[24px] border border-amber-200 bg-amber-50/70 p-4">
+            <div className="mt-4 rounded-[16px] border border-amber-200 bg-amber-50/70 p-4">
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">Amount Received</span>
                 <input
@@ -246,7 +246,7 @@ export function SettingsDrawerBillingPanel({
                   inputMode="decimal"
                   onChange={(event) => onAmountPaidChange(event.target.value)}
                   placeholder="Enter amount received"
-                  className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                  className="mt-2 w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
                 />
               </label>
               <p className="mt-2 text-xs text-amber-800">Partial invoices require an amount greater than zero and less than the total.</p>
@@ -254,7 +254,7 @@ export function SettingsDrawerBillingPanel({
           ) : null}
 
           {selectedBillingPatient ? (
-            <div className="mt-4 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
+            <div className="mt-4 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
               <p className="text-sm font-medium text-slate-700">Patient Recipient</p>
               <p className="mt-2 text-sm text-slate-900">{selectedBillingPatient.email || "No patient email saved."}</p>
             </div>
@@ -268,7 +268,7 @@ export function SettingsDrawerBillingPanel({
               type="button"
               onClick={onCreateBill}
               disabled={isSavingInvoice}
-              className="rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+              className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
             >
               {isSavingInvoice ? "Saving..." : savedInvoice ? "Recreate Invoice" : "Create Invoice"}
             </button>
@@ -276,7 +276,7 @@ export function SettingsDrawerBillingPanel({
               type="button"
               onClick={onPreviewPdf}
               disabled={isPreparingInvoicePdf}
-              className="rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+              className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
             >
               Preview
             </button>
@@ -284,7 +284,7 @@ export function SettingsDrawerBillingPanel({
               type="button"
               onClick={onSendInvoice}
               disabled={isSendingInvoice || isSavingInvoice}
-              className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+              className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
             >
               {isSendingInvoice ? "Sending..." : "Send Email"}
             </button>

@@ -52,7 +52,7 @@ export function SettingsDrawerInventoryPanel({
 }: SettingsDrawerInventoryPanelProps) {
   return (
     <div className="space-y-4">
-      <form className="rounded-[28px] border border-sky-200 bg-white p-5" onSubmit={onSubmit}>
+      <form className="rounded-[18px] border border-[#bfd7e8] bg-white p-5" onSubmit={onSubmit}>
         <div className="mb-4">
           <h3 className="text-base font-semibold text-slate-900">Inventory Management</h3>
           <p className="mt-2 text-sm leading-7 text-slate-600">
@@ -67,7 +67,7 @@ export function SettingsDrawerInventoryPanel({
               value={catalogForm.name}
               onChange={(event) => onCatalogFormChange({ name: event.target.value })}
               placeholder="Consultation, Injection, Paracetamol"
-              className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+              className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
             />
           </label>
 
@@ -84,7 +84,7 @@ export function SettingsDrawerInventoryPanel({
                       : catalogForm.track_inventory,
                 })
               }
-              className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+              className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
             >
               <option value="service">Service</option>
               <option value="medicine">Medicine</option>
@@ -98,7 +98,7 @@ export function SettingsDrawerInventoryPanel({
               inputMode="decimal"
               onChange={(event) => onCatalogFormChange({ default_price: event.target.value })}
               placeholder="500"
-              className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+              className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
             />
           </label>
 
@@ -108,12 +108,12 @@ export function SettingsDrawerInventoryPanel({
               value={catalogForm.unit}
               onChange={(event) => onCatalogFormChange({ unit: event.target.value })}
               placeholder="per visit, each, strip, bottle"
-              className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+              className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
             />
           </label>
         </div>
 
-        <label className="mt-4 flex items-center gap-3 rounded-2xl border border-sky-100 bg-sky-50/30 px-4 py-3 text-sm text-slate-700">
+        <label className="mt-4 flex items-center gap-3 rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/30 px-4 py-3 text-sm text-slate-700">
           <input
             type="checkbox"
             checked={catalogForm.track_inventory}
@@ -131,7 +131,7 @@ export function SettingsDrawerInventoryPanel({
                 inputMode="decimal"
                 onChange={(event) => onCatalogFormChange({ stock_quantity: event.target.value })}
                 placeholder="100"
-                className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
             </label>
 
@@ -142,7 +142,7 @@ export function SettingsDrawerInventoryPanel({
                 inputMode="decimal"
                 onChange={(event) => onCatalogFormChange({ low_stock_threshold: event.target.value })}
                 placeholder="10"
-                className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
             </label>
           </div>
@@ -155,7 +155,7 @@ export function SettingsDrawerInventoryPanel({
           <button
             type="submit"
             disabled={isSavingCatalog || currentUser?.role !== "admin"}
-            className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+            className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
           >
             {isSavingCatalog ? "Saving..." : "Save Inventory Item"}
           </button>
@@ -163,14 +163,14 @@ export function SettingsDrawerInventoryPanel({
       </form>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-[28px] border border-sky-200 bg-white p-5">
+        <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
           <div className="mb-4 flex items-center gap-2">
-            <Stethoscope className="h-4 w-4 text-sky-700" />
+            <Stethoscope className="h-4 w-4 text-[#2a6fa8]" />
             <h3 className="text-base font-semibold text-slate-900">Services</h3>
           </div>
           <div className="space-y-3">
             {serviceItems.length ? serviceItems.map((item) => (
-              <div key={item.id} className="flex items-center justify-between rounded-2xl border border-sky-100 bg-sky-50/30 px-4 py-3">
+              <div key={item.id} className="flex items-center justify-between rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/30 px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-slate-900">{item.name}</p>
                   <p className="mt-1 text-xs text-slate-600">{item.unit || "per entry"} · {item.default_price.toFixed(2)}</p>
@@ -186,13 +186,13 @@ export function SettingsDrawerInventoryPanel({
                         inputMode="decimal"
                         onChange={(event) => onStockAdjustmentChange(item.id, event.target.value)}
                         placeholder="+10 / -2"
-                        className="w-28 rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none"
+                        className="w-28 rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs text-slate-800 outline-none"
                       />
                       <button
                         type="button"
                         disabled={adjustingStockId === item.id || currentUser?.role !== "admin"}
                         onClick={() => onAdjustStock(item.id)}
-                        className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-50"
+                        className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-50"
                       >
                         {adjustingStockId === item.id ? "Updating..." : "Adjust"}
                       </button>
@@ -203,7 +203,7 @@ export function SettingsDrawerInventoryPanel({
                   type="button"
                   disabled={deletingCatalogId === item.id || currentUser?.role !== "admin"}
                   onClick={() => onDeleteCatalogItem(item.id)}
-                  className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-white disabled:opacity-50"
+                  className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-white disabled:opacity-50"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -212,14 +212,14 @@ export function SettingsDrawerInventoryPanel({
           </div>
         </div>
 
-        <div className="rounded-[28px] border border-sky-200 bg-white p-5">
+        <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
           <div className="mb-4 flex items-center gap-2">
-            <Pill className="h-4 w-4 text-sky-700" />
+            <Pill className="h-4 w-4 text-[#2a6fa8]" />
             <h3 className="text-base font-semibold text-slate-900">Medicines</h3>
           </div>
           <div className="space-y-3">
             {medicineItems.length ? medicineItems.map((item) => (
-              <div key={item.id} className="flex items-center justify-between rounded-2xl border border-sky-100 bg-sky-50/30 px-4 py-3">
+              <div key={item.id} className="flex items-center justify-between rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/30 px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-slate-900">{item.name}</p>
                   <p className="mt-1 text-xs text-slate-600">{item.unit || "per entry"} · {item.default_price.toFixed(2)}</p>
@@ -235,13 +235,13 @@ export function SettingsDrawerInventoryPanel({
                         inputMode="decimal"
                         onChange={(event) => onStockAdjustmentChange(item.id, event.target.value)}
                         placeholder="+10 / -2"
-                        className="w-28 rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none"
+                        className="w-28 rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs text-slate-800 outline-none"
                       />
                       <button
                         type="button"
                         disabled={adjustingStockId === item.id || currentUser?.role !== "admin"}
                         onClick={() => onAdjustStock(item.id)}
-                        className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-50"
+                        className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-50"
                       >
                         {adjustingStockId === item.id ? "Updating..." : "Adjust"}
                       </button>
@@ -252,7 +252,7 @@ export function SettingsDrawerInventoryPanel({
                   type="button"
                   disabled={deletingCatalogId === item.id || currentUser?.role !== "admin"}
                   onClick={() => onDeleteCatalogItem(item.id)}
-                  className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-white disabled:opacity-50"
+                  className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-white disabled:opacity-50"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>

@@ -159,7 +159,7 @@ export default function PatientsPage() {
   if (isRedirectingToLogin) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Redirecting to login...
         </div>
       </main>
@@ -169,7 +169,7 @@ export default function PatientsPage() {
   if (!isAuthReady) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Loading ClinicOS...
         </div>
       </main>
@@ -177,8 +177,8 @@ export default function PatientsPage() {
   }
 
   return (
-    <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1600px]">
+    <main className="clinic-page">
+      <div className="clinic-container">
         <AppHeader
           clinicName={clinicName}
           currentUser={currentUser}
@@ -188,20 +188,17 @@ export default function PatientsPage() {
         />
 
         {error ? (
-          <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}
           </div>
         ) : null}
 
-        <section className="rounded-[32px] border border-sky-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)] sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="flex w-full flex-col gap-4 lg:max-w-3xl lg:flex-row lg:items-end">
+        <section className="clinic-panel">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex w-full flex-col gap-3 lg:max-w-3xl lg:flex-row lg:items-center">
               <div className="min-w-0 flex-1">
-                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Patient Search
-                </label>
-                <div className="mt-2 flex items-center gap-3 rounded-[28px] border border-sky-200 bg-sky-50/50 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
-                  <Search className="h-4 w-4 text-sky-700" />
+                <div className="flex items-center gap-3 rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/50 px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                  <Search className="h-4 w-4 text-[#2a6fa8]" />
                   <input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
@@ -210,9 +207,9 @@ export default function PatientsPage() {
                   />
                 </div>
               </div>
-              <div className="rounded-[24px] border border-sky-100 bg-sky-50/60 px-4 py-3 text-sm text-slate-600 lg:min-w-[180px]">
-                <span className="font-medium text-slate-500">Total Records:</span>{" "}
-                <span className="text-lg font-semibold text-slate-900">{patients.length}</span>
+              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/60 px-4 py-2.5 text-sm text-slate-600 lg:min-w-[140px]">
+                <span className="text-lg font-semibold text-slate-900">{patients.length}</span>{" "}
+                <span className="font-medium text-slate-500">Patients</span>
               </div>
             </div>
 
@@ -222,18 +219,20 @@ export default function PatientsPage() {
                   type="button"
                   onClick={() => void handleExport()}
                   disabled={isExporting}
-                  className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                  aria-label={isExporting ? "Preparing patient export" : "Export patients"}
+                  title={isExporting ? "Preparing export" : "Export patients"}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                 >
                   <Download className="h-4 w-4" />
-                  {isExporting ? "Preparing..." : "Export"}
                 </button>
                 <button
                   type="button"
                   onClick={() => window.location.reload()}
-                  className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50"
+                  aria-label="Retry loading patients"
+                  title="Retry loading patients"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-slate-800 transition hover:bg-[#f3f8fb]"
                 >
                   <RefreshCw className="h-4 w-4" />
-                  Retry
                 </button>
               </div>
             </div>
@@ -250,12 +249,13 @@ export default function PatientsPage() {
                     onClick={() => {
                       setSelectedPatient(patient);
                       rememberRecentPatient(patient);
-                    }}
-                    className="min-w-[220px] rounded-[22px] border border-sky-100 bg-sky-50/50 px-4 py-3 text-left transition hover:border-sky-200 hover:bg-white"
+                  }}
+                    className="min-w-[180px] rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3.5 py-2.5 text-left transition hover:border-[#bfd7e8] hover:bg-white"
                   >
                     <p className="text-sm font-semibold text-slate-900">{patient.name}</p>
-                    <p className="mt-1 text-xs text-slate-500">{patient.reason}</p>
-                    <p className="mt-2 text-xs text-slate-500">{formatVisitDate(patient.last_visit_at)}</p>
+                    <p className="mt-1 truncate text-xs text-slate-500">
+                      {patient.reason || "No reason"} · {formatVisitDate(patient.last_visit_at)}
+                    </p>
                   </button>
                 ))}
               </div>
@@ -263,32 +263,32 @@ export default function PatientsPage() {
           ) : null}
 
           {exportError ? (
-            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
               {exportError}
             </div>
           ) : null}
           {exportStatus ? (
-            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
               {exportStatus}
             </div>
           ) : null}
 
-          <div className="mt-6 overflow-hidden rounded-[28px] border border-sky-200 bg-white">
+          <div className="mt-6 overflow-hidden rounded-[18px] border border-[#bfd7e8] bg-white">
             {visiblePatients.length ? (
               <div className="max-h-[68vh] overflow-auto">
                 <table className="min-w-full border-separate border-spacing-0">
-                  <thead className="sticky top-0 z-10 bg-sky-50/95 backdrop-blur">
+                  <thead className="sticky top-0 z-10 bg-[#f3f8fb]/95 backdrop-blur">
                     <tr className="text-left">
-                      <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                         Patient
                       </th>
-                      <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                         Phone
                       </th>
-                      <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                         Last Reason
                       </th>
-                      <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                         Last Visit
                       </th>
                     </tr>
@@ -301,21 +301,21 @@ export default function PatientsPage() {
                           setSelectedPatient(patient);
                           rememberRecentPatient(patient);
                         }}
-                        className="cursor-pointer transition hover:bg-sky-50/70"
+                        className="cursor-pointer transition hover:bg-[#f3f8fb]/70"
                       >
-                        <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-800">
+                        <td className="border-b border-[#dbe7ef] px-5 py-4 text-sm text-slate-800">
                           <div className="font-semibold text-slate-900">{patient.name}</div>
                           <div className="mt-1 text-xs text-slate-500">
                             ID {patient.id.slice(0, 8).toUpperCase()}
                           </div>
                         </td>
-                        <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-600">
+                        <td className="border-b border-[#dbe7ef] px-5 py-4 text-sm text-slate-600">
                           {patient.phone}
                         </td>
-                        <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-600">
+                        <td className="border-b border-[#dbe7ef] px-5 py-4 text-sm text-slate-600">
                           <div className="max-w-md truncate">{patient.reason}</div>
                         </td>
-                        <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-500">
+                        <td className="border-b border-[#dbe7ef] px-5 py-4 text-sm text-slate-500">
                           {formatVisitDate(patient.last_visit_at)}
                         </td>
                       </tr>

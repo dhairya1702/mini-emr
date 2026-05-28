@@ -8,6 +8,16 @@
   --page-bg-end: #f4f9fc;
   --page-halo-left: rgba(178, 211, 232, 0.22);
   --page-halo-right: rgba(216, 231, 239, 0.54);
+  --clinic-border: #dbe7ef;
+  --clinic-border-strong: #bfd7e8;
+  --clinic-surface: rgba(255, 255, 255, 0.96);
+  --clinic-soft: #f3f8fb;
+  --clinic-soft-strong: #edf5fa;
+  --clinic-accent: #2f8fd3;
+  --clinic-accent-strong: #287fc0;
+  --clinic-accent-text: #2a6fa8;
+  --clinic-focus: #6daed8;
+  --clinic-shadow: 0 14px 38px rgba(64, 131, 181, 0.09);
 }
 
 body {
@@ -24,4 +34,85 @@ body {
 
 * {
   scrollbar-color: #bfd7e8 transparent;
+}
+
+@layer components {
+  .clinic-page {
+    @apply min-h-screen px-4 py-5 sm:px-6 lg:px-8;
+  }
+
+  .clinic-container {
+    @apply mx-auto max-w-[1600px];
+  }
+
+  .clinic-panel {
+    @apply rounded-[20px] border border-[#dbe7ef] bg-white/95 p-5 shadow-[0_14px_38px_rgba(64,131,181,0.09)] sm:p-6;
+  }
+
+  .clinic-subpanel {
+    @apply rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb] p-4;
+  }
+
+  .clinic-card {
+    @apply rounded-[16px] border border-[#dbe7ef] bg-white p-4 shadow-[0_8px_24px_rgba(64,131,181,0.06)];
+  }
+
+  .clinic-input,
+  .clinic-select,
+  .clinic-textarea {
+    @apply w-full rounded-xl border border-[#bfd7e8] bg-[#f7fbfd] px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8] focus:bg-white;
+  }
+
+  .clinic-input,
+  .clinic-select {
+    @apply h-11;
+  }
+
+  .clinic-textarea {
+    @apply py-3;
+  }
+
+  .clinic-search {
+    @apply flex items-center gap-3 rounded-xl border border-[#bfd7e8] bg-[#f7fbfd] px-4 py-2.5 transition focus-within:border-[#6daed8] focus-within:bg-white;
+  }
+
+  .clinic-button-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .clinic-button-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#edf5fa] disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .clinic-button-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .clinic-icon-button {
+    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#bfd7e8] bg-white text-slate-700 transition hover:bg-[#edf5fa] disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .clinic-status-chip {
+    @apply inline-flex rounded-lg border border-[#bfd7e8] bg-[#edf5fa] px-3 py-1 text-xs font-medium text-slate-600;
+  }
+
+  .clinic-table {
+    @apply w-full border-collapse text-sm;
+  }
+
+  .clinic-table thead {
+    @apply bg-[#f3f8fb] text-slate-600;
+  }
+
+  .clinic-table th {
+    @apply border-b border-[#dbe7ef] px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500;
+  }
+
+  .clinic-table td {
+    @apply border-b border-[#dbe7ef] px-5 py-4;
+  }
+
+  .clinic-empty-state {
+    @apply rounded-[16px] border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-6 py-10 text-center text-sm text-slate-500;
+  }
 }

@@ -29,7 +29,7 @@ export function PatientTimelinePanel({
   formatDateTime: (value: string) => string;
 }) {
   return (
-    <aside className="min-h-0 border-b border-sky-100 bg-sky-50/35 px-4 py-5 lg:border-b-0 lg:border-r lg:px-5">
+    <aside className="min-h-0 border-b border-[#dbe7ef] bg-[#f3f8fb]/35 px-4 py-5 lg:border-b-0 lg:border-r lg:px-5">
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -56,12 +56,12 @@ export function PatientTimelinePanel({
                       onClick={() => onSelectEvent(event.id)}
                       className={`block w-full rounded-[22px] border px-3 py-3 text-left ${
                         event.id === selectedEventId
-                          ? "border-sky-300 bg-white shadow-[0_14px_32px_rgba(125,211,252,0.18)]"
-                          : "border-sky-100 bg-white/90"
+                          ? "border-[#9fc7e1] bg-white shadow-[0_14px_32px_rgba(64,131,181,0.10)]"
+                          : "border-[#dbe7ef] bg-white/90"
                       }`}
                     >
                       <div className="flex items-start gap-2.5">
-                        <div className="rounded-full bg-white p-1.5 shadow-sm ring-1 ring-sky-100">
+                        <div className="rounded-full bg-white p-1.5 shadow-sm ring-1 ring-[#dbe7ef]">
                           {getTimelineIcon(event.type)}
                         </div>
                         <div className="min-w-0 flex-1">
@@ -78,7 +78,7 @@ export function PatientTimelinePanel({
               </div>
             ))
           ) : !isLoading ? (
-            <div className="rounded-2xl border border-dashed border-sky-200 bg-white/80 px-4 py-6 text-center text-sm text-slate-500">
+            <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-white/80 px-4 py-6 text-center text-sm text-slate-500">
               No patient history yet.
             </div>
           ) : null}

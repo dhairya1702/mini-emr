@@ -13,7 +13,6 @@ import {
   History,
   Info,
   LayoutDashboard,
-  Mail,
   GraduationCap,
   Search,
   Settings2,
@@ -202,7 +201,7 @@ function ClinicDocumentPreview({
     : "";
 
   return (
-    <div className="rounded-[32px] border border-sky-200 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
+    <div className="rounded-[20px] border border-[#bfd7e8] bg-white p-5 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Live Preview</p>
@@ -215,13 +214,13 @@ function ClinicDocumentPreview({
               : "Without a template, generated documents fall back to your custom header and footer. The sample page reflects that layout."}
           </p>
         </div>
-        <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
+        <div className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-4 py-2 text-sm font-medium text-[#2a6fa8]">
           {hasTemplate ? "Template mode" : "Header/footer mode"}
         </div>
       </div>
 
-      <div className="mt-5 rounded-[28px] border border-sky-100 bg-[linear-gradient(180deg,#eff6ff_0%,#f8fbff_100%)] p-4">
-        <div className="mx-auto aspect-[595/842] w-full max-w-[620px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.16)]">
+      <div className="mt-5 rounded-[18px] border border-[#dbe7ef] bg-[linear-gradient(180deg,#eff6ff_0%,#f8fbff_100%)] p-4">
+        <div className="mx-auto aspect-[595/842] w-full max-w-[620px] overflow-hidden rounded-[16px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.16)]">
           <div className="relative h-full w-full bg-white">
             {hasTemplate ? (
               <>
@@ -279,12 +278,12 @@ function ClinicDocumentPreview({
             )}
 
             <div className="pointer-events-none absolute inset-0">
-              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(248,250,252,0.04),rgba(14,165,233,0.04))]" />
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(248,250,252,0.04),rgba(47,143,211,0.04))]" />
               <div
-                className="absolute rounded-[18px] border-2 border-dashed border-sky-500 bg-sky-400/8 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)]"
+                className="absolute rounded-[18px] border-2 border-dashed border-[#2f8fd3] bg-[#2f8fd3]/10 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)]"
                 style={contentInsets}
               >
-                <div className="absolute left-4 top-4 rounded-full bg-sky-600 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
+                <div className="absolute left-4 top-4 rounded-xl bg-[#287fc0] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
                   Content area
                 </div>
                 <div className="flex h-full flex-col justify-start gap-3 p-6 pt-14 text-[11px] leading-5 text-slate-800">
@@ -308,7 +307,7 @@ function ClinicDocumentPreview({
             ["Bottom", form.document_template_margin_bottom],
             ["Left", form.document_template_margin_left],
           ].map(([label, value]) => (
-            <div key={label} className="rounded-2xl border border-sky-100 bg-white/85 px-4 py-3">
+            <div key={label} className="rounded-xl border border-[#dbe7ef] bg-white/85 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
               <p className="mt-2 text-lg font-semibold text-slate-900">{value || "0"}</p>
             </div>
@@ -342,7 +341,7 @@ function LetterDocumentPreview({
   const iframeSrc = previewUrl ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH` : "";
 
   return (
-    <div className="rounded-[32px] border border-sky-200 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
+    <div className="rounded-[20px] border border-[#bfd7e8] bg-white p-5 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Letter Preview</p>
@@ -357,13 +356,13 @@ function LetterDocumentPreview({
                 : "No template is uploaded, so the preview starts with the fallback clinic letter layout."}
           </p>
         </div>
-        <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
+        <div className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-4 py-2 text-sm font-medium text-[#2a6fa8]">
           {hasRenderedPreview ? "PDF ready" : hasTemplate ? "Template only" : "Fallback paper"}
         </div>
       </div>
 
-      <div className="mt-5 rounded-[28px] border border-sky-100 bg-[linear-gradient(180deg,#eff6ff_0%,#f8fbff_100%)] p-4">
-        <div className="mx-auto aspect-[595/842] w-full max-w-[620px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.16)]">
+      <div className="mt-5 rounded-[18px] border border-[#dbe7ef] bg-[linear-gradient(180deg,#eff6ff_0%,#f8fbff_100%)] p-4">
+        <div className="mx-auto aspect-[595/842] w-full max-w-[620px] overflow-hidden rounded-[16px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.16)]">
           <div className="relative h-full w-full bg-white">
             {previewUrl ? (
               isPdf ? (
@@ -589,23 +588,22 @@ export function SettingsDrawer({
   const balanceDue = Math.max(invoiceSubtotal - normalizedAmountPaid, 0);
   const menuItems: DrawerMenuItem[] = isTrainingMode ? [
     { href: "/", label: "Queue", icon: LayoutDashboard },
-    { tab: "training" as SettingsTab, label: "Training Mode", icon: GraduationCap },
+    { href: "/training", label: "Training Mode", icon: GraduationCap },
   ] : [
     { href: "/", label: "Queue", icon: LayoutDashboard },
-    { tab: "appointments" as SettingsTab, label: "Appointments", icon: CalendarClock },
+    { href: "/appointments", label: "Appointments", icon: CalendarClock },
     { href: "/patients", label: "Patients", icon: Search },
     { href: "/billing", label: "Billing", icon: CreditCard },
     { href: "/inventory", label: "Inventory", icon: Stethoscope },
     { href: "/history", label: "History", icon: History },
-    { tab: "letter" as SettingsTab, label: "Generate Letter", icon: FilePenLine },
+    { href: "/generate-letter", label: "Generate Letter", icon: FilePenLine },
     { href: "/case-study", label: "Case Study", icon: FileText },
     { href: "/users", label: "Users", icon: UserPlus },
-    { tab: "clinic" as SettingsTab, label: "Clinic", icon: Building2 },
+    { href: "/clinic", label: "Clinic", icon: Building2 },
     { href: "/account", label: "Account", icon: User },
     { href: "/audit", label: "Audit", icon: Settings2 },
-    { tab: "training" as SettingsTab, label: "Training Mode", icon: GraduationCap },
-    { tab: "about" as SettingsTab, label: "About", icon: Info },
-    { tab: "contact" as SettingsTab, label: "Contact Us", icon: Mail },
+    { href: "/training", label: "Training Mode", icon: GraduationCap },
+    { href: "/about", label: "About", icon: Info },
   ];
 
   if (!isTrainingMode && currentUser?.role === "admin") {
@@ -1468,11 +1466,11 @@ export function SettingsDrawer({
     return (
       <div className="space-y-6">
         <form className="space-y-4" onSubmit={handleClinicSave}>
-          <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+          <section className="rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
             <div>
               <h3 className="text-xl font-semibold text-slate-900">Clinic settings</h3>
               {!canEditClinic ? (
-                <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
                   Clinic settings are admin-only. You can view them here, but only admins can save changes.
                 </p>
               ) : null}
@@ -1488,7 +1486,7 @@ export function SettingsDrawer({
                       onChange={(event) =>
                         setForm((current) => ({ ...current, clinic_name: event.target.value }))
                       }
-                      className="h-11 w-full rounded-xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                   </label>
 
@@ -1499,13 +1497,13 @@ export function SettingsDrawer({
                       onChange={(event) =>
                         setForm((current) => ({ ...current, clinic_phone: event.target.value }))
                       }
-                      className="h-11 w-full rounded-xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                   </label>
 
                   <div ref={specialtySectionRef}>
                     <p className="mb-2 text-sm font-medium text-slate-700">Specialty</p>
-                    <div className="flex h-11 items-center rounded-xl border border-sky-100 bg-sky-50/60 px-4 text-slate-800">
+                    <div className="flex h-11 items-center rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/60 px-4 text-slate-800">
                       {specialtyLabel || "Not set"}
                     </div>
                   </div>
@@ -1517,14 +1515,14 @@ export function SettingsDrawer({
                       onChange={(event) =>
                         setForm((current) => ({ ...current, clinic_address: event.target.value }))
                       }
-                      className="h-11 w-full rounded-xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                   </label>
                 </div>
               </div>
 
               {!form.clinic_specialty && canEditClinic ? (
-                <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                   Select a clinic specialty to enable specialty-specific features as they are added.
                 </p>
               ) : null}
@@ -1540,7 +1538,7 @@ export function SettingsDrawer({
                       onChange={(event) =>
                         setForm((current) => ({ ...current, appointment_start_time: event.target.value }))
                       }
-                      className="h-11 w-full rounded-xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                   </label>
 
@@ -1552,7 +1550,7 @@ export function SettingsDrawer({
                       onChange={(event) =>
                         setForm((current) => ({ ...current, appointment_end_time: event.target.value }))
                       }
-                      className="h-11 w-full rounded-xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                   </label>
 
@@ -1567,7 +1565,7 @@ export function SettingsDrawer({
                       onChange={(event) =>
                         setForm((current) => ({ ...current, appointments_per_hour: event.target.value }))
                       }
-                      className="h-11 w-full rounded-xl border border-sky-200 bg-sky-50/40 px-4 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                   </label>
                 </div>
@@ -1578,7 +1576,7 @@ export function SettingsDrawer({
             </div>
           </section>
 
-          <section ref={emailSectionRef} className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+          <section ref={emailSectionRef} className="rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="max-w-3xl">
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Email Sending</p>
@@ -1587,7 +1585,7 @@ export function SettingsDrawer({
                   Use the clinic or doctor Gmail account that should appear as the sender. This is the Gmail identity patients will see when notes are emailed.
                 </p>
               </div>
-              <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
+              <div className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-4 py-2 text-sm font-medium text-[#2a6fa8]">
                 {form.email_configured ? "Configured" : "Not configured"}
               </div>
             </div>
@@ -1601,7 +1599,7 @@ export function SettingsDrawer({
                     setForm((current) => ({ ...current, sender_name: event.target.value }))
                   }
                   placeholder="Dr Sharma Clinic"
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 />
               </label>
 
@@ -1614,7 +1612,7 @@ export function SettingsDrawer({
                     setForm((current) => ({ ...current, sender_email: event.target.value }))
                   }
                   placeholder="clinicname@gmail.com"
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 />
               </label>
 
@@ -1633,7 +1631,7 @@ export function SettingsDrawer({
             </div>
           </section>
 
-          <section ref={templateSectionRef} className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+          <section ref={templateSectionRef} className="rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-2xl">
               <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Document Template</p>
@@ -1642,15 +1640,15 @@ export function SettingsDrawer({
                 Upload one shared paper template for generated notes, letters, and invoices. Custom header and footer stay available below as fallback when the template is absent or disabled for a document type.
               </p>
             </div>
-            <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
+            <div className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-4 py-2 text-sm font-medium text-[#2a6fa8]">
               {hasDocumentTemplate ? "Template ready" : "Fallback only"}
             </div>
           </div>
 
-          <div className="mt-6 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
+          <div className="mt-6 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-white p-3 text-sky-700">
+                <div className="rounded-xl bg-white p-3 text-[#2a6fa8]">
                   <FileText className="h-5 w-5" />
                 </div>
                 <div>
@@ -1664,7 +1662,7 @@ export function SettingsDrawer({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb]">
                   <Upload className="h-4 w-4" />
                   {isUploadingTemplate ? "Uploading..." : "Upload template"}
                   <input
@@ -1685,7 +1683,7 @@ export function SettingsDrawer({
                   type="button"
                   disabled={!hasDocumentTemplate || isRemovingTemplate || isUploadingTemplate}
                   onClick={() => void handleRemoveDocumentTemplate()}
-                  className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
                 >
                   <Trash2 className="h-4 w-4" />
                   {isRemovingTemplate ? "Removing..." : "Remove"}
@@ -1698,7 +1696,7 @@ export function SettingsDrawer({
                 type="button"
                 onClick={() => void handleOpenDocumentTemplate()}
                 disabled={isOpeningTemplate}
-                className="mt-4 inline-flex text-sm font-medium text-sky-700 hover:text-sky-800 disabled:opacity-60"
+                className="mt-4 inline-flex text-sm font-medium text-[#2a6fa8] hover:text-[#235f8e] disabled:opacity-60"
               >
                 {isOpeningTemplate ? "Opening template..." : "View current template"}
               </button>
@@ -1708,7 +1706,7 @@ export function SettingsDrawer({
             {templateStatus ? <p className="mt-4 text-sm font-medium text-emerald-700">{templateStatus}</p> : null}
           </div>
 
-          <div className="mt-6 rounded-[24px] border border-sky-100 bg-sky-50/30 p-4">
+          <div className="mt-6 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/30 p-4">
             <p className="text-sm font-semibold text-slate-900">Use for</p>
             <div className="mt-4 flex flex-wrap gap-5">
               {[
@@ -1724,7 +1722,7 @@ export function SettingsDrawer({
                     onChange={(event) =>
                       setForm((current) => ({ ...current, [item.key]: event.target.checked }))
                     }
-                    className="h-4 w-4 rounded border-sky-300 text-sky-500 focus:ring-sky-400"
+                    className="h-4 w-4 rounded border-[#9fc7e1] text-[#2f8fd3] focus:ring-[#6daed8]"
                   />
                   <span>{item.label}</span>
                 </label>
@@ -1760,7 +1758,7 @@ export function SettingsDrawer({
                     onChange={(event) =>
                       setForm((current) => ({ ...current, [item.key]: event.target.value }))
                     }
-                    className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8] disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </label>
               ))}
@@ -1768,7 +1766,7 @@ export function SettingsDrawer({
           </div>
           </section>
 
-          <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+          <section className="rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
             <div className="grid gap-4">
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-slate-700">Custom Header</span>
@@ -1781,7 +1779,7 @@ export function SettingsDrawer({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, custom_header: event.target.value }))
                   }
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 />
               </label>
 
@@ -1796,7 +1794,7 @@ export function SettingsDrawer({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, custom_footer: event.target.value }))
                   }
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 />
               </label>
             </div>
@@ -1809,14 +1807,14 @@ export function SettingsDrawer({
             <button
               type="submit"
               disabled={isSaving || !canEditClinic}
-              className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+              className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
             >
               {isSaving ? "Saving..." : "Save Clinic Details"}
             </button>
           </div>
         </form>
 
-        <section className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+        <section className="rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
           <div className="max-w-3xl">
             <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Live Preview</p>
             <h3 className="mt-2 text-xl font-semibold text-slate-900">Document layout preview</h3>
@@ -2002,7 +2000,7 @@ export function SettingsDrawer({
     }
 
     return (
-      <div className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+      <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Audit</p>
@@ -2015,12 +2013,12 @@ export function SettingsDrawer({
             <button
               type="button"
               onClick={() => void handleRefreshAudit()}
-              className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
             >
               <RefreshCw className="h-4 w-4" />
               Refresh
             </button>
-            <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
+            <div className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-4 py-2 text-sm font-medium text-[#2a6fa8]">
               {auditEvents.length} event{auditEvents.length === 1 ? "" : "s"}
             </div>
           </div>
@@ -2030,7 +2028,7 @@ export function SettingsDrawer({
 
         <div className="mt-6 space-y-3">
           {auditEvents.length ? auditEvents.map((event) => (
-            <div key={event.id} className="rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
+            <div key={event.id} className="rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">{event.summary}</p>
@@ -2052,7 +2050,7 @@ export function SettingsDrawer({
               </div>
             </div>
           )) : (
-            <div className="rounded-[24px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-12 text-center text-sm text-slate-500">
+            <div className="rounded-[16px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/20 px-6 py-12 text-center text-sm text-slate-500">
               No audit events yet.
             </div>
           )}
@@ -2063,7 +2061,7 @@ export function SettingsDrawer({
 
   function renderExportsTab() {
     return (
-      <div className="rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+      <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
         <div className="max-w-2xl">
           <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Exports</p>
           <h3 className="mt-2 text-xl font-semibold text-slate-900">Download clinic data</h3>
@@ -2079,14 +2077,14 @@ export function SettingsDrawer({
             { key: "visits", label: "Visits", description: "Per-visit vitals and reasons for every recorded visit.", loader: onExportVisitsCsv },
             { key: "invoices", label: "Invoices", description: "Invoice totals, payment status, and shared timestamps.", loader: onExportInvoicesCsv },
           ].map((item) => (
-            <div key={item.key} className="rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
+            <div key={item.key} className="rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
               <h4 className="text-base font-semibold text-slate-900">{item.label}</h4>
               <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
               <button
                 type="button"
                 onClick={() => void handleExportCsv(item.key as "patients" | "visits" | "invoices", item.loader)}
                 disabled={isExporting === item.key}
-                className="mt-4 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                className="mt-4 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
               >
                 {isExporting === item.key ? "Preparing..." : `Download ${item.label}`}
               </button>
@@ -2099,7 +2097,7 @@ export function SettingsDrawer({
 
   function renderTrainingTab() {
     return (
-      <div className="rounded-[28px] border border-amber-200 bg-amber-50/60 p-5 shadow-[0_16px_45px_rgba(251,191,36,0.12)]">
+      <div className="rounded-[18px] border border-amber-200 bg-amber-50/60 p-5 shadow-[0_16px_45px_rgba(251,191,36,0.12)]">
         <div className="max-w-2xl">
           <p className="text-sm uppercase tracking-[0.2em] text-amber-700">Training Mode</p>
           <h3 className="mt-2 text-xl font-semibold text-slate-900">
@@ -2118,7 +2116,7 @@ export function SettingsDrawer({
               <button
                 type="button"
                 onClick={onExitTrainingMode}
-                className="rounded-full bg-amber-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-amber-600 disabled:opacity-60"
+                className="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-amber-600 disabled:opacity-60"
                 disabled={!onExitTrainingMode}
               >
                 Exit Training Mode
@@ -2126,7 +2124,7 @@ export function SettingsDrawer({
               <button
                 type="button"
                 onClick={onResetTrainingMode}
-                className="rounded-full border border-amber-300 bg-white px-5 py-2.5 text-sm font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-60"
+                className="rounded-xl border border-amber-300 bg-white px-5 py-2.5 text-sm font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-60"
                 disabled={!onResetTrainingMode}
               >
                 Reset Sandbox
@@ -2136,7 +2134,7 @@ export function SettingsDrawer({
             <button
               type="button"
               onClick={onEnterTrainingMode}
-              className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+              className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
               disabled={!onEnterTrainingMode}
             >
               Enter Training Mode
@@ -2145,7 +2143,7 @@ export function SettingsDrawer({
         </div>
 
         {isTrainingMode ? (
-          <div className="mt-6 rounded-[24px] border border-amber-200 bg-white/80 p-4 text-sm leading-6 text-amber-900">
+          <div className="mt-6 rounded-[16px] border border-amber-200 bg-white/80 p-4 text-sm leading-6 text-amber-900">
             Settings sections that can change real clinic data are hidden until you exit Training Mode.
           </div>
         ) : null}
@@ -2155,45 +2153,23 @@ export function SettingsDrawer({
 
   function renderSimplePanel(title: string, text: string) {
     return (
-      <div className="rounded-[28px] border border-sky-200 bg-sky-50/40 p-5">
+      <div className="rounded-[18px] border border-[#bfd7e8] bg-[#f3f8fb]/40 p-5">
         <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
         <p className="mt-3 text-sm leading-7 text-slate-700">{text}</p>
       </div>
     );
   }
 
-  function renderContent() {
-    if (activeTab === "training") return renderTrainingTab();
-    if (activeTab === "clinic") return renderClinicTab();
-    if (activeTab === "catalog") return renderCatalogTab();
-    if (activeTab === "users") return renderUsersTab();
-    if (activeTab === "audit") return renderAuditTab();
-    if (activeTab === "appointments") return renderAppointmentsTab();
-    if (activeTab === "letter") return renderLetterTab();
-    if (activeTab === "billing") return renderBillingTab();
-    if (activeTab === "exports") return renderExportsTab();
-
-    const copy: Record<Exclude<SettingsTab, "training" | "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments" | "audit" | "exports">, { title: string; text: string }> = {
-      settings: {
-        title: "Settings",
-        text: "Core clinic configuration, inventory management, users, letters, and billing all live in this drawer.",
-      },
-      about: {
-        title: "About",
-        text: "ClinicOS is a lightweight clinic workflow, documentation, and billing app for small outpatient teams.",
-      },
-      contact: {
-        title: "Contact Us",
-        text: "For support, contact your ClinicOS setup lead or your clinic admin. Replace this copy with your real support channel before external demos.",
-      },
-    };
-
-    const item = copy[activeTab as Exclude<SettingsTab, "training" | "clinic" | "catalog" | "users" | "letter" | "billing" | "appointments" | "audit" | "exports">];
-    return renderSimplePanel(item.title, item.text);
-  }
-
-  const isWorkspaceTab =
-    activeTab === "clinic" || activeTab === "letter" || activeTab === "appointments";
+  // These legacy panels are still kept in this file while their workflows move to real routes.
+  void renderClinicTab;
+  void renderCatalogTab;
+  void renderUsersTab;
+  void renderLetterTab;
+  void renderAppointmentsTab;
+  void renderBillingTab;
+  void renderAuditTab;
+  void renderExportsTab;
+  void renderTrainingTab;
 
   return (
     <div className="fixed inset-0 z-40">
@@ -2201,73 +2177,59 @@ export function SettingsDrawer({
         type="button"
         aria-label="Close menu"
         onClick={onClose}
-        className="absolute inset-0 bg-sky-950/10 backdrop-blur-[1px]"
+        className="absolute inset-0 bg-slate-900/10 backdrop-blur-[1px]"
       />
       <aside
-        className={`absolute left-0 w-full border-r-2 border-sky-300 bg-white shadow-[0_20px_60px_rgba(125,211,252,0.2)] ${
-          isWorkspaceTab ? "inset-0" : "inset-y-0 max-w-6xl"
-        }`}
+        className="absolute inset-y-0 left-0 w-[min(86vw,292px)] border-r border-[#dbe7ef] bg-[#f8fbfd] shadow-[0_20px_60px_rgba(64,131,181,0.14)]"
       >
-        <div className="grid h-full md:grid-cols-[220px_1fr]">
-          <div className="border-b border-r border-sky-100 bg-sky-50/40 p-4 md:border-b-0">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <p className="text-sm uppercase tracking-[0.2em] text-slate-500">ClinicOS</p>
-                <h2 className="mt-2 text-xl font-semibold text-slate-900">Menu</h2>
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-full border border-sky-200 p-2 text-slate-700 transition hover:text-slate-900"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+        <div className="flex h-full flex-col p-4">
+          <div className="mb-5 flex items-center justify-between gap-4">
+            <h2 className="text-xl font-semibold text-slate-900">Menu</h2>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close menu"
+              className="rounded-xl border border-[#bfd7e8] bg-white p-2 text-slate-700 transition hover:bg-[#edf5fa] hover:text-slate-900"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
 
-            <nav className="space-y-2">
-              {menuItems.map((item) => {
-                const Icon = item.icon;
-                const isRouteItem = "href" in item;
-                const isActive = isRouteItem ? pathname === item.href : activeTab === item.tab;
-                return (
-                  <button
-                    key={isRouteItem ? item.href : item.tab}
-                    type="button"
-                    onClick={() => {
-                      if (isRouteItem) {
-                        const href = item.href;
-                        onClose();
-                        if (pathname !== href) {
-                          startTransition(() => {
-                            router.push(href);
-                          });
-                        }
-                        return;
+          <nav className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pb-4">
+            {menuItems.map((item) => {
+              const Icon = item.icon;
+              const isRouteItem = "href" in item;
+              const key = isRouteItem ? item.href : item.tab;
+              const isActive = isRouteItem ? pathname === item.href : activeTab === item.tab;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    if (isRouteItem) {
+                      const href = item.href;
+                      onClose();
+                      if (pathname !== href) {
+                        startTransition(() => {
+                          router.push(href);
+                        });
                       }
-                      setActiveTab(item.tab);
-                    }}
-                    className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
-                      isActive
-                        ? "bg-white text-sky-700 shadow-[0_8px_24px_rgba(125,211,252,0.14)]"
-                        : "text-slate-700 hover:bg-white/70"
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {item.label}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-
-          <div className={`overflow-y-auto ${isWorkspaceTab ? "p-6 xl:p-8" : "p-5 sm:p-6"}`}>
-            {activeTab !== "clinic" ? (
-              <div className="mb-6">
-                <p className="text-sm uppercase tracking-[0.2em] text-slate-500">{activeTab}</p>
-              </div>
-            ) : null}
-            {renderContent()}
-          </div>
+                      return;
+                    }
+                    setActiveTab(item.tab);
+                  }}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-sm font-medium transition ${
+                    isActive
+                      ? "bg-white text-[#2a6fa8] shadow-[0_8px_24px_rgba(64,131,181,0.08)]"
+                      : "text-slate-700 hover:bg-white/80 hover:text-slate-900"
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
       </aside>
     </div>

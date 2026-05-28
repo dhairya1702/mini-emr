@@ -15,7 +15,7 @@ export function PasswordInput({
   label,
   wrapperClassName = "block",
   labelClassName = "mb-2 block text-sm font-medium text-slate-700",
-  inputClassName = "w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 pr-12 text-slate-800 outline-none transition focus:border-sky-400",
+  inputClassName = "w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 pr-12 text-slate-800 outline-none transition focus:border-[#6daed8]",
   hint,
   id,
   ...inputProps
@@ -40,7 +40,7 @@ export function PasswordInput({
           aria-label={isVisible ? "Hide password" : "Show password"}
           aria-controls={resolvedId}
           onClick={() => setIsVisible((current) => !current)}
-          className="absolute right-3 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+          className="absolute right-3 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-xl p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
         >
           {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
         </button>

@@ -39,7 +39,7 @@ export function SettingsDrawerLetterPanel({
 }: SettingsDrawerLetterPanelProps) {
   return (
     <div className="space-y-4">
-      <form className="rounded-[28px] border border-sky-200 bg-white p-5" onSubmit={onSubmit}>
+      <form className="rounded-[18px] border border-[#bfd7e8] bg-white p-5" onSubmit={onSubmit}>
         <div className="mb-4">
           <h3 className="text-base font-semibold text-slate-900">Generate Letter</h3>
           <p className="mt-2 text-sm leading-7 text-slate-600">
@@ -49,7 +49,7 @@ export function SettingsDrawerLetterPanel({
 
         <div className="grid gap-4">
           {setupWarnings.length ? (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm leading-6 text-amber-900">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm leading-6 text-amber-900">
               {setupWarnings.map((warning) => (
                 <p key={warning}>{warning}</p>
               ))}
@@ -60,7 +60,7 @@ export function SettingsDrawerLetterPanel({
             <input
               value={letterForm.to}
               onChange={(event) => onChange({ to: event.target.value })}
-              className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+              className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
             />
           </label>
           <label className="block">
@@ -68,7 +68,7 @@ export function SettingsDrawerLetterPanel({
             <input
               value={letterForm.subject}
               onChange={(event) => onChange({ subject: event.target.value })}
-              className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+              className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
             />
           </label>
           <label className="block">
@@ -77,17 +77,17 @@ export function SettingsDrawerLetterPanel({
               rows={6}
               value={letterForm.content}
               onChange={(event) => onChange({ content: event.target.value })}
-              className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+              className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
             />
           </label>
-          <label className="block rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <label className="block rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
             <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recipient email</span>
             <span className="mt-1 block text-xs leading-5 text-slate-500">Used only when sending the letter by email.</span>
             <input
               type="email"
               value={letterForm.recipient_email}
               onChange={(event) => onChange({ recipient_email: event.target.value })}
-              className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-sky-400"
+              className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
             />
           </label>
         </div>
@@ -99,7 +99,7 @@ export function SettingsDrawerLetterPanel({
           <button
             type="submit"
             disabled={isGeneratingLetter}
-            className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+            className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
           >
             {isGeneratingLetter ? "Generating..." : "Generate Letter"}
           </button>
@@ -107,7 +107,7 @@ export function SettingsDrawerLetterPanel({
             type="button"
             disabled={isPreparingLetterPdf}
             onClick={onPreviewPdf}
-            className="rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+            className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
           >
             Preview
           </button>
@@ -115,14 +115,14 @@ export function SettingsDrawerLetterPanel({
             type="button"
             disabled={isSendingLetter}
             onClick={onSend}
-            className="rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+            className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
           >
             {isSendingLetter ? "Sending..." : "Send Email"}
           </button>
         </div>
       </form>
 
-      <div className="rounded-[28px] border border-sky-200 bg-white p-5">
+      <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
         <div className="mb-4">
           <h3 className="text-base font-semibold text-slate-900">Generated Draft</h3>
           <p className="mt-2 text-sm leading-7 text-slate-600">The PDF uses your clinic branding, footer, and current date.</p>
@@ -131,7 +131,7 @@ export function SettingsDrawerLetterPanel({
           rows={16}
           value={letterForm.generated}
           onChange={(event) => onChange({ generated: event.target.value })}
-          className="w-full rounded-2xl border border-sky-200 bg-sky-50/30 px-4 py-3 text-sm leading-7 text-slate-800 outline-none transition focus:border-sky-400"
+          className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/30 px-4 py-3 text-sm leading-7 text-slate-800 outline-none transition focus:border-[#6daed8]"
         />
       </div>
     </div>

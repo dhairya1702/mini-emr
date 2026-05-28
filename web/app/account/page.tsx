@@ -29,6 +29,7 @@ export default function AccountPage() {
   const [profileError, setProfileError] = useState("");
   const [profileStatus, setProfileStatus] = useState("");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
     new_password: "",
@@ -40,7 +41,7 @@ export default function AccountPage() {
   const [signatureError, setSignatureError] = useState("");
   const [signatureStatus, setSignatureStatus] = useState("");
   const [isUpdatingSignature, setIsUpdatingSignature] = useState(false);
-  const signatureSectionRef = useRef<HTMLElement | null>(null);
+  const signatureSectionRef = useRef<HTMLDivElement | null>(null);
   const loadPageData = async () => null;
   const onPageData = () => undefined;
   const {
@@ -104,6 +105,7 @@ export default function AccountPage() {
     }
 
     setHighlightSignature(true);
+    setIsEditingDetails(true);
     const timeoutId = window.setTimeout(() => {
       signatureSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 40);
@@ -138,6 +140,7 @@ export default function AccountPage() {
       });
       setAccountUser(updated);
       setProfileStatus("Account details saved.");
+      setIsEditingDetails(false);
     } catch (saveError) {
       setProfileError(saveError instanceof Error ? saveError.message : "Failed to save account details.");
     } finally {
@@ -208,17 +211,32 @@ export default function AccountPage() {
     }
   }
 
+  function handleCancelDetailsEdit() {
+    if (resolvedUser) {
+      setProfileForm({
+        name: resolvedUser.name || "",
+        doctor_dob: normalizeDateInput(resolvedUser.doctor_dob),
+        doctor_address: resolvedUser.doctor_address || "",
+      });
+    }
+    setProfileError("");
+    setProfileStatus("");
+    setSignatureError("");
+    setSignatureStatus("");
+    setIsEditingDetails(false);
+  }
+
   if (isRedirectingToLogin) {
-    return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">Redirecting to login...</div></main>;
+    return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to login...</div></main>;
   }
 
   if (!isAuthReady) {
-    return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">Loading ClinicOS...</div></main>;
+    return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Loading ClinicOS...</div></main>;
   }
 
   return (
-    <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1600px]">
+    <main className="clinic-page">
+      <div className="clinic-container">
         <AppHeader
           clinicName={clinicName}
           currentUser={resolvedUser}
@@ -227,172 +245,192 @@ export default function AccountPage() {
           onLogout={handleLogout}
         />
 
-        {error ? <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+        {error ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
 
-        <div className="space-y-6">
-          <section className="rounded-[32px] border border-sky-100 bg-white/95 p-6 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Account</p>
-                <h1 className="mt-2 text-2xl font-semibold text-slate-900">Your details</h1>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  These details belong to your user account. Your name and signature are used on documents you generate.
-                </p>
-              </div>
-              {resolvedUser ? (
-                <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700">
-                  {resolvedUser.role === "admin" ? "Admin" : "Staff"}
-                </div>
-              ) : null}
-            </div>
-
-            <form className="mt-6 grid gap-4" onSubmit={handleSaveProfile}>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Name</span>
-                <input
-                  value={profileForm.name}
-                  onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))}
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                />
-              </label>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Login ID</span>
+        <section className="rounded-[20px] border border-[#dbe7ef] bg-white/95 p-5 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
+          <form onSubmit={handleSaveProfile}>
+            <div className="grid gap-2">
+              <div className="grid gap-2 md:grid-cols-[160px_1fr] md:items-center">
+                <span className="text-sm font-medium text-slate-700">Name</span>
+                {isEditingDetails ? (
                   <input
-                    value={resolvedUser?.identifier || ""}
-                    disabled
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-500 outline-none"
+                    value={profileForm.name}
+                    onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))}
+                    className="h-10 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-3.5 text-slate-800 outline-none transition focus:border-[#6daed8]"
                   />
-                </label>
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Date of birth</span>
+                ) : (
+                  <p className="min-h-10 rounded-xl border border-transparent px-3.5 py-2 text-sm text-slate-900">{resolvedUser?.name || "-"}</p>
+                )}
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-[160px_1fr] md:items-center">
+                <span className="text-sm font-medium text-slate-700">DOB</span>
+                {isEditingDetails ? (
                   <input
                     type="date"
                     value={profileForm.doctor_dob}
                     onChange={(event) => setProfileForm((current) => ({ ...current, doctor_dob: event.target.value }))}
-                    className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                    className="h-10 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-3.5 text-slate-800 outline-none transition focus:border-[#6daed8]"
                   />
-                </label>
+                ) : (
+                  <p className="min-h-10 rounded-xl border border-transparent px-3.5 py-2 text-sm text-slate-900">{profileForm.doctor_dob || "-"}</p>
+                )}
               </div>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Address</span>
-                <textarea
-                  rows={4}
-                  value={profileForm.doctor_address}
-                  onChange={(event) => setProfileForm((current) => ({ ...current, doctor_address: event.target.value }))}
-                  className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
-                />
-              </label>
-              {profileError ? <p className="text-sm font-medium text-rose-600">{profileError}</p> : null}
-              {profileStatus ? <p className="text-sm font-medium text-emerald-700">{profileStatus}</p> : null}
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={isSavingProfile}
-                  className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
-                >
-                  {isSavingProfile ? "Saving..." : "Save details"}
-                </button>
-              </div>
-            </form>
-          </section>
 
-          <section
-            ref={signatureSectionRef}
-            className={`rounded-[32px] border bg-white/95 p-6 shadow-[0_20px_60px_rgba(125,211,252,0.16)] transition ${
-              highlightSignature ? "border-sky-400 ring-2 ring-sky-200" : "border-sky-100"
-            }`}
-          >
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Signature</p>
-              <h2 className="mt-2 text-xl font-semibold text-slate-900">Document signature</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Upload a JPG or PNG signature. Generated notes and letters use your own signature when available.
-              </p>
+              <div className="grid gap-2 md:grid-cols-[160px_1fr] md:items-center">
+                <span className="text-sm font-medium text-slate-700">Login ID</span>
+                <p className="min-h-10 rounded-xl border border-transparent px-3.5 py-2 text-sm text-slate-600">{resolvedUser?.identifier || "-"}</p>
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-[160px_1fr] md:items-center">
+                <span className="text-sm font-medium text-slate-700">Address</span>
+                {isEditingDetails ? (
+                  <input
+                    value={profileForm.doctor_address}
+                    onChange={(event) => setProfileForm((current) => ({ ...current, doctor_address: event.target.value }))}
+                    className="h-10 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-3.5 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                  />
+                ) : (
+                  <p className="min-h-10 rounded-xl border border-transparent px-3.5 py-2 text-sm text-slate-900">{profileForm.doctor_address || "-"}</p>
+                )}
+              </div>
+
+              <div
+                ref={signatureSectionRef}
+                className={`grid gap-2 md:grid-cols-[160px_1fr] md:items-center ${
+                  highlightSignature ? "rounded-xl ring-2 ring-[#d8ebf7]" : ""
+                }`}
+              >
+                <span className="text-sm font-medium text-slate-700">Signature</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="min-h-10 min-w-0 flex-1 rounded-xl border border-transparent px-3.5 py-2 text-sm text-slate-900">
+                    {resolvedUser?.doctor_signature_url ? (
+                      <div className="flex items-center gap-3">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001"}${resolvedUser.doctor_signature_url}`}
+                          alt="User signature"
+                          className="max-h-8 w-auto max-w-[160px] object-contain"
+                        />
+                        <span className="text-sm text-slate-600">Uploaded</span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-500">No signature uploaded</span>
+                    )}
+                  </div>
+                  {isEditingDetails ? (
+                    <>
+                      <label className="inline-flex cursor-pointer items-center rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0]">
+                        {isUpdatingSignature ? "Uploading..." : "Upload"}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg"
+                          className="sr-only"
+                          disabled={isUpdatingSignature}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) {
+                              void handleUploadSignature(file);
+                            }
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+                      {resolvedUser?.doctor_signature_name ? (
+                        <button
+                          type="button"
+                          disabled={isUpdatingSignature}
+                          onClick={() => void handleRemoveSignature()}
+                          className="rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+              </div>
             </div>
 
-            <div className="mt-5 rounded-[24px] border border-sky-100 bg-sky-50/40 p-4">
-              {resolvedUser?.doctor_signature_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001"}${resolvedUser.doctor_signature_url}`}
-                  alt="User signature"
-                  className="max-h-28 w-auto max-w-full object-contain"
-                />
+            {profileError ? <p className="mt-3 text-sm font-medium text-rose-600">{profileError}</p> : null}
+            {profileStatus ? <p className="mt-3 text-sm font-medium text-emerald-700">{profileStatus}</p> : null}
+            {signatureError ? <p className="mt-3 text-sm font-medium text-rose-600">{signatureError}</p> : null}
+            {signatureStatus ? <p className="mt-3 text-sm font-medium text-emerald-700">{signatureStatus}</p> : null}
+
+            <div className="mt-4 flex justify-end gap-2">
+              {isEditingDetails ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCancelDetailsEdit}
+                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingProfile}
+                    className="rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+                  >
+                    {isSavingProfile ? "Saving..." : "Save details"}
+                  </button>
+                </>
               ) : (
-                <p className="text-sm text-slate-500">No signature uploaded yet.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileStatus("");
+                    setSignatureStatus("");
+                    setIsEditingDetails(true);
+                  }}
+                  className="rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0]"
+                >
+                  Edit
+                </button>
               )}
             </div>
+          </form>
 
-            <div className="mt-5 flex flex-wrap gap-3">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600">
-                {isUpdatingSignature ? "Uploading..." : "Upload signature"}
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg"
-                  className="sr-only"
-                  disabled={isUpdatingSignature}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) {
-                      void handleUploadSignature(file);
-                    }
-                    event.target.value = "";
-                  }}
+          <div className="mt-4 border-t border-[#dbe7ef] pt-4">
+              <form className="grid gap-2" onSubmit={handleSavePassword}>
+                <PasswordInput
+                  label="Current password"
+                  value={passwordForm.current_password}
+                  onChange={(event) => setPasswordForm((current) => ({ ...current, current_password: event.target.value }))}
+                  wrapperClassName="grid gap-2 md:grid-cols-[160px_minmax(0,36rem)] md:items-center"
+                  labelClassName="text-sm font-medium text-slate-700"
+                  inputClassName="h-10 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-3.5 pr-11 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 />
-              </label>
-              <button
-                type="button"
-                disabled={!resolvedUser?.doctor_signature_name || isUpdatingSignature}
-                onClick={() => void handleRemoveSignature()}
-                className="rounded-full border border-rose-200 bg-white px-5 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
-              >
-                Remove
-              </button>
-            </div>
-            {signatureError ? <p className="mt-4 text-sm font-medium text-rose-600">{signatureError}</p> : null}
-            {signatureStatus ? <p className="mt-4 text-sm font-medium text-emerald-700">{signatureStatus}</p> : null}
-          </section>
-
-          <section className="rounded-[32px] border border-sky-100 bg-white/95 p-6 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Security</p>
-              <h2 className="mt-2 text-xl font-semibold text-slate-900">Change password</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Update your own login password here. This does not affect any other user in the clinic.
-              </p>
-            </div>
-
-            <form className="mt-6 grid gap-4" onSubmit={handleSavePassword}>
-              <PasswordInput
-                label="Current password"
-                value={passwordForm.current_password}
-                onChange={(event) => setPasswordForm((current) => ({ ...current, current_password: event.target.value }))}
-              />
-              <PasswordInput
-                label="New password"
-                value={passwordForm.new_password}
-                onChange={(event) => setPasswordForm((current) => ({ ...current, new_password: event.target.value }))}
-              />
-              <PasswordInput
-                label="Confirm new password"
-                value={passwordForm.confirm_password}
-                onChange={(event) => setPasswordForm((current) => ({ ...current, confirm_password: event.target.value }))}
-              />
-              {passwordError ? <p className="text-sm font-medium text-rose-600">{passwordError}</p> : null}
-              {passwordStatus ? <p className="text-sm font-medium text-emerald-700">{passwordStatus}</p> : null}
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={isSavingPassword}
-                  className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
-                >
-                  {isSavingPassword ? "Updating..." : "Change password"}
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
+                <PasswordInput
+                  label="New password"
+                  value={passwordForm.new_password}
+                  onChange={(event) => setPasswordForm((current) => ({ ...current, new_password: event.target.value }))}
+                  wrapperClassName="grid gap-2 md:grid-cols-[160px_minmax(0,36rem)] md:items-center"
+                  labelClassName="text-sm font-medium text-slate-700"
+                  inputClassName="h-10 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-3.5 pr-11 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                />
+                <PasswordInput
+                  label="Confirm password"
+                  value={passwordForm.confirm_password}
+                  onChange={(event) => setPasswordForm((current) => ({ ...current, confirm_password: event.target.value }))}
+                  wrapperClassName="grid gap-2 md:grid-cols-[160px_minmax(0,36rem)] md:items-center"
+                  labelClassName="text-sm font-medium text-slate-700"
+                  inputClassName="h-10 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-3.5 pr-11 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                />
+                {passwordError ? <p className="text-sm font-medium text-rose-600">{passwordError}</p> : null}
+                {passwordStatus ? <p className="text-sm font-medium text-emerald-700">{passwordStatus}</p> : null}
+                <div className="flex justify-start md:pl-[160px]">
+                  <button
+                    type="submit"
+                    disabled={isSavingPassword}
+                    className="rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+                  >
+                    {isSavingPassword ? "Updating..." : "Update"}
+                  </button>
+                </div>
+              </form>
+          </div>
+        </section>
       </div>
 
       {isSettingsOpen ? (

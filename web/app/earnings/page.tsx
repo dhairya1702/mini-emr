@@ -339,7 +339,7 @@ export default function EarningsPage() {
   if (isRedirectingToLogin) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Redirecting to login...
         </div>
       </main>
@@ -349,7 +349,7 @@ export default function EarningsPage() {
   if (!isAuthReady) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Loading ClinicOS...
         </div>
       </main>
@@ -359,7 +359,7 @@ export default function EarningsPage() {
   if (currentUser?.role === "staff") {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Redirecting to queue...
         </div>
       </main>
@@ -367,8 +367,8 @@ export default function EarningsPage() {
   }
 
   return (
-    <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1600px]">
+    <main className="clinic-page">
+      <div className="clinic-container">
         <AppHeader
           clinicName={clinicName}
           currentUser={currentUser}
@@ -378,39 +378,39 @@ export default function EarningsPage() {
         />
 
         {error ? (
-          <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}
           </div>
         ) : null}
 
         {exportError ? (
-          <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {exportError}
           </div>
         ) : null}
         {exportStatus ? (
-          <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
             {exportStatus}
           </div>
         ) : null}
 
         <section className="grid gap-4 lg:grid-cols-3">
-          <div className="rounded-[24px] border border-sky-100 bg-white/95 px-4 py-3.5 shadow-[0_16px_44px_rgba(125,211,252,0.12)]">
-            <div className="flex items-center gap-2.5 text-sky-700">
+          <div className="rounded-[16px] border border-[#dbe7ef] bg-white/95 px-4 py-3.5 shadow-[0_16px_44px_rgba(64,131,181,0.08)]">
+            <div className="flex items-center gap-2.5 text-[#2a6fa8]">
               <CalendarDays className="h-4.5 w-4.5" />
               <p className="text-xs font-medium uppercase tracking-[0.16em]">Today</p>
             </div>
             <p className="mt-2 text-[1.45rem] font-semibold leading-none text-slate-900">{formatCurrency(summary.today)}</p>
           </div>
-          <div className="rounded-[24px] border border-sky-100 bg-white/95 px-4 py-3.5 shadow-[0_16px_44px_rgba(125,211,252,0.12)]">
-            <div className="flex items-center gap-2.5 text-sky-700">
+          <div className="rounded-[16px] border border-[#dbe7ef] bg-white/95 px-4 py-3.5 shadow-[0_16px_44px_rgba(64,131,181,0.08)]">
+            <div className="flex items-center gap-2.5 text-[#2a6fa8]">
               <CalendarDays className="h-4.5 w-4.5" />
               <p className="text-xs font-medium uppercase tracking-[0.16em]">This Week</p>
             </div>
             <p className="mt-2 text-[1.45rem] font-semibold leading-none text-slate-900">{formatCurrency(summary.week)}</p>
           </div>
-          <div className="rounded-[24px] border border-sky-100 bg-white/95 px-4 py-3.5 shadow-[0_16px_44px_rgba(125,211,252,0.12)]">
-            <div className="flex items-center gap-2.5 text-sky-700">
+          <div className="rounded-[16px] border border-[#dbe7ef] bg-white/95 px-4 py-3.5 shadow-[0_16px_44px_rgba(64,131,181,0.08)]">
+            <div className="flex items-center gap-2.5 text-[#2a6fa8]">
               <CalendarDays className="h-4.5 w-4.5" />
               <p className="text-xs font-medium uppercase tracking-[0.16em]">This Month</p>
             </div>
@@ -419,7 +419,7 @@ export default function EarningsPage() {
         </section>
 
         <section className="mt-5 space-y-4">
-          <div className="rounded-[32px] border border-sky-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
+          <div className="clinic-panel">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Earnings</p>
@@ -432,10 +432,10 @@ export default function EarningsPage() {
                     key={option}
                     type="button"
                     onClick={() => setMode(option)}
-                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                    className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
                       mode === option
-                        ? "border border-sky-300 bg-sky-500 text-white"
-                        : "border border-sky-200 bg-sky-50/70 text-slate-700 hover:bg-sky-100"
+                        ? "border border-[#9fc7e1] bg-[#2f8fd3] text-white"
+                        : "border border-[#bfd7e8] bg-[#f3f8fb]/70 text-slate-700 hover:bg-[#dbeaf4]"
                     }`}
                   >
                     {option === "week" ? "Weekly" : option === "month" ? "Monthly" : "Yearly"}
@@ -444,7 +444,7 @@ export default function EarningsPage() {
               </div>
             </div>
 
-            <div className="mt-5 rounded-[28px] border border-sky-100 bg-[linear-gradient(180deg,rgba(240,249,255,0.9),rgba(255,255,255,1))] p-4">
+            <div className="mt-5 rounded-[18px] border border-[#dbe7ef] bg-[linear-gradient(180deg,rgba(240,249,255,0.9),rgba(255,255,255,1))] p-4">
               {paidInvoices.length ? (
                 <div>
                   <div className="mb-3 flex items-center justify-between gap-4">
@@ -457,7 +457,7 @@ export default function EarningsPage() {
                   <div className="relative overflow-x-auto">
                     {hoveredChartPoint ? (
                       <div
-                        className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-[18px] border border-sky-200 bg-white/95 px-3 py-2 shadow-[0_14px_34px_rgba(125,211,252,0.22)]"
+                        className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-[18px] border border-[#bfd7e8] bg-white/95 px-3 py-2 shadow-[0_14px_34px_rgba(64,131,181,0.12)]"
                         style={{
                           left: `${(hoveredChartPoint.x / chartGeometry.width) * 100}%`,
                           top: `${Math.max(0, (hoveredChartPoint.y / chartGeometry.height) * 100 - 16)}%`,
@@ -511,7 +511,7 @@ export default function EarningsPage() {
                         </g>
                       ))}
 
-                      <path d={chartGeometry.areaPath} fill="rgba(14,165,233,0.12)" />
+                      <path d={chartGeometry.areaPath} fill="rgba(47,143,211,0.12)" />
                       <path
                         d={chartGeometry.linePath}
                         fill="none"
@@ -550,17 +550,17 @@ export default function EarningsPage() {
                   </div>
                 </div>
               ) : (
-                <div className="rounded-[28px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-16 text-center text-sm text-slate-500">
+                <div className="rounded-[18px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/20 px-6 py-16 text-center text-sm text-slate-500">
                   No paid invoices yet.
                 </div>
               )}
             </div>
           </div>
 
-          <div className="rounded-[32px] border border-sky-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
+          <div className="clinic-panel">
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3">
-                <ReceiptIndianRupee className="h-5 w-5 text-sky-700" />
+                <ReceiptIndianRupee className="h-5 w-5 text-[#2a6fa8]" />
                 <h2 className="text-lg font-semibold text-slate-900">Latest paid invoices</h2>
               </div>
               <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -570,7 +570,7 @@ export default function EarningsPage() {
                     value={invoiceSearch}
                     onChange={(event) => setInvoiceSearch(event.target.value)}
                     placeholder="Search patient"
-                    className="h-11 w-full rounded-full border border-sky-200 bg-sky-50/70 pl-10 pr-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-sky-300 focus:bg-white"
+                    className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/70 pl-10 pr-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#9fc7e1] focus:bg-white"
                   />
                 </label>
                 <div className="flex items-center gap-2">
@@ -585,7 +585,7 @@ export default function EarningsPage() {
                     disabled={isExporting === "invoices"}
                     aria-label="Export invoices"
                     title={isExporting === "invoices" ? "Preparing export" : "Export invoices"}
-                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-sky-300 bg-white text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                   >
                     <Download className="h-4 w-4" />
                   </button>
@@ -593,10 +593,10 @@ export default function EarningsPage() {
               </div>
             </div>
 
-            <div className="mt-5 overflow-hidden rounded-[26px] border border-sky-100">
+            <div className="mt-5 overflow-hidden rounded-[18px] border border-[#dbe7ef]">
               {visiblePaidInvoices.length ? (
                 <div>
-                  <div className="grid grid-cols-4 gap-6 bg-sky-50/80 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <div className="grid grid-cols-4 gap-6 bg-[#f3f8fb]/80 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     <p>Patient</p>
                     <p>Items</p>
                     <p>Paid On</p>
@@ -608,8 +608,8 @@ export default function EarningsPage() {
                       type="button"
                       onClick={() => void handleOpenInvoice(invoice.id)}
                       disabled={openingInvoiceId === invoice.id}
-                      className={`grid w-full grid-cols-4 items-center gap-6 px-5 py-3.5 text-left transition hover:bg-sky-50 disabled:cursor-wait disabled:opacity-70 ${
-                        index === 0 ? "border-t border-sky-100" : "border-t border-sky-100"
+                      className={`grid w-full grid-cols-4 items-center gap-6 px-5 py-3.5 text-left transition hover:bg-[#f3f8fb] disabled:cursor-wait disabled:opacity-70 ${
+                        index === 0 ? "border-t border-[#dbe7ef]" : "border-t border-[#dbe7ef]"
                       }`}
                     >
                       <div className="min-w-0">
@@ -635,11 +635,11 @@ export default function EarningsPage() {
                   ))}
                 </div>
               ) : paidInvoices.length ? (
-                <div className="rounded-[28px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-16 text-center text-sm text-slate-500">
+                <div className="rounded-[18px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/20 px-6 py-16 text-center text-sm text-slate-500">
                   No paid invoices match that patient.
                 </div>
               ) : (
-                <div className="rounded-[28px] border border-dashed border-sky-300 bg-sky-50/20 px-6 py-16 text-center text-sm text-slate-500">
+                <div className="rounded-[18px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/20 px-6 py-16 text-center text-sm text-slate-500">
                   No earnings data yet.
                 </div>
               )}
@@ -649,7 +649,7 @@ export default function EarningsPage() {
                 <button
                   type="button"
                   onClick={() => router.push("/billing")}
-                  className="rounded-full border border-sky-200 bg-sky-50/70 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-100"
+                  className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/70 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#dbeaf4]"
                 >
                   View all invoices
                 </button>

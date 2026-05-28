@@ -18,7 +18,7 @@ export function PatientBioDataPanel({
   onFieldChange: (field: keyof PatientBioDataForm, value: string) => void;
 }) {
   return (
-    <div className="rounded-[28px] border border-sky-100 bg-white p-5">
+    <div className="rounded-[18px] border border-[#dbe7ef] bg-white p-5">
       <div className="flex items-center gap-3 text-slate-700">
         <div>
           <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Bio Data</p>
@@ -31,23 +31,23 @@ export function PatientBioDataPanel({
           <>
             <div className="sm:col-span-2">
               <p className="text-sm font-medium text-slate-700">Name</p>
-              <div className="mt-2 rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800">{form.name || "—"}</div>
+              <div className="mt-2 rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/35 px-4 py-3 text-base text-slate-800">{form.name || "—"}</div>
             </div>
             <div>
               <p className="text-sm font-medium text-slate-700">Phone</p>
-              <div className="mt-2 rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800">{form.phone || "—"}</div>
+              <div className="mt-2 rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/35 px-4 py-3 text-base text-slate-800">{form.phone || "—"}</div>
             </div>
             <div>
               <p className="text-sm font-medium text-slate-700">Email</p>
-              <div className="mt-2 rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800">{form.email || "—"}</div>
+              <div className="mt-2 rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/35 px-4 py-3 text-base text-slate-800">{form.email || "—"}</div>
             </div>
             <div className="sm:col-span-2">
               <p className="text-sm font-medium text-slate-700">Address</p>
-              <div className="mt-2 rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800">{form.address || "—"}</div>
+              <div className="mt-2 rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/35 px-4 py-3 text-base text-slate-800">{form.address || "—"}</div>
             </div>
             <div>
               <p className="text-sm font-medium text-slate-700">Age</p>
-              <div className="mt-2 rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800">{form.age || "—"}</div>
+              <div className="mt-2 rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/35 px-4 py-3 text-base text-slate-800">{form.age || "—"}</div>
             </div>
           </>
         ) : (
@@ -57,7 +57,7 @@ export function PatientBioDataPanel({
               <input
                 value={form.name}
                 onChange={(event) => onFieldChange("name", event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
+                className="mt-2 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
             </label>
 
@@ -66,7 +66,7 @@ export function PatientBioDataPanel({
               <input
                 value={form.phone}
                 onChange={(event) => onFieldChange("phone", event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
+                className="mt-2 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
             </label>
 
@@ -76,7 +76,7 @@ export function PatientBioDataPanel({
                 type="email"
                 value={form.email}
                 onChange={(event) => onFieldChange("email", event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
+                className="mt-2 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
             </label>
 
@@ -85,7 +85,7 @@ export function PatientBioDataPanel({
               <input
                 value={form.address}
                 onChange={(event) => onFieldChange("address", event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
+                className="mt-2 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
             </label>
 
@@ -95,7 +95,7 @@ export function PatientBioDataPanel({
                 value={form.age}
                 inputMode="numeric"
                 onChange={(event) => onFieldChange("age", event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-sky-200 bg-sky-50/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-sky-400"
+                className="mt-2 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/35 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
             </label>
           </>

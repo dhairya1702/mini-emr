@@ -508,15 +508,15 @@ export default function BillingPage() {
     }
   }
 
-  if (isRedirectingToLogin) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">Redirecting to login...</div></main>;
-  if (!isAuthReady) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">Loading ClinicOS...</div></main>;
-  if (currentUser?.role === "staff") return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">Redirecting to queue...</div></main>;
+  if (isRedirectingToLogin) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to login...</div></main>;
+  if (!isAuthReady) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Loading ClinicOS...</div></main>;
+  if (currentUser?.role === "staff") return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to queue...</div></main>;
 
   return (
-    <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1600px]">
+    <main className="clinic-page">
+      <div className="clinic-container">
         <AppHeader clinicName={clinicName} currentUser={currentUser} active="billing" onOpenSettings={() => setIsSettingsOpen(true)} onLogout={handleLogout} />
-        {error ? <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+        {error ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
         <SettingsDrawerBillingPanel
           patients={billablePatients}
           selectedBillingPatientId={selectedBillingPatientId}
@@ -566,18 +566,17 @@ export default function BillingPage() {
           onPreviewPdf={handleInvoicePdf}
           onSendInvoice={handleShareInvoice}
         />
-        <section className="mt-4 rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_16px_45px_rgba(125,211,252,0.12)]">
+        <section className="mt-4 rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-slate-900">Invoice history</h2>
-              <p className="mt-2 text-sm text-slate-600">Filter by patient or payment state to close follow-up faster.</p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row">
-              <select value={historyPatientFilter} onChange={(event) => setHistoryPatientFilter(event.target.value)} className="rounded-full border border-sky-200 bg-sky-50/50 px-4 py-3 text-sm text-slate-800">
+              <select value={historyPatientFilter} onChange={(event) => setHistoryPatientFilter(event.target.value)} className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/50 px-4 py-3 text-sm text-slate-800">
                 <option value="all">All patients</option>
                 {patients.map((patient) => <option key={patient.id} value={patient.id}>{patient.name}</option>)}
               </select>
-              <select value={historyStatusFilter} onChange={(event) => setHistoryStatusFilter(event.target.value as PaymentStatus | "all")} className="rounded-full border border-sky-200 bg-sky-50/50 px-4 py-3 text-sm text-slate-800">
+              <select value={historyStatusFilter} onChange={(event) => setHistoryStatusFilter(event.target.value as PaymentStatus | "all")} className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/50 px-4 py-3 text-sm text-slate-800">
                 <option value="all">All statuses</option>
                 <option value="paid">Paid</option>
                 <option value="partial">Partial</option>
@@ -585,28 +584,48 @@ export default function BillingPage() {
               </select>
             </div>
           </div>
-          <div className="mt-5 space-y-3">
-            {filteredInvoiceHistory.length ? filteredInvoiceHistory.slice(0, 12).map((invoice) => {
-              const patientName = patients.find((patient) => patient.id === invoice.patient_id)?.name || "Patient";
-              return (
-                <div key={invoice.id} className="rounded-[22px] border border-sky-100 bg-sky-50/35 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{patientName}</p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{invoice.payment_status} · {invoice.items.length} item{invoice.items.length === 1 ? "" : "s"}</p>
-                    </div>
-                    <p className="text-sm font-semibold text-slate-900">{invoice.total.toFixed(2)}</p>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-                    <span>Paid {invoice.amount_paid.toFixed(2)}</span>
-                    <span>Due {invoice.balance_due.toFixed(2)}</span>
-                    <span>Created {new Date(invoice.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-                    <span>{invoice.sent_at ? `Shared ${new Date(invoice.sent_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "Not shared"}</span>
-                    <span>{invoice.completed_by_name ? `Completed by ${invoice.completed_by_name}` : "Completion actor not recorded"}</span>
-                  </div>
-                </div>
-              );
-            }) : <div className="rounded-[22px] border border-dashed border-sky-200 bg-sky-50/20 px-6 py-12 text-center text-sm text-slate-500">No invoices match these filters.</div>}
+          <div className="mt-5 overflow-hidden rounded-[18px] border border-[#bfd7e8] bg-white">
+            {filteredInvoiceHistory.length ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full border-separate border-spacing-0">
+                  <thead className="bg-[#f3f8fb]/95">
+                    <tr className="text-left">
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Patient</th>
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Items</th>
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Status</th>
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Created</th>
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-right text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredInvoiceHistory.slice(0, 12).map((invoice) => {
+                      const patientName = patients.find((patient) => patient.id === invoice.patient_id)?.name || "Patient";
+                      const statusLabel = invoice.payment_status.charAt(0).toUpperCase() + invoice.payment_status.slice(1);
+                      return (
+                        <tr key={invoice.id} className="transition hover:bg-[#f3f8fb]/60">
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm font-semibold text-slate-900">{patientName}</td>
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-600">
+                            {invoice.items.length} item{invoice.items.length === 1 ? "" : "s"}
+                          </td>
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-600">{statusLabel}</td>
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-500">
+                            {new Date(invoice.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                          </td>
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-right text-sm font-semibold tabular-nums text-slate-900">
+                            {invoice.total.toFixed(2)}
+                            {invoice.balance_due > 0 ? (
+                              <div className="mt-1 text-xs font-medium text-amber-700">Due {invoice.balance_due.toFixed(2)}</div>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="rounded-[18px] border border-dashed border-[#bfd7e8] bg-[#f3f8fb]/20 px-6 py-12 text-center text-sm text-slate-500">No invoices match these filters.</div>
+            )}
           </div>
         </section>
       </div>

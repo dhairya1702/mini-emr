@@ -46,7 +46,7 @@ export function LowVisionModal({
       }}
       inline={inline}
     >
-      <section className="rounded-[28px] border border-sky-200 bg-sky-50/30 p-4">
+      <section className="rounded-[18px] border border-[#bfd7e8] bg-[#f3f8fb]/30 p-4">
         <p className="text-sm font-medium text-slate-900">Patient Needs</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[
@@ -57,8 +57,8 @@ export function LowVisionModal({
             ["glare_complaints", "Glare Complaints"],
             ["lighting_difficulty", "Lighting Difficulty"],
           ].map(([key, label]) => (
-            <label key={key} className="flex items-center gap-3 rounded-2xl border border-sky-100 bg-white px-4 py-3 text-sm text-slate-700">
-              <input type="checkbox" checked={!!draft[key as keyof LowVisionPayload]} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.checked as never)} className="h-4 w-4 rounded border-sky-300 text-sky-600 focus:ring-sky-500" />
+            <label key={key} className="flex items-center gap-3 rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-sm text-slate-700">
+              <input type="checkbox" checked={!!draft[key as keyof LowVisionPayload]} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.checked as never)} className="h-4 w-4 rounded border-[#9fc7e1] text-[#2f8fd3] focus:ring-[#6daed8]" />
               {label}
             </label>
           ))}
@@ -66,16 +66,16 @@ export function LowVisionModal({
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">Primary Complaint</span>
-            <input value={draft.primary_complaint} onChange={(event) => updateLowVisionDraft("primary_complaint", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+            <input value={draft.primary_complaint} onChange={(event) => updateLowVisionDraft("primary_complaint", event.target.value)} className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
           </label>
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">Goals</span>
-            <input value={draft.goals} onChange={(event) => updateLowVisionDraft("goals", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+            <input value={draft.goals} onChange={(event) => updateLowVisionDraft("goals", event.target.value)} className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
           </label>
         </div>
       </section>
 
-      <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+      <section className="rounded-[18px] border border-[#bfd7e8] bg-white p-4">
         <p className="text-sm font-medium text-slate-900">Core Measures</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {[
@@ -90,13 +90,13 @@ export function LowVisionModal({
           ].map(([key, label]) => (
             <label key={key} className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
-              <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
             </label>
           ))}
         </div>
       </section>
 
-      <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+      <section className="rounded-[18px] border border-[#bfd7e8] bg-white p-4">
         <p className="text-sm font-medium text-slate-900">Functional Vision</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           {[
@@ -107,17 +107,17 @@ export function LowVisionModal({
           ].map(([key, label]) => (
             <label key={key} className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
-              <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
             </label>
           ))}
           <label className="md:col-span-2 block">
             <span className="mb-2 block text-sm font-medium text-slate-700">TV / Phone / Mobility Notes</span>
-            <textarea rows={3} value={draft.tv_phone_mobility_notes} onChange={(event) => updateLowVisionDraft("tv_phone_mobility_notes", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+            <textarea rows={3} value={draft.tv_phone_mobility_notes} onChange={(event) => updateLowVisionDraft("tv_phone_mobility_notes", event.target.value)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
           </label>
         </div>
       </section>
 
-      <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+      <section className="rounded-[18px] border border-[#bfd7e8] bg-white p-4">
         <p className="text-sm font-medium text-slate-900">Aids Trial</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[
@@ -130,17 +130,17 @@ export function LowVisionModal({
           ].map(([key, label]) => (
             <label key={key} className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
-              <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
             </label>
           ))}
         </div>
         <label className="mt-4 block">
           <span className="mb-2 block text-sm font-medium text-slate-700">Task Performance With Device</span>
-          <textarea rows={3} value={draft.task_performance_with_device} onChange={(event) => updateLowVisionDraft("task_performance_with_device", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+          <textarea rows={3} value={draft.task_performance_with_device} onChange={(event) => updateLowVisionDraft("task_performance_with_device", event.target.value)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
         </label>
       </section>
 
-      <section className="rounded-[28px] border border-sky-200 bg-white p-4">
+      <section className="rounded-[18px] border border-[#bfd7e8] bg-white p-4">
         <p className="text-sm font-medium text-slate-900">Plan & Support</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[
@@ -156,18 +156,18 @@ export function LowVisionModal({
           ].map(([key, label]) => (
             <label key={key} className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
-              <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+              <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
             </label>
           ))}
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">Emotional Support Notes</span>
-            <textarea rows={3} value={draft.emotional_support_notes} onChange={(event) => updateLowVisionDraft("emotional_support_notes", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+            <textarea rows={3} value={draft.emotional_support_notes} onChange={(event) => updateLowVisionDraft("emotional_support_notes", event.target.value)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
           </label>
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">Final Plan</span>
-            <textarea rows={3} value={draft.final_plan} onChange={(event) => updateLowVisionDraft("final_plan", event.target.value)} className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+            <textarea rows={3} value={draft.final_plan} onChange={(event) => updateLowVisionDraft("final_plan", event.target.value)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
           </label>
         </div>
       </section>

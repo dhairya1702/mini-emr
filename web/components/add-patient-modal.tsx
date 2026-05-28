@@ -282,9 +282,9 @@ export function AddPatientModal({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-sky-100/60 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[32px] border-2 border-sky-300 bg-white shadow-[0_20px_60px_rgba(125,211,252,0.22)]">
-        <div className="flex items-center justify-between border-b border-sky-100 px-6 py-5">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#dbeaf4]/60 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[20px] border-2 border-[#9fc7e1] bg-white shadow-[0_20px_60px_rgba(64,131,181,0.12)]">
+        <div className="flex items-center justify-between border-b border-[#dbe7ef] px-6 py-5">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Add Patient</h2>
             <p className="mt-1 text-sm text-slate-700">Quick intake for the live queue or a future booking.</p>
@@ -292,7 +292,7 @@ export function AddPatientModal({
           <button
             type="button"
             onClick={handleClose}
-            className="rounded-full border border-sky-200 p-2 text-slate-700 transition hover:text-slate-900"
+            className="rounded-xl border border-[#bfd7e8] p-2 text-slate-700 transition hover:text-slate-900"
           >
             <X className="h-4 w-4" />
           </button>
@@ -311,14 +311,14 @@ export function AddPatientModal({
                   setSearchPhone(digits);
                   setForm((current) => ({ ...current, phone: digits }));
                 }}
-                className="min-w-0 flex-1 rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                className="min-w-0 flex-1 rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
                 placeholder="Search by 10-digit phone number"
               />
               <button
                 type="button"
                 onClick={() => void handleSearchExistingPatient()}
                 disabled={isSearching}
-                className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-xl bg-[#2f8fd3] px-4 py-3 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSearching ? "Searching..." : "Search"}
               </button>
@@ -347,10 +347,10 @@ export function AddPatientModal({
                         entryType: option.value,
                       }));
                     }}
-                    className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                    className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
                       isActive
-                        ? "border-sky-500 bg-sky-500 text-white"
-                        : "border-sky-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
+                        ? "border-[#2f8fd3] bg-[#2f8fd3] text-white"
+                        : "border-[#bfd7e8] bg-white text-slate-700 hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
                     }`}
                   >
                     {option.label}
@@ -371,7 +371,7 @@ export function AddPatientModal({
                   setSelectedExistingMatchId("");
                   setForm((current) => ({ ...current, name: event.target.value }));
                 }}
-                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
                 placeholder="Patient full name"
               />
             </label>
@@ -388,7 +388,7 @@ export function AddPatientModal({
                   setSearchPhone(digits);
                   setForm((current) => ({ ...current, phone: digits }));
                 }}
-                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
                 placeholder="10-digit phone number"
               />
             </label>
@@ -404,7 +404,7 @@ export function AddPatientModal({
                   setError("");
                   setForm((current) => ({ ...current, email: event.target.value }));
                 }}
-                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
                 placeholder="patient@example.com"
               />
             </label>
@@ -417,14 +417,14 @@ export function AddPatientModal({
                   setError("");
                   setForm((current) => ({ ...current, address: event.target.value }));
                 }}
-                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
                 placeholder="Street, locality"
               />
             </label>
           </div>
 
           {existingMatches.length ? (
-            <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4">
+            <div className="rounded-[16px] border border-amber-200 bg-amber-50 px-4 py-4">
               <p className="text-sm font-semibold text-amber-900">
                 Existing records found for this phone number.
               </p>
@@ -447,7 +447,7 @@ export function AddPatientModal({
                       <button
                         type="button"
                         onClick={() => loadExistingRecord(match)}
-                        className="shrink-0 rounded-full bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600"
+                        className="shrink-0 rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600"
                       >
                         Select Existing
                       </button>
@@ -460,7 +460,7 @@ export function AddPatientModal({
                   type="button"
                   onClick={() => void submitPatient(true)}
                   disabled={isSaving}
-                  className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-60"
+                  className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                 >
                   Continue As New Patient
                 </button>
@@ -471,7 +471,7 @@ export function AddPatientModal({
                     setSearchFeedback("");
                     setError("");
                   }}
-                  className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
+                  className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
                 >
                   Dismiss
                 </button>
@@ -492,7 +492,7 @@ export function AddPatientModal({
                     setSelectedExistingMatchId("");
                     setForm((current) => ({ ...current, appointmentDate: event.target.value }));
                   }}
-                  className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 />
               </label>
 
@@ -507,7 +507,7 @@ export function AddPatientModal({
                     setSelectedExistingMatchId("");
                     setForm((current) => ({ ...current, appointmentTime: event.target.value }));
                   }}
-                  className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                  className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 />
               </label>
             </div>
@@ -526,7 +526,7 @@ export function AddPatientModal({
                       setError("");
                       setForm((current) => ({ ...current, age: event.target.value }));
                     }}
-                    className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                    className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
                     placeholder="Years"
                   />
                 </label>
@@ -542,7 +542,7 @@ export function AddPatientModal({
                         setError("");
                         setForm((current) => ({ ...current, temperature: event.target.value }));
                       }}
-                      className="min-w-0 flex-1 rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                      className="min-w-0 flex-1 rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
                       placeholder={form.temperatureUnit === "C" ? "37" : "98.6"}
                     />
                     <select
@@ -554,7 +554,7 @@ export function AddPatientModal({
                           temperatureUnit: event.target.value as "C" | "F",
                         }));
                       }}
-                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     >
                       <option value="F">F</option>
                       <option value="C">C</option>
@@ -574,7 +574,7 @@ export function AddPatientModal({
                       setError("");
                       setForm((current) => ({ ...current, weight: event.target.value }));
                     }}
-                    className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                    className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
                     placeholder="kg"
                   />
                 </label>
@@ -589,7 +589,7 @@ export function AddPatientModal({
                         setError("");
                         setForm((current) => ({ ...current, height: event.target.value }));
                       }}
-                      className="min-w-0 flex-1 rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+                      className="min-w-0 flex-1 rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
                       placeholder={form.heightUnit === "m" ? "1.72" : "172"}
                     />
                     <select
@@ -601,7 +601,7 @@ export function AddPatientModal({
                           heightUnit: event.target.value as "m" | "cm",
                         }));
                       }}
-                      className="rounded-2xl border border-sky-100 bg-sky-50/50 px-3 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     >
                       <option value="cm">cm</option>
                       <option value="m">m</option>
@@ -622,7 +622,7 @@ export function AddPatientModal({
                 setError("");
                 setForm((current) => ({ ...current, reason: event.target.value }));
               }}
-              className="min-h-[88px] w-full resize-none rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-400"
+              className="min-h-[88px] w-full resize-none rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
               placeholder="Short reason for visit"
             />
           </label>
@@ -638,14 +638,14 @@ export function AddPatientModal({
                 setError("");
                 onClose();
               }}
-              className="rounded-full border border-sky-200 px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:text-slate-900"
+              className="rounded-xl border border-[#bfd7e8] px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:text-slate-900"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSaving}
-              className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+              className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
             >
               {isSaving ? "Saving..." : form.entryType === "appointment" ? "Create Appointment" : "Add to Queue"}
             </button>

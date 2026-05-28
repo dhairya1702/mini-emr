@@ -145,7 +145,7 @@ export function SettingsDrawerAppointmentsPanel({
   }
 
   function statusChipClasses(status: string) {
-    if (status === "scheduled") return "border-sky-200 bg-sky-50 text-sky-700";
+    if (status === "scheduled") return "border-[#bfd7e8] bg-[#f3f8fb] text-[#2a6fa8]";
     if (status === "checked_in" || status === "completed") return "border-emerald-200 bg-emerald-50 text-emerald-700";
     return "border-slate-200 bg-slate-50 text-slate-600";
   }
@@ -358,49 +358,42 @@ export function SettingsDrawerAppointmentsPanel({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[28px] border border-sky-200 bg-white p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <CalendarClock className="h-4 w-4 text-sky-700" />
-          <div>
-            <h3 className="text-base font-semibold text-slate-900">Appointments</h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Keep confirmed appointments separate from consultation follow-ups.
-            </p>
+      <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
+        <div className="mb-4 flex items-center gap-3">
+          <CalendarClock className="h-5 w-5 shrink-0 text-[#2a6fa8]" />
+          <div className="inline-flex rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] p-1">
+            {[
+              { id: "appointments", label: "Appointments" },
+              { id: "followUps", label: "Follow Ups" },
+            ].map((view) => {
+              const isActive = activeView === view.id;
+
+              return (
+                <button
+                  key={view.id}
+                  type="button"
+                  onClick={() => setActiveView(view.id as AppointmentView)}
+                  className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+                    isActive
+                      ? "bg-white text-[#2a6fa8] shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {view.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="mb-4 inline-flex rounded-full border border-sky-200 bg-sky-50 p-1">
-          {[
-            { id: "appointments", label: "Appointments" },
-            { id: "followUps", label: "Follow Ups" },
-          ].map((view) => {
-            const isActive = activeView === view.id;
-
-            return (
-              <button
-                key={view.id}
-                type="button"
-                onClick={() => setActiveView(view.id as AppointmentView)}
-                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                  isActive
-                    ? "bg-white text-sky-700 shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                {view.label}
-              </button>
-            );
-          })}
-        </div>
-
         {loadError ? (
-          <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {loadError}
           </div>
         ) : null}
 
         {duplicateCheckIn ? (
-          <div className="mb-4 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4">
+          <div className="mb-4 rounded-[16px] border border-amber-200 bg-amber-50 px-4 py-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-sm font-semibold text-amber-900">
@@ -413,7 +406,7 @@ export function SettingsDrawerAppointmentsPanel({
               <button
                 type="button"
                 onClick={() => setDuplicateCheckIn(null)}
-                className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:bg-amber-100"
+                className="rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:bg-amber-100"
               >
                 Dismiss
               </button>
@@ -438,7 +431,7 @@ export function SettingsDrawerAppointmentsPanel({
                       type="button"
                       onClick={() => handleCheckIn(duplicateCheckIn.appointmentId, { existingPatientId: match.id })}
                       disabled={checkingInId === duplicateCheckIn.appointmentId}
-                      className="rounded-full bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600 disabled:opacity-60"
+                      className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600 disabled:opacity-60"
                     >
                       Use Existing Patient
                     </button>
@@ -451,7 +444,7 @@ export function SettingsDrawerAppointmentsPanel({
                 type="button"
                 onClick={() => handleCheckIn(duplicateCheckIn.appointmentId, { forceNew: true })}
                 disabled={checkingInId === duplicateCheckIn.appointmentId}
-                className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-60"
+                className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60"
               >
                 Create New Queue Entry Anyway
               </button>
@@ -460,7 +453,7 @@ export function SettingsDrawerAppointmentsPanel({
         ) : null}
 
         {isLoading ? (
-          <div className="rounded-[24px] border border-dashed border-sky-300 bg-sky-50/30 px-6 py-16 text-center text-sm text-slate-500">
+          <div className="rounded-[16px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/30 px-6 py-16 text-center text-sm text-slate-500">
             Loading {activeView === "appointments" ? "appointments" : "follow-ups"}...
           </div>
         ) : activeView === "appointments" ? (
@@ -470,24 +463,24 @@ export function SettingsDrawerAppointmentsPanel({
                 value={appointmentQuery}
                 onChange={(event) => setAppointmentQuery(event.target.value)}
                 placeholder="Search patient, phone, or reason"
-                className="min-w-[260px] rounded-full border border-sky-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                className="min-w-[260px] rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
               <input
                 type="date"
                 value={selectedDate}
                 min={todayIsoDate}
                 onChange={(event) => setSelectedDate(event.target.value)}
-                className="rounded-full border border-sky-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
               {(["all", "scheduled", "checked_in", "cancelled"] as AppointmentFilter[]).map((filter) => (
                 <button
                   key={filter}
                   type="button"
                   onClick={() => setAppointmentFilter(filter)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium uppercase tracking-[0.14em] transition ${
+                  className={`rounded-xl px-3 py-1.5 text-xs font-medium uppercase tracking-[0.14em] transition ${
                     appointmentFilter === filter
-                      ? "bg-sky-500 text-white"
-                      : "border border-sky-200 bg-white text-slate-600 hover:bg-sky-50"
+                      ? "bg-[#2f8fd3] text-white"
+                      : "border border-[#bfd7e8] bg-white text-slate-600 hover:bg-[#f3f8fb]"
                   }`}
                 >
                   {formatStatusLabel(filter)}
@@ -495,9 +488,9 @@ export function SettingsDrawerAppointmentsPanel({
               ))}
             </div>
             {appointments.length ? (
-              <div className="overflow-hidden rounded-[22px] border border-sky-200">
+              <div className="overflow-hidden rounded-[22px] border border-[#bfd7e8]">
                 <table className="w-full border-collapse text-sm">
-                  <thead className="bg-sky-50/80 text-slate-600">
+                  <thead className="bg-[#f3f8fb]/80 text-slate-600">
                     <tr>
                       <th className="px-4 py-3 text-left font-semibold">Patient</th>
                       <th className="px-4 py-3 text-left font-semibold">Appointment For</th>
@@ -522,9 +515,9 @@ export function SettingsDrawerAppointmentsPanel({
                               toggleAppointmentActions(appointment);
                             }
                           }}
-                          className={`border-t border-sky-100 first:border-t-0 ${
+                          className={`border-t border-[#dbe7ef] first:border-t-0 ${
                             appointment.status === "scheduled"
-                              ? "cursor-pointer transition hover:bg-sky-50/60 focus:outline-none focus-visible:bg-sky-50/60"
+                              ? "cursor-pointer transition hover:bg-[#f3f8fb]/60 focus:outline-none focus-visible:bg-[#f3f8fb]/60"
                               : ""
                           }`}
                         >
@@ -537,13 +530,13 @@ export function SettingsDrawerAppointmentsPanel({
                           </td>
                           <td className="px-4 py-3 text-slate-600">{appointment.reason}</td>
                           <td className="px-4 py-3">
-                            <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] ${statusChipClasses(appointment.status)}`}>
+                            <span className={`inline-flex rounded-xl border px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] ${statusChipClasses(appointment.status)}`}>
                               {formatStatusLabel(appointment.status)}
                             </span>
                           </td>
                         </tr>
                         {expandedAppointmentId === appointment.id && appointment.status === "scheduled" ? (
-                          <tr className="border-t border-sky-100 bg-sky-50/40">
+                          <tr className="border-t border-[#dbe7ef] bg-[#f3f8fb]/40">
                             <td colSpan={4} className="px-4 py-4">
                               <div className="flex flex-wrap items-center gap-2">
                                 <button
@@ -553,7 +546,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     void handleStartCheckIn(appointment);
                                   }}
                                   disabled={checkingInId === appointment.id || savingAppointmentId === appointment.id}
-                                  className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-sky-700 transition hover:bg-sky-100 disabled:opacity-60"
+                                  className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-[#2a6fa8] transition hover:bg-[#dbeaf4] disabled:opacity-60"
                                 >
                                   <Plus className="h-4 w-4" />
                                   Move to Queue
@@ -565,7 +558,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     startReschedule(appointment);
                                   }}
                                   disabled={savingAppointmentId === appointment.id}
-                                  className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-60"
+                                  className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                                 >
                                   Reschedule
                                 </button>
@@ -576,7 +569,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     void handleCancelAppointment(appointment.id);
                                   }}
                                   disabled={savingAppointmentId === appointment.id}
-                                  className="rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                                  className="rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
                                 >
                                   Cancel
                                 </button>
@@ -585,7 +578,7 @@ export function SettingsDrawerAppointmentsPanel({
                           </tr>
                         ) : null}
                         {editingAppointmentId === appointment.id && appointment.status === "scheduled" ? (
-                          <tr className="border-t border-sky-100 bg-sky-50/40">
+                          <tr className="border-t border-[#dbe7ef] bg-[#f3f8fb]/40">
                             <td colSpan={4} className="px-4 py-4">
                               <div className="flex flex-col gap-3 md:flex-row md:items-end">
                                 <label className="block">
@@ -594,7 +587,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     type="date"
                                     value={rescheduleDate}
                                     onChange={(event) => setRescheduleDate(event.target.value)}
-                                    className="rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
                                   />
                                 </label>
                                 <label className="block">
@@ -603,7 +596,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     type="time"
                                     value={rescheduleTime}
                                     onChange={(event) => setRescheduleTime(event.target.value)}
-                                    className="rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
                                   />
                                 </label>
                                 <div className="flex gap-2">
@@ -611,7 +604,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     type="button"
                                     onClick={() => handleSaveReschedule(appointment.id)}
                                     disabled={savingAppointmentId === appointment.id}
-                                    className="rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                                    className="rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
                                   >
                                     {savingAppointmentId === appointment.id ? "Saving..." : "Save"}
                                   </button>
@@ -619,7 +612,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     type="button"
                                     onClick={() => setEditingAppointmentId("")}
                                     disabled={savingAppointmentId === appointment.id}
-                                    className="rounded-full border border-sky-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white disabled:opacity-60"
+                                    className="rounded-xl border border-[#bfd7e8] px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white disabled:opacity-60"
                                   >
                                     Hide
                                   </button>
@@ -634,7 +627,7 @@ export function SettingsDrawerAppointmentsPanel({
                 </table>
               </div>
             ) : (
-              <div className="rounded-[24px] border border-dashed border-sky-300 bg-sky-50/30 px-6 py-16 text-center text-sm text-slate-500">
+              <div className="rounded-[16px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/30 px-6 py-16 text-center text-sm text-slate-500">
                 No appointments matched this view.
               </div>
             )}
@@ -646,24 +639,24 @@ export function SettingsDrawerAppointmentsPanel({
                 value={followUpQuery}
                 onChange={(event) => setFollowUpQuery(event.target.value)}
                 placeholder="Search patient or follow-up notes"
-                className="min-w-[260px] rounded-full border border-sky-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                className="min-w-[260px] rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
               <input
                 type="date"
                 value={selectedDate}
                 min={todayIsoDate}
                 onChange={(event) => setSelectedDate(event.target.value)}
-                className="rounded-full border border-sky-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
               {(["all", "scheduled", "completed", "cancelled"] as FollowUpFilter[]).map((filter) => (
                 <button
                   key={filter}
                   type="button"
                   onClick={() => setFollowUpFilter(filter)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium uppercase tracking-[0.14em] transition ${
+                  className={`rounded-xl px-3 py-1.5 text-xs font-medium uppercase tracking-[0.14em] transition ${
                     followUpFilter === filter
-                      ? "bg-sky-500 text-white"
-                      : "border border-sky-200 bg-white text-slate-600 hover:bg-sky-50"
+                      ? "bg-[#2f8fd3] text-white"
+                      : "border border-[#bfd7e8] bg-white text-slate-600 hover:bg-[#f3f8fb]"
                   }`}
                 >
                   {formatStatusLabel(filter)}
@@ -671,9 +664,9 @@ export function SettingsDrawerAppointmentsPanel({
               ))}
             </div>
             {followUps.length ? (
-              <div className="overflow-hidden rounded-[22px] border border-sky-200">
+              <div className="overflow-hidden rounded-[22px] border border-[#bfd7e8]">
                 <table className="w-full border-collapse text-sm">
-                  <thead className="bg-sky-50/80 text-slate-600">
+                  <thead className="bg-[#f3f8fb]/80 text-slate-600">
                     <tr>
                       <th className="px-4 py-3 text-left font-semibold">Patient</th>
                       <th className="px-4 py-3 text-left font-semibold">Follow-Up For</th>
@@ -698,9 +691,9 @@ export function SettingsDrawerAppointmentsPanel({
                               toggleFollowUpActions(followUp);
                             }
                           }}
-                          className={`border-t border-sky-100 first:border-t-0 ${
+                          className={`border-t border-[#dbe7ef] first:border-t-0 ${
                             followUp.status === "scheduled"
-                              ? "cursor-pointer transition hover:bg-sky-50/60 focus:outline-none focus-visible:bg-sky-50/60"
+                              ? "cursor-pointer transition hover:bg-[#f3f8fb]/60 focus:outline-none focus-visible:bg-[#f3f8fb]/60"
                               : ""
                           }`}
                         >
@@ -710,13 +703,13 @@ export function SettingsDrawerAppointmentsPanel({
                           <td className="px-4 py-3 text-slate-600">{formatDateTime(followUp.scheduled_for)}</td>
                           <td className="px-4 py-3 text-slate-600">{followUp.notes || "No notes"}</td>
                           <td className="px-4 py-3">
-                            <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] ${statusChipClasses(followUp.status)}`}>
+                            <span className={`inline-flex rounded-xl border px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] ${statusChipClasses(followUp.status)}`}>
                               {formatStatusLabel(followUp.status)}
                             </span>
                           </td>
                         </tr>
                         {expandedFollowUpId === followUp.id && followUp.status === "scheduled" ? (
-                          <tr className="border-t border-sky-100 bg-sky-50/40">
+                          <tr className="border-t border-[#dbe7ef] bg-[#f3f8fb]/40">
                             <td colSpan={4} className="px-4 py-4">
                               <div className="flex flex-wrap items-center gap-2">
                                 <button
@@ -726,7 +719,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     startFollowUpEdit(followUp);
                                   }}
                                   disabled={savingAppointmentId === followUp.id}
-                                  className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-60"
+                                  className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                                 >
                                   Reschedule
                                 </button>
@@ -737,7 +730,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     void handleUpdateFollowUpStatus(followUp.id, "completed");
                                   }}
                                   disabled={savingAppointmentId === followUp.id}
-                                  className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60"
+                                  className="rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60"
                                 >
                                   Complete
                                 </button>
@@ -748,7 +741,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     void handleUpdateFollowUpStatus(followUp.id, "cancelled");
                                   }}
                                   disabled={savingAppointmentId === followUp.id}
-                                  className="rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                                  className="rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
                                 >
                                   Cancel
                                 </button>
@@ -757,7 +750,7 @@ export function SettingsDrawerAppointmentsPanel({
                           </tr>
                         ) : null}
                         {editingFollowUpId === followUp.id && followUp.status === "scheduled" ? (
-                          <tr className="border-t border-sky-100 bg-sky-50/40">
+                          <tr className="border-t border-[#dbe7ef] bg-[#f3f8fb]/40">
                             <td colSpan={4} className="px-4 py-4">
                               <div className="grid gap-3 md:grid-cols-[220px_180px_1fr_auto] md:items-end">
                                 <label className="block">
@@ -766,7 +759,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     type="date"
                                     value={followUpDate}
                                     onChange={(event) => setFollowUpDate(event.target.value)}
-                                    className="rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
                                   />
                                 </label>
                                 <label className="block">
@@ -775,7 +768,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     type="time"
                                     value={followUpTime}
                                     onChange={(event) => setFollowUpTime(event.target.value)}
-                                    className="rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
                                   />
                                 </label>
                                 <label className="block">
@@ -783,7 +776,7 @@ export function SettingsDrawerAppointmentsPanel({
                                   <input
                                     value={followUpNotes}
                                     onChange={(event) => setFollowUpNotes(event.target.value)}
-                                    className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                                    className="w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
                                   />
                                 </label>
                                 <div className="flex gap-2">
@@ -791,7 +784,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     type="button"
                                     onClick={() => handleSaveFollowUp(followUp.id)}
                                     disabled={savingAppointmentId === followUp.id}
-                                    className="rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                                    className="rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
                                   >
                                     {savingAppointmentId === followUp.id ? "Saving..." : "Save"}
                                   </button>
@@ -799,7 +792,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     type="button"
                                     onClick={() => setEditingFollowUpId("")}
                                     disabled={savingAppointmentId === followUp.id}
-                                    className="rounded-full border border-sky-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white disabled:opacity-60"
+                                    className="rounded-xl border border-[#bfd7e8] px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white disabled:opacity-60"
                                   >
                                     Hide
                                   </button>
@@ -814,7 +807,7 @@ export function SettingsDrawerAppointmentsPanel({
                 </table>
               </div>
             ) : (
-              <div className="rounded-[24px] border border-dashed border-sky-300 bg-sky-50/30 px-6 py-16 text-center text-sm text-slate-500">
+              <div className="rounded-[16px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/30 px-6 py-16 text-center text-sm text-slate-500">
                 No follow-ups matched this view.
               </div>
             )}

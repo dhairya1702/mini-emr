@@ -93,7 +93,7 @@ function stepIcon(stepKey: ClinicSetupStepKey) {
 
 function LoadingSettingsState() {
   return (
-    <div className="rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-slate-600">
+    <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/70 px-4 py-3 text-sm text-slate-600">
       Clinic settings are still loading. Try again in a moment.
     </div>
   );
@@ -156,8 +156,8 @@ function SpecialtySetup({
           return (
             <label
               key={option.value}
-              className={`block cursor-pointer rounded-2xl border px-4 py-4 transition ${
-                isSelected ? "border-sky-400 bg-sky-50" : "border-slate-200 bg-white hover:border-sky-200"
+              className={`block cursor-pointer rounded-xl border px-4 py-4 transition ${
+                isSelected ? "border-[#6daed8] bg-[#f3f8fb]" : "border-slate-200 bg-white hover:border-[#bfd7e8]"
               }`}
             >
               <input
@@ -173,7 +173,7 @@ function SpecialtySetup({
                   <p className="text-sm font-semibold text-slate-900">{option.label}</p>
                   <p className="mt-1 text-sm leading-6 text-slate-600">{option.description}</p>
                 </div>
-                <div className={`mt-1 h-5 w-5 rounded-full border-2 ${isSelected ? "border-sky-500 bg-sky-500" : "border-slate-300"}`} />
+                <div className={`mt-1 h-5 w-5 rounded-full border-2 ${isSelected ? "border-[#2f8fd3] bg-[#2f8fd3]" : "border-slate-300"}`} />
               </div>
             </label>
           );
@@ -181,7 +181,7 @@ function SpecialtySetup({
       </div>
       {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
       <div className="flex justify-end">
-        <button type="submit" disabled={isSaving} className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60">
+        <button type="submit" disabled={isSaving} className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60">
           {isSaving ? "Saving..." : "Save specialty"}
         </button>
       </div>
@@ -272,7 +272,7 @@ function HoursSetup({
             type="time"
             value={form.appointment_start_time}
             onChange={(event) => setForm((current) => ({ ...current, appointment_start_time: event.target.value }))}
-            className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none focus:border-sky-400"
+            className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
           />
         </label>
         <label className="block">
@@ -281,7 +281,7 @@ function HoursSetup({
             type="time"
             value={form.appointment_end_time}
             onChange={(event) => setForm((current) => ({ ...current, appointment_end_time: event.target.value }))}
-            className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none focus:border-sky-400"
+            className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
           />
         </label>
         <label className="block">
@@ -293,13 +293,13 @@ function HoursSetup({
             step="1"
             value={form.appointments_per_hour}
             onChange={(event) => setForm((current) => ({ ...current, appointments_per_hour: event.target.value }))}
-            className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none focus:border-sky-400"
+            className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
           />
         </label>
       </div>
       {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
       <div className="flex justify-end">
-        <button type="submit" disabled={isSaving} className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60">
+        <button type="submit" disabled={isSaving} className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60">
           {isSaving ? "Saving..." : "Save hours"}
         </button>
       </div>
@@ -344,7 +344,7 @@ function SignatureSetup({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-sky-100 bg-sky-50/40 p-4">
+      <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
         {currentUser?.doctor_signature_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -357,7 +357,7 @@ function SignatureSetup({
         )}
       </div>
       <div className="flex flex-wrap gap-3">
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600">
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0]">
           <Upload className="h-4 w-4" />
           {isSaving ? "Uploading..." : "Upload signature"}
           <input
@@ -378,7 +378,7 @@ function SignatureSetup({
           type="button"
           disabled={!currentUser?.doctor_signature_name || isSaving}
           onClick={() => void handleRemove()}
-          className="rounded-full border border-rose-200 bg-white px-5 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+          className="rounded-xl border border-rose-200 bg-white px-5 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
         >
           Remove
         </button>
@@ -467,7 +467,7 @@ function EmailSetup({
         <input
           value={form.sender_name}
           onChange={(event) => setForm((current) => ({ ...current, sender_name: event.target.value }))}
-          className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none focus:border-sky-400"
+          className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
         />
       </label>
       <label className="block">
@@ -476,7 +476,7 @@ function EmailSetup({
           type="email"
           value={form.sender_email}
           onChange={(event) => setForm((current) => ({ ...current, sender_email: event.target.value }))}
-          className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none focus:border-sky-400"
+          className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
         />
       </label>
       <PasswordInput
@@ -487,7 +487,7 @@ function EmailSetup({
       />
       {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
       <div className="flex justify-end">
-        <button type="submit" disabled={isSaving} className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60">
+        <button type="submit" disabled={isSaving} className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60">
           {isSaving ? "Saving..." : "Save email"}
         </button>
       </div>
@@ -535,7 +535,7 @@ function StaffUserSetup({
         <input
           value={form.identifier}
           onChange={(event) => setForm((current) => ({ ...current, identifier: event.target.value }))}
-          className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none focus:border-sky-400"
+          className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
         />
       </label>
       <PasswordInput
@@ -546,7 +546,7 @@ function StaffUserSetup({
       />
       {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
       <div className="flex justify-end">
-        <button type="submit" disabled={isSaving} className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60">
+        <button type="submit" disabled={isSaving} className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60">
           {isSaving ? "Creating..." : "Create staff user"}
         </button>
       </div>
@@ -680,7 +680,7 @@ function DocumentTemplateSetup({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <div className="rounded-2xl border border-sky-100 bg-sky-50/50 p-4">
+      <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-slate-900">
@@ -689,7 +689,7 @@ function DocumentTemplateSetup({
             <p className="mt-1 text-xs text-slate-500">PDF, JPG, or PNG template for generated documents.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-sky-50">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-[#f3f8fb]">
               <Upload className="h-4 w-4" />
               {isUploading ? "Uploading..." : "Upload"}
               <input
@@ -710,7 +710,7 @@ function DocumentTemplateSetup({
               type="button"
               disabled={!hasTemplate || isUploading}
               onClick={() => void handleRemove()}
-              className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
             >
               <Trash2 className="h-4 w-4" />
               Remove
@@ -731,7 +731,7 @@ function DocumentTemplateSetup({
               checked={form[item.key]}
               disabled={!hasTemplate}
               onChange={(event) => setForm((current) => ({ ...current, [item.key]: event.target.checked }))}
-              className="h-4 w-4 rounded border-sky-300 text-sky-500 focus:ring-sky-400"
+              className="h-4 w-4 rounded border-[#9fc7e1] text-[#2f8fd3] focus:ring-[#6daed8]"
             />
             <span>{item.label}</span>
           </label>
@@ -755,14 +755,14 @@ function DocumentTemplateSetup({
               value={form[item.key]}
               disabled={!hasTemplate}
               onChange={(event) => setForm((current) => ({ ...current, [item.key]: event.target.value }))}
-              className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none focus:border-sky-400 disabled:opacity-60"
+              className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8] disabled:opacity-60"
             />
           </label>
         ))}
       </div>
       {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
       <div className="flex justify-end">
-        <button type="submit" disabled={isSaving || isUploading} className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60">
+        <button type="submit" disabled={isSaving || isUploading} className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60">
           {isSaving ? "Saving..." : "Save template setup"}
         </button>
       </div>
@@ -792,10 +792,10 @@ export function SetupStepModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
       <button type="button" aria-label="Close setup step" className="absolute inset-0" onClick={onClose} />
-      <section className="relative z-10 flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[32px] border border-sky-200 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.24)]">
-        <div className="flex items-start justify-between gap-4 border-b border-sky-100 px-6 py-5">
+      <section className="relative z-10 flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[20px] border border-[#bfd7e8] bg-white shadow-[0_28px_90px_rgba(15,23,42,0.24)]">
+        <div className="flex items-start justify-between gap-4 border-b border-[#dbe7ef] px-6 py-5">
           <div className="flex items-start gap-3">
-            <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
+            <div className="rounded-xl bg-[#f3f8fb] p-3 text-[#2a6fa8]">
               <Icon className="h-5 w-5" />
             </div>
             <div>
@@ -803,7 +803,7 @@ export function SetupStepModal({
               <h2 className="mt-1 text-xl font-semibold text-slate-900">{stepTitle(stepKey)}</h2>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-full border border-sky-200 p-2 text-slate-600 hover:bg-sky-50">
+          <button type="button" onClick={onClose} className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 hover:bg-[#f3f8fb]">
             <X className="h-4 w-4" />
           </button>
         </div>

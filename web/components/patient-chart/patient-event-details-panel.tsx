@@ -24,7 +24,7 @@ export function PatientEventDetailsPanel({
   formatDateTime: (value: string) => string;
 }) {
   return (
-    <section aria-label="Selected event details" className="rounded-[28px] border border-sky-100 bg-white p-5">
+    <section aria-label="Selected event details" className="rounded-[18px] border border-[#dbe7ef] bg-white p-5">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Selected Event</p>
@@ -33,7 +33,7 @@ export function PatientEventDetailsPanel({
           </h4>
         </div>
         {selectedEvent ? (
-          <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.14em] text-slate-600">
+          <span className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-3 py-1 text-xs font-medium uppercase tracking-[0.14em] text-slate-600">
             {formatStatusLabel(selectedEvent.type)}
           </span>
         ) : null}
@@ -41,7 +41,7 @@ export function PatientEventDetailsPanel({
 
       {selectedEvent ? (
         <div className="mt-5 space-y-4">
-          <div className="rounded-2xl border border-sky-100 bg-sky-50/30 p-4">
+          <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/30 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm font-semibold text-slate-900">{selectedEvent.title}</p>
               <p className="text-xs text-slate-500">{formatDateTime(selectedEvent.timestamp)}</p>
@@ -63,7 +63,7 @@ export function PatientEventDetailsPanel({
                     ["Height", detailNumber(details.height) ? `${detailNumber(details.height)} cm` : "—"],
                     ["Temperature", detailNumber(details.temperature) ? `${detailNumber(details.temperature)} F` : "—"],
                   ].map(([label, value]) => (
-                    <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                    <div key={String(label)} className="rounded-xl border border-[#dbe7ef] bg-white p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
                     </div>
@@ -82,13 +82,13 @@ export function PatientEventDetailsPanel({
                       ["Recipient", detailText(details.sent_to) || "—"],
                       ["Signed by", detailText(details.sent_by_name) || "—"],
                     ].map(([label, value]) => (
-                      <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                      <div key={String(label)} className="rounded-xl border border-[#dbe7ef] bg-white p-4">
                         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
                         <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
                       </div>
                     ))}
                   </div>
-                  <div className="rounded-2xl border border-sky-100 bg-white p-4">
+                  <div className="rounded-xl border border-[#dbe7ef] bg-white p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Consultation content</p>
                     <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
                       {detailText(details.content) || detailText(details.excerpt) || "No note content available."}
@@ -111,18 +111,18 @@ export function PatientEventDetailsPanel({
                       ["Due", detailNumber(details.balance_due) !== null ? `₹${detailNumber(details.balance_due)}` : "—"],
                       ["Items", detailNumber(details.item_count) ?? items.length ?? "—"],
                     ].map(([label, value]) => (
-                      <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                      <div key={String(label)} className="rounded-xl border border-[#dbe7ef] bg-white p-4">
                         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
                         <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
                       </div>
                     ))}
                   </div>
                   {items.length ? (
-                    <div className="rounded-2xl border border-sky-100 bg-white p-4">
+                    <div className="rounded-xl border border-[#dbe7ef] bg-white p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Line items</p>
                       <div className="mt-3 space-y-2">
                         {items.map((item, index) => (
-                          <div key={`${selectedEvent.id}-item-${index}`} className="flex items-center justify-between rounded-xl bg-sky-50/40 px-3 py-2 text-sm text-slate-700">
+                          <div key={`${selectedEvent.id}-item-${index}`} className="flex items-center justify-between rounded-xl bg-[#f3f8fb]/40 px-3 py-2 text-sm text-slate-700">
                             <span>{detailText(item.label) || "Item"}</span>
                             <span>
                               {detailNumber(item.quantity) ?? 0} × ₹{detailNumber(item.unit_price) ?? 0}
@@ -145,7 +145,7 @@ export function PatientEventDetailsPanel({
                     ["Completed at", detailText(details.completed_at) ? formatDateTime(detailText(details.completed_at)) : "—"],
                     ["Notes", detailText(details.notes) || "—"],
                   ].map(([label, value]) => (
-                    <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                    <div key={String(label)} className="rounded-xl border border-[#dbe7ef] bg-white p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
                     </div>
@@ -163,7 +163,7 @@ export function PatientEventDetailsPanel({
                     ["Checked in", detailText(details.checked_in_at) ? formatDateTime(detailText(details.checked_in_at)) : "—"],
                     ["Reason", detailText(details.reason) || "—"],
                   ].map(([label, value]) => (
-                    <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                    <div key={String(label)} className="rounded-xl border border-[#dbe7ef] bg-white p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
                     </div>
@@ -181,7 +181,7 @@ export function PatientEventDetailsPanel({
                     ["Email", detailText(details.email) || "—"],
                     ["Address", detailText(details.address) || "—"],
                   ].map(([label, value]) => (
-                    <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                    <div key={String(label)} className="rounded-xl border border-[#dbe7ef] bg-white p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
                     </div>
@@ -203,7 +203,7 @@ export function PatientEventDetailsPanel({
                     ["Treatment Notes", detailText(details.treatment_notes) || "—"],
                     ["Visit Notes", detailText(details.visit_notes) || "—"],
                   ].map(([label, value]) => (
-                    <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                    <div key={String(label)} className="rounded-xl border border-[#dbe7ef] bg-white p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
                     </div>
@@ -222,7 +222,7 @@ export function PatientEventDetailsPanel({
                     ["Head Circumference", detailNumber(details.head_circumference_cm) !== null ? `${detailNumber(details.head_circumference_cm)} cm` : "—"],
                     ["Visit Notes", detailText(details.visit_notes) || "—"],
                   ].map(([label, value]) => (
-                    <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                    <div key={String(label)} className="rounded-xl border border-[#dbe7ef] bg-white p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
                     </div>
@@ -243,7 +243,7 @@ export function PatientEventDetailsPanel({
                     ["Parent Concerns", detailText(details.parent_concerns) || "—"],
                     ["Assessment", detailText(details.assessment_summary) || "—"],
                   ].map(([label, value]) => (
-                    <div key={String(label)} className="rounded-2xl border border-sky-100 bg-white p-4">
+                    <div key={String(label)} className="rounded-xl border border-[#dbe7ef] bg-white p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
                       <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
                     </div>
@@ -256,7 +256,7 @@ export function PatientEventDetailsPanel({
           })()}
         </div>
       ) : (
-        <div className="mt-5 rounded-2xl border border-dashed border-sky-200 bg-sky-50/20 px-4 py-8 text-center text-sm text-slate-500">
+        <div className="mt-5 rounded-xl border border-dashed border-[#bfd7e8] bg-[#f3f8fb]/20 px-4 py-8 text-center text-sm text-slate-500">
           Select a timeline event from the left to inspect its details.
         </div>
       )}

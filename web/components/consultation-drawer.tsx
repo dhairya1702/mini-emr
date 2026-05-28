@@ -264,8 +264,8 @@ function ConsultationExpandableCard({
 }) {
   const toneClasses = {
     sky: {
-      section: "border-sky-200 bg-white/80",
-      icon: "border-sky-200 bg-sky-50 hover:bg-sky-100",
+      section: "border-[#bfd7e8] bg-white/80",
+      icon: "border-[#bfd7e8] bg-[#f3f8fb] hover:bg-[#dbeaf4]",
     },
     amber: {
       section: "border-amber-200 bg-white/80",
@@ -278,7 +278,7 @@ function ConsultationExpandableCard({
   }[tone];
 
   return (
-    <section className={`rounded-[28px] border p-4 ${toneClasses.section}`}>
+    <section className={`rounded-[18px] border p-4 ${toneClasses.section}`}>
       <button
         type="button"
         onClick={onToggle}
@@ -291,7 +291,7 @@ function ConsultationExpandableCard({
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {badge}
-          <span className={`flex h-10 w-10 items-center justify-center rounded-full border text-slate-900 transition ${toneClasses.icon}`}>
+          <span className={`flex h-10 w-10 items-center justify-center rounded-xl border text-slate-900 transition ${toneClasses.icon}`}>
             <Plus className={`h-6 w-6 transition-transform ${open ? "rotate-45" : ""}`} />
           </span>
         </div>
@@ -315,18 +315,18 @@ function ConsultationModuleRailItem({
   children?: ReactNode;
 }) {
   return (
-    <div className="border-t border-sky-100 first:border-t-0">
+    <div className="border-t border-[#dbe7ef] first:border-t-0">
       <button
         type="button"
         onClick={onSelect}
-        className={`block w-full px-4 py-4 text-left transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sky-300 ${
-          active ? "bg-sky-50/70" : "bg-white hover:bg-sky-50/60"
+        className={`block w-full px-4 py-4 text-left transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#6daed8] ${
+          active ? "bg-[#f3f8fb]/70" : "bg-white hover:bg-[#f3f8fb]/60"
         }`}
       >
         <span className="block text-base font-semibold leading-tight text-slate-900">{title}</span>
         <span className="mt-1 block text-sm leading-5 text-slate-500">{description}</span>
       </button>
-      {active && children ? <div className="bg-sky-50/30 px-3 pb-3">{children}</div> : null}
+      {active && children ? <div className="bg-[#f3f8fb]/30 px-3 pb-3">{children}</div> : null}
     </div>
   );
 }
@@ -339,7 +339,7 @@ function ConsultationModuleDetail({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-[28px] border border-sky-200 bg-white/90 p-4">
+    <section className="rounded-[18px] border border-[#bfd7e8] bg-white/90 p-4">
       <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</p>
       {children}
     </section>
@@ -365,14 +365,14 @@ function SpecialtyModuleModal({
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
-      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[32px] border border-sky-200 bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[20px] border border-[#bfd7e8] bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Specialty Module</p>
             <h3 className="mt-2 text-2xl font-semibold text-slate-900">{title}</h3>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{description}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-sky-50">
+          <button type="button" onClick={onClose} className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-[#f3f8fb]">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -1364,7 +1364,7 @@ export function ConsultationDrawer({
     { label: "Height", value: currentPatient.height !== null ? `${currentPatient.height} cm` : "-" },
   ];
   return (
-    <aside className="fixed inset-0 z-30 w-screen overflow-y-auto border-l-2 border-sky-300 bg-white p-5 shadow-[0_20px_60px_rgba(125,211,252,0.2)] sm:p-6">
+    <aside className="fixed inset-0 z-30 w-screen overflow-y-auto border-l-2 border-[#9fc7e1] bg-white p-5 shadow-[0_20px_60px_rgba(64,131,181,0.10)] sm:p-6">
       <div className="flex min-h-full flex-col">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
@@ -1377,7 +1377,7 @@ export function ConsultationDrawer({
               {patientInfoChips.map((entry) => (
                 <span
                   key={entry.label}
-                  className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-slate-700"
+                  className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-3 py-1 text-xs font-medium text-slate-700"
                 >
                   {entry.label} {entry.value}
                 </span>
@@ -1387,7 +1387,7 @@ export function ConsultationDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-sky-200 p-2 text-slate-700 transition hover:text-slate-900"
+            className="rounded-xl border border-[#bfd7e8] p-2 text-slate-700 transition hover:text-slate-900"
           >
             <X className="h-4 w-4" />
           </button>
@@ -1403,7 +1403,7 @@ export function ConsultationDrawer({
                 onChange={(event) =>
                   setForm((current) => ({ ...current, symptoms: event.target.value }))
                 }
-                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 placeholder="Chief complaints, duration, key context"
               />
             </label>
@@ -1415,7 +1415,7 @@ export function ConsultationDrawer({
                 onChange={(event) =>
                   setForm((current) => ({ ...current, diagnosis: event.target.value }))
                 }
-                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 placeholder="Provisional or confirmed diagnosis"
               />
             </label>
@@ -1428,7 +1428,7 @@ export function ConsultationDrawer({
                 onChange={(event) =>
                   setForm((current) => ({ ...current, medications: event.target.value }))
                 }
-                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 placeholder="Prescriptions, dosage, duration"
               />
               <p className="mt-2 text-xs text-slate-500">
@@ -1442,7 +1442,7 @@ export function ConsultationDrawer({
                 rows={3}
                 value={form.notes}
                 onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-                className="w-full rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 placeholder="Exam findings, vitals, advice, follow-up"
               />
             </label>
@@ -1455,13 +1455,13 @@ export function ConsultationDrawer({
                 onToggle={() => toggleConsultationSection("attachments")}
                 badge={
                   attachmentAssets.length ? (
-                    <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">
+                    <span className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[#2a6fa8]">
                       {attachmentAssets.length} file{attachmentAssets.length === 1 ? "" : "s"}
                     </span>
                   ) : null
                 }
               >
-                <label className="mb-3 inline-flex rounded-full border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 transition hover:bg-sky-100">
+                <label className="mb-3 inline-flex rounded-xl border border-[#9fc7e1] bg-[#f3f8fb] px-3 py-1.5 text-xs font-medium text-[#235f8e] transition hover:bg-[#dbeaf4]">
                   Add files
                   <input
                     type="file"
@@ -1473,7 +1473,7 @@ export function ConsultationDrawer({
                 </label>
                 <div className="space-y-2">
                   {attachmentAssets.length ? attachmentAssets.map((asset) => (
-                    <div key={asset.id} className="flex items-center justify-between gap-3 rounded-[18px] border border-sky-100 bg-sky-50/40 px-3 py-2">
+                    <div key={asset.id} className="flex items-center justify-between gap-3 rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/40 px-3 py-2">
                       <div className="flex min-w-0 items-center gap-3">
                         {asset.content_type.startsWith("image/") ? (
                           <NextImage
@@ -1481,10 +1481,10 @@ export function ConsultationDrawer({
                             alt={asset.name}
                             width={48}
                             height={48}
-                            className="h-12 w-12 rounded-xl border border-sky-100 object-cover"
+                            className="h-12 w-12 rounded-xl border border-[#dbe7ef] object-cover"
                           />
                         ) : (
-                          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-sky-100 bg-white text-slate-500">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#dbe7ef] bg-white text-slate-500">
                             <Paperclip className="h-4 w-4" />
                           </div>
                         )}
@@ -1496,13 +1496,13 @@ export function ConsultationDrawer({
                       <button
                         type="button"
                         onClick={() => removeAsset(asset.id)}
-                        className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-white"
+                        className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-white"
                       >
                         <X className="h-3 w-3" />
                       </button>
                     </div>
                   )) : (
-                    <p className="rounded-[18px] border border-dashed border-sky-200 bg-sky-50/20 px-4 py-5 text-sm text-slate-500">
+                    <p className="rounded-[18px] border border-dashed border-[#bfd7e8] bg-[#f3f8fb]/20 px-4 py-5 text-sm text-slate-500">
                       No consultation attachments yet.
                     </p>
                   )}
@@ -1516,7 +1516,7 @@ export function ConsultationDrawer({
                 onToggle={() => toggleConsultationSection("drawing")}
                 badge={
                   drawingAsset ? (
-                    <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700">
+                    <span className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[#2a6fa8]">
                       Drawing added
                     </span>
                   ) : null
@@ -1527,7 +1527,7 @@ export function ConsultationDrawer({
                     <button
                       type="button"
                       onClick={() => setDrawingMode("draw")}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${drawingMode === "draw" ? "border-sky-300 bg-sky-100 text-sky-800" : "border-sky-200 bg-white text-slate-700 hover:bg-sky-50"}`}
+                      className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${drawingMode === "draw" ? "border-[#9fc7e1] bg-[#dbeaf4] text-[#235f8e]" : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"}`}
                     >
                       <PenLine className="mr-1 inline h-3.5 w-3.5" />
                       Draw
@@ -1535,7 +1535,7 @@ export function ConsultationDrawer({
                     <button
                       type="button"
                       onClick={() => setDrawingMode("erase")}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${drawingMode === "erase" ? "border-sky-300 bg-sky-100 text-sky-800" : "border-sky-200 bg-white text-slate-700 hover:bg-sky-50"}`}
+                      className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${drawingMode === "erase" ? "border-[#9fc7e1] bg-[#dbeaf4] text-[#235f8e]" : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"}`}
                     >
                       <Eraser className="mr-1 inline h-3.5 w-3.5" />
                       Erase
@@ -1543,7 +1543,7 @@ export function ConsultationDrawer({
                     <button
                       type="button"
                       onClick={undoDrawing}
-                      className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50"
+                      className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
                     >
                       <Undo2 className="mr-1 inline h-3.5 w-3.5" />
                       Undo
@@ -1551,7 +1551,7 @@ export function ConsultationDrawer({
                     <button
                       type="button"
                       onClick={clearDrawing}
-                      className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50"
+                      className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
                     >
                       Clear
                     </button>
@@ -1565,7 +1565,7 @@ export function ConsultationDrawer({
                     max={12}
                     value={brushSize}
                     onChange={(event) => setBrushSize(Number(event.target.value))}
-                    className="w-36 accent-sky-500"
+                    className="w-36 accent-[#2f8fd3]"
                   />
                   <span className="text-xs text-slate-500">{brushSize}px</span>
                 </div>
@@ -1577,33 +1577,33 @@ export function ConsultationDrawer({
                   onPointerMove={continueDrawing}
                   onPointerUp={finishDrawing}
                   onPointerLeave={finishDrawing}
-                  className="h-[220px] w-full rounded-[20px] border border-sky-100 bg-sky-50/30"
+                  className="h-[220px] w-full rounded-[20px] border border-[#dbe7ef] bg-[#f3f8fb]/30"
                 />
                 {drawingAsset ? (
-                  <div className="mt-3 flex items-center gap-2 rounded-[18px] border border-sky-100 bg-sky-50/40 px-3 py-2 text-xs text-slate-600">
-                    <ImageIcon className="h-4 w-4 text-sky-600" />
+                  <div className="mt-3 flex items-center gap-2 rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/40 px-3 py-2 text-xs text-slate-600">
+                    <ImageIcon className="h-4 w-4 text-[#2f8fd3]" />
                     Drawing will be appended as an extra page in the generated consultation PDF.
                   </div>
                 ) : null}
               </ConsultationExpandableCard>
             </div>
 
-            <div className="rounded-[28px] border border-sky-200 bg-sky-50/50 p-4">
+            <div className="rounded-[18px] border border-[#bfd7e8] bg-[#f3f8fb]/50 p-4">
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-sky-600" />
+                  <FileText className="h-4 w-4 text-[#2f8fd3]" />
                   <span className="text-sm font-medium text-slate-900">Generated Note</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {lifecycleLabel ? (
-                    <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-600">
+                    <span className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-600">
                       {lifecycleLabel}
                     </span>
                   ) : null}
                   <button
                     type="submit"
                     disabled={isGenerating}
-                    className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
                   >
                     <Sparkles className="h-4 w-4" />
                     {isGenerating ? "Generating..." : noteStatus === "draft" ? "Refresh Draft" : "Generate Note"}
@@ -1614,7 +1614,7 @@ export function ConsultationDrawer({
                 rows={14}
                 value={form.generatedNote}
                 readOnly
-                className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-sky-400"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 placeholder="Saved SOAP note will appear here"
               />
               <p className="mt-2 text-xs text-slate-500">
@@ -1625,8 +1625,8 @@ export function ConsultationDrawer({
             </div>
           </div>
           <div className="space-y-4">
-            <section className="overflow-hidden rounded-[28px] border border-sky-200 bg-white/90">
-              <div className="border-b border-sky-100 px-4 py-4">
+            <section className="overflow-hidden rounded-[18px] border border-[#bfd7e8] bg-white/90">
+              <div className="border-b border-[#dbe7ef] px-4 py-4">
                 <p className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-600">Modules</p>
               </div>
               <ConsultationModuleRailItem
@@ -1644,7 +1644,7 @@ export function ConsultationDrawer({
                         inputMode="numeric"
                         onChange={(event) => setForm((current) => ({ ...current, bloodPressureSystolic: event.target.value }))}
                         placeholder="120"
-                        className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                     <label className="block">
@@ -1654,7 +1654,7 @@ export function ConsultationDrawer({
                         inputMode="numeric"
                         onChange={(event) => setForm((current) => ({ ...current, bloodPressureDiastolic: event.target.value }))}
                         placeholder="80"
-                        className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                     <label className="block">
@@ -1664,7 +1664,7 @@ export function ConsultationDrawer({
                         inputMode="numeric"
                         onChange={(event) => setForm((current) => ({ ...current, pulse: event.target.value }))}
                         placeholder="72"
-                        className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                     <label className="block">
@@ -1674,7 +1674,7 @@ export function ConsultationDrawer({
                         inputMode="numeric"
                         onChange={(event) => setForm((current) => ({ ...current, spo2: event.target.value }))}
                         placeholder="98"
-                        className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                     <label className="block sm:col-span-2">
@@ -1684,7 +1684,7 @@ export function ConsultationDrawer({
                         inputMode="decimal"
                         onChange={(event) => setForm((current) => ({ ...current, bloodSugar: event.target.value }))}
                         placeholder="110"
-                        className="w-full rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                   </div>
@@ -1701,7 +1701,7 @@ export function ConsultationDrawer({
                     value={medicineSearch}
                     onChange={(event) => setMedicineSearch(event.target.value)}
                     placeholder="Search medicines by name or unit"
-                    className="w-full rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
+                    className="w-full rounded-xl border border-emerald-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
                   />
                   {form.prescriptions.length ? (
                     <div className="mt-3 space-y-3">
@@ -1715,7 +1715,7 @@ export function ConsultationDrawer({
                             <button
                               type="button"
                               onClick={() => removePrescription(entry.itemId)}
-                              className="rounded-full border border-emerald-200 p-2 text-slate-600 transition hover:bg-emerald-50"
+                              className="rounded-xl border border-emerald-200 p-2 text-slate-600 transition hover:bg-emerald-50"
                             >
                               <X className="h-3 w-3" />
                             </button>
@@ -1728,7 +1728,7 @@ export function ConsultationDrawer({
                                 inputMode="decimal"
                                 onChange={(event) => updatePrescription(entry.itemId, { quantity: event.target.value })}
                                 placeholder="10"
-                                className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                                className="w-full rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
                               />
                             </label>
                             <label className="block">
@@ -1737,7 +1737,7 @@ export function ConsultationDrawer({
                                 value={entry.duration}
                                 onChange={(event) => updatePrescription(entry.itemId, { duration: event.target.value })}
                                 placeholder="5 days"
-                                className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                                className="w-full rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
                               />
                             </label>
                           </div>
@@ -1755,7 +1755,7 @@ export function ConsultationDrawer({
                                         notes: togglePrescriptionNoteValue(entry.notes, option),
                                       })
                                     }
-                                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                    className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
                                       active
                                         ? "border-emerald-300 bg-emerald-100 text-emerald-800"
                                         : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
@@ -1779,7 +1779,7 @@ export function ConsultationDrawer({
                                   key={slot.key}
                                   type="button"
                                   onClick={() => updatePrescription(entry.itemId, { [slot.key]: !entry[slot.key] })}
-                                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                  className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
                                     entry[slot.key]
                                       ? "border-emerald-300 bg-emerald-100 text-emerald-800"
                                       : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
@@ -1818,7 +1818,7 @@ export function ConsultationDrawer({
                                 {item.track_inventory ? ` · Stock ${item.stock_quantity}` : ""}
                               </p>
                             </div>
-                            <span className="rounded-full border border-emerald-200 px-3 py-1 text-xs font-medium">
+                            <span className="rounded-xl border border-emerald-200 px-3 py-1 text-xs font-medium">
                               {active ? "Selected" : outOfStock ? "Out of stock" : "Add"}
                             </span>
                           </button>
@@ -1887,12 +1887,12 @@ export function ConsultationDrawer({
               ) : null}
             </section>
 
-            <div className="border-t border-sky-200 pt-4">
+            <div className="border-t border-[#bfd7e8] pt-4">
               <div className="flex flex-col gap-4">
                 <p className="text-sm text-slate-700">{statusMessage || "Ready to generate and send."}</p>
                 <div className="flex flex-col gap-3">
                   {setupWarnings.length ? (
-                    <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-4">
+                    <div className="rounded-[16px] border border-amber-200 bg-amber-50/80 p-4">
                       <p className="text-sm font-semibold text-amber-900">Setup notes</p>
                       <div className="mt-2 space-y-2 text-sm leading-6 text-amber-900">
                         {setupWarnings.map((warning) => (
@@ -1902,7 +1902,7 @@ export function ConsultationDrawer({
                     </div>
                   ) : null}
                   {isFollowUpOpen ? (
-                    <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
+                    <div className="rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/40 p-4">
                       <div className="grid gap-3">
                         <label className="block">
                           <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Date</span>
@@ -1912,7 +1912,7 @@ export function ConsultationDrawer({
                             onChange={(event) =>
                               setForm((current) => ({ ...current, followUpDate: event.target.value }))
                             }
-                            className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                            className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                           />
                         </label>
                         <label className="block">
@@ -1923,13 +1923,13 @@ export function ConsultationDrawer({
                               setForm((current) => ({ ...current, followUpNotes: event.target.value }))
                             }
                             placeholder="Review symptoms, BP check, lab result review"
-                            className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                            className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                           />
                         </label>
                       </div>
                     </div>
                   ) : null}
-                  <div className="rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
+                  <div className="rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/40 p-4">
                     <label className="block">
                       <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
                         Recipient email
@@ -1939,7 +1939,7 @@ export function ConsultationDrawer({
                         value={recipientEmail}
                         onChange={(event) => setRecipientEmail(event.target.value)}
                         placeholder="patient@example.com"
-                        className="w-full rounded-2xl border border-sky-100 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                   </div>
@@ -1948,7 +1948,7 @@ export function ConsultationDrawer({
                       type="button"
                       disabled={isSending || !currentNoteId || isSent || !recipientEmail.trim()}
                       onClick={handleSend}
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                     >
                       <Mail className="h-4 w-4" />
                       {isSending ? "Sending..." : isSent ? "Sent and Locked" : "Send Email"}
@@ -1959,7 +1959,7 @@ export function ConsultationDrawer({
                           type="button"
                           disabled={isGeneratingPdf || !currentNoteId}
                           onClick={() => handlePdf("preview")}
-                          className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                          className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                         >
                           <Eye className="h-4 w-4" />
                           {isGeneratingPdf ? "Preparing..." : "Preview"}
@@ -1967,7 +1967,7 @@ export function ConsultationDrawer({
                         <button
                           type="button"
                           onClick={() => setIsFollowUpOpen((current) => !current)}
-                          className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-sky-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                          className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                         >
                           <CalendarPlus2 className="h-4 w-4" />
                           {isFollowUpOpen ? "Hide" : "Follow-up"}
@@ -1977,7 +1977,7 @@ export function ConsultationDrawer({
                         type="button"
                         disabled={isCompleting || noteStatus === "draft" || !currentNoteId}
                         onClick={handleDone}
-                        className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                        className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
                       >
                         {isCompleting ? "Moving..." : "Done"}
                       </button>
@@ -1998,30 +1998,30 @@ export function ConsultationDrawer({
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Measured At</span>
-            <input type="datetime-local" value={form.growthMeasurement.measured_at} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, measured_at: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+            <input type="datetime-local" value={form.growthMeasurement.measured_at} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, measured_at: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
           </label>
           <label className="block">
             <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Height (cm)</span>
-            <input value={form.growthMeasurement.height_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, height_cm: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+            <input value={form.growthMeasurement.height_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, height_cm: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
           </label>
           <label className="block">
             <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Weight (kg)</span>
-            <input value={form.growthMeasurement.weight_kg} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, weight_kg: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+            <input value={form.growthMeasurement.weight_kg} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, weight_kg: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
           </label>
           <label className="block">
             <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Head Circumference (cm)</span>
-            <input value={form.growthMeasurement.head_circumference_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, head_circumference_cm: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+            <input value={form.growthMeasurement.head_circumference_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, head_circumference_cm: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
           </label>
         </div>
         <label className="mt-3 block">
           <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Visit Notes</span>
-          <textarea rows={3} value={form.growthMeasurement.visit_notes} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, visit_notes: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          <textarea rows={3} value={form.growthMeasurement.visit_notes} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, visit_notes: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
         </label>
         <div className="mt-4 flex items-center justify-between gap-3">
           <p className="text-xs text-slate-500">
             {form.growthMeasurement.savedRecord ? `Latest BMI ${form.growthMeasurement.savedRecord.bmi.toFixed(2)}` : "Save to add the growth record to the patient timeline."}
           </p>
-          <button type="button" onClick={() => void saveGrowthMeasurement()} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
+          <button type="button" onClick={() => void saveGrowthMeasurement()} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
             Save Growth
           </button>
         </div>
@@ -2034,7 +2034,7 @@ export function ConsultationDrawer({
         onClose={() => setActivePediatricModule(null)}
       >
         <div className="grid gap-3">
-          <select value={form.wellChildVisit.visit_band} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, visit_band: event.target.value } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
+          <select value={form.wellChildVisit.visit_band} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, visit_band: event.target.value } }))} className="rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
             <option value="infant">Infant</option>
             <option value="toddler">Toddler</option>
             <option value="preschool">Preschool</option>
@@ -2051,7 +2051,7 @@ export function ConsultationDrawer({
           ].map(([field, label]) => (
             <label key={field} className="block">
               <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">{label}</span>
-              <textarea rows={2} value={form.wellChildVisit[field as keyof WellChildVisitPayload] as string} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, [field]: event.target.value } }))} className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+              <textarea rows={2} value={form.wellChildVisit[field as keyof WellChildVisitPayload] as string} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, [field]: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
             </label>
           ))}
         </div>
@@ -2064,21 +2064,21 @@ export function ConsultationDrawer({
         onClose={() => setActivePediatricModule(null)}
       >
         <div className="grid gap-3">
-          <select value={form.parentHandoutRequest.template_key} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, template_key: event.target.value, generated_title: "", generated_content: "" } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
+          <select value={form.parentHandoutRequest.template_key} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, template_key: event.target.value, generated_title: "", generated_content: "" } }))} className="rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
             <option value="fever_home_care">Fever home care</option>
             <option value="nutrition_guidance">Nutrition guidance</option>
             <option value="well_visit_summary">Well-visit summary</option>
             <option value="hydration_uri_home_care">Hydration / URI home care</option>
           </select>
-          <textarea rows={3} value={form.parentHandoutRequest.instructions} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, instructions: event.target.value, generated_title: "", generated_content: "" } }))} placeholder="Optional context for the handout" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          <textarea rows={3} value={form.parentHandoutRequest.instructions} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, instructions: event.target.value, generated_title: "", generated_content: "" } }))} placeholder="Optional context for the handout" className="w-full rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
           <div className="flex flex-wrap gap-3">
-            <button type="button" onClick={() => void handleGenerateParentHandout()} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
+            <button type="button" onClick={() => void handleGenerateParentHandout()} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
               {isGeneratingHandout ? "Generating..." : "Generate Handout"}
             </button>
-            <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("preview")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50 disabled:opacity-60">
+            <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("preview")} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50 disabled:opacity-60">
               {isGeneratingHandoutPdf ? "Preparing..." : "Preview PDF"}
             </button>
-            <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("download")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50 disabled:opacity-60">
+            <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("download")} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50 disabled:opacity-60">
               Download PDF
             </button>
           </div>
@@ -2100,19 +2100,19 @@ export function ConsultationDrawer({
         onClose={() => setActivePediatricModule(null)}
       >
         <div className="grid gap-3">
-          <select value={form.pediatricFollowUpPlan.preset_key} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, preset_key: event.target.value } }))} className="rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
+          <select value={form.pediatricFollowUpPlan.preset_key} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, preset_key: event.target.value } }))} className="rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
             <option value="routine_review">Routine review</option>
             <option value="growth_recheck">Growth recheck</option>
             <option value="symptom_follow_up">Symptom follow-up</option>
             <option value="counseling_review">Counseling review</option>
           </select>
-          <input value={form.pediatricFollowUpPlan.suggested_interval} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, suggested_interval: event.target.value } }))} placeholder="Suggested interval, e.g. 3 months" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
-          <input value={form.pediatricFollowUpPlan.notes} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, notes: event.target.value } }))} placeholder="Scheduling notes" className="w-full rounded-2xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          <input value={form.pediatricFollowUpPlan.suggested_interval} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, suggested_interval: event.target.value } }))} placeholder="Suggested interval, e.g. 3 months" className="w-full rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          <input value={form.pediatricFollowUpPlan.notes} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, notes: event.target.value } }))} placeholder="Scheduling notes" className="w-full rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-slate-500">
               Apply this preset to the real follow-up section below. Marking the consultation done will create the follow-up record.
             </p>
-            <button type="button" onClick={applyPediatricFollowUpPreset} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
+            <button type="button" onClick={applyPediatricFollowUpPreset} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
               Apply to Follow-up
             </button>
           </div>
@@ -2132,7 +2132,7 @@ export function ConsultationDrawer({
       />
       {isOptometryClinic && isEyeExamOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
-          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[32px] border border-sky-200 bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[20px] border border-[#bfd7e8] bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Structured Module</p>
@@ -2141,7 +2141,7 @@ export function ConsultationDrawer({
                   Capture refraction and vision entries for the right and left eye.
                 </p>
               </div>
-              <button type="button" onClick={() => setIsEyeExamOpen(false)} className="rounded-full border border-sky-200 p-2 text-slate-600 transition hover:bg-sky-50">
+              <button type="button" onClick={() => setIsEyeExamOpen(false)} className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-[#f3f8fb]">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -2153,16 +2153,16 @@ export function ConsultationDrawer({
               <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Vision</div>
               {form.eyeExam.map((entry) => (
                 <Fragment key={entry.eye}>
-                  <div className="rounded-2xl border border-sky-100 bg-sky-50/40 px-4 py-3 text-sm font-medium capitalize text-slate-700">{entry.eye}</div>
-                  <input value={entry.sphere} onChange={(event) => updateEyeExam(entry.eye, { sphere: event.target.value })} placeholder="-1.25" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-                  <input value={entry.cylinder} onChange={(event) => updateEyeExam(entry.eye, { cylinder: event.target.value })} placeholder="-0.50" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-                  <input value={entry.axis} onChange={(event) => updateEyeExam(entry.eye, { axis: event.target.value })} placeholder="90" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
-                  <input value={entry.vision} onChange={(event) => updateEyeExam(entry.eye, { vision: event.target.value })} placeholder="6/6" className="rounded-2xl border border-sky-100 bg-sky-50/50 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400" />
+                  <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm font-medium capitalize text-slate-700">{entry.eye}</div>
+                  <input value={entry.sphere} onChange={(event) => updateEyeExam(entry.eye, { sphere: event.target.value })} placeholder="-1.25" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
+                  <input value={entry.cylinder} onChange={(event) => updateEyeExam(entry.eye, { cylinder: event.target.value })} placeholder="-0.50" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
+                  <input value={entry.axis} onChange={(event) => updateEyeExam(entry.eye, { axis: event.target.value })} placeholder="90" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
+                  <input value={entry.vision} onChange={(event) => updateEyeExam(entry.eye, { vision: event.target.value })} placeholder="6/6" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
                 </Fragment>
               ))}
             </div>
             <div className="mt-6 flex justify-end">
-              <button type="button" onClick={() => setIsEyeExamOpen(false)} className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+              <button type="button" onClick={() => setIsEyeExamOpen(false)} className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
                 Save Eye Exam
               </button>
             </div>

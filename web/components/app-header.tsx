@@ -8,7 +8,7 @@ import { AuthUser } from "@/lib/types";
 interface AppHeaderProps {
   clinicName: string;
   currentUser: AuthUser | null;
-  active: "queue" | "patients" | "history" | "earnings" | "billing" | "users" | "audit" | "inventory" | "account" | "case-study";
+  active?: "queue" | "appointments" | "patients" | "history" | "earnings" | "billing" | "users" | "audit" | "inventory" | "account" | "case-study";
   onLogout: () => void;
   onOpenSettings?: () => void;
 }
@@ -22,14 +22,11 @@ export function AppHeader({
 }: AppHeaderProps) {
   const navItems = [
     { href: "/", label: "Queue", key: "queue" },
+    { href: "/appointments", label: "Appointments", key: "appointments" },
     { href: "/patients", label: "Patients", key: "patients" },
-    { href: "/history", label: "History", key: "history" },
     { href: "/billing", label: "Billing", key: "billing" },
     { href: "/inventory", label: "Inventory", key: "inventory" },
-    { href: "/users", label: "Users", key: "users" },
-    { href: "/account", label: "Account", key: "account" },
-    { href: "/case-study", label: "Case Study", key: "case-study" },
-    { href: "/audit", label: "Audit", key: "audit" },
+    { href: "/history", label: "History", key: "history" },
     { href: "/earnings", label: "Earnings", key: "earnings" },
   ] as const;
 

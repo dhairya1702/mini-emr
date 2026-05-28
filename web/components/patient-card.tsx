@@ -62,7 +62,7 @@ export function PatientCard({
       {...dragHandleProps?.attributes}
       {...dragHandleProps?.listeners}
       role="button"
-      aria-label={`Open chart for ${patient.name}`}
+      aria-label={`Drag ${patient.name}; open chart`}
       tabIndex={0}
       onClick={() => onOpen(patient)}
       onKeyDown={(event) => {

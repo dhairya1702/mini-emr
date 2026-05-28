@@ -136,7 +136,7 @@ function SetupChecklistCard({
   const optionalStep = checklist.items.find((step) => step.key === "document_template") ?? null;
 
   return (
-    <section className="mb-4 rounded-[32px] border border-sky-200 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
+    <section className="mb-4 rounded-[20px] border border-[#bfd7e8] bg-white/95 p-5 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-3xl">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Clinic Setup</p>
@@ -145,7 +145,7 @@ function SetupChecklistCard({
             Follow the operational order below. Each step unlocks the workflows that depend on it, so the clinic does not run into hidden setup failures later.
           </p>
         </div>
-        <div className="rounded-[24px] border border-sky-200 bg-sky-50/80 px-4 py-3 text-sm font-medium text-sky-800">
+        <div className="rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/80 px-4 py-3 text-sm font-medium text-[#235f8e]">
           {checklist.requiredCompleted} of {checklist.requiredTotal} required steps complete
         </div>
       </div>
@@ -157,16 +157,16 @@ function SetupChecklistCard({
           return (
             <div
               key={step.key}
-              className={`flex flex-col gap-4 rounded-[24px] border p-4 md:flex-row md:items-center md:justify-between ${
+              className={`flex flex-col gap-4 rounded-[16px] border p-4 md:flex-row md:items-center md:justify-between ${
                 isComplete
                   ? "border-emerald-200 bg-emerald-50/70"
                   : highlightedStepKey === step.key
-                    ? "border-sky-400 bg-sky-50 ring-2 ring-sky-200"
-                    : "border-sky-200 bg-white"
+                    ? "border-[#6daed8] bg-[#f3f8fb] ring-2 ring-[#d8ebf7]"
+                    : "border-[#bfd7e8] bg-white"
               }`}
             >
               <div className="flex items-start gap-3">
-                <div className={`rounded-2xl p-3 ${isComplete ? "bg-emerald-100 text-emerald-700" : "bg-sky-50 text-sky-700"}`}>
+                <div className={`rounded-xl p-3 ${isComplete ? "bg-emerald-100 text-emerald-700" : "bg-[#f3f8fb] text-[#2a6fa8]"}`}>
                   {isComplete ? <CheckCircle2 className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
                 </div>
                 <div>
@@ -177,10 +177,10 @@ function SetupChecklistCard({
               <button
                 type="button"
                 onClick={() => onOpenStep(step)}
-                className={`inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium transition ${
+                className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
                   isComplete
                     ? "border border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-50"
-                    : "bg-sky-500 text-white hover:bg-sky-600"
+                    : "bg-[#2f8fd3] text-white hover:bg-[#287fc0]"
                 }`}
               >
                 {isComplete ? "Review" : "Complete step"}
@@ -192,15 +192,15 @@ function SetupChecklistCard({
 
       {optionalStep ? (
         <div
-          className={`mt-5 rounded-[24px] border p-4 ${
+          className={`mt-5 rounded-[16px] border p-4 ${
             highlightedStepKey === optionalStep.key
-              ? "border-sky-400 bg-sky-50 ring-2 ring-sky-200"
+              ? "border-[#6daed8] bg-[#f3f8fb] ring-2 ring-[#d8ebf7]"
               : "border-slate-200 bg-slate-50/70"
           }`}
         >
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-white p-3 text-slate-600">
+              <div className="rounded-xl bg-white p-3 text-slate-600">
                 {optionalStep.status === "complete" ? <CheckCircle2 className="h-5 w-5 text-emerald-700" /> : <CircleDashed className="h-5 w-5" />}
               </div>
               <div>
@@ -211,7 +211,7 @@ function SetupChecklistCard({
             <button
               type="button"
               onClick={() => onOpenStep(optionalStep)}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-slate-100"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-slate-100"
             >
               {optionalStep.status === "complete" ? "Review template" : "Upload template"}
             </button>
@@ -916,7 +916,7 @@ export default function HomePage() {
   if (isRedirectingToLogin) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Redirecting to login...
         </div>
       </main>
@@ -926,7 +926,7 @@ export default function HomePage() {
   if (!isAuthReady) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Loading ClinicOS...
         </div>
       </main>
@@ -945,13 +945,13 @@ export default function HomePage() {
         />
 
         {error ? (
-          <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}
           </div>
         ) : null}
 
         {isTrainingMode ? (
-          <div className="mb-4 flex flex-col gap-3 rounded-[28px] border border-amber-200 bg-amber-50/90 px-5 py-4 text-sm text-amber-900 shadow-[0_16px_45px_rgba(251,191,36,0.12)] sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-4 flex flex-col gap-3 rounded-[18px] border border-amber-200 bg-amber-50/90 px-5 py-4 text-sm text-amber-900 shadow-[0_16px_45px_rgba(251,191,36,0.12)] sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="font-semibold">Training Mode</p>
             </div>
@@ -959,14 +959,14 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={handleResetTrainingMode}
-                className="rounded-full border border-amber-300 bg-white px-4 py-2 font-medium text-amber-900 transition hover:bg-amber-100"
+                className="rounded-xl border border-amber-300 bg-white px-4 py-2 font-medium text-amber-900 transition hover:bg-amber-100"
               >
                 Reset
               </button>
               <button
                 type="button"
                 onClick={exitTrainingMode}
-                className="rounded-full bg-amber-500 px-4 py-2 font-medium text-white transition hover:bg-amber-600"
+                className="rounded-xl bg-amber-500 px-4 py-2 font-medium text-white transition hover:bg-amber-600"
               >
                 Exit
               </button>

@@ -293,7 +293,7 @@ export default function CaseStudyPage() {
   if (isRedirectingToLogin) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Redirecting to login...
         </div>
       </main>
@@ -303,7 +303,7 @@ export default function CaseStudyPage() {
   if (!isAuthReady) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Loading ClinicOS...
         </div>
       </main>
@@ -312,8 +312,8 @@ export default function CaseStudyPage() {
 
   if (currentUser?.role !== "admin") {
     return (
-      <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-[1600px]">
+      <main className="clinic-page">
+        <div className="clinic-container">
           <AppHeader
             clinicName={clinicName}
             currentUser={currentUser}
@@ -321,7 +321,7 @@ export default function CaseStudyPage() {
             onOpenSettings={() => setIsSettingsOpen(true)}
             onLogout={handleLogout}
           />
-          <section className="rounded-[32px] border border-amber-200 bg-amber-50/80 p-6 text-slate-700 shadow-[0_20px_60px_rgba(250,204,21,0.12)]">
+          <section className="rounded-[20px] border border-amber-200 bg-amber-50/80 p-6 text-slate-700 shadow-[0_20px_60px_rgba(250,204,21,0.12)]">
             Case Study is admin-only because it generates and stores AI-authored clinical documents.
           </section>
         </div>
@@ -330,8 +330,8 @@ export default function CaseStudyPage() {
   }
 
   return (
-    <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1600px]">
+    <main className="clinic-page">
+      <div className="clinic-container">
         <AppHeader
           clinicName={clinicName}
           currentUser={currentUser}
@@ -341,30 +341,30 @@ export default function CaseStudyPage() {
         />
 
         {error ? (
-          <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}
           </div>
         ) : null}
         {pageError ? (
-          <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {pageError}
           </div>
         ) : null}
         {pageStatus ? (
-          <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
             {pageStatus}
           </div>
         ) : null}
 
-        <section className="overflow-hidden rounded-[40px] border border-sky-100 bg-white/95 shadow-[0_24px_60px_rgba(125,211,252,0.16)]">
-          <div className="border-b border-sky-100 bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] px-5 py-7 sm:px-8 lg:px-10">
-            <div className="mx-auto max-w-[1600px]">
+        <section className="overflow-hidden rounded-[22px] border border-[#dbe7ef] bg-white/95 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
+          <div className="border-b border-[#dbe7ef] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] px-5 py-7 sm:px-8 lg:px-10">
+            <div className="clinic-container">
               <div className="sm:p-1">
                 <div className="grid gap-4">
                   <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
                     <div className="relative min-w-0">
-                      <div className="flex items-center gap-3 rounded-full border border-sky-200 bg-sky-50/60 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-                        <Search className="h-4 w-4 text-sky-700" />
+                      <div className="flex items-center gap-3 rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/60 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+                        <Search className="h-4 w-4 text-[#2a6fa8]" />
                         <input
                           value={patientSearch}
                           onChange={(event) => setPatientSearch(event.target.value)}
@@ -377,7 +377,7 @@ export default function CaseStudyPage() {
                         />
                       </div>
                     {patientSearch.trim() && isPatientSearchFocused ? (
-                      <div className="absolute left-0 right-0 top-[calc(100%+10px)] z-20 overflow-hidden rounded-[24px] border border-sky-100 bg-white shadow-[0_20px_44px_rgba(125,211,252,0.18)]">
+                      <div className="absolute left-0 right-0 top-[calc(100%+10px)] z-20 overflow-hidden rounded-[16px] border border-[#dbe7ef] bg-white shadow-[0_20px_44px_rgba(64,131,181,0.10)]">
                         {filteredPatients.length ? (
                           filteredPatients.map((patient) => {
                             const isActive = patient.id === selectedPatientId;
@@ -387,7 +387,7 @@ export default function CaseStudyPage() {
                                 type="button"
                                 onClick={() => void handleSelectPatient(patient)}
                                 className={`flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition ${
-                                  isActive ? "bg-sky-50" : "hover:bg-sky-50/60"
+                                  isActive ? "bg-[#f3f8fb]" : "hover:bg-[#f3f8fb]/60"
                                 }`}
                               >
                                 <div className="min-w-0">
@@ -408,12 +408,12 @@ export default function CaseStudyPage() {
                       </div>
                     ) : null}
                     </div>
-                    <label className="flex items-center gap-3 rounded-[24px] border border-sky-200 bg-sky-50/40 px-4 py-3 text-sm text-slate-700">
+                    <label className="flex items-center gap-3 rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-700">
                       <input
                         type="checkbox"
                         checked={anonymized}
                         onChange={(event: ChangeEvent<HTMLInputElement>) => setAnonymized(event.target.checked)}
-                        className="h-4 w-4 rounded border-sky-300 text-sky-600"
+                        className="h-4 w-4 rounded border-[#9fc7e1] text-[#2f8fd3]"
                       />
                       <span>Anonymize patient details</span>
                     </label>
@@ -428,7 +428,7 @@ export default function CaseStudyPage() {
                         value={title}
                         onChange={(event) => setTitle(event.target.value)}
                         placeholder="Optional title"
-                        className="w-full rounded-[24px] border border-sky-200 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-300"
+                        className="w-full rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#9fc7e1]"
                       />
                     </label>
 
@@ -439,7 +439,7 @@ export default function CaseStudyPage() {
                       <select
                         value={templateKey}
                         onChange={(event) => setTemplateKey(event.target.value as CaseStudyTemplateKey)}
-                        className="w-full rounded-[24px] border border-sky-200 bg-sky-50/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-300"
+                        className="w-full rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#9fc7e1]"
                       >
                         {CASE_STUDY_TEMPLATES.map((template) => (
                           <option key={template.key} value={template.key}>
@@ -460,7 +460,7 @@ export default function CaseStudyPage() {
                         onChange={(event) => setAuthorInstructions(event.target.value)}
                         rows={3}
                         placeholder="Describe the angle: progression, diagnostic reasoning, management decisions, conference teaching points."
-                        className="w-full rounded-[24px] border border-sky-200 bg-sky-50/40 px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-sky-300"
+                        className="w-full rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-[#9fc7e1]"
                       />
                     </label>
 
@@ -468,7 +468,7 @@ export default function CaseStudyPage() {
                       type="button"
                       onClick={() => void handleGenerate()}
                       disabled={isGenerating || !selectedPatientId}
-                      className="inline-flex min-h-[50px] items-center justify-center gap-2 rounded-full bg-sky-500 px-4 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                      className="inline-flex min-h-[50px] items-center justify-center gap-2 rounded-xl bg-[#2f8fd3] px-4 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
                     >
                       <Sparkles className="h-4 w-4" />
                       {isGenerating ? "Generating..." : activeCaseStudy ? "Regenerate" : "Generate"}
@@ -478,19 +478,19 @@ export default function CaseStudyPage() {
 
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   {selectedPatient ? (
-                    <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-700">
+                    <div className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-4 py-2 text-sm text-[#2a6fa8]">
                       Selected: <span className="font-semibold text-slate-900">{selectedPatient.name}</span>
                     </div>
                   ) : null}
                   {source ? (
                     <>
-                      <div className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm text-slate-600">
+                      <div className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm text-slate-600">
                         {source.visits.length} visits
                       </div>
-                      <div className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm text-slate-600">
+                      <div className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm text-slate-600">
                         {source.notes.length} notes
                       </div>
-                      <div className="rounded-full border border-sky-200 bg-white px-4 py-2 text-sm text-slate-600">
+                      <div className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm text-slate-600">
                         {source.timeline.length} timeline events
                       </div>
                     </>
@@ -499,7 +499,7 @@ export default function CaseStudyPage() {
                     type="button"
                     onClick={() => void loadSourceForPatient(selectedPatientId)}
                     disabled={!selectedPatientId || isSourceLoading}
-                    className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                   >
                     <RefreshCw className={`h-4 w-4 ${isSourceLoading ? "animate-spin" : ""}`} />
                     Refresh history
@@ -510,7 +510,7 @@ export default function CaseStudyPage() {
                       resetDraft(selectedPatientId || patients[0]?.id);
                       setSource(selectedPatientId ? source : null);
                     }}
-                    className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50"
+                    className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
                   >
                     <RefreshCw className="h-4 w-4" />
                     New draft
@@ -534,7 +534,7 @@ export default function CaseStudyPage() {
                   <button
                     type="button"
                     onClick={() => void handleCopy()}
-                    className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50"
+                    className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
                   >
                     <Copy className="h-4 w-4" />
                     Copy
@@ -543,7 +543,7 @@ export default function CaseStudyPage() {
                     type="button"
                     onClick={() => void handleExportPdf()}
                     disabled={isExporting}
-                    className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                   >
                     <Download className="h-4 w-4" />
                     {isExporting ? "Preparing..." : "Export PDF"}
@@ -556,7 +556,7 @@ export default function CaseStudyPage() {
                 onChange={(event) => setContent(event.target.value)}
                 rows={32}
                 placeholder="Generated case study content will appear here. You can edit it before saving or exporting."
-                className="mt-6 min-h-[860px] w-full rounded-[28px] border border-sky-200 bg-sky-50/30 px-6 py-6 text-[14px] leading-7 text-slate-800 outline-none transition focus:border-sky-300"
+                className="mt-6 min-h-[860px] w-full rounded-[18px] border border-[#bfd7e8] bg-[#f3f8fb]/30 px-6 py-6 text-[14px] leading-7 text-slate-800 outline-none transition focus:border-[#9fc7e1]"
               />
 
               <div className="mt-5 flex flex-wrap gap-3">
@@ -564,7 +564,7 @@ export default function CaseStudyPage() {
                   type="button"
                   onClick={() => void handleSave("draft")}
                   disabled={isSaving}
-                  className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-sky-50 disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                 >
                   <FileText className="h-4 w-4" />
                   {isSaving ? "Saving..." : "Save Draft"}
@@ -573,7 +573,7 @@ export default function CaseStudyPage() {
                   type="button"
                   onClick={() => void handleSave("final")}
                   disabled={isSaving}
-                  className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-5 py-3 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#2f8fd3] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
                 >
                   <Sparkles className="h-4 w-4" />
                   {isSaving ? "Saving..." : "Save Final"}

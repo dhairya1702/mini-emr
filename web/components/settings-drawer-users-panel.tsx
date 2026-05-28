@@ -105,7 +105,7 @@ export function SettingsDrawerUsersPanel({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[28px] border border-sky-200 bg-white p-5">
+      <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h3 className="text-base font-semibold text-slate-900">Clinic Users</h3>
@@ -116,12 +116,12 @@ export function SettingsDrawerUsersPanel({
             {userSuccess ? <p className="mt-3 text-sm font-medium text-emerald-700">{userSuccess}</p> : null}
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">{users.length} total</span>
+            <span className="rounded-xl bg-[#f3f8fb] px-3 py-1 text-xs font-medium text-[#2a6fa8]">{users.length} total</span>
             <button
               type="button"
               onClick={onToggleAddUser}
               disabled={currentUser?.role !== "admin"}
-              className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-4 py-2 text-sm font-medium text-[#2a6fa8] transition hover:bg-[#dbeaf4] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <UserPlus className="h-4 w-4" />
               Add User
@@ -130,13 +130,13 @@ export function SettingsDrawerUsersPanel({
         </div>
 
         {isAddUserOpen && currentUser?.role === "admin" ? (
-          <form className="mb-5 grid gap-4 rounded-[22px] border border-sky-100 bg-sky-50/30 p-4" onSubmit={onSubmit}>
+          <form className="mb-5 grid gap-4 rounded-[22px] border border-[#dbe7ef] bg-[#f3f8fb]/30 p-4" onSubmit={onSubmit}>
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Email or phone number</span>
               <input
                 value={userForm.identifier}
                 onChange={(event) => onUserFormChange({ identifier: event.target.value })}
-                className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                className="w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
             </label>
             <PasswordInput
@@ -144,14 +144,14 @@ export function SettingsDrawerUsersPanel({
               value={userForm.password}
               onChange={(event) => onUserFormChange({ password: event.target.value })}
               placeholder="Minimum 4 characters"
-              inputClassName="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 pr-12 text-slate-800 outline-none transition focus:border-sky-400"
+              inputClassName="w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 pr-12 text-slate-800 outline-none transition focus:border-[#6daed8]"
             />
             {userError ? <p className="text-sm font-medium text-rose-600">{userError}</p> : null}
             <div className="flex justify-end">
               <button
                 type="submit"
                 disabled={isAddingUser}
-                className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
               >
                 {isAddingUser ? "Adding..." : "Create Staff User"}
               </button>
@@ -160,9 +160,9 @@ export function SettingsDrawerUsersPanel({
         ) : null}
 
         {users.length ? (
-          <div className="overflow-hidden rounded-[22px] border border-sky-200">
+          <div className="overflow-hidden rounded-[22px] border border-[#bfd7e8]">
             <table className="w-full border-collapse text-sm">
-              <thead className="bg-sky-50/80 text-slate-600">
+              <thead className="bg-[#f3f8fb]/80 text-slate-600">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold">Name</th>
                   <th className="px-4 py-3 text-left font-semibold">Login ID</th>
@@ -174,7 +174,7 @@ export function SettingsDrawerUsersPanel({
                 {users.map((user) => (
                   <tr
                     key={user.id}
-                    className="border-t border-sky-100 first:border-t-0 transition hover:bg-sky-50/50"
+                    className="border-t border-[#dbe7ef] first:border-t-0 transition hover:bg-[#f3f8fb]/50"
                     role={currentUser?.role === "admin" ? "button" : undefined}
                     tabIndex={currentUser?.role === "admin" ? 0 : -1}
                     onClick={() => {
@@ -195,7 +195,7 @@ export function SettingsDrawerUsersPanel({
                     <td className="px-4 py-3 text-slate-800">{user.name}</td>
                     <td className="px-4 py-3 text-slate-600">{user.identifier}</td>
                     <td className="px-4 py-3">
-                      <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
+                      <span className="rounded-xl bg-[#f3f8fb] px-3 py-1 text-xs font-medium text-[#2a6fa8]">
                         {user.role === "admin" ? "Admin" : "Staff"}
                       </span>
                     </td>
@@ -216,7 +216,7 @@ export function SettingsDrawerUsersPanel({
             onClick={() => setSelectedUser(null)}
             className="absolute inset-0"
           />
-          <div className="relative z-10 w-full max-w-md rounded-[28px] border border-sky-200 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
+          <div className="relative z-10 w-full max-w-md rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h4 className="text-lg font-semibold text-slate-900">{selectedUser.name}</h4>
@@ -225,7 +225,7 @@ export function SettingsDrawerUsersPanel({
               <button
                 type="button"
                 onClick={() => setSelectedUser(null)}
-                className="rounded-full border border-sky-200 p-2 text-slate-500 transition hover:text-slate-900"
+                className="rounded-xl border border-[#bfd7e8] p-2 text-slate-500 transition hover:text-slate-900"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -236,7 +236,7 @@ export function SettingsDrawerUsersPanel({
               <select
                 value={selectedRole}
                 onChange={(event) => setSelectedRole(event.target.value as UserRole)}
-                className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
               >
                 <option value="staff">Staff</option>
                 <option value="admin">Admin</option>
@@ -251,14 +251,14 @@ export function SettingsDrawerUsersPanel({
                 type="button"
                 onClick={() => void handleDeleteSelectedUser()}
                 disabled={isDeletingUser || currentUser?.id === selectedUser.id}
-                className="rounded-full border border-rose-200 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                className="rounded-xl border border-rose-200 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
               >
                 {isDeletingUser ? "Removing..." : currentUser?.id === selectedUser.id ? "Current User" : "Remove User"}
               </button>
               <button
                 type="button"
                 onClick={() => setSelectedUser(null)}
-                className="rounded-full border border-sky-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-sky-50"
+                className="rounded-xl border border-[#bfd7e8] px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
               >
                 Cancel
               </button>
@@ -266,7 +266,7 @@ export function SettingsDrawerUsersPanel({
                 type="button"
                 onClick={() => void handleSaveRole()}
                 disabled={isUpdatingRole || selectedRole === selectedUser.role}
-                className="rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                className="rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
               >
                 {isUpdatingRole ? "Saving..." : "Save Role"}
               </button>

@@ -201,7 +201,7 @@ export default function HistoryPage() {
   if (isRedirectingToLogin) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Redirecting to login...
         </div>
       </main>
@@ -211,7 +211,7 @@ export default function HistoryPage() {
   if (!isAuthReady) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[30px] border border-sky-100 bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_20px_60px_rgba(125,211,252,0.18)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Loading ClinicOS...
         </div>
       </main>
@@ -219,8 +219,8 @@ export default function HistoryPage() {
   }
 
   return (
-    <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1600px]">
+    <main className="clinic-page">
+      <div className="clinic-container">
         <AppHeader
           clinicName={clinicName}
           currentUser={currentUser}
@@ -230,12 +230,12 @@ export default function HistoryPage() {
         />
 
         {error ? (
-          <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}
           </div>
         ) : null}
 
-        <section className="rounded-[32px] border border-sky-100 bg-white/95 p-5 shadow-[0_20px_60px_rgba(125,211,252,0.16)]">
+        <section className="clinic-panel">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-col gap-3 sm:flex-row">
               <div className="relative">
@@ -244,13 +244,13 @@ export default function HistoryPage() {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search name, phone, or reason"
-                  className="w-full rounded-full border border-sky-200 bg-sky-50/50 py-3 pl-11 pr-4 text-sm text-slate-800 outline-none transition focus:border-sky-400 sm:w-80"
+                  className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/50 py-3 pl-11 pr-4 text-sm text-slate-800 outline-none transition focus:border-[#6daed8] sm:w-80"
                 />
               </div>
               <select
                 value={filter}
                 onChange={(event) => setFilter(event.target.value as HistoryFilter)}
-                className="rounded-full border border-sky-200 bg-sky-50/50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400"
+                className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
               >
                 <option value="all">All visits</option>
                 <option value="waiting">Waiting</option>
@@ -266,13 +266,14 @@ export default function HistoryPage() {
                   type="button"
                   onClick={() => setIsExportMenuOpen((current) => !current)}
                   disabled={isExporting}
-                  className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50 disabled:opacity-60"
+                  aria-label={isExporting ? "Preparing visit export" : "Export visits"}
+                  title={isExporting ? "Preparing export" : "Export visits"}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                 >
                   <Download className="h-4 w-4" />
-                  {isExporting ? "Preparing..." : "Export"}
                 </button>
                 {isExportMenuOpen ? (
-                  <div className="absolute right-0 top-full z-20 mt-2 w-48 rounded-2xl border border-sky-200 bg-white p-2 shadow-[0_20px_50px_rgba(15,23,42,0.12)]">
+                  <div className="absolute right-0 top-full z-20 mt-2 w-48 rounded-xl border border-[#bfd7e8] bg-white p-2 shadow-[0_20px_50px_rgba(15,23,42,0.12)]">
                     {[
                       { value: "today", label: "Today" },
                       { value: "7d", label: "Last 7 days" },
@@ -284,7 +285,7 @@ export default function HistoryPage() {
                         key={option.value}
                         type="button"
                         onClick={() => void handleExport(option.value as HistoryExportRange)}
-                        className="flex w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-sky-50"
+                        className="flex w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-[#f3f8fb]"
                       >
                         {option.label}
                       </button>
@@ -292,45 +293,50 @@ export default function HistoryPage() {
                   </div>
                 ) : null}
                 </div>
-                <button type="button" onClick={() => window.location.reload()} className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-sky-50">
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  aria-label="Retry loading history"
+                  title="Retry loading history"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-slate-800 transition hover:bg-[#f3f8fb]"
+                >
                   <RefreshCw className="h-4 w-4" />
-                  Retry
                 </button>
               </div>
             </div>
           </div>
 
           {exportError ? (
-            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
               {exportError}
             </div>
           ) : null}
           {exportStatus ? (
-            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
               {exportStatus}
             </div>
           ) : null}
 
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <div className="col-span-full overflow-hidden rounded-[28px] border border-sky-200 bg-white">
+            <div className="col-span-full overflow-hidden rounded-[18px] border border-[#bfd7e8] bg-white">
               {visibleVisits.length ? (
                 <div className="max-h-[65vh] overflow-auto">
                   <table className="min-w-full border-separate border-spacing-0">
-                    <thead className="sticky top-0 z-10 bg-sky-50/95 backdrop-blur">
+                    <thead className="sticky top-0 z-10 bg-[#f3f8fb]/95 backdrop-blur">
                       <tr className="text-left">
-                        <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                           Patient
                         </th>
-                        <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                           Phone
                         </th>
-                        <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                           Reason
                         </th>
-                        <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                           Status
                         </th>
-                        <th className="border-b border-sky-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                           Visit Time
                         </th>
                       </tr>
@@ -358,26 +364,21 @@ export default function HistoryPage() {
                           };
                           setSelectedPatient(selected);
                         }}
-                          className="cursor-pointer transition hover:bg-sky-50/70"
+                          className="cursor-pointer transition hover:bg-[#f3f8fb]/70"
                         >
-                          <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-800">
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-800">
                             <div className="font-semibold text-slate-900">{visit.name}</div>
-                            <div className="mt-1 text-xs text-slate-500">
-                              ID {(visit.patient_id || "unknown").slice(0, 8).toUpperCase()}
-                            </div>
                           </td>
-                          <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-600">
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-600">
                             {visit.phone}
                           </td>
-                          <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-600">
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-600">
                             <div className="max-w-sm truncate">{visit.reason}</div>
                           </td>
-                          <td className="border-b border-sky-100 px-5 py-4 text-sm">
-                            <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-slate-600">
-                              {formatHistoryStatus(visit)}
-                            </span>
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-600">
+                            {formatHistoryStatus(visit)}
                           </td>
-                          <td className="border-b border-sky-100 px-5 py-4 text-sm text-slate-500">
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-500">
                             <div className="inline-flex items-center gap-2">
                               <Clock3 className="h-3.5 w-3.5" />
                               {new Date(visit.created_at).toLocaleString([], {

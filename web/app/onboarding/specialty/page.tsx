@@ -84,8 +84,8 @@ export default function SpecialtyOnboardingPage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#e0f2fe_0%,#f8fafc_42%,#f8fafc_100%)] px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-3xl items-center">
-        <section className="w-full rounded-[36px] border border-sky-100 bg-white/95 p-8 shadow-[0_25px_80px_rgba(125,211,252,0.18)] sm:p-10">
-          <div className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-3 py-1 text-xs tracking-[0.22em] text-sky-700">
+        <section className="w-full rounded-[22px] border border-[#dbe7ef] bg-white/95 p-8 shadow-[0_14px_38px_rgba(64,131,181,0.09)] sm:p-10">
+          <div className="inline-flex items-center gap-2 rounded-xl bg-[#f3f8fb] px-3 py-1 text-xs tracking-[0.22em] text-[#2a6fa8]">
             <Stethoscope className="h-3.5 w-3.5" />
             Clinic Setup
           </div>
@@ -103,10 +103,10 @@ export default function SpecialtyOnboardingPage() {
                 return (
                   <label
                     key={option.value}
-                    className={`block cursor-pointer rounded-[28px] border px-5 py-5 transition ${
+                    className={`block cursor-pointer rounded-[18px] border px-5 py-5 transition ${
                       isSelected
-                        ? "border-sky-400 bg-sky-50 shadow-[0_18px_50px_rgba(14,165,233,0.12)]"
-                        : "border-slate-200 bg-white hover:border-sky-200 hover:bg-sky-50/40"
+                        ? "border-[#6daed8] bg-[#f3f8fb] shadow-[0_10px_28px_rgba(64,131,181,0.08)]"
+                        : "border-slate-200 bg-white hover:border-[#bfd7e8] hover:bg-[#f3f8fb]/40"
                     }`}
                   >
                     <input
@@ -122,7 +122,7 @@ export default function SpecialtyOnboardingPage() {
                         <p className="text-lg font-semibold text-slate-900">{option.label}</p>
                         <p className="mt-2 text-sm leading-6 text-slate-600">{option.description}</p>
                       </div>
-                      <div className={`mt-1 h-5 w-5 rounded-full border-2 ${isSelected ? "border-sky-500 bg-sky-500" : "border-slate-300 bg-white"}`} />
+                      <div className={`mt-1 h-5 w-5 rounded-full border-2 ${isSelected ? "border-[#2f8fd3] bg-[#2f8fd3]" : "border-slate-300 bg-white"}`} />
                     </div>
                   </label>
                 );
@@ -130,7 +130,7 @@ export default function SpecialtyOnboardingPage() {
             </div>
 
             {error ? (
-              <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                 {error}
               </p>
             ) : null}
@@ -138,7 +138,7 @@ export default function SpecialtyOnboardingPage() {
             <button
               type="submit"
               disabled={isSaving || !isAuthReady}
-              className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSaving ? "Saving..." : "Continue"}
             </button>

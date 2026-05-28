@@ -179,12 +179,9 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="relative overflow-hidden rounded-[36px] border border-sky-100 bg-white/95 p-8 shadow-[0_25px_80px_rgba(125,211,252,0.2)] sm:p-10">
-          <div className="absolute -left-16 top-10 h-40 w-40 rounded-full bg-sky-100 blur-3xl" />
-          <div className="absolute bottom-0 right-0 h-48 w-48 rounded-full bg-cyan-100 blur-3xl" />
-
-          <div className="relative">
-            <div className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-3 py-1 text-xs tracking-[0.22em] text-sky-700">
+        <section className="rounded-[22px] border border-[#dbe7ef] bg-white/95 p-8 shadow-[0_14px_38px_rgba(64,131,181,0.09)] sm:p-10">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-xl bg-[#f3f8fb] px-3 py-1 text-xs tracking-[0.22em] text-[#2a6fa8]">
               <Stethoscope className="h-3.5 w-3.5" />
               ClinicOS
             </div>
@@ -198,14 +195,14 @@ export default function LoginPage() {
             </p>
 
             <div className="mt-10 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-[28px] border border-sky-100 bg-sky-50/70 p-5">
+              <div className="rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/70 p-5">
                 <p className="text-sm font-semibold text-slate-900">Admin access</p>
                 <p className="mt-2 text-sm leading-7 text-slate-600">
                   Manage clinic settings, live operations, AI scribe notes, billing, revenue tracking,
                   inventory, and staff accounts.
                 </p>
               </div>
-              <div className="rounded-[28px] border border-sky-100 bg-white p-5">
+              <div className="rounded-[18px] border border-[#dbe7ef] bg-white p-5">
                 <p className="text-sm font-semibold text-slate-900">Staff access</p>
                 <p className="mt-2 text-sm leading-7 text-slate-600">
                   Join the clinic workspace with an admin-issued account and support patient intake,
@@ -217,7 +214,7 @@ export default function LoginPage() {
         </section>
 
         <section className="flex items-center">
-          <div className="w-full rounded-[36px] border border-sky-100 bg-white p-7 shadow-[0_25px_80px_rgba(148,163,184,0.14)] sm:p-8">
+          <div className="w-full rounded-[22px] border border-[#dbe7ef] bg-white p-7 shadow-[0_25px_80px_rgba(148,163,184,0.14)] sm:p-8">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-500">
@@ -231,7 +228,7 @@ export default function LoginPage() {
                   {mode === "login" ? "Sign in" : "Create account"}
                 </h2>
               </div>
-              <div className="rounded-full bg-sky-50 p-3 text-sky-700">
+              <div className="rounded-xl bg-[#f3f8fb] p-3 text-[#2a6fa8]">
                 <ShieldPlus className="h-5 w-5" />
               </div>
             </div>
@@ -247,7 +244,7 @@ export default function LoginPage() {
                       value={identifier}
                       onChange={(event) => setIdentifier(event.target.value)}
                       placeholder="doctor@clinic.com or +1 555 010 2020"
-                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                   </label>
 
@@ -260,7 +257,7 @@ export default function LoginPage() {
                 </>
               ) : registerStep === 1 ? (
                 <>
-                  <div className="rounded-[28px] border border-sky-100 bg-sky-50/60 px-4 py-3 text-sm text-slate-600">
+                  <div className="rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/60 px-4 py-3 text-sm text-slate-600">
                     Step 1 of 2. Start with clinic and admin details, then create the login credentials.
                   </div>
 
@@ -270,7 +267,7 @@ export default function LoginPage() {
                       value={adminName}
                       onChange={(event) => setAdminName(event.target.value)}
                       placeholder="Dr. Aditi Sharma"
-                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                   </label>
 
@@ -282,7 +279,7 @@ export default function LoginPage() {
                       value={clinicName}
                       onChange={(event) => setClinicName(event.target.value)}
                       placeholder="Bluebird Clinic"
-                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                   </label>
 
@@ -295,7 +292,7 @@ export default function LoginPage() {
                         value={clinicPhone}
                         onChange={(event) => setClinicPhone(event.target.value)}
                         placeholder="+1 555 010 2020"
-                        className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                        className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                   </div>
@@ -309,7 +306,7 @@ export default function LoginPage() {
                       value={clinicAddress}
                       onChange={(event) => setClinicAddress(event.target.value)}
                       placeholder="Street, city, state"
-                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                   </label>
 
@@ -321,13 +318,13 @@ export default function LoginPage() {
                       value={doctorName}
                       onChange={(event) => setDoctorName(event.target.value)}
                       placeholder="Leave blank to reuse admin name"
-                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                   </label>
                 </>
               ) : (
                 <>
-                  <div className="rounded-[28px] border border-sky-100 bg-sky-50/60 px-4 py-3 text-sm text-slate-600">
+                  <div className="rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/60 px-4 py-3 text-sm text-slate-600">
                     Step 2 of 2. Choose the login identifier and password for the admin account.
                   </div>
 
@@ -339,7 +336,7 @@ export default function LoginPage() {
                       value={identifier}
                       onChange={(event) => setIdentifier(event.target.value)}
                       placeholder="doctor@clinic.com or +1 555 010 2020"
-                      className="w-full rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3 text-slate-800 outline-none transition focus:border-sky-400"
+                      className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                     <p className="mt-2 text-sm text-slate-500">
                       This is your login credential. It can match the clinic phone or be a separate email.
@@ -363,7 +360,7 @@ export default function LoginPage() {
               )}
 
               {error ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   {error}
                 </div>
               ) : null}
@@ -375,7 +372,7 @@ export default function LoginPage() {
                     setRegisterStep(1);
                     setError("");
                   }}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-sky-200 bg-white px-5 py-3 text-sm font-medium text-sky-700 transition hover:border-sky-300 hover:bg-sky-50"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-5 py-3 text-sm font-medium text-[#2a6fa8] transition hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
                 >
                   <ArrowLeft className="h-4 w-4" />
                   Back to clinic details
@@ -385,7 +382,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-sky-500 px-5 py-3 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#2f8fd3] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
               >
                 {isSubmitting
                   ? mode === "login"
@@ -400,14 +397,14 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <div className="mt-6 rounded-[28px] border border-sky-100 bg-slate-50/70 px-5 py-4 text-sm text-slate-600">
+            <div className="mt-6 rounded-[18px] border border-[#dbe7ef] bg-slate-50/70 px-5 py-4 text-sm text-slate-600">
               {mode === "login"
                 ? "Need a new clinic owner account?"
                 : "Already have an account?"}{" "}
               <button
                 type="button"
                 onClick={() => handleModeChange(mode === "login" ? "register" : "login")}
-                className="font-semibold text-sky-700 transition hover:text-sky-800"
+                className="font-semibold text-[#2a6fa8] transition hover:text-[#235f8e]"
               >
                 {mode === "login" ? "Create account" : "Sign in instead"}
               </button>
