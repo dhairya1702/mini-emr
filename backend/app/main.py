@@ -15,6 +15,7 @@ from app.auth import SESSION_EXPIRES_AT_HEADER, SESSION_TOKEN_HEADER, issue_sess
 from app.db import get_repository
 from app.routes import (
     appointments_router,
+    attachments_router,
     audit_router,
     auth_router,
     billing_router,
@@ -23,6 +24,7 @@ from app.routes import (
     exports_router,
     followups_router,
     health_router,
+    mobile_router,
     notes_router,
     patients_router,
     public_router,
@@ -140,6 +142,7 @@ async def refresh_authenticated_session(request: Request, call_next):
 
 for router in (
     health_router,
+    mobile_router,
     settings_router,
     audit_router,
     auth_router,
@@ -147,6 +150,7 @@ for router in (
     catalog_router,
     exports_router,
     patients_router,
+    attachments_router,
     appointments_router,
     followups_router,
     public_router,

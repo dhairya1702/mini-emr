@@ -9,7 +9,7 @@ import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
 import { api } from "@/lib/api";
 import { loadRecentPatients, saveRecentPatient } from "@/lib/recent-patients";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { Patient } from "@/lib/types";
+import { Patient, PatientChartVisit, PatientVisitDetail } from "@/lib/types";
 
 function formatVisitDate(value: string) {
   return new Date(value).toLocaleString([], {
@@ -130,8 +130,12 @@ export default function PatientsPage() {
     rememberRecentPatient(saved);
   }
 
-  async function handleLoadPatientTimeline(patientId: string) {
-    return api.getPatientTimeline(patientId);
+  async function handleLoadPatientVisits(patientId: string): Promise<PatientChartVisit[]> {
+    return api.listPatientChartVisits(patientId);
+  }
+
+  async function handleLoadPatientVisitDetail(patientId: string, visitId: string): Promise<PatientVisitDetail> {
+    return api.getPatientVisitDetail(patientId, visitId);
   }
 
   async function handleExport() {
@@ -348,7 +352,8 @@ export default function PatientsPage() {
       <PatientDetailsDrawer
         patient={selectedPatient}
         clinicSpecialty={clinicSettings?.clinic_specialty ?? null}
-        onLoadTimeline={handleLoadPatientTimeline}
+        onLoadVisits={handleLoadPatientVisits}
+        onLoadVisitDetail={handleLoadPatientVisitDetail}
         onLoadMyopiaHistory={(patientId) => api.getPatientMyopiaHistory(patientId)}
         onLoadGrowthHistory={(patientId) => api.getPatientGrowthHistory(patientId)}
         onSave={handleUpdatePatient}

@@ -1,7 +1,14 @@
 from app.db import SupabaseRepository
 from app.schema_domains.billing import InvoiceOut
 from app.schema_domains.optometry import MyopiaDeltaOut, MyopiaHistoryOut, MyopiaMeasurementOut
-from app.schema_domains.patients import NoteOut, PatientTimelineEvent
+from app.schema_domains.patients import (
+    NoteOut,
+    PatientChartVisitOut,
+    PatientTimelineEvent,
+    PatientVisitAttachmentRowOut,
+    PatientVisitDetailOut,
+    PatientVisitNoteDetailOut,
+)
 from app.schema_domains.specialty import (
     PediatricGrowthDeltaOut,
     PediatricGrowthMeasurementOut,
@@ -217,4 +224,109 @@ async def build_patient_timeline_view(
         appointments=appointments,
         longitudinal_tracks=longitudinal_tracks,
         clinic_specialty=clinic_settings.get("clinic_specialty"),
+    )
+
+
+async def list_patient_chart_visits_view(
+    repo: SupabaseRepository,
+    org_id: str,
+    patient_id: str,
+) -> list[PatientChartVisitOut]:
+    await repo.get_patient(org_id, patient_id)
+    visits = await repo.list_patient_visits_for_patient(org_id, patient_id)
+    visits.sort(key=lambda row: row["created_at"], reverse=True)
+    return [
+        PatientChartVisitOut(
+            id=visit["id"],
+            patient_id=visit["patient_id"],
+            reason=str(visit.get("reason") or ""),
+            created_at=visit["created_at"],
+        )
+        for visit in visits
+    ]
+
+
+async def build_patient_visit_detail_view(
+    repo: SupabaseRepository,
+    org_id: str,
+    patient_id: str,
+    visit_id: str,
+) -> PatientVisitDetailOut:
+    visits = await repo.list_patient_visits_for_patient(org_id, patient_id)
+    selected_visit = next((visit for visit in visits if str(visit["id"]) == visit_id), None)
+    if not selected_visit:
+        raise ValueError("Visit not found for this patient.")
+
+    notes = await list_patient_notes_view(repo, org_id, patient_id)
+    patient_attachments = await repo.list_patient_attachments(org_id, patient_id)
+    timeline = await build_patient_timeline_view(repo, org_id, patient_id)
+    selected_visit_event = next(
+        (event for event in timeline if event.type == "visit_recorded" and str(event.entity_id or "") == visit_id),
+        None,
+    )
+    if selected_visit_event is None:
+        raise ValueError("Visit timeline could not be resolved.")
+
+    visit_day = selected_visit_event.timestamp.date()
+    visit_notes = sorted(
+        [note for note in notes if (note.finalized_at or note.created_at).date() == visit_day],
+        key=lambda note: note.finalized_at or note.created_at,
+        reverse=True,
+    )
+    primary_note = visit_notes[0] if visit_notes else None
+
+    attachment_rows: list[PatientVisitAttachmentRowOut] = []
+    for note in visit_notes:
+        assets = note.snapshot_asset_payload if note.snapshot_asset_payload else note.asset_payload
+        for asset in assets:
+            if asset.get("kind") != "attachment":
+                continue
+            attachment_rows.append(
+                PatientVisitAttachmentRowOut(
+                    id=f"note-{note.id}-{asset.get('id')}",
+                    label=str(asset.get("name") or "Attachment"),
+                    timestamp=note.finalized_at or note.created_at,
+                    source_type="note_attachment",
+                    content_type=str(asset.get("content_type") or ""),
+                    data_base64=str(asset.get("data_base64") or ""),
+                )
+            )
+
+    for attachment in patient_attachments:
+        if attachment["created_at"].date() != visit_day:
+            continue
+        attachment_rows.append(
+            PatientVisitAttachmentRowOut(
+                id=f"patient-{attachment['id']}",
+                label=str(attachment.get("file_name") or "Attachment"),
+                timestamp=attachment["created_at"],
+                source_type="patient_attachment",
+                content_type=str(attachment.get("content_type") or ""),
+                attachment_id=attachment["id"],
+            )
+        )
+
+    attachment_rows.sort(key=lambda row: row.timestamp, reverse=True)
+    related_timeline = [
+        event
+        for event in timeline
+        if event.id != selected_visit_event.id
+        and event.timestamp.date() == visit_day
+        and event.type != "consultation_note"
+    ]
+
+    return PatientVisitDetailOut(
+        visit_id=selected_visit["id"],
+        reason=str(selected_visit.get("reason") or ""),
+        timestamp=selected_visit["created_at"],
+        consultation_note=(
+            PatientVisitNoteDetailOut(
+                status=str(primary_note.status),
+                content=str(primary_note.snapshot_content or primary_note.content or "").strip(),
+            )
+            if primary_note
+            else None
+        ),
+        attachments=attachment_rows,
+        timeline=related_timeline,
     )

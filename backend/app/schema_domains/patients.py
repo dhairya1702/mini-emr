@@ -70,6 +70,37 @@ class PatientVisitOut(BaseModel):
     last_visit_at: datetime
 
 
+class PatientChartVisitOut(BaseModel):
+    id: UUID
+    patient_id: UUID
+    reason: str = ""
+    created_at: datetime
+
+
+class PatientVisitNoteDetailOut(BaseModel):
+    status: str
+    content: str
+
+
+class PatientVisitAttachmentRowOut(BaseModel):
+    id: str
+    label: str
+    timestamp: datetime
+    source_type: str
+    content_type: str = ""
+    attachment_id: UUID | None = None
+    data_base64: str | None = None
+
+
+class PatientVisitDetailOut(BaseModel):
+    visit_id: UUID
+    reason: str = ""
+    timestamp: datetime
+    consultation_note: PatientVisitNoteDetailOut | None = None
+    attachments: list[PatientVisitAttachmentRowOut] = Field(default_factory=list)
+    timeline: list["PatientTimelineEvent"] = Field(default_factory=list)
+
+
 class AppointmentCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     phone: str = Field(min_length=5, max_length=30)

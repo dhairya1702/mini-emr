@@ -44,7 +44,7 @@ import {
   writeTrainingPatients,
 } from "@/lib/training-mode";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { Patient, PatientStatus, PatientTimelineEvent } from "@/lib/types";
+import { Patient, PatientChartVisit, PatientStatus, PatientVisitDetail } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
 const liveQueueOrderStorageKey = "clinic_queue_order_v1";
@@ -905,12 +905,45 @@ export default function HomePage() {
     );
   }
 
-  async function handleLoadPatientTimeline(patientId: string): Promise<PatientTimelineEvent[]> {
+  async function handleLoadPatientVisits(patientId: string): Promise<PatientChartVisit[]> {
     if (isTrainingMode) {
       const patient = patients.find((entry) => entry.id === patientId);
-      return patient ? createTrainingTimeline(patient) : [];
+      return patient
+        ? createTrainingTimeline(patient)
+            .filter((event) => event.type === "visit_recorded")
+            .map((event) => ({
+              id: String(event.entity_id || ""),
+              patient_id: patient.id,
+              reason: String((event.details?.reason as string | undefined) || patient.reason || ""),
+              created_at: event.timestamp,
+            }))
+        : [];
     }
-    return api.getPatientTimeline(patientId);
+    return api.listPatientChartVisits(patientId);
+  }
+
+  async function handleLoadPatientVisitDetail(patientId: string, visitId: string): Promise<PatientVisitDetail> {
+    if (isTrainingMode) {
+      const patient = patients.find((entry) => entry.id === patientId);
+      if (!patient) {
+        throw new Error("Training patient not found.");
+      }
+      const visit = createTrainingTimeline(patient).find(
+        (event) => event.type === "visit_recorded" && String(event.entity_id || "") === visitId,
+      );
+      if (!visit) {
+        throw new Error("Training visit not found.");
+      }
+      return {
+        visit_id: visitId,
+        reason: String((visit.details?.reason as string | undefined) || patient.reason || ""),
+        timestamp: visit.timestamp,
+        consultation_note: null,
+        attachments: [],
+        timeline: [],
+      };
+    }
+    return api.getPatientVisitDetail(patientId, visitId);
   }
 
   if (isRedirectingToLogin) {
@@ -1132,7 +1165,8 @@ export default function HomePage() {
         patient={drawerMode === "details" ? selectedPatient : null}
         clinicSpecialty={clinicSettings?.clinic_specialty ?? null}
         isTrainingMode={isTrainingMode}
-        onLoadTimeline={handleLoadPatientTimeline}
+        onLoadVisits={handleLoadPatientVisits}
+        onLoadVisitDetail={handleLoadPatientVisitDetail}
         onLoadMyopiaHistory={(patientId) => (
           isTrainingMode
             ? Promise.resolve({

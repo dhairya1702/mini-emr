@@ -220,6 +220,99 @@ def test_patient_lookup_returns_multiple_matches_for_same_phone(client):
     assert {match["name"] for match in matches} == {"Parent Patient", "Child Patient"}
 
 
+def test_patient_chart_visit_endpoints_split_visit_list_and_detail(client):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="patient-chart@clinic.com", clinic_name="Patient Chart Clinic")
+    headers = auth_headers_for_token(session["token"])
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Chart Patient",
+            "phone": "5550121212",
+            "reason": "Hand pain",
+            "age": 33,
+            "weight": 70,
+            "height": 172,
+            "temperature": 98.6,
+        },
+        headers=headers,
+    ).json()
+
+    revisit = test_client.post(
+        f"/patients/{patient['id']}/visits",
+        json={
+            "name": "Chart Patient",
+            "phone": "5550121212",
+            "reason": "Review hand pain",
+            "age": 33,
+            "weight": 71,
+            "height": 172,
+            "temperature": 98.4,
+        },
+        headers=headers,
+    )
+    assert revisit.status_code == 200
+
+    visits = test_client.get(f"/patients/{patient['id']}/visits", headers=headers)
+    assert visits.status_code == 200
+    visit_rows = visits.json()
+    assert len(visit_rows) == 2
+    selected_visit = visit_rows[0]
+    assert selected_visit["reason"] == "Review hand pain"
+
+    note = asyncio.run(
+        repo.create_note(
+            session["user"]["org_id"],
+            SimpleNamespace(
+                patient_id=patient["id"],
+                content="Diagnosis: Improving tendon strain",
+                asset_payload=[
+                    {
+                        "id": "asset-1",
+                        "kind": "attachment",
+                        "name": "xray.png",
+                        "content_type": "image/png",
+                        "data_base64": "ZmFrZQ==",
+                    }
+                ],
+                structured_modules=[],
+            ),
+        )
+    )
+    asyncio.run(repo.finalize_note(session["user"]["org_id"], note["id"]))
+    asyncio.run(
+        repo.create_follow_up(
+            session["user"]["org_id"],
+            patient["id"],
+            session["user"]["id"],
+            SimpleNamespace(
+                scheduled_for=repo.patient_visits[selected_visit["id"]]["created_at"],
+                notes="Review mobility next week",
+            ),
+        )
+    )
+    upload = test_client.post(
+        f"/patients/{patient['id']}/attachments",
+        files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
+        headers=headers,
+    )
+    assert upload.status_code == 201
+
+    detail = test_client.get(
+        f"/patients/{patient['id']}/visits/{selected_visit['id']}/details",
+        headers=headers,
+    )
+    assert detail.status_code == 200
+    detail_json = detail.json()
+    assert detail_json["visit_id"] == selected_visit["id"]
+    assert detail_json["reason"] == "Review hand pain"
+    assert detail_json["consultation_note"]["status"] == "final"
+    assert "Improving tendon strain" in detail_json["consultation_note"]["content"]
+    assert {row["source_type"] for row in detail_json["attachments"]} == {"note_attachment", "patient_attachment"}
+    assert any(event["type"] == "follow_up_scheduled" for event in detail_json["timeline"])
+
+
 def test_patient_lookup_returns_most_recent_matches_first_and_honors_limit(client):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="patients-lookup-limit@clinic.com", clinic_name="Patient Lookup Limit Clinic")

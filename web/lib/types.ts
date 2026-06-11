@@ -102,6 +102,37 @@ export interface PatientTimelineEvent {
   details?: Record<string, unknown>;
 }
 
+export interface PatientChartVisit {
+  id: string;
+  patient_id: string;
+  reason: string;
+  created_at: string;
+}
+
+export interface PatientVisitAttachmentRow {
+  id: string;
+  label: string;
+  timestamp: string;
+  source_type: "note_attachment" | "patient_attachment";
+  content_type: string;
+  attachment_id: string | null;
+  data_base64: string | null;
+}
+
+export interface PatientVisitNoteDetail {
+  status: string;
+  content: string;
+}
+
+export interface PatientVisitDetail {
+  visit_id: string;
+  reason: string;
+  timestamp: string;
+  consultation_note: PatientVisitNoteDetail | null;
+  attachments: PatientVisitAttachmentRow[];
+  timeline: PatientTimelineEvent[];
+}
+
 export interface ConsultationNote {
   id: string;
   patient_id: string;
@@ -128,6 +159,18 @@ export interface NoteAsset {
   name: string;
   content_type: string;
   data_base64: string;
+}
+
+export interface PatientAttachment {
+  id: string;
+  org_id: string;
+  patient_id: string;
+  uploaded_by: string | null;
+  file_name: string;
+  content_type: string;
+  file_size: number;
+  storage_path: string;
+  created_at: string;
 }
 
 export interface AuditEvent {
@@ -466,6 +509,11 @@ export interface GenerateNoteResponse {
   content: string;
 }
 
+export interface MobileFinalizeConsultationResponse {
+  note: ConsultationNote;
+  patient: Patient;
+}
+
 export interface GenerateLetterPayload {
   to: string;
   subject: string;
@@ -785,6 +833,11 @@ export interface PatientUpdatePayload {
 }
 
 export interface FinalizeNotePayload {
+  note_id: string;
+}
+
+export interface MobileFinalizeConsultationPayload {
+  patient_id: string;
   note_id: string;
 }
 

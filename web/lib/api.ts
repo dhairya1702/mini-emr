@@ -32,6 +32,8 @@ import {
   InvoiceCreatePayload,
   GenerateNotePayload,
   GenerateNoteResponse,
+  MobileFinalizeConsultationPayload,
+  MobileFinalizeConsultationResponse,
   MyopiaHistory,
   MyopiaMeasurementPayload,
   MyopiaMeasurementRecord,
@@ -40,8 +42,11 @@ import {
   PediatricGrowthSummary,
   OperationResult,
   Patient,
+  PatientAttachment,
+  PatientChartVisit,
   PatientInput,
   PatientMatch,
+  PatientVisitDetail,
   PatientUpdatePayload,
   PatientVisit,
   PatientTimelineEvent,
@@ -519,6 +524,10 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  listPatientChartVisits: (patientId: string) =>
+    request<PatientChartVisit[]>(`/patients/${patientId}/visits`),
+  getPatientVisitDetail: (patientId: string, visitId: string) =>
+    request<PatientVisitDetail>(`/patients/${patientId}/visits/${visitId}/details`),
   getPatientTimeline: (patientId: string) =>
     request<PatientTimelineEvent[]>(`/patients/${patientId}/timeline`),
   getPatientMyopiaHistory: (patientId: string) =>
@@ -547,6 +556,17 @@ export const api = {
     }),
   listPatientNotes: (patientId: string) =>
     request<ConsultationNote[]>(`/patients/${patientId}/notes`),
+  listPatientAttachments: (patientId: string) =>
+    request<PatientAttachment[]>(`/patients/${patientId}/attachments`),
+  uploadPatientAttachment: (patientId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return requestForm<PatientAttachment>(`/patients/${patientId}/attachments`, formData, {
+      method: "POST",
+    });
+  },
+  downloadPatientAttachment: (attachmentId: string) =>
+    requestBlob(`/attachments/${attachmentId}/file`),
   listPatientInvoices: (patientId: string) =>
     request<Invoice[]>(`/patients/${patientId}/invoices`),
   getPatientCaseStudySource: (patientId: string) =>
@@ -581,6 +601,11 @@ export const api = {
     request<ConsultationNote>("/notes/finalize", {
       method: "POST",
       body: JSON.stringify({ note_id: noteId } satisfies FinalizeNotePayload),
+    }),
+  finalizeMobileConsultation: (patientId: string, noteId: string) =>
+    request<MobileFinalizeConsultationResponse>("/mobile/consultations/finalize", {
+      method: "POST",
+      body: JSON.stringify({ patient_id: patientId, note_id: noteId } satisfies MobileFinalizeConsultationPayload),
     }),
   generateLetter: (payload: GenerateLetterPayload) =>
     request<GenerateLetterResponse>("/generate-letter", {

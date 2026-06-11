@@ -10,7 +10,9 @@ from app.schema_domains.case_studies import PatientCaseStudySourceOut
 from app.schema_domains.optometry import MyopiaHistoryOut, MyopiaMeasurementCreate, MyopiaMeasurementOut, MyopiaMeasurementUpdate
 from app.schema_domains.patients import (
     NoteOut,
+    PatientChartVisitOut,
     PatientCreate,
+    PatientVisitDetailOut,
     PatientMatchOut,
     PatientOut,
     PatientTimelineEvent,
@@ -26,10 +28,12 @@ from app.schema_domains.specialty import (
 )
 from app.services.case_study_workflow import build_case_study_source_view
 from app.services.patient_views import (
+    build_patient_visit_detail_view,
     build_patient_growth_history_view,
     build_patient_myopia_history_view,
     build_patient_timeline_view,
     list_patient_invoices_view,
+    list_patient_chart_visits_view,
     list_patient_notes_view,
 )
 from app.services.patient_workflow import (
@@ -106,6 +110,35 @@ async def create_patient_visit(
         raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="create_patient_visit") from exc
+
+
+@router.get("/patients/{patient_id}/visits", response_model=list[PatientChartVisitOut])
+async def list_patient_chart_visits(
+    patient_id: str,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> list[PatientChartVisitOut]:
+    try:
+        return await list_patient_chart_visits_view(repo, str(current_user.org_id), patient_id)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="list_patient_chart_visits") from exc
+
+
+@router.get("/patients/{patient_id}/visits/{visit_id}/details", response_model=PatientVisitDetailOut)
+async def get_patient_visit_detail(
+    patient_id: str,
+    visit_id: str,
+    repo: SupabaseRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> PatientVisitDetailOut:
+    try:
+        return await build_patient_visit_detail_view(repo, str(current_user.org_id), patient_id, visit_id)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="get_patient_visit_detail") from exc
 
 
 @router.patch("/patients/{patient_id}", response_model=PatientOut)

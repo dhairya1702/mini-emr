@@ -44,6 +44,22 @@ create table if not exists public.notes (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.patient_attachments (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  uploaded_by uuid references public.clinic_users(id) on delete set null,
+  file_name text not null,
+  content_type text not null,
+  file_size bigint not null default 0,
+  storage_path text not null unique,
+  created_at timestamptz not null default now()
+);
+
+insert into storage.buckets (id, name, public)
+values ('patient-attachments', 'patient-attachments', false)
+on conflict (id) do nothing;
+
 create table if not exists public.clinic_users (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,

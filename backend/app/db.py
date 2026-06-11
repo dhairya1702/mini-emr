@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.repositories import (
     AIUsageRepositoryMixin,
     AuditRepositoryMixin,
+    AttachmentsRepositoryMixin,
     AuthSettingsRepositoryMixin,
     BillingRepositoryMixin,
     CaseStudiesRepositoryMixin,
@@ -46,6 +47,7 @@ def _force_postgrest_http1(client: "Client") -> None:
 class SupabaseRepository(
     AIUsageRepositoryMixin,
     AuditRepositoryMixin,
+    AttachmentsRepositoryMixin,
     AuthSettingsRepositoryMixin,
     PatientFlowRepositoryMixin,
     CaseStudiesRepositoryMixin,

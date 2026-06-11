@@ -114,6 +114,8 @@ class FakeRepo:
         self.patients: dict[str, dict] = {}
         self.patient_visits: dict[str, dict] = {}
         self.notes: dict[str, dict] = {}
+        self.patient_attachments: dict[str, dict] = {}
+        self.patient_attachment_files: dict[str, bytes] = {}
         self.myopia_measurements: dict[str, dict] = {}
         self.longitudinal_tracks: dict[str, dict] = {}
         self.case_studies: dict[str, dict] = {}
@@ -772,6 +774,54 @@ class FakeRepo:
         if patient["org_id"] != org_id:
             raise ValueError("Patient not found for this organization.")
         return patient
+
+    async def create_patient_attachment(
+        self,
+        org_id: str,
+        patient_id: str,
+        *,
+        uploaded_by: str,
+        filename: str,
+        content_type: str,
+        file_size: int,
+        raw_bytes: bytes,
+    ) -> dict:
+        await self.get_patient(org_id, patient_id)
+        attachment_id = str(uuid4())
+        safe_name = filename.strip() or "attachment"
+        storage_path = f"{org_id}/{patient_id}/{attachment_id}/{safe_name}"
+        row = {
+            "id": attachment_id,
+            "org_id": org_id,
+            "patient_id": patient_id,
+            "uploaded_by": uploaded_by,
+            "file_name": safe_name,
+            "content_type": content_type,
+            "file_size": file_size,
+            "storage_path": storage_path,
+            "created_at": _now(),
+        }
+        self.patient_attachments[attachment_id] = row
+        self.patient_attachment_files[storage_path] = raw_bytes
+        return row
+
+    async def list_patient_attachments(self, org_id: str, patient_id: str) -> list[dict]:
+        rows = [
+            row for row in self.patient_attachments.values()
+            if row["org_id"] == org_id and row["patient_id"] == patient_id
+        ]
+        rows.sort(key=lambda row: row["created_at"], reverse=True)
+        return rows
+
+    async def get_patient_attachment(self, org_id: str, attachment_id: str) -> dict:
+        row = self.patient_attachments[attachment_id]
+        if row["org_id"] != org_id:
+            raise ValueError("Attachment not found for this organization.")
+        return row
+
+    async def download_patient_attachment(self, org_id: str, attachment_id: str) -> tuple[dict, bytes]:
+        row = await self.get_patient_attachment(org_id, attachment_id)
+        return row, self.patient_attachment_files[row["storage_path"]]
 
     async def create_myopia_measurement(self, org_id: str, patient_id: str, payload) -> dict:
         await self.get_patient(org_id, patient_id)
