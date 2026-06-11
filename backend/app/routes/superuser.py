@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from app.auth import require_super_admin
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.schema_domains.admin import (
     PlatformErrorOut,
     SuperuserOrgDetailOut,
@@ -24,7 +24,7 @@ router = APIRouter()
 @router.get("/superuser/orgs", response_model=list[SuperuserOrgSummaryOut])
 async def list_superuser_orgs(
     current_user: UserOut = Depends(require_super_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> list[SuperuserOrgSummaryOut]:
     del current_user
     rows = await repo.list_all_organizations()
@@ -35,7 +35,7 @@ async def list_superuser_orgs(
 async def get_superuser_org_detail(
     org_id: UUID,
     current_user: UserOut = Depends(require_super_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> SuperuserOrgDetailOut:
     del current_user
     summaries = await repo.list_all_organizations()
@@ -71,7 +71,7 @@ async def get_superuser_org_detail(
 async def list_superuser_errors(
     limit: int = Query(default=100, ge=1, le=500),
     current_user: UserOut = Depends(require_super_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> list[PlatformErrorOut]:
     del current_user
     rows = await repo.list_platform_errors(limit=limit)
@@ -82,7 +82,7 @@ async def list_superuser_errors(
 async def delete_superuser_user(
     user_id: UUID,
     current_user: UserOut = Depends(require_super_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> None:
     if str(current_user.id) == str(user_id):
         raise HTTPException(status_code=400, detail="You cannot remove your own account.")
@@ -97,7 +97,7 @@ async def delete_superuser_user(
 async def delete_superuser_org(
     org_id: UUID,
     current_user: UserOut = Depends(require_super_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> None:
     if str(current_user.org_id) == str(org_id):
         raise HTTPException(status_code=400, detail="You cannot delete your own organization.")

@@ -1,4 +1,4 @@
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.mobile import (
     MobileFinalizeConsultationRequest,
@@ -9,7 +9,7 @@ from app.services.audit_service import write_audit_event
 
 
 async def finalize_mobile_consultation_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     payload: MobileFinalizeConsultationRequest,
 ) -> MobileFinalizeConsultationResponse:

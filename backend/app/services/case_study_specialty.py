@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.schema_domains.case_studies import PatientCaseStudySourceOut
 from app.schema_domains.specialty import PediatricGrowthSummaryOut
 from app.services.patient_views import build_patient_growth_history_view, build_patient_myopia_history_view
@@ -8,7 +8,7 @@ from app.services.specialty_registry import SPECIALTY_REGISTRY
 
 
 async def enrich_optometry_case_study_source(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     org_id: str,
     patient_id: str,
     source: PatientCaseStudySourceOut,
@@ -18,7 +18,7 @@ async def enrich_optometry_case_study_source(
 
 
 async def enrich_pediatrics_case_study_source(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     org_id: str,
     patient_id: str,
     source: PatientCaseStudySourceOut,
@@ -37,7 +37,7 @@ SPECIALTY_REGISTRY["pediatrics"].case_study_enricher = enrich_pediatrics_case_st
 
 
 async def apply_case_study_specialty_enrichment(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     org_id: str,
     patient_id: str,
     clinic_specialty: str | None,

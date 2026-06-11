@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import HTTPException
 
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.services.email_service import send_clinic_email_message
 from app.services.pdf_service import build_invoice_pdf
 from app.schema_domains.auth_settings import UserOut
@@ -12,7 +12,7 @@ from app.services.audit_service import record_invoice_created, record_invoice_sh
 
 
 async def _record_invoice_delivery_failure(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     *,
     invoice_id: str,
@@ -39,7 +39,7 @@ async def _record_invoice_delivery_failure(
 
 
 async def create_invoice_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     payload: InvoiceCreate,
 ) -> InvoiceOut:
@@ -50,13 +50,13 @@ async def create_invoice_workflow(
     return InvoiceOut(**{**created, "patient_name": patient_name})
 
 
-async def list_invoices_with_user_names(repo: SupabaseRepository, org_id: str) -> list[InvoiceOut]:
+async def list_invoices_with_user_names(repo: AppRepository, org_id: str) -> list[InvoiceOut]:
     invoices = await repo.list_invoices(org_id)
     return [InvoiceOut(**invoice) for invoice in invoices]
 
 
 async def send_invoice_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     payload: SendInvoiceRequest,
 ) -> SendNoteResponse:

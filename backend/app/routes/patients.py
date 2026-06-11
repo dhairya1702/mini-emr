@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.exports import build_history_visit_rows
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import InvoiceOut
@@ -48,7 +48,7 @@ router = APIRouter()
 
 @router.get("/patients", response_model=list[PatientOut])
 async def get_patients(
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[PatientOut]:
     try:
@@ -60,7 +60,7 @@ async def get_patients(
 
 @router.get("/visits", response_model=list[PatientVisitOut])
 async def get_patient_visits(
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[PatientVisitOut]:
     try:
@@ -75,7 +75,7 @@ async def get_patient_visits(
 async def lookup_patients_by_phone(
     phone: str = Query(min_length=6, max_length=30),
     limit: int = Query(default=10, ge=1, le=25),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[PatientMatchOut]:
     try:
@@ -88,7 +88,7 @@ async def lookup_patients_by_phone(
 @router.post("/patients", response_model=PatientOut, status_code=201)
 async def create_patient(
     payload: PatientCreate,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> PatientOut:
     try:
@@ -101,7 +101,7 @@ async def create_patient(
 async def create_patient_visit(
     patient_id: str,
     payload: PatientVisitCreate,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> PatientOut:
     try:
@@ -115,7 +115,7 @@ async def create_patient_visit(
 @router.get("/patients/{patient_id}/visits", response_model=list[PatientChartVisitOut])
 async def list_patient_chart_visits(
     patient_id: str,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[PatientChartVisitOut]:
     try:
@@ -130,7 +130,7 @@ async def list_patient_chart_visits(
 async def get_patient_visit_detail(
     patient_id: str,
     visit_id: str,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> PatientVisitDetailOut:
     try:
@@ -145,7 +145,7 @@ async def get_patient_visit_detail(
 async def update_patient(
     patient_id: str,
     payload: PatientUpdate,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> PatientOut:
     updates = payload.model_dump(exclude_none=True)
@@ -163,7 +163,7 @@ async def update_patient(
 @router.get("/patients/{patient_id}/timeline", response_model=list[PatientTimelineEvent])
 async def get_patient_timeline(
     patient_id: str,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[PatientTimelineEvent]:
     try:
@@ -177,7 +177,7 @@ async def get_patient_timeline(
 @router.get("/patients/{patient_id}/myopia-history", response_model=MyopiaHistoryOut)
 async def get_patient_myopia_history(
     patient_id: str,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> MyopiaHistoryOut:
     try:
@@ -191,7 +191,7 @@ async def get_patient_myopia_history(
 @router.get("/patients/{patient_id}/growth-history", response_model=PediatricGrowthSummaryOut)
 async def get_patient_growth_history(
     patient_id: str,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> PediatricGrowthSummaryOut:
     try:
@@ -206,7 +206,7 @@ async def get_patient_growth_history(
 async def create_patient_growth_record(
     patient_id: str,
     payload: PediatricGrowthMeasurementInput,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> PediatricGrowthMeasurementOut:
     try:
@@ -237,7 +237,7 @@ async def update_patient_growth_record(
     patient_id: str,
     record_id: str,
     payload: PediatricGrowthMeasurementInput,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> PediatricGrowthMeasurementOut:
     try:
@@ -270,7 +270,7 @@ async def update_patient_growth_record(
 async def create_patient_myopia_record(
     patient_id: str,
     payload: MyopiaMeasurementCreate,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> MyopiaMeasurementOut:
     try:
@@ -287,7 +287,7 @@ async def update_patient_myopia_record(
     patient_id: str,
     record_id: str,
     payload: MyopiaMeasurementUpdate,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> MyopiaMeasurementOut:
     updates = payload.model_dump(exclude_none=True)
@@ -305,7 +305,7 @@ async def update_patient_myopia_record(
 @router.get("/patients/{patient_id}/notes", response_model=list[NoteOut])
 async def list_patient_notes(
     patient_id: str,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[NoteOut]:
     try:
@@ -319,7 +319,7 @@ async def list_patient_notes(
 @router.get("/patients/{patient_id}/case-study-source", response_model=PatientCaseStudySourceOut)
 async def get_patient_case_study_source(
     patient_id: str,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> PatientCaseStudySourceOut:
     try:
@@ -333,7 +333,7 @@ async def get_patient_case_study_source(
 @router.get("/patients/{patient_id}/invoices", response_model=list[InvoiceOut])
 async def list_patient_invoices(
     patient_id: str,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[InvoiceOut]:
     try:

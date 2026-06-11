@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api_errors import bad_request_error
 from app.auth import clear_session, get_current_user, hash_password, issue_session_headers, verify_password
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import (
     AuthResponse,
     LoginRequest,
@@ -26,7 +26,7 @@ router = APIRouter()
 async def register_user(
     payload: UserCreate,
     response: Response,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> AuthResponse:
     return await register_user_workflow(repo, response, payload)
 
@@ -35,7 +35,7 @@ async def register_user(
 async def login_user(
     payload: LoginRequest,
     response: Response,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> AuthResponse:
     return await login_user_workflow(repo, response, payload)
 
@@ -56,7 +56,7 @@ async def update_me(
     payload: UserAccountUpdate,
     response: Response,
     current_user: UserOut = Depends(get_current_user),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> UserOut:
     updated = await repo.update_user_account(str(current_user.id), payload)
     issue_session_headers(response, {
@@ -73,7 +73,7 @@ async def update_my_password(
     payload: UserPasswordUpdate,
     response: Response,
     current_user: UserOut = Depends(get_current_user),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> None:
     if payload.current_password == payload.new_password:
         raise HTTPException(status_code=400, detail="New password must be different from the current password.")
@@ -95,7 +95,7 @@ async def update_my_password(
 async def upload_my_signature(
     file: UploadFile = File(...),
     current_user: UserOut = Depends(get_current_user),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> UserOut:
     content_type = (file.content_type or "").strip().lower()
     if content_type not in {"image/jpeg", "image/png"}:
@@ -119,7 +119,7 @@ async def upload_my_signature(
 @router.delete("/auth/me/signature", response_model=UserOut)
 async def delete_my_signature(
     current_user: UserOut = Depends(get_current_user),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> UserOut:
     removed = await repo.clear_user_signature(str(current_user.id))
     removed["doctor_signature_url"] = None
@@ -129,7 +129,7 @@ async def delete_my_signature(
 @router.get("/auth/me/signature/file")
 async def download_my_signature(
     current_user: UserOut = Depends(get_current_user),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> StreamingResponse:
     user = await repo.get_user(str(current_user.id))
     filename = str(user.get("doctor_signature_name") or "").strip()

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.schema_domains.case_studies import PatientCaseStudySourceOut
 from app.schema_domains.patients import PatientTimelineEvent
 
-CaseStudySourceEnricher = Callable[[SupabaseRepository, str, str, PatientCaseStudySourceOut], Awaitable[PatientCaseStudySourceOut]]
-TimelineContributor = Callable[[SupabaseRepository, str, str], Awaitable[list[PatientTimelineEvent]]]
+CaseStudySourceEnricher = Callable[[AppRepository, str, str, PatientCaseStudySourceOut], Awaitable[PatientCaseStudySourceOut]]
+TimelineContributor = Callable[[AppRepository, str, str], Awaitable[list[PatientTimelineEvent]]]
 
 
 class SpecialtyDefinition:

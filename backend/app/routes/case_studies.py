@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api_errors import bad_request_error, internal_server_error, not_found_error
 from app.auth import require_admin
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.case_studies import (
     CaseStudyCreate,
@@ -31,7 +31,7 @@ router = APIRouter()
 
 @router.get("/case-studies", response_model=list[CaseStudyOut])
 async def list_case_studies(
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> list[CaseStudyOut]:
     try:
@@ -43,7 +43,7 @@ async def list_case_studies(
 @router.get("/case-studies/{case_study_id}", response_model=CaseStudyOut)
 async def get_case_study(
     case_study_id: str,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> CaseStudyOut:
     try:
@@ -57,7 +57,7 @@ async def get_case_study(
 @router.post("/generate-case-study", response_model=GenerateCaseStudyResponse)
 async def generate_case_study(
     payload: GenerateCaseStudyRequest,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> GenerateCaseStudyResponse:
     try:
@@ -71,7 +71,7 @@ async def generate_case_study(
 @router.post("/case-studies", response_model=CaseStudyOut, status_code=201)
 async def create_case_study(
     payload: CaseStudyCreate,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> CaseStudyOut:
     try:
@@ -86,7 +86,7 @@ async def create_case_study(
 async def update_case_study(
     case_study_id: str,
     payload: CaseStudyUpdate,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> CaseStudyOut:
     updates = payload.model_dump(exclude_none=True)
@@ -103,7 +103,7 @@ async def update_case_study(
 @router.get("/case-studies/{case_study_id}/pdf")
 async def generate_case_study_pdf(
     case_study_id: str,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     try:

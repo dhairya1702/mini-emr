@@ -4,7 +4,7 @@ from collections import OrderedDict
 from anthropic import Anthropic
 
 from app.config import get_settings
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.services.ai_usage_service import record_anthropic_usage
 
 
@@ -227,7 +227,7 @@ def build_fallback_case_study(
 
 
 async def generate_soap_note(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     org_id: str,
     symptoms: str,
     diagnosis: str,
@@ -330,7 +330,7 @@ Structured measurements:
 
 
 async def generate_clinic_letter(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     org_id: str,
     to: str,
     subject: str,
@@ -397,7 +397,7 @@ Content instructions:
 
 
 async def generate_case_study_document(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     org_id: str,
     *,
     title: str,

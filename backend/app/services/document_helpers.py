@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.schema_domains.auth_settings import UserOut
 
 
-async def build_document_context_for_user(repo: SupabaseRepository, current_user: UserOut) -> dict:
+async def build_document_context_for_user(repo: AppRepository, current_user: UserOut) -> dict:
     clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
     doctor_profile = await repo.get_user(str(current_user.id))
     return {

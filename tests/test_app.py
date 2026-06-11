@@ -95,6 +95,7 @@ from app.services.case_study_specialty import apply_case_study_specialty_enrichm
 from app.services.document_helpers import build_document_context_for_user, serialize_note_assets
 from app.services.followup_workflow import _as_utc_minute
 from app.services import followup_booking_service as followup_booking_service_module
+from app.storage import get_patient_attachment_storage
 
 
 def _now() -> datetime:
@@ -775,7 +776,7 @@ class FakeRepo:
             raise ValueError("Patient not found for this organization.")
         return patient
 
-    async def create_patient_attachment(
+    async def prepare_patient_attachment_metadata(
         self,
         org_id: str,
         patient_id: str,
@@ -784,7 +785,6 @@ class FakeRepo:
         filename: str,
         content_type: str,
         file_size: int,
-        raw_bytes: bytes,
     ) -> dict:
         await self.get_patient(org_id, patient_id)
         attachment_id = str(uuid4())
@@ -801,8 +801,10 @@ class FakeRepo:
             "storage_path": storage_path,
             "created_at": _now(),
         }
-        self.patient_attachments[attachment_id] = row
-        self.patient_attachment_files[storage_path] = raw_bytes
+        return row
+
+    async def create_patient_attachment_metadata(self, row: dict) -> dict:
+        self.patient_attachments[row["id"]] = row
         return row
 
     async def list_patient_attachments(self, org_id: str, patient_id: str) -> list[dict]:
@@ -1368,6 +1370,17 @@ class FakeRepo:
         return follow_up
 
 
+class FakePatientAttachmentStorage:
+    def __init__(self, repo: FakeRepo) -> None:
+        self.repo = repo
+
+    async def upload(self, storage_path: str, raw_bytes: bytes, content_type: str) -> None:
+        self.repo.patient_attachment_files[storage_path] = raw_bytes
+
+    async def download(self, storage_path: str) -> bytes:
+        return self.repo.patient_attachment_files[storage_path]
+
+
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch):
     repo = FakeRepo()
@@ -1398,6 +1411,7 @@ def client(monkeypatch: pytest.MonkeyPatch):
         lambda: SimpleNamespace(auth_secret="test-secret"),
     )
     app.dependency_overrides[get_repository] = lambda: repo
+    app.dependency_overrides[get_patient_attachment_storage] = lambda: FakePatientAttachmentStorage(repo)
     with TestClient(app) as test_client:
         yield test_client, repo
     app.dependency_overrides.clear()

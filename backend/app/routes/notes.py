@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user, require_admin
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.formatting import format_display_datetime
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.documents import (
@@ -42,7 +42,7 @@ router = APIRouter()
 @router.post("/generate-note", response_model=GenerateNoteResponse)
 async def create_generated_note(
     payload: GenerateNoteRequest,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> GenerateNoteResponse:
     try:
@@ -58,7 +58,7 @@ async def create_generated_note(
 @router.post("/generate-letter", response_model=GenerateLetterResponse)
 async def create_generated_letter(
     payload: GenerateLetterRequest,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> GenerateLetterResponse:
     try:
@@ -77,7 +77,7 @@ async def create_generated_letter(
 @router.post("/generate-parent-handout", response_model=GenerateParentHandoutResponse)
 async def create_parent_handout(
     payload: GenerateParentHandoutRequest,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> GenerateParentHandoutResponse:
     try:
@@ -93,7 +93,7 @@ async def create_parent_handout(
 @router.post("/notes/finalize", response_model=NoteOut)
 async def finalize_note(
     payload: FinalizeNoteRequest,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> NoteOut:
     try:
@@ -106,7 +106,7 @@ async def finalize_note(
 async def send_note(
     payload: SendNoteRequest,
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> SendNoteResponse:
     try:
         return await send_note_workflow(repo, current_user, payload)
@@ -117,7 +117,7 @@ async def send_note(
 @router.post("/send-letter", response_model=SendNoteResponse)
 async def send_letter(
     payload: SendLetterRequest,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> SendNoteResponse:
     return await send_letter_workflow(
@@ -132,7 +132,7 @@ async def send_letter(
 @router.post("/generate-note-pdf")
 async def generate_note_pdf(
     payload: GeneratePdfRequest,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     try:
@@ -160,7 +160,7 @@ async def generate_note_pdf(
 @router.get("/notes/{note_id}/pdf")
 async def generate_saved_note_pdf(
     note_id: str,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     try:
@@ -190,7 +190,7 @@ async def generate_saved_note_pdf(
 @router.post("/generate-letter-pdf")
 async def generate_letter_pdf(
     payload: GenerateLetterPdfRequest,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> StreamingResponse:
     try:

@@ -1,4 +1,4 @@
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.schema_domains.auth_settings import UserOut
 
 
@@ -11,7 +11,7 @@ def user_names_by_id(users: list[dict]) -> dict[str, str]:
 
 
 async def write_audit_event(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     *,
     entity_type: str,
@@ -32,7 +32,7 @@ async def write_audit_event(
     )
 
 
-async def record_patient_created(repo: SupabaseRepository, current_user: UserOut, patient: dict) -> None:
+async def record_patient_created(repo: AppRepository, current_user: UserOut, patient: dict) -> None:
     await write_audit_event(
         repo,
         current_user,
@@ -44,7 +44,7 @@ async def record_patient_created(repo: SupabaseRepository, current_user: UserOut
     )
 
 
-async def record_patient_visit(repo: SupabaseRepository, current_user: UserOut, patient: dict) -> None:
+async def record_patient_visit(repo: AppRepository, current_user: UserOut, patient: dict) -> None:
     await write_audit_event(
         repo,
         current_user,
@@ -57,7 +57,7 @@ async def record_patient_visit(repo: SupabaseRepository, current_user: UserOut, 
 
 
 async def record_patient_updated(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     patient: dict,
     changed_fields: list[str],
@@ -73,7 +73,7 @@ async def record_patient_updated(
     )
 
 
-async def record_appointment_created(repo: SupabaseRepository, current_user: UserOut, appointment: dict) -> None:
+async def record_appointment_created(repo: AppRepository, current_user: UserOut, appointment: dict) -> None:
     await write_audit_event(
         repo,
         current_user,
@@ -86,7 +86,7 @@ async def record_appointment_created(repo: SupabaseRepository, current_user: Use
 
 
 async def record_appointment_checked_in(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     appointment_id: str,
     patient: dict,
@@ -103,7 +103,7 @@ async def record_appointment_checked_in(
 
 
 async def record_appointment_updated(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     appointment: dict,
     changed_fields: list[str],
@@ -120,7 +120,7 @@ async def record_appointment_updated(
 
 
 async def record_follow_up_created(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     follow_up: dict,
     patient_name: str,
@@ -142,7 +142,7 @@ async def record_follow_up_created(
 
 
 async def record_follow_up_updated(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     follow_up: dict,
     changed_fields: list[str],
@@ -160,7 +160,7 @@ async def record_follow_up_updated(
 
 
 async def record_invoice_created(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     invoice: dict,
     patient_name: str,
@@ -184,7 +184,7 @@ async def record_invoice_created(
 
 
 async def record_invoice_shared(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     invoice_id: str,
     finalized: dict,
@@ -219,7 +219,7 @@ async def record_invoice_shared(
 
 
 async def record_catalog_item_created(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     item: dict,
 ) -> None:
@@ -240,7 +240,7 @@ async def record_catalog_item_created(
 
 
 async def record_catalog_stock_adjusted(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     item: dict,
     *,
@@ -264,7 +264,7 @@ async def record_catalog_stock_adjusted(
 
 
 async def record_catalog_item_deleted(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     item: dict,
 ) -> None:

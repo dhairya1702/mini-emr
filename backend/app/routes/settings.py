@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api_errors import internal_server_error
 from app.auth import get_current_user, require_admin
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import ClinicSettingsOut, ClinicSettingsUpdate, UserOut
 
 
@@ -55,7 +55,7 @@ def _resolve_template_content_type(upload: UploadFile) -> str:
 
 @router.get("/settings/clinic", response_model=ClinicSettingsOut)
 async def get_clinic_settings(
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> ClinicSettingsOut:
     try:
@@ -74,7 +74,7 @@ async def get_clinic_settings(
 @router.put("/settings/clinic", response_model=ClinicSettingsOut)
 async def update_clinic_settings(
     payload: ClinicSettingsUpdate,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> ClinicSettingsOut:
     try:
@@ -91,7 +91,7 @@ async def update_clinic_settings(
 @router.post("/settings/clinic/document-template", response_model=ClinicSettingsOut)
 async def upload_clinic_template(
     file: UploadFile = File(...),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> ClinicSettingsOut:
     content_type = _resolve_template_content_type(file)
@@ -116,7 +116,7 @@ async def upload_clinic_template(
 
 @router.get("/settings/clinic/document-template/file")
 async def download_clinic_template(
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> StreamingResponse:
     try:
@@ -140,7 +140,7 @@ async def download_clinic_template(
 
 @router.delete("/settings/clinic/document-template", response_model=ClinicSettingsOut)
 async def delete_clinic_template(
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> ClinicSettingsOut:
     try:

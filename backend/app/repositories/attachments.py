@@ -12,9 +12,8 @@ from postgrest.exceptions import APIError
 from app.repositories.base import BaseSupabaseRepository
 
 
-PATIENT_ATTACHMENTS_BUCKET = "patient-attachments"
 MISSING_PATIENT_ATTACHMENTS_TABLE_MESSAGE = (
-    "Patient attachments are not set up. Run the latest Supabase schema migration."
+    "Patient attachments are not set up. Run the latest database schema migration."
 )
 
 
@@ -33,7 +32,7 @@ def _is_missing_patient_attachments_table(exc: Exception) -> bool:
 
 
 class AttachmentsRepositoryMixin(BaseSupabaseRepository):
-    async def create_patient_attachment(
+    async def prepare_patient_attachment_metadata(
         self,
         org_id: str,
         patient_id: str,
@@ -42,7 +41,6 @@ class AttachmentsRepositoryMixin(BaseSupabaseRepository):
         filename: str,
         content_type: str,
         file_size: int,
-        raw_bytes: bytes,
     ) -> dict[str, Any]:
         attachment_id = str(uuid4())
         safe_name = _safe_filename(filename)
@@ -68,15 +66,7 @@ class AttachmentsRepositoryMixin(BaseSupabaseRepository):
                     raise ValueError(MISSING_PATIENT_ATTACHMENTS_TABLE_MESSAGE) from exc
                 raise
 
-            self.client.storage.from_(PATIENT_ATTACHMENTS_BUCKET).upload(
-                storage_path,
-                raw_bytes,
-                file_options={
-                    "content-type": content_type,
-                    "upsert": "false",
-                },
-            )
-            row = {
+            return {
                 "id": attachment_id,
                 "org_id": org_id,
                 "patient_id": patient_id,
@@ -87,9 +77,13 @@ class AttachmentsRepositoryMixin(BaseSupabaseRepository):
                 "storage_path": storage_path,
                 "created_at": datetime.now(UTC).isoformat(),
             }
-            return self.client.table("patient_attachments").insert(row).execute().data[0]
 
         return await asyncio.to_thread(_create)
+
+    async def create_patient_attachment_metadata(self, row: dict[str, Any]) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            lambda: self.client.table("patient_attachments").insert(row).execute().data[0]
+        )
 
     async def list_patient_attachments(self, org_id: str, patient_id: str) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
@@ -120,21 +114,3 @@ class AttachmentsRepositoryMixin(BaseSupabaseRepository):
             .execute()
             .data
         )
-
-    async def download_patient_attachment(self, org_id: str, attachment_id: str) -> tuple[dict[str, Any], bytes]:
-        def _download() -> tuple[dict[str, Any], bytes]:
-            row = (
-                self.client.table("patient_attachments")
-                .select("*")
-                .eq("org_id", org_id)
-                .eq("id", attachment_id)
-                .single()
-                .execute()
-                .data
-            )
-            if not row:
-                raise ValueError("Attachment not found for this organization.")
-            raw = self.client.storage.from_(PATIENT_ATTACHMENTS_BUCKET).download(row["storage_path"])
-            return row, raw
-
-        return await asyncio.to_thread(_download)

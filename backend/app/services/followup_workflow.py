@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import HTTPException
 
 from app.config import get_settings
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.formatting import format_display_datetime
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.patients import AppointmentCreate, FollowUpCreate, FollowUpOut, FollowUpUpdate
@@ -90,7 +90,7 @@ def _follow_up_email_parts(
     return subject, body
 
 
-async def _suggest_follow_up_slots(repo: SupabaseRepository, org_id: str, clinic_settings: dict) -> list[datetime]:
+async def _suggest_follow_up_slots(repo: AppRepository, org_id: str, clinic_settings: dict) -> list[datetime]:
     scheduled_appointments = await repo.list_appointments(org_id, status="scheduled", limit=500)
     occupied = [_as_utc_minute(appointment["scheduled_for"]) for appointment in scheduled_appointments]
     occupied_exact = set(occupied)
@@ -124,13 +124,13 @@ async def _suggest_follow_up_slots(repo: SupabaseRepository, org_id: str, clinic
     return suggestions
 
 
-async def expire_stale_schedule_workflow(repo: SupabaseRepository, org_id: str) -> None:
+async def expire_stale_schedule_workflow(repo: AppRepository, org_id: str) -> None:
     stale_before = _start_of_today_utc().isoformat()
     await repo.cancel_expired_appointments(org_id, stale_before)
     await repo.cancel_expired_follow_ups(org_id, stale_before)
 
 
-async def _send_follow_up_email_if_needed(repo: SupabaseRepository, current_user: UserOut, follow_up: dict) -> None:
+async def _send_follow_up_email_if_needed(repo: AppRepository, current_user: UserOut, follow_up: dict) -> None:
     patient = await repo.get_patient(str(current_user.org_id), str(follow_up["patient_id"]))
     recipient = str(patient.get("email") or "").strip()
     if not recipient:
@@ -166,7 +166,7 @@ async def _send_follow_up_email_if_needed(repo: SupabaseRepository, current_user
 
 
 async def send_due_follow_up_emails_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
 ) -> None:
     await expire_stale_schedule_workflow(repo, str(current_user.org_id))
@@ -176,7 +176,7 @@ async def send_due_follow_up_emails_workflow(
 
 
 async def get_follow_up_booking_context_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     token: str,
 ) -> tuple[dict, dict, dict, str, list[datetime]]:
     payload = decode_follow_up_booking_token(token)
@@ -196,7 +196,7 @@ async def get_follow_up_booking_context_workflow(
 
 
 async def self_book_follow_up_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     token: str,
     scheduled_for: datetime,
 ) -> None:
@@ -252,7 +252,7 @@ async def self_book_follow_up_workflow(
 
 
 async def create_follow_up_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     patient_id: str,
     payload: FollowUpCreate,
@@ -279,7 +279,7 @@ async def create_follow_up_workflow(
 
 
 async def update_follow_up_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     follow_up_id: str,
     payload: FollowUpUpdate,

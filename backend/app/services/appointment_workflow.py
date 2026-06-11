@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 
-from app.db import DuplicateCheckInCandidateError, SupabaseRepository
+from app.db import DuplicateCheckInCandidateError, AppRepository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.patients import (
     AppointmentCheckInRequest,
@@ -19,7 +19,7 @@ from app.services.followup_workflow import expire_stale_schedule_workflow
 
 
 async def create_appointment_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     payload: AppointmentCreate,
 ) -> AppointmentOut:
@@ -29,7 +29,7 @@ async def create_appointment_workflow(
 
 
 async def check_in_appointment_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     appointment_id: str,
     payload: AppointmentCheckInRequest | None = None,
@@ -55,7 +55,7 @@ async def check_in_appointment_workflow(
 
 
 async def update_appointment_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     appointment_id: str,
     payload: AppointmentUpdate,

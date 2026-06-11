@@ -1,11 +1,11 @@
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.patients import PatientCreate, PatientOut, PatientUpdate, PatientVisitCreate
 from app.services.audit_service import record_patient_created, record_patient_updated, record_patient_visit
 
 
 async def create_patient_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     payload: PatientCreate,
 ) -> PatientOut:
@@ -15,7 +15,7 @@ async def create_patient_workflow(
 
 
 async def record_patient_visit_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     patient_id: str,
     payload: PatientVisitCreate,
@@ -26,7 +26,7 @@ async def record_patient_visit_workflow(
 
 
 async def update_patient_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     patient_id: str,
     payload: PatientUpdate,

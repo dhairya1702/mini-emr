@@ -1,4 +1,4 @@
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.schema_domains.billing import InvoiceOut
 from app.schema_domains.optometry import MyopiaDeltaOut, MyopiaHistoryOut, MyopiaMeasurementOut
 from app.schema_domains.patients import (
@@ -26,7 +26,7 @@ def _build_myopia_delta(current: dict, previous: dict) -> MyopiaDeltaOut:
 
 
 async def build_patient_myopia_history_view(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     org_id: str,
     patient_id: str,
 ) -> MyopiaHistoryOut:
@@ -89,7 +89,7 @@ def _build_growth_record(track: dict, patient: dict) -> PediatricGrowthMeasureme
 
 
 async def build_patient_growth_history_view(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     org_id: str,
     patient_id: str,
 ) -> PediatricGrowthSummaryOut:
@@ -129,12 +129,12 @@ async def build_patient_growth_history_view(
     )
 
 
-async def build_user_name_map(repo: SupabaseRepository, org_id: str) -> dict[str, str]:
+async def build_user_name_map(repo: AppRepository, org_id: str) -> dict[str, str]:
     users = await repo.list_users(org_id)
     return user_names_by_id(users)
 
 
-async def build_patient_name_map(repo: SupabaseRepository, org_id: str) -> dict[str, str]:
+async def build_patient_name_map(repo: AppRepository, org_id: str) -> dict[str, str]:
     patients = await repo.list_patients(org_id)
     return {
         str(patient["id"]): str(patient.get("name") or "").strip()
@@ -142,7 +142,7 @@ async def build_patient_name_map(repo: SupabaseRepository, org_id: str) -> dict[
     }
 
 
-async def build_patient_name_map_for_ids(repo: SupabaseRepository, org_id: str, patient_ids: list[str]) -> dict[str, str]:
+async def build_patient_name_map_for_ids(repo: AppRepository, org_id: str, patient_ids: list[str]) -> dict[str, str]:
     patients = await repo.list_patients_by_ids(org_id, patient_ids)
     return {
         str(patient["id"]): str(patient.get("name") or "").strip()
@@ -180,14 +180,14 @@ def enrich_invoices_with_patient_names(invoices: list[dict], names: dict[str, st
     ]
 
 
-async def list_patient_notes_view(repo: SupabaseRepository, org_id: str, patient_id: str) -> list[NoteOut]:
+async def list_patient_notes_view(repo: AppRepository, org_id: str, patient_id: str) -> list[NoteOut]:
     await repo.get_patient(org_id, patient_id)
     notes = await repo.list_notes_for_patient(org_id, patient_id)
     names = await build_user_name_map(repo, org_id)
     return [NoteOut(**note) for note in enrich_notes_with_sender_names(notes, names)]
 
 
-async def list_patient_invoices_view(repo: SupabaseRepository, org_id: str, patient_id: str) -> list[InvoiceOut]:
+async def list_patient_invoices_view(repo: AppRepository, org_id: str, patient_id: str) -> list[InvoiceOut]:
     patient = await repo.get_patient(org_id, patient_id)
     invoices = await repo.list_invoices_for_patient(org_id, patient_id)
     names = await build_user_name_map(repo, org_id)
@@ -200,7 +200,7 @@ async def list_patient_invoices_view(repo: SupabaseRepository, org_id: str, pati
 
 
 async def build_patient_timeline_view(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     org_id: str,
     patient_id: str,
 ) -> list[PatientTimelineEvent]:
@@ -228,7 +228,7 @@ async def build_patient_timeline_view(
 
 
 async def list_patient_chart_visits_view(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     org_id: str,
     patient_id: str,
 ) -> list[PatientChartVisitOut]:
@@ -247,7 +247,7 @@ async def list_patient_chart_visits_view(
 
 
 async def build_patient_visit_detail_view(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     org_id: str,
     patient_id: str,
     visit_id: str,

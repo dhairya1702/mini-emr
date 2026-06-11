@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import require_admin
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import InvoiceCreate, InvoiceOut, SendInvoiceRequest
 from app.schema_domains.documents import SendNoteResponse
@@ -21,7 +21,7 @@ router = APIRouter()
 async def create_invoice(
     payload: InvoiceCreate,
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> InvoiceOut:
     try:
         return await create_invoice_workflow(repo, current_user, payload)
@@ -32,7 +32,7 @@ async def create_invoice(
 @router.get("/invoices", response_model=list[InvoiceOut])
 async def list_invoices(
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> list[InvoiceOut]:
     return await list_invoices_with_user_names(repo, str(current_user.org_id))
 
@@ -41,7 +41,7 @@ async def list_invoices(
 async def send_invoice(
     payload: SendInvoiceRequest,
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> SendNoteResponse:
     try:
         return await send_invoice_workflow(repo, current_user, payload)
@@ -52,7 +52,7 @@ async def send_invoice(
 @router.get("/invoices/{invoice_id}/pdf")
 async def generate_invoice_pdf(
     invoice_id: str,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     try:

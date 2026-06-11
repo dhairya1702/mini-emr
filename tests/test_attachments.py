@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+from types import SimpleNamespace
+
+import pytest
 from postgrest.exceptions import APIError
 
 from test_app import auth_headers_for_token, client, register_test_clinic
+from app import storage as storage_module
 from app.repositories.attachments import _is_missing_patient_attachments_table
 
 
@@ -124,3 +129,97 @@ def test_patient_attachment_missing_table_error_is_detected():
 
     assert _is_missing_patient_attachments_table(missing_table_error)
     assert not _is_missing_patient_attachments_table(unrelated_error)
+
+
+def test_patient_attachment_storage_defaults_to_supabase(monkeypatch):
+    marker = object()
+    storage_module.get_patient_attachment_storage.cache_clear()
+    monkeypatch.setattr(
+        storage_module,
+        "get_settings",
+        lambda: SimpleNamespace(storage_backend="supabase", gcs_patient_attachments_bucket=""),
+    )
+    monkeypatch.setattr(storage_module, "SupabasePatientAttachmentStorage", lambda: marker)
+
+    assert storage_module.get_patient_attachment_storage() is marker
+    storage_module.get_patient_attachment_storage.cache_clear()
+
+
+def test_patient_attachment_storage_can_select_gcs(monkeypatch):
+    class FakeGcsStorage:
+        def __init__(self, bucket_name: str) -> None:
+            self.bucket_name = bucket_name
+
+    storage_module.get_patient_attachment_storage.cache_clear()
+    monkeypatch.setattr(
+        storage_module,
+        "get_settings",
+        lambda: SimpleNamespace(storage_backend="gcs", gcs_patient_attachments_bucket="clinic-media"),
+    )
+    monkeypatch.setattr(storage_module, "GcsPatientAttachmentStorage", FakeGcsStorage)
+
+    selected = storage_module.get_patient_attachment_storage()
+
+    assert isinstance(selected, FakeGcsStorage)
+    assert selected.bucket_name == "clinic-media"
+    storage_module.get_patient_attachment_storage.cache_clear()
+
+
+def test_patient_attachment_storage_rejects_invalid_backend(monkeypatch):
+    storage_module.get_patient_attachment_storage.cache_clear()
+    monkeypatch.setattr(
+        storage_module,
+        "get_settings",
+        lambda: SimpleNamespace(storage_backend="filesystem", gcs_patient_attachments_bucket=""),
+    )
+
+    with pytest.raises(RuntimeError, match="STORAGE_BACKEND"):
+        storage_module.get_patient_attachment_storage()
+    storage_module.get_patient_attachment_storage.cache_clear()
+
+
+def test_gcs_patient_attachment_storage_requires_bucket():
+    with pytest.raises(RuntimeError, match="GCS_PATIENT_ATTACHMENTS_BUCKET"):
+        storage_module.GcsPatientAttachmentStorage("")
+
+
+def test_gcs_patient_attachment_storage_uploads_and_downloads_bytes():
+    class FakeBlob:
+        def __init__(self) -> None:
+            self.uploaded_bytes = b""
+            self.content_type = ""
+
+        def upload_from_string(self, raw_bytes, content_type=None):
+            self.uploaded_bytes = raw_bytes
+            self.content_type = content_type
+
+        def download_as_bytes(self):
+            return self.uploaded_bytes
+
+    class FakeBucket:
+        def __init__(self) -> None:
+            self.blobs: dict[str, FakeBlob] = {}
+
+        def blob(self, storage_path: str):
+            return self.blobs.setdefault(storage_path, FakeBlob())
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.bucket_name = ""
+            self.fake_bucket = FakeBucket()
+
+        def bucket(self, bucket_name: str):
+            self.bucket_name = bucket_name
+            return self.fake_bucket
+
+    fake_client = FakeClient()
+    storage = storage_module.GcsPatientAttachmentStorage("clinic-media", client=fake_client)
+
+    asyncio.run(storage.upload("org/patient/attachment/video.mp4", b"video-bytes", "video/mp4"))
+    downloaded = asyncio.run(storage.download("org/patient/attachment/video.mp4"))
+
+    blob = fake_client.fake_bucket.blobs["org/patient/attachment/video.mp4"]
+    assert fake_client.bucket_name == "clinic-media"
+    assert blob.uploaded_bytes == b"video-bytes"
+    assert blob.content_type == "video/mp4"
+    assert downloaded == b"video-bytes"

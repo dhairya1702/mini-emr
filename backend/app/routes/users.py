@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user, require_admin
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import StaffUserCreate, UserOut, UserRoleUpdate
 from app.services.signature_service import normalize_signature_image
 from app.services.user_workflow import create_staff_user_workflow
@@ -18,7 +18,7 @@ router = APIRouter()
 async def create_staff_user(
     payload: StaffUserCreate,
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> UserOut:
     return await create_staff_user_workflow(repo, current_user, payload)
 
@@ -26,7 +26,7 @@ async def create_staff_user(
 @router.get("/users", response_model=list[UserOut])
 async def list_users(
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> list[UserOut]:
     users = await repo.list_users(str(current_user.org_id))
     return [UserOut(**row) for row in users]
@@ -37,7 +37,7 @@ async def update_user_role(
     user_id: str,
     payload: UserRoleUpdate,
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> UserOut:
     try:
         await repo.get_user_for_org(str(current_user.org_id), user_id)
@@ -51,7 +51,7 @@ async def update_user_role(
 async def delete_user(
     user_id: str,
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> None:
     if str(current_user.id) == user_id:
         raise HTTPException(status_code=400, detail="You cannot remove your own account.")
@@ -68,7 +68,7 @@ async def upload_user_signature(
     user_id: str,
     file: UploadFile = File(...),
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> UserOut:
     content_type = (file.content_type or "").strip().lower()
     if content_type not in {"image/jpeg", "image/png"}:
@@ -96,7 +96,7 @@ async def upload_user_signature(
 async def delete_user_signature(
     user_id: str,
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> UserOut:
     try:
         await repo.get_user_for_org(str(current_user.org_id), user_id)
@@ -111,7 +111,7 @@ async def delete_user_signature(
 async def download_user_signature(
     user_id: str,
     current_user: UserOut = Depends(get_current_user),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> StreamingResponse:
     try:
         if current_user.role != "admin" and str(current_user.id) != user_id:

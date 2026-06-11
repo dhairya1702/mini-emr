@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.common import FollowUpStatus
 from app.schema_domains.patients import FollowUpCreate, FollowUpOut, FollowUpUpdate
@@ -24,7 +24,7 @@ def _utc_day_bounds(day: date) -> tuple[str, str]:
 async def create_follow_up(
     patient_id: str,
     payload: FollowUpCreate,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> FollowUpOut:
     try:
@@ -41,7 +41,7 @@ async def list_follow_ups(
     q: str | None = Query(default=None, max_length=120),
     scheduled_date: date | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=500),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[FollowUpOut]:
     effective_date = scheduled_date or datetime.now(UTC).date()
@@ -61,7 +61,7 @@ async def list_follow_ups(
 async def update_follow_up(
     follow_up_id: str,
     payload: FollowUpUpdate,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> FollowUpOut:
     try:

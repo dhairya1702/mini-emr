@@ -1,7 +1,7 @@
 from fastapi import HTTPException, Response
 
 from app.auth import hash_password, issue_session_headers, verify_password
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.schema_domains.auth_settings import (
     AuthResponse,
     ClinicSettingsUpdate,
@@ -34,7 +34,7 @@ def build_user_out(row: dict) -> UserOut:
 
 
 async def register_user_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     response: Response,
     payload: UserCreate,
 ) -> AuthResponse:
@@ -66,7 +66,7 @@ async def register_user_workflow(
 
 
 async def login_user_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     response: Response,
     payload: LoginRequest,
 ) -> AuthResponse:
@@ -79,7 +79,7 @@ async def login_user_workflow(
 
 
 async def create_staff_user_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     payload: StaffUserCreate,
 ) -> UserOut:

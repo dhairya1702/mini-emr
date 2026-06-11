@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias
 import warnings
 
 from app.config import get_settings
+from app.postgres import PostgresConnectionManager, get_postgres_connection_manager
 from app.repositories import (
     AIUsageRepositoryMixin,
     AuditRepositoryMixin,
@@ -18,6 +19,19 @@ from app.repositories import (
     RecordsRepositoryMixin,
     SpecialtyTracksRepositoryMixin,
     SuperuserRepositoryMixin,
+)
+from app.repositories.postgres import (
+    PostgresAIUsageRepository,
+    PostgresAttachmentsRepository,
+    PostgresAuditRepository,
+    PostgresAuthSettingsRepository,
+    PostgresBillingRepository,
+    PostgresCaseStudiesRepository,
+    PostgresMyopiaRepository,
+    PostgresPatientFlowRepository,
+    PostgresPlatformErrorsRepository,
+    PostgresRecordsRepository,
+    PostgresSpecialtyTracksRepository,
 )
 
 if TYPE_CHECKING:
@@ -73,9 +87,40 @@ class SupabaseRepository(
         _force_postgrest_http1(self.client)
 
 
+class PostgresRepository(
+    PostgresAIUsageRepository,
+    PostgresAuditRepository,
+    PostgresAttachmentsRepository,
+    PostgresAuthSettingsRepository,
+    PostgresBillingRepository,
+    PostgresCaseStudiesRepository,
+    PostgresMyopiaRepository,
+    PostgresPatientFlowRepository,
+    PostgresPlatformErrorsRepository,
+    PostgresRecordsRepository,
+    PostgresSpecialtyTracksRepository,
+):
+    def __init__(self, connection_manager: PostgresConnectionManager | None = None) -> None:
+        self.connection_manager = connection_manager or get_postgres_connection_manager()
+        self.connection_manager.open()
+
+
+AppRepository: TypeAlias = SupabaseRepository | PostgresRepository
+
+
 @lru_cache
-def get_repository() -> SupabaseRepository:
+def get_repository() -> AppRepository:
+    settings = get_settings()
+    database_backend = str(settings.database_backend or "supabase").strip().lower()
+    if database_backend == "postgres":
+        return PostgresRepository()
     return SupabaseRepository()
 
 
-__all__ = ["DuplicateCheckInCandidateError", "SupabaseRepository", "get_repository"]
+__all__ = [
+    "AppRepository",
+    "DuplicateCheckInCandidateError",
+    "PostgresRepository",
+    "SupabaseRepository",
+    "get_repository",
+]

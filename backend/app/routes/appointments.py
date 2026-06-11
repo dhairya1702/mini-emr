@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.common import AppointmentStatus
 from app.schema_domains.patients import (
@@ -34,7 +34,7 @@ def _utc_day_bounds(day: date) -> tuple[str, str]:
 @router.post("/appointments", response_model=AppointmentOut, status_code=201)
 async def create_appointment(
     payload: AppointmentCreate,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> AppointmentOut:
     try:
@@ -49,7 +49,7 @@ async def list_appointments(
     q: str | None = Query(default=None, max_length=120),
     scheduled_date: date | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=500),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[AppointmentOut]:
     effective_date = scheduled_date or datetime.now(UTC).date()
@@ -69,7 +69,7 @@ async def list_appointments(
 async def check_in_appointment(
     appointment_id: str,
     payload: AppointmentCheckInRequest | None = None,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> PatientOut:
     try:
@@ -85,7 +85,7 @@ async def check_in_appointment(
 @router.get("/appointments/{appointment_id}/check-in-preview", response_model=list[PatientMatchOut])
 async def preview_check_in_appointment(
     appointment_id: str,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[PatientMatchOut]:
     try:
@@ -101,7 +101,7 @@ async def preview_check_in_appointment(
 async def update_appointment(
     appointment_id: str,
     payload: AppointmentUpdate,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> AppointmentOut:
     try:

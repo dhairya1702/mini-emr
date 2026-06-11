@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from fastapi import HTTPException
 
 from app.clinic_context import build_clinic_context, build_measurements_context, build_patient_context
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.formatting import format_display_datetime
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.documents import (
@@ -35,7 +35,7 @@ PEDIATRIC_HANDOUT_TITLES = {
 
 
 async def _record_note_delivery_failure(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     *,
     note_id: str,
@@ -66,7 +66,7 @@ async def _record_note_delivery_failure(
 
 
 async def generate_note_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     payload: GenerateNoteRequest,
 ) -> GenerateNoteResponse:
@@ -179,7 +179,7 @@ async def generate_note_workflow(
 
 
 async def generate_letter_content(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     *,
     to: str,
@@ -309,7 +309,7 @@ def _pediatric_handout_body(
 
 
 async def generate_parent_handout_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     payload: GenerateParentHandoutRequest,
 ) -> GenerateParentHandoutResponse:
@@ -329,7 +329,7 @@ async def generate_parent_handout_workflow(
 
 
 async def send_letter_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     *,
     recipient_email: str,
@@ -364,7 +364,7 @@ async def send_letter_workflow(
 
 
 async def finalize_note_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     payload: FinalizeNoteRequest,
 ) -> NoteOut:
@@ -391,7 +391,7 @@ async def finalize_note_workflow(
 
 
 async def send_note_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     payload: SendNoteRequest,
 ) -> SendNoteResponse:

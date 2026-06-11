@@ -13,6 +13,7 @@ from starlette.responses import Response
 from app import config as config_module
 from app.auth import SESSION_EXPIRES_AT_HEADER, SESSION_TOKEN_HEADER, issue_session_headers
 from app.db import get_repository
+from app.postgres import get_postgres_connection_manager
 from app.routes import (
     appointments_router,
     attachments_router,
@@ -88,6 +89,9 @@ async def lifespan(app: FastAPI):
             reminder_task.cancel()
             with suppress(asyncio.CancelledError):
                 await reminder_task
+        if str(getattr(settings, "database_backend", "supabase") or "supabase").strip().lower() == "postgres":
+            with suppress(Exception):
+                get_postgres_connection_manager().close()
 
 
 settings = config_module.get_settings()

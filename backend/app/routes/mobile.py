@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import require_admin
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.mobile import (
     MobileFinalizeConsultationRequest,
@@ -17,7 +17,7 @@ router = APIRouter()
 @router.post("/mobile/consultations/finalize", response_model=MobileFinalizeConsultationResponse)
 async def finalize_mobile_consultation(
     payload: MobileFinalizeConsultationRequest,
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> MobileFinalizeConsultationResponse:
     try:

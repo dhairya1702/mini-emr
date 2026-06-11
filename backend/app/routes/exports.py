@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api_errors import bad_request_error
 from app.auth import require_admin
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.exports import (
     build_csv_response,
     build_history_visit_rows,
@@ -18,7 +18,7 @@ router = APIRouter()
 
 @router.get("/exports/patients.csv")
 async def export_patients_csv(
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     patients = await repo.list_patients(str(current_user.org_id))
@@ -41,7 +41,7 @@ async def export_patients_csv(
 @router.get("/exports/visits.csv")
 async def export_visits_csv(
     range: str = Query(default="all", pattern="^(today|7d|30d|month|all)$"),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     visits = await repo.list_patient_visits(str(current_user.org_id))
@@ -73,7 +73,7 @@ async def export_visits_csv(
 
 @router.get("/exports/invoices.csv")
 async def export_invoices_csv(
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     invoices = await repo.list_invoices(str(current_user.org_id))

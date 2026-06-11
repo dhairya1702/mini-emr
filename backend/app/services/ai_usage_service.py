@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.db import SupabaseRepository
+from app.db import AppRepository
 
 
 def anthropic_usage_from_response(response: Any) -> dict[str, int]:
@@ -24,7 +24,7 @@ def anthropic_usage_from_response(response: Any) -> dict[str, int]:
 
 
 async def record_anthropic_usage(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     *,
     org_id: str,
     model: str,

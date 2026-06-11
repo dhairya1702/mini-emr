@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api_errors import bad_request_error
 from app.auth import require_admin
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import CatalogItemCreate, CatalogItemOut, CatalogStockUpdate
 from app.services.catalog_workflow import (
@@ -18,7 +18,7 @@ router = APIRouter()
 @router.get("/catalog", response_model=list[CatalogItemOut])
 async def list_catalog(
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> list[CatalogItemOut]:
     items = await repo.list_catalog_items(str(current_user.org_id))
     return [CatalogItemOut(**item) for item in items]
@@ -28,7 +28,7 @@ async def list_catalog(
 async def create_catalog_item(
     payload: CatalogItemCreate,
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> CatalogItemOut:
     try:
         return await create_catalog_item_workflow(repo, current_user, payload)
@@ -41,7 +41,7 @@ async def update_catalog_stock(
     item_id: str,
     payload: CatalogStockUpdate,
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> CatalogItemOut:
     try:
         return await update_catalog_stock_workflow(repo, current_user, item_id, payload)
@@ -53,7 +53,7 @@ async def update_catalog_stock(
 async def delete_catalog_item(
     item_id: str,
     current_user: UserOut = Depends(require_admin),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> None:
     try:
         await delete_catalog_item_workflow(repo, current_user, item_id)

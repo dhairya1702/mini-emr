@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import Cookie, Depends, Header, HTTPException, Request, Response, status
 
 from app.config import get_settings
-from app.db import SupabaseRepository, get_repository
+from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 
 
@@ -133,7 +133,7 @@ async def get_current_user(
     request: Request,
     authorization: str | None = Header(default=None),
     session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
-    repo: SupabaseRepository = Depends(get_repository),
+    repo: AppRepository = Depends(get_repository),
 ) -> UserOut:
     bearer_token = ""
     cookie_token = session_token.strip() if session_token else ""

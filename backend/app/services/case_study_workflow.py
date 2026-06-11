@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from app.clinic_context import build_clinic_context
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.formatting import format_display_datetime
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.case_studies import (
@@ -210,7 +210,7 @@ def build_case_study_source_context(source: PatientCaseStudySourceOut, *, templa
 
 
 async def build_base_case_study_source_view(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     org_id: str,
     patient_id: str,
 ) -> PatientCaseStudySourceOut:
@@ -239,7 +239,7 @@ async def build_base_case_study_source_view(
 
 
 async def build_case_study_source_view(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     org_id: str,
     patient_id: str,
     *,
@@ -258,7 +258,7 @@ async def build_case_study_source_view(
 
 
 async def generate_case_study_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     payload: GenerateCaseStudyRequest,
 ) -> GenerateCaseStudyResponse:
@@ -305,7 +305,7 @@ async def generate_case_study_workflow(
     )
 
 
-async def list_case_studies_view(repo: SupabaseRepository, org_id: str) -> list[CaseStudyOut]:
+async def list_case_studies_view(repo: AppRepository, org_id: str) -> list[CaseStudyOut]:
     rows = await repo.list_case_studies(org_id)
     patient_names = await build_patient_name_map(repo, org_id)
     user_names = await build_user_name_map(repo, org_id)
@@ -319,7 +319,7 @@ async def list_case_studies_view(repo: SupabaseRepository, org_id: str) -> list[
     ]
 
 
-async def get_case_study_view(repo: SupabaseRepository, org_id: str, case_study_id: str) -> CaseStudyOut:
+async def get_case_study_view(repo: AppRepository, org_id: str, case_study_id: str) -> CaseStudyOut:
     row = await repo.get_case_study(org_id, case_study_id)
     if not row:
         raise ValueError("Case study not found for this organization.")
@@ -333,7 +333,7 @@ async def get_case_study_view(repo: SupabaseRepository, org_id: str, case_study_
 
 
 async def create_case_study_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     payload: CaseStudyCreate,
 ) -> CaseStudyOut:
@@ -358,7 +358,7 @@ async def create_case_study_workflow(
 
 
 async def update_case_study_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     case_study_id: str,
     updates: dict[str, Any],

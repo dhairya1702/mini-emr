@@ -1,4 +1,4 @@
-from app.db import SupabaseRepository
+from app.db import AppRepository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import CatalogItemCreate, CatalogItemOut, CatalogStockUpdate
 from app.services.audit_service import (
@@ -9,7 +9,7 @@ from app.services.audit_service import (
 
 
 async def create_catalog_item_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     payload: CatalogItemCreate,
 ) -> CatalogItemOut:
@@ -19,7 +19,7 @@ async def create_catalog_item_workflow(
 
 
 async def update_catalog_stock_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     item_id: str,
     payload: CatalogStockUpdate,
@@ -30,7 +30,7 @@ async def update_catalog_stock_workflow(
 
 
 async def delete_catalog_item_workflow(
-    repo: SupabaseRepository,
+    repo: AppRepository,
     current_user: UserOut,
     item_id: str,
 ) -> None:

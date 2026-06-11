@@ -51,9 +51,25 @@ def test_mutation_routes_delegate_to_workflow_modules() -> None:
     assert "await repo.delete_catalog_item(" not in catalog_text
 
 
-def test_db_uses_sync_supabase_client_module_directly() -> None:
+def test_db_exposes_neutral_repository_boundary() -> None:
     text = DB_PATH.read_text()
+    assert "class PostgresRepository(" in text
+    assert "AppRepository: TypeAlias = SupabaseRepository | PostgresRepository" in text
+    assert "def get_repository() -> AppRepository:" in text
+    assert 'if database_backend == "postgres":' in text
     assert "from supabase._sync.client import SyncClient as Client" in text
     assert "from supabase._sync.client import create_client" in text
     assert "warnings.filterwarnings(" in text
     assert "from supabase import Client, create_client" not in text
+
+
+def test_routes_and_services_do_not_type_against_supabase_repository() -> None:
+    search_roots = [
+        ROOT / "backend" / "app" / "routes",
+        ROOT / "backend" / "app" / "services",
+        ROOT / "backend" / "app" / "auth.py",
+    ]
+    for path in search_roots:
+        files = [path] if path.is_file() else path.glob("*.py")
+        for file_path in files:
+            assert "SupabaseRepository" not in file_path.read_text(), file_path
