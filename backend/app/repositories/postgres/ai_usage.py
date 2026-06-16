@@ -37,6 +37,10 @@ def _row_to_dict(row: Any, cursor: Any) -> dict[str, Any]:
     return dict(zip(columns, row, strict=False))
 
 
+def _json_dumps(value: Any) -> str:
+    return json.dumps(value, default=str)
+
+
 class PostgresAIUsageRepository:
     def __init__(self, connection_manager: PostgresConnectionManager) -> None:
         self.connection_manager = connection_manager
@@ -87,7 +91,7 @@ class PostgresAIUsageRepository:
                             cache_creation_input_tokens,
                             cache_read_input_tokens,
                             total_tokens,
-                            json.dumps(metadata or {}),
+                            _json_dumps(metadata or {}),
                         ),
                     )
                     row = cursor.fetchone()

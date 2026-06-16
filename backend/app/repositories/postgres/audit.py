@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from typing import Any
 
 from app.postgres import PostgresConnectionManager
-from app.repositories.postgres.ai_usage import _row_to_dict
+from app.repositories.postgres.ai_usage import _json_dumps, _row_to_dict
 
 
 AUDIT_EVENT_COLUMNS = [
@@ -64,7 +63,7 @@ class PostgresAuditRepository:
                             entity_id,
                             action,
                             summary.strip(),
-                            json.dumps(metadata or {}),
+                            _json_dumps(metadata or {}),
                         ),
                     )
                     row = cursor.fetchone()

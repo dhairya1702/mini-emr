@@ -29,11 +29,13 @@ from app.services.note_workflow import (
     generate_letter_content,
     generate_note_workflow,
     generate_parent_handout_workflow,
+    hydrate_note_assets_for_pdf,
     send_letter_workflow,
     send_note_workflow,
 )
 from app.services.document_helpers import build_document_context_for_user
 from app.services.pdf_service import build_letter_pdf, build_note_pdf
+from app.storage import PatientAttachmentStorage, get_patient_attachment_storage
 
 
 router = APIRouter()
@@ -43,10 +45,11 @@ router = APIRouter()
 async def create_generated_note(
     payload: GenerateNoteRequest,
     repo: AppRepository = Depends(get_repository),
+    storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
     current_user: UserOut = Depends(require_admin),
 ) -> GenerateNoteResponse:
     try:
-        return await generate_note_workflow(repo, current_user, payload)
+        return await generate_note_workflow(repo, storage, current_user, payload)
     except HTTPException:
         raise
     except ValueError as exc:
@@ -107,9 +110,10 @@ async def send_note(
     payload: SendNoteRequest,
     current_user: UserOut = Depends(require_admin),
     repo: AppRepository = Depends(get_repository),
+    storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
 ) -> SendNoteResponse:
     try:
-        return await send_note_workflow(repo, current_user, payload)
+        return await send_note_workflow(repo, storage, current_user, payload)
     except ValueError as exc:
         raise bad_request_error(exc) from exc
 
@@ -161,6 +165,7 @@ async def generate_note_pdf(
 async def generate_saved_note_pdf(
     note_id: str,
     repo: AppRepository = Depends(get_repository),
+    storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     try:
@@ -171,11 +176,17 @@ async def generate_saved_note_pdf(
         if not snapshot_content:
             raise HTTPException(status_code=400, detail="Saved note content is empty.")
         generated_on = format_display_datetime(note.get("finalized_at") or note.get("created_at") or datetime.now())
+        note_assets = await hydrate_note_assets_for_pdf(
+            repo,
+            storage,
+            str(current_user.org_id),
+            note.get("snapshot_asset_payload") or note.get("asset_payload") or [],
+        )
         pdf_bytes = build_note_pdf(
             patient={**patient, **clinic_settings},
             note_content=snapshot_content,
             generated_on=generated_on,
-            assets=note.get("snapshot_asset_payload") or note.get("asset_payload") or [],
+            assets=note_assets,
         )
         filename = f"{patient['name'].strip().replace(' ', '_') or 'patient'}_note_snapshot.pdf"
         return StreamingResponse(

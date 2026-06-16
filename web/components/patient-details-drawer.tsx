@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Pencil, UserRound, X } from "lucide-react";
+import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Pencil, Upload, UserRound, X } from "lucide-react";
 
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-myopia-modal";
@@ -43,10 +43,11 @@ interface PatientDetailsDrawerProps {
     email: string;
     address: string;
     reason: string;
-    age: number;
-    weight: number;
+    date_of_birth?: string | null;
+    age: number | null;
+    weight: number | null;
     height: number | null;
-    temperature: number;
+    temperature: number | null;
   }) => Promise<void>;
 }
 
@@ -63,8 +64,58 @@ function formatDateTime(value: string) {
   });
 }
 
-function assetDataUrl(asset: NoteAsset) {
-  return `data:${asset.content_type};base64,${asset.data_base64}`;
+function noteAttachmentKey(asset: NoteAsset) {
+  if (asset.attachment_id?.trim()) {
+    return `attachment:${asset.attachment_id.trim()}`;
+  }
+  return asset.id?.trim()
+    ? `id:${asset.id.trim()}`
+    : `fallback:${asset.name.trim()}:${asset.content_type.trim()}:${(asset.data_base64 || "").trim()}`;
+}
+
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function openPatientAttachmentViewer(attachmentId: string) {
+  window.open(`/attachment-view/${attachmentId}`, "_blank");
+}
+
+function openNoteAttachmentViewer(asset: NoteAsset) {
+  const key = `clinic_note_attachment:${globalThis.crypto?.randomUUID?.() || `${Date.now()}`}`;
+  window.sessionStorage.setItem(key, JSON.stringify(asset));
+  window.open(`/attachment-view/note?key=${encodeURIComponent(key)}`, "_blank");
+}
+
+type AttachmentPanelNoteRow = {
+  id: string;
+  label: string;
+  timestamp: string;
+  open: () => void;
+};
+
+type AttachmentPanelPatientRow = {
+  id: string;
+  label: string;
+  timestamp: string;
+  fileSize: number;
+  kind: "patient_attachment";
+  attachment: PatientAttachment;
+  open: () => void;
+};
+
+function isAttachmentPanelPatientRow(row: AttachmentPanelNoteRow | AttachmentPanelPatientRow): row is AttachmentPanelPatientRow {
+  return (row as AttachmentPanelPatientRow).kind === "patient_attachment";
 }
 
 function getEventTitle(event: PatientTimelineEvent) {
@@ -100,7 +151,7 @@ function getPhoneDigits(value: string) {
 function patientMetadataLine(patient: Patient) {
   const parts = [
     patient.phone,
-    typeof patient.age === "number" ? `Age ${patient.age}` : "",
+    patient.date_of_birth ? `DOB ${patient.date_of_birth}` : typeof patient.age === "number" ? `Age ${patient.age}` : "",
     patient.address,
     `last visit ${formatDateTime(patient.last_visit_at)}`,
   ].filter(Boolean);
@@ -423,47 +474,98 @@ function TestsPanel({
 function AttachmentsPanel({
   attachmentError,
   isLoading,
+  isDeletingAttachmentId,
+  isUploadingAttachment,
   noteAssets,
+  onDeletePatientAttachment,
+  onPatientAttachmentFileChange,
   onOpenPatientAttachment,
   patientAttachments,
 }: {
   attachmentError: string;
   isLoading: boolean;
+  isDeletingAttachmentId: string;
+  isUploadingAttachment: boolean;
   noteAssets: Array<NoteAsset & { note_id: string; note_created_at: string }>;
+  onDeletePatientAttachment: (attachment: PatientAttachment) => Promise<void>;
+  onPatientAttachmentFileChange: (file: File | null) => Promise<void>;
   onOpenPatientAttachment: (attachment: PatientAttachment) => void;
   patientAttachments: PatientAttachment[];
 }) {
-  const rows = [
+  const noteRows: AttachmentPanelNoteRow[] = [
     ...noteAssets.map((asset) => ({
       id: `note-${asset.note_id}-${asset.id}`,
       label: asset.name,
       timestamp: asset.note_created_at,
-      open: () => window.open(assetDataUrl(asset), "_blank", "noopener,noreferrer"),
+      open: () => asset.attachment_id ? openPatientAttachmentViewer(asset.attachment_id) : openNoteAttachmentViewer(asset),
     })),
-    ...patientAttachments.map((attachment) => ({
+  ];
+  const noteAttachmentIds = new Set(noteAssets.map((asset) => asset.attachment_id).filter(Boolean));
+  const patientRows: AttachmentPanelPatientRow[] = patientAttachments
+    .filter((attachment) => !noteAttachmentIds.has(attachment.id))
+    .map((attachment) => ({
       id: `patient-${attachment.id}`,
       label: attachment.file_name,
       timestamp: attachment.created_at,
+      fileSize: attachment.file_size,
+      kind: "patient_attachment" as const,
+      attachment,
       open: () => onOpenPatientAttachment(attachment),
-    })),
-  ].sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
+    }));
+  const rows: Array<AttachmentPanelNoteRow | AttachmentPanelPatientRow> = [...noteRows, ...patientRows]
+    .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
 
   return (
     <section className="rounded-[18px] border border-[#dbe7ef] bg-white p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-slate-900">Attachments</p>
+        </div>
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb]">
+          <Upload className="h-4 w-4" />
+          {isUploadingAttachment ? "Uploading..." : "Upload"}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/quicktime,video/webm,.jpg,.jpeg,.png,.webp,.pdf,.mp4,.mov,.webm"
+            className="hidden"
+            disabled={isUploadingAttachment}
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              void onPatientAttachmentFileChange(file).finally(() => {
+                event.target.value = "";
+              });
+            }}
+          />
+        </label>
+      </div>
       {isLoading ? <div className="flex justify-end"><span className="text-xs text-slate-500">Loading...</span></div> : null}
       {attachmentError ? <p className="mt-3 text-sm text-rose-600">{attachmentError}</p> : null}
       <div className={`${attachmentError || isLoading ? "mt-4" : ""} divide-y divide-[#edf3f8]`}>
         {rows.length ? (
           rows.map((row) => (
-            <button
-              key={row.id}
-              type="button"
-              onClick={row.open}
-              className="flex w-full items-center justify-between gap-4 py-3 text-left transition hover:bg-[#f7fbfd]"
-            >
-              <p className="min-w-0 truncate text-sm font-medium text-slate-900">{row.label}</p>
-              <p className="shrink-0 text-xs text-slate-500">{formatDateTime(row.timestamp)}</p>
-            </button>
+            <div key={row.id} className="flex items-center justify-between gap-4 py-3">
+              <button
+                type="button"
+                onClick={row.open}
+                className="min-w-0 flex-1 text-left transition hover:text-[#2f8fd3]"
+              >
+                <p className="truncate text-sm font-medium text-slate-900">{row.label}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {formatDateTime(row.timestamp)}
+                  {isAttachmentPanelPatientRow(row) ? ` · ${formatFileSize(row.fileSize)}` : ""}
+                </p>
+              </button>
+              {isAttachmentPanelPatientRow(row) ? (
+                <button
+                  type="button"
+                  disabled={isDeletingAttachmentId === row.attachment.id}
+                  onClick={() => void onDeletePatientAttachment(row.attachment)}
+                  className="shrink-0 rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                >
+                  {isDeletingAttachmentId === row.attachment.id ? "Deleting..." : "Delete"}
+                </button>
+              ) : null}
+            </div>
           ))
         ) : (
           <div className="py-8 text-center text-sm text-slate-500">No attachments yet.</div>
@@ -495,7 +597,7 @@ export function PatientDetailsDrawer({
     email: "",
     address: "",
     reason: "",
-    age: "",
+    dateOfBirth: "",
     weight: "",
     height: "",
     temperature: "",
@@ -511,6 +613,8 @@ export function PatientDetailsDrawer({
   const [notes, setNotes] = useState<ConsultationNote[]>([]);
   const [patientAttachments, setPatientAttachments] = useState<PatientAttachment[]>([]);
   const [isAttachmentsLoading, setIsAttachmentsLoading] = useState(false);
+  const [isDeletingAttachmentId, setIsDeletingAttachmentId] = useState("");
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [attachmentError, setAttachmentError] = useState("");
   const [myopiaHistory, setMyopiaHistory] = useState<MyopiaHistory | null>(null);
   const [growthHistory, setGrowthHistory] = useState<PediatricGrowthSummary | null>(null);
@@ -542,7 +646,7 @@ export function PatientDetailsDrawer({
       email: patient.email ?? "",
       address: patient.address ?? "",
       reason: patient.reason,
-      age: patient.age?.toString() ?? "",
+      dateOfBirth: patient.date_of_birth ?? "",
       weight: patient.weight?.toString() ?? "",
       height: patient.height?.toString() ?? "",
       temperature: patient.temperature?.toString() ?? "",
@@ -756,11 +860,17 @@ export function PatientDetailsDrawer({
   }, [activeTab, hasLoadedTestsTab, isOptometryClinic, isPediatricsClinic, onLoadGrowthHistory, onLoadMyopiaHistory, patient]);
 
   const noteAssets = useMemo(() => {
+    const seen = new Set<string>();
     const rows: Array<NoteAsset & { note_id: string; note_created_at: string }> = [];
     for (const note of notes) {
       const assets = note.snapshot_asset_payload?.length ? note.snapshot_asset_payload : note.asset_payload || [];
       for (const asset of assets) {
         if (asset.kind === "attachment") {
+          const key = noteAttachmentKey(asset);
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
           rows.push({ ...asset, note_id: note.id, note_created_at: note.finalized_at || note.created_at });
         }
       }
@@ -830,10 +940,7 @@ export function PatientDetailsDrawer({
 
   async function handleOpenPatientAttachment(attachment: PatientAttachment) {
     try {
-      const blob = await api.downloadPatientAttachment(attachment.id);
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      openPatientAttachmentViewer(attachment.id);
     } catch (downloadError) {
       setAttachmentError(downloadError instanceof Error ? downloadError.message : "Failed to open attachment.");
     }
@@ -841,7 +948,13 @@ export function PatientDetailsDrawer({
 
   async function handleOpenVisitAttachment(attachment: PatientVisitAttachmentRow) {
     if (attachment.source_type === "note_attachment" && attachment.data_base64) {
-      window.open(`data:${attachment.content_type};base64,${attachment.data_base64}`, "_blank", "noopener,noreferrer");
+      openNoteAttachmentViewer({
+        id: attachment.id,
+        kind: "attachment",
+        name: attachment.label,
+        content_type: attachment.content_type,
+        data_base64: attachment.data_base64,
+      });
       return;
     }
     if (attachment.attachment_id) {
@@ -862,15 +975,58 @@ export function PatientDetailsDrawer({
     }
   }
 
+  async function handleDeletePatientAttachment(attachment: PatientAttachment) {
+    if (!currentPatient) {
+      return;
+    }
+    if (!window.confirm(`Delete ${attachment.file_name}? This will remove the stored media file.`)) {
+      return;
+    }
+    setIsDeletingAttachmentId(attachment.id);
+    setAttachmentError("");
+    try {
+      await api.deletePatientAttachment(currentPatient.id, attachment.id);
+      setPatientAttachments((current) => current.filter((row) => row.id !== attachment.id));
+      setVisitDetailsById((current) => Object.fromEntries(
+        Object.entries(current).map(([visitId, detail]) => [
+          visitId,
+          {
+            ...detail,
+            attachments: detail.attachments.filter((row) => row.attachment_id !== attachment.id),
+          },
+        ]),
+      ));
+    } catch (deleteError) {
+      setAttachmentError(deleteError instanceof Error ? deleteError.message : "Failed to delete attachment.");
+    } finally {
+      setIsDeletingAttachmentId("");
+    }
+  }
+
+  async function handlePatientAttachmentFileChange(file: File | null) {
+    if (!currentPatient || !file) {
+      return;
+    }
+    setIsUploadingAttachment(true);
+    setAttachmentError("");
+    try {
+      const uploaded = await api.uploadPatientAttachment(currentPatient.id, file);
+      setPatientAttachments((current) => [uploaded, ...current.filter((row) => row.id !== uploaded.id)]);
+    } catch (uploadError) {
+      setAttachmentError(uploadError instanceof Error ? uploadError.message : "Failed to upload attachment.");
+    } finally {
+      setIsUploadingAttachment(false);
+    }
+  }
+
   async function handleSave() {
     if (readOnly || !patient) {
       return;
     }
 
     const digits = getPhoneDigits(form.phone);
-    const age = Number(form.age);
-    const weight = Number(form.weight);
-    const temperature = Number(form.temperature);
+    const weight = form.weight.trim() ? Number(form.weight) : null;
+    const temperature = form.temperature.trim() ? Number(form.temperature) : null;
     const height = form.height.trim() ? Number(form.height) : null;
     const normalizedEmail = form.email.trim().toLowerCase();
 
@@ -890,15 +1046,11 @@ export function PatientDetailsDrawer({
       setError("Enter a valid email address.");
       return;
     }
-    if (!Number.isFinite(age) || age <= 0) {
-      setError("Enter a valid age.");
-      return;
-    }
-    if (!Number.isFinite(weight) || weight <= 0) {
+    if (weight !== null && (!Number.isFinite(weight) || weight <= 0)) {
       setError("Enter a valid weight.");
       return;
     }
-    if (!Number.isFinite(temperature) || temperature < 90 || temperature > 110) {
+    if (temperature !== null && (!Number.isFinite(temperature) || temperature < 90 || temperature > 110)) {
       setError("Enter a valid temperature in F.");
       return;
     }
@@ -916,7 +1068,8 @@ export function PatientDetailsDrawer({
         email: normalizedEmail,
         address: form.address.trim(),
         reason: form.reason.trim(),
-        age,
+        date_of_birth: form.dateOfBirth || null,
+        age: null,
         weight,
         height,
         temperature,
@@ -973,7 +1126,7 @@ export function PatientDetailsDrawer({
               <div className="grid gap-3 lg:grid-cols-[minmax(180px,1.35fr)_repeat(4,minmax(110px,0.8fr))]">
                 <SummaryField label="Name" value={form.name} readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, name: value })); }} />
                 <SummaryField label="Phone" value={form.phone} readOnly={false} inputMode="tel" onChange={(value) => { setError(""); setForm((current) => ({ ...current, phone: value })); }} />
-                <SummaryField label="Age" value={form.age} readOnly={false} inputMode="numeric" onChange={(value) => { setError(""); setForm((current) => ({ ...current, age: value })); }} />
+                <SummaryField label="DOB" value={form.dateOfBirth} type="date" readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, dateOfBirth: value })); }} />
                 <SummaryField label="Reason" value={form.reason} readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, reason: value })); }} />
                 <SummaryField label="Email" value={form.email} type="email" readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, email: value })); }} />
               </div>
@@ -986,16 +1139,14 @@ export function PatientDetailsDrawer({
             </div>
           ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
-            <ChartTabButton active={activeTab === "visits"} count={visits.length} label="Visits" onClick={() => setActiveTab("visits")} />
+            <ChartTabButton active={activeTab === "visits"} label="Visits" onClick={() => setActiveTab("visits")} />
             <ChartTabButton
               active={activeTab === "tests"}
-              count={measurementCount + growthRecords.length}
               label="Tests"
               onClick={() => setActiveTab("tests")}
             />
             <ChartTabButton
               active={activeTab === "attachments"}
-              count={noteAssets.length + patientAttachments.length}
               label="Attachments"
               onClick={() => setActiveTab("attachments")}
             />
@@ -1074,7 +1225,11 @@ export function PatientDetailsDrawer({
                 isLoading={isAttachmentsLoading}
                 noteAssets={noteAssets}
                 onOpenPatientAttachment={handleOpenPatientAttachment}
+                onDeletePatientAttachment={handleDeletePatientAttachment}
+                onPatientAttachmentFileChange={handlePatientAttachmentFileChange}
                 patientAttachments={patientAttachments}
+                isDeletingAttachmentId={isDeletingAttachmentId}
+                isUploadingAttachment={isUploadingAttachment}
               />
             ) : null}
           </div>

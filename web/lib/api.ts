@@ -565,6 +565,10 @@ export const api = {
       method: "POST",
     });
   },
+  deletePatientAttachment: (patientId: string, attachmentId: string) =>
+    request<PatientAttachment>(`/patients/${patientId}/attachments/${attachmentId}`, {
+      method: "DELETE",
+    }),
   downloadPatientAttachment: (attachmentId: string) =>
     requestBlob(`/attachments/${attachmentId}/file`),
   listPatientInvoices: (patientId: string) =>

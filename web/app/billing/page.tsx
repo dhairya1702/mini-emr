@@ -19,6 +19,10 @@ function createId() {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function upsertInvoice(current: Invoice[], incoming: Invoice) {
+  return [incoming, ...current.filter((invoice) => invoice.id !== incoming.id)];
+}
+
 function extractMedicineSuggestions(note: ConsultationNote | null, medicineItems: CatalogItem[]) {
   if (!note) {
     return [];
@@ -428,7 +432,7 @@ export default function BillingPage() {
         amount_paid: paymentStatus === "partial" ? normalizedAmountPaid : undefined,
       });
       setSavedInvoice(created);
-      setInvoices((current) => [created, ...current]);
+      setInvoices((current) => upsertInvoice(current, created));
       setBillingStatus("Invoice created.");
     } catch (createError) {
       setBillingError(createError instanceof Error ? createError.message : "Failed to create bill.");
@@ -489,7 +493,7 @@ export default function BillingPage() {
       }));
       if (!savedInvoice) {
         setSavedInvoice(invoice);
-        setInvoices((current) => [invoice, ...current.filter((entry) => entry.id !== invoice.id)]);
+        setInvoices((current) => upsertInvoice(current, invoice));
       }
       const message = await handleSendInvoice({ invoice_id: invoice.id, recipient_email: selectedBillingPatient.email });
       setBillingStatus(message);

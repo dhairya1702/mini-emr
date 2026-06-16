@@ -114,3 +114,17 @@ class AttachmentsRepositoryMixin(BaseSupabaseRepository):
             .execute()
             .data
         )
+
+    async def delete_patient_attachment_metadata(self, org_id: str, patient_id: str, attachment_id: str) -> dict[str, Any]:
+        row = await self.get_patient_attachment(org_id, attachment_id)
+        if str(row.get("patient_id") or "") != patient_id:
+            raise ValueError("Attachment not found for this patient.")
+        await asyncio.to_thread(
+            lambda: self.client.table("patient_attachments")
+            .delete()
+            .eq("org_id", org_id)
+            .eq("patient_id", patient_id)
+            .eq("id", attachment_id)
+            .execute()
+        )
+        return row

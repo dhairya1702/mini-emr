@@ -146,19 +146,9 @@ def _normalize_note_content(
     }
 
     normalized_sections = []
-    measurement_tables = _extract_pipe_table_blocks(measurements_context)
-    medication_tables = _extract_pipe_table_blocks(medications)
     for label in SECTION_ORDER:
         existing = _strip_pipe_tables("\n".join(line for line in sections[label] if line.strip()))
         content = existing or fallbacks[label]
-        if label == "Clinical Notes" and measurement_tables:
-            missing = [table for table in measurement_tables if table not in content]
-            if missing:
-                content = "\n\n".join([*missing, content]).strip()
-        if label == "Treatment" and medication_tables:
-            missing = [table for table in medication_tables if table not in content]
-            if missing:
-                content = "\n\n".join([*missing, content]).strip()
         normalized_sections.append(f"{label}:\n{content}")
 
     return "\n\n".join(normalized_sections).strip()
@@ -298,7 +288,7 @@ Structured measurements:
             )
         )
     except Exception:
-        return build_fallback_note(symptoms, diagnosis, medications, notes, patient_context)
+        return build_fallback_note(symptoms, diagnosis, medications, notes, patient_context, measurements_context)
 
     await record_anthropic_usage(
         repo,

@@ -192,11 +192,17 @@ class PostgresRecordsRepository:
                     cursor.execute(
                         f"""
                         update public.notes
-                        set status = 'final', snapshot_content = %s, finalized_at = %s
+                        set status = 'final', snapshot_content = %s, snapshot_asset_payload = %s::jsonb, finalized_at = %s
                         where org_id = %s and id = %s
                         returning {_columns_sql(NOTE_COLUMNS)}
                         """,
-                        (note.get("content") or "", datetime.now(UTC).isoformat(), org_id, note_id),
+                        (
+                            note.get("content") or "",
+                            json.dumps(note.get("asset_payload") or []),
+                            datetime.now(UTC).isoformat(),
+                            org_id,
+                            note_id,
+                        ),
                     )
                     row = cursor.fetchone()
                     if not row:
@@ -266,12 +272,18 @@ class PostgresRecordsRepository:
                     cursor.execute(
                         f"""
                         update public.notes
-                        set status = 'sent', snapshot_content = %s, sent_at = %s, sent_by = %s, sent_to = %s
+                        set status = 'sent',
+                            snapshot_content = %s,
+                            snapshot_asset_payload = %s::jsonb,
+                            sent_at = %s,
+                            sent_by = %s,
+                            sent_to = %s
                         where org_id = %s and id = %s
                         returning {_columns_sql(NOTE_COLUMNS)}
                         """,
                         (
                             note.get("snapshot_content") or note.get("content") or "",
+                            json.dumps(note.get("snapshot_asset_payload") or note.get("asset_payload") or []),
                             datetime.now(UTC).isoformat(),
                             sent_by,
                             sent_to,

@@ -3,14 +3,14 @@
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { MobileAddPatientModal } from "@/components/mobile/mobile-add-patient-modal";
+import { MobileAddPatientModal, type MobileQueuePatientPayload } from "@/components/mobile/mobile-add-patient-modal";
 import { MobilePatientCard } from "@/components/mobile/mobile-patient-card";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { api } from "@/lib/api";
 import { resolveMobileConsultationScope, readMobileConsultationDraft } from "@/lib/mobile/consultation";
 import { getMobileQueuePatients } from "@/lib/mobile/queue";
-import type { Patient, PatientInput } from "@/lib/types";
+import type { Patient } from "@/lib/types";
 
 export default function MobileQueuePage() {
   const { currentUser, error: shellError, isAuthReady, isRedirectingToLogin } = useClinicShell();
@@ -43,8 +43,32 @@ export default function MobileQueuePage() {
 
   const queuePatients = useMemo(() => getMobileQueuePatients(patients), [patients]);
 
-  async function handleCreatePatient(payload: PatientInput) {
-    const created = await api.createPatient(payload);
+  async function handleCreatePatient(payload: MobileQueuePatientPayload) {
+    const created = payload.existingPatientId
+      ? await api.createPatientVisit(payload.existingPatientId, {
+          name: payload.name,
+          phone: payload.phone,
+          reason: payload.reason,
+          date_of_birth: payload.date_of_birth ?? null,
+          age: payload.age,
+          weight: payload.weight,
+          temperature: payload.temperature,
+          height: payload.height,
+          email: payload.email,
+          address: payload.address,
+        })
+      : await api.createPatient({
+          name: payload.name,
+          phone: payload.phone,
+          reason: payload.reason,
+          date_of_birth: payload.date_of_birth ?? null,
+          age: payload.age,
+          weight: payload.weight,
+          temperature: payload.temperature,
+          height: payload.height,
+          email: payload.email,
+          address: payload.address,
+        });
     setPatients((current) => [created, ...current]);
   }
 

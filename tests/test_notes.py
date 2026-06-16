@@ -86,6 +86,61 @@ def test_sent_consultation_note_is_emailed_and_locked_to_saved_record(client, mo
     assert notes.json()[0]["status"] == "sent"
 
 
+def test_note_file_attachment_is_persisted_as_patient_attachment(client):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="notes-attachment@clinic.com", clinic_name="Notes Attachment Clinic")
+    headers = auth_headers_for_token(session["token"])
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Stored Attachment Patient",
+            "phone": "5550102626",
+            "reason": "Consultation",
+            "age": 34,
+            "weight": 70,
+            "height": 171,
+            "temperature": 98.6,
+        },
+        headers=headers,
+    ).json()
+
+    generated = test_client.post(
+        "/generate-note",
+        json={
+            "patient_id": patient["id"],
+            "symptoms": "Rash",
+            "diagnosis": "Dermatitis",
+            "medications": "",
+            "notes": "Photo attached.",
+            "assets": [
+                {
+                    "id": "attachment-1",
+                    "kind": "attachment",
+                    "name": "rash.png",
+                    "content_type": "image/png",
+                    "data_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnM6tAAAAAASUVORK5CYII=",
+                }
+            ],
+        },
+        headers=headers,
+    )
+
+    assert generated.status_code == 200
+    note_id = generated.json()["note_id"]
+    saved_asset = repo.notes[note_id]["asset_payload"][0]
+    assert saved_asset["attachment_id"]
+    assert "data_base64" not in saved_asset
+
+    stored_attachment = repo.patient_attachments[saved_asset["attachment_id"]]
+    assert stored_attachment["patient_id"] == patient["id"]
+    assert stored_attachment["content_type"] == "image/png"
+    assert repo.patient_attachment_files[stored_attachment["storage_path"]]
+
+    finalized = test_client.post("/notes/finalize", json={"note_id": note_id}, headers=headers)
+    assert finalized.status_code == 200
+    assert finalized.json()["snapshot_asset_payload"][0]["attachment_id"] == saved_asset["attachment_id"]
+
+
 def test_note_generation_rate_limit_returns_429(client, monkeypatch):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="ratelimit-note@clinic.com", clinic_name="Rate Limit Note Clinic")

@@ -91,6 +91,7 @@ from app import main as main_module
 from app.main import app
 from app.db import DuplicateCheckInCandidateError, get_repository
 from app.schemas import ClinicSettingsUpdate, PatientCaseStudySourceOut, UserOut
+from app.schema_domains.patients import calculate_age_from_dob
 from app.services.case_study_specialty import apply_case_study_specialty_enrichment
 from app.services.document_helpers import build_document_context_for_user, serialize_note_assets
 from app.services.followup_workflow import _as_utc_minute
@@ -216,6 +217,7 @@ class FakeRepo:
             follow_ups = [row for row in self.follow_ups.values() if row["org_id"] == org_id]
             audit_events = [row for row in self.audit_events.values() if row["org_id"] == org_id]
             usage_events = [row for row in self.ai_usage_events.values() if row["org_id"] == org_id]
+            attachments = [row for row in self.patient_attachments.values() if row["org_id"] == org_id]
             last_activity = org["created_at"]
             for collection in (users, patients, notes, invoices, follow_ups, audit_events):
                 for row in collection:
@@ -233,6 +235,7 @@ class FakeRepo:
                     "invoice_count": len(invoices),
                     "follow_up_count": len(follow_ups),
                     "total_tokens": sum(int(event.get("total_tokens") or 0) for event in usage_events),
+                    "media_storage_bytes": sum(int(row.get("file_size") or 0) for row in attachments),
                     "last_activity_at": last_activity,
                 }
             )
@@ -499,10 +502,12 @@ class FakeRepo:
     async def create_patient(self, org_id: str, payload) -> dict:
         patient_id = str(uuid4())
         created_at = _now()
+        payload_data = payload.model_dump()
+        payload_data["age"] = payload.age if payload.age is not None else calculate_age_from_dob(payload.date_of_birth)
         patient = {
             "id": patient_id,
             "org_id": org_id,
-            **payload.model_dump(),
+            **payload_data,
             "phone": _normalize_phone(payload.phone),
             "email": payload.email.strip().lower(),
             "address": payload.address.strip(),
@@ -526,7 +531,8 @@ class FakeRepo:
             "email": payload.email.strip().lower(),
             "address": payload.address.strip(),
             "reason": payload.reason,
-            "age": payload.age,
+            "date_of_birth": getattr(payload, "date_of_birth", None),
+            "age": payload.age if payload.age is not None else calculate_age_from_dob(getattr(payload, "date_of_birth", None)),
             "weight": payload.weight,
             "height": payload.height,
             "temperature": payload.temperature,
@@ -644,6 +650,7 @@ class FakeRepo:
                 "email": appointment["email"],
                 "address": appointment["address"],
                 "reason": appointment["reason"],
+                "date_of_birth": appointment.get("date_of_birth"),
                 "age": appointment["age"],
                 "weight": appointment["weight"],
                 "height": appointment["height"],
@@ -663,6 +670,7 @@ class FakeRepo:
                 "email": appointment["email"],
                 "address": appointment["address"],
                 "reason": appointment["reason"],
+                "date_of_birth": appointment.get("date_of_birth"),
                 "age": appointment["age"],
                 "weight": appointment["weight"],
                 "height": appointment["height"],
@@ -685,6 +693,7 @@ class FakeRepo:
                     "email": appointment["email"],
                     "address": appointment["address"],
                     "reason": appointment["reason"],
+                    "date_of_birth": appointment.get("date_of_birth"),
                     "age": appointment["age"],
                     "weight": appointment["weight"],
                     "height": appointment["height"],
@@ -748,7 +757,8 @@ class FakeRepo:
                 "email": payload.email.strip().lower(),
                 "address": payload.address.strip(),
                 "reason": payload.reason,
-                "age": payload.age,
+                "date_of_birth": getattr(payload, "date_of_birth", None),
+                "age": payload.age if payload.age is not None else calculate_age_from_dob(getattr(payload, "date_of_birth", None)),
                 "weight": payload.weight,
                 "height": payload.height,
                 "temperature": payload.temperature,
@@ -819,6 +829,13 @@ class FakeRepo:
         row = self.patient_attachments[attachment_id]
         if row["org_id"] != org_id:
             raise ValueError("Attachment not found for this organization.")
+        return row
+
+    async def delete_patient_attachment_metadata(self, org_id: str, patient_id: str, attachment_id: str) -> dict:
+        row = await self.get_patient_attachment(org_id, attachment_id)
+        if row["patient_id"] != patient_id:
+            raise ValueError("Attachment not found for this patient.")
+        self.patient_attachments.pop(attachment_id, None)
         return row
 
     async def download_patient_attachment(self, org_id: str, attachment_id: str) -> tuple[dict, bytes]:
@@ -1379,6 +1396,9 @@ class FakePatientAttachmentStorage:
 
     async def download(self, storage_path: str) -> bytes:
         return self.repo.patient_attachment_files[storage_path]
+
+    async def delete(self, storage_path: str) -> None:
+        self.repo.patient_attachment_files.pop(storage_path, None)
 
 
 @pytest.fixture

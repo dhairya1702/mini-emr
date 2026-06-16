@@ -6,7 +6,7 @@ from typing import Any
 import httpcore
 import httpx
 
-from app.schema_domains.patients import PatientCreate, PatientVisitCreate
+from app.schema_domains.patients import PatientCreate, PatientVisitCreate, calculate_age_from_dob
 
 
 RETRYABLE_TRANSPORT_EXCEPTIONS = (
@@ -146,7 +146,8 @@ def visit_payload(payload: PatientCreate | PatientVisitCreate) -> dict[str, Any]
         "email": payload.email.strip().lower(),
         "address": payload.address.strip(),
         "reason": payload.reason.strip(),
-        "age": payload.age,
+        "date_of_birth": payload.date_of_birth.isoformat() if payload.date_of_birth else None,
+        "age": payload.age if payload.age is not None else calculate_age_from_dob(payload.date_of_birth),
         "weight": payload.weight,
         "height": payload.height,
         "temperature": payload.temperature,

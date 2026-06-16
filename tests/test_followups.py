@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+
+import pytest
 
 from test_app import auth_headers_for_token, client, register_test_clinic
 
@@ -162,3 +165,56 @@ def test_patient_timeline_includes_follow_up_completion_event(client):
     event_types = [event["type"] for event in timeline.json()]
     assert "follow_up_scheduled" in event_types
     assert "follow_up_completed" in event_types
+
+
+def test_internal_follow_up_reminder_runner_requires_valid_token(client, monkeypatch):
+    test_client, _repo = client
+    register_test_clinic(test_client, identifier="scheduler-auth@clinic.com", clinic_name="Scheduler Auth Clinic")
+    monkeypatch.setattr(
+        "app.routes.followups.get_settings",
+        lambda: SimpleNamespace(internal_scheduler_token="scheduler-secret"),
+    )
+
+    missing = test_client.post("/internal/run-follow-up-reminders")
+    assert missing.status_code == 403
+
+    invalid = test_client.post(
+        "/internal/run-follow-up-reminders",
+        headers={"X-Internal-Token": "wrong-secret"},
+    )
+    assert invalid.status_code == 403
+
+
+def test_internal_follow_up_reminder_runner_processes_orgs(client, monkeypatch):
+    test_client, _repo = client
+    register_test_clinic(test_client, identifier="scheduler-run@clinic.com", clinic_name="Scheduler Run Clinic")
+    monkeypatch.setattr(
+        "app.routes.followups.get_settings",
+        lambda: SimpleNamespace(internal_scheduler_token="scheduler-secret"),
+    )
+
+    response = test_client.post(
+        "/internal/run-follow-up-reminders",
+        headers={"X-Internal-Token": "scheduler-secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    assert response.json()["processed_orgs"] == 1
+
+
+def test_internal_follow_up_reminder_runner_reports_missing_config(client, monkeypatch):
+    test_client, _repo = client
+    register_test_clinic(test_client, identifier="scheduler-missing@clinic.com", clinic_name="Scheduler Missing Clinic")
+    monkeypatch.setattr(
+        "app.routes.followups.get_settings",
+        lambda: SimpleNamespace(internal_scheduler_token=""),
+    )
+
+    response = test_client.post(
+        "/internal/run-follow-up-reminders",
+        headers={"X-Internal-Token": "scheduler-secret"},
+    )
+
+    assert response.status_code == 503
+    assert "INTERNAL_SCHEDULER_TOKEN" in response.json()["detail"]

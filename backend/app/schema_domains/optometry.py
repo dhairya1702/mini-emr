@@ -10,7 +10,8 @@ class NoteAssetInput(BaseModel):
     kind: Literal["attachment", "drawing"]
     name: str = Field(min_length=1, max_length=160)
     content_type: str = Field(min_length=3, max_length=120)
-    data_base64: str = Field(min_length=8)
+    data_base64: str = Field(default="", max_length=10_000_000)
+    attachment_id: UUID | None = None
 
 
 class TestScoreEntry(BaseModel):

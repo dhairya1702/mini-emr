@@ -3,7 +3,7 @@
 import type { Patient } from "@/lib/types";
 
 const LEGACY_STORAGE_KEY = "clinic_recent_patients";
-const STORAGE_KEY_PREFIX = "clinic_recent_patients:v2";
+const STORAGE_KEY_PREFIX = "clinic_recent_patients:v3";
 const MAX_RECENT_PATIENTS = 8;
 
 export type RecentPatientsScope = {
@@ -30,17 +30,9 @@ export function loadRecentPatients(scope: RecentPatientsScope): Patient[] {
   }
   const scopedKey = storageKey(scope);
   try {
-    const scopedPatients = readPatientList(scopedKey);
-    if (scopedPatients.length) {
-      return scopedPatients;
-    }
-    const legacyPatients = readPatientList(LEGACY_STORAGE_KEY);
-    if (legacyPatients.length) {
-      const migrated = legacyPatients.slice(0, MAX_RECENT_PATIENTS);
-      window.localStorage.setItem(scopedKey, JSON.stringify(migrated));
-      return migrated;
-    }
-    return [];
+    const scopedPatients = readPatientList(scopedKey).slice(0, MAX_RECENT_PATIENTS);
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    return scopedPatients;
   } catch {
     return [];
   }

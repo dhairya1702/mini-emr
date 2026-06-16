@@ -90,6 +90,7 @@ export function createTrainingPatient(payload: {
   email: string;
   address: string;
   reason: string;
+  date_of_birth?: string | null;
   age: number | null;
   weight: number | null;
   height: number | null;
@@ -108,6 +109,7 @@ export function createTrainingPatient(payload: {
     email: payload.email,
     address: payload.address,
     reason: payload.reason,
+    date_of_birth: payload.date_of_birth ?? null,
     age: payload.age,
     weight: payload.weight,
     height: payload.height,

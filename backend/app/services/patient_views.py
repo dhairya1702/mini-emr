@@ -18,6 +18,19 @@ from app.services.audit_service import user_names_by_id
 from app.timeline import build_patient_timeline
 
 
+def _note_attachment_identity(asset: dict) -> str:
+    attachment_id = str(asset.get("attachment_id") or "").strip()
+    if attachment_id:
+        return f"attachment:{attachment_id}"
+    asset_id = str(asset.get("id") or "").strip()
+    if asset_id:
+        return f"id:{asset_id}"
+    name = str(asset.get("name") or "").strip()
+    content_type = str(asset.get("content_type") or "").strip()
+    data_base64 = str(asset.get("data_base64") or "").strip()
+    return f"fallback:{name}:{content_type}:{data_base64}"
+
+
 def _build_myopia_delta(current: dict, previous: dict) -> MyopiaDeltaOut:
     return MyopiaDeltaOut(
         right_mm=round(float(current["axial_length_right_mm"]) - float(previous["axial_length_right_mm"]), 3),
@@ -276,11 +289,16 @@ async def build_patient_visit_detail_view(
     primary_note = visit_notes[0] if visit_notes else None
 
     attachment_rows: list[PatientVisitAttachmentRowOut] = []
+    seen_note_attachment_keys: set[str] = set()
     for note in visit_notes:
         assets = note.snapshot_asset_payload if note.snapshot_asset_payload else note.asset_payload
         for asset in assets:
             if asset.get("kind") != "attachment":
                 continue
+            attachment_key = _note_attachment_identity(asset)
+            if attachment_key in seen_note_attachment_keys:
+                continue
+            seen_note_attachment_keys.add(attachment_key)
             attachment_rows.append(
                 PatientVisitAttachmentRowOut(
                     id=f"note-{note.id}-{asset.get('id')}",
@@ -289,6 +307,7 @@ async def build_patient_visit_detail_view(
                     source_type="note_attachment",
                     content_type=str(asset.get("content_type") or ""),
                     data_base64=str(asset.get("data_base64") or ""),
+                    attachment_id=str(asset.get("attachment_id") or "") or None,
                 )
             )
 

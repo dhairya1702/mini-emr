@@ -9,6 +9,7 @@ export interface Patient {
   email: string;
   address: string;
   reason: string;
+  date_of_birth?: string | null;
   age: number | null;
   weight: number | null;
   height: number | null;
@@ -26,6 +27,7 @@ export interface PatientMatch {
   email: string;
   address: string;
   reason: string;
+  date_of_birth?: string | null;
   age: number | null;
   weight: number | null;
   height: number | null;
@@ -44,6 +46,7 @@ export interface PatientVisit {
   email: string;
   address: string;
   reason: string;
+  date_of_birth?: string | null;
   age: number | null;
   weight: number | null;
   height: number | null;
@@ -66,6 +69,7 @@ export interface Appointment {
   email: string;
   address: string;
   reason: string;
+  date_of_birth?: string | null;
   age: number | null;
   weight: number | null;
   height: number | null;
@@ -158,7 +162,8 @@ export interface NoteAsset {
   kind: "attachment" | "drawing";
   name: string;
   content_type: string;
-  data_base64: string;
+  data_base64?: string;
+  attachment_id?: string;
 }
 
 export interface PatientAttachment {
@@ -661,6 +666,7 @@ export interface SuperuserOrgSummary {
   invoice_count: number;
   follow_up_count: number;
   total_tokens: number;
+  media_storage_bytes: number;
   last_activity_at: string | null;
 }
 
@@ -778,6 +784,7 @@ export interface AppointmentCreatePayload {
   email: string;
   address: string;
   reason: string;
+  date_of_birth?: string | null;
   age: number | null;
   weight: number | null;
   height: number | null;
@@ -812,6 +819,7 @@ export interface PatientInput {
   email: string;
   address: string;
   reason: string;
+  date_of_birth?: string | null;
   age: number | null;
   weight: number | null;
   height: number | null;
@@ -826,6 +834,7 @@ export interface PatientUpdatePayload {
   email?: string;
   address?: string;
   reason?: string;
+  date_of_birth?: string | null;
   age?: number | null;
   weight?: number | null;
   height?: number | null;

@@ -135,3 +135,23 @@ class PostgresAttachmentsRepository:
                     return _row_to_dict(row, cursor)
 
         return await asyncio.to_thread(_get)
+
+    async def delete_patient_attachment_metadata(self, org_id: str, patient_id: str, attachment_id: str) -> dict[str, Any]:
+        def _delete() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        delete from public.patient_attachments
+                        where org_id = %s and patient_id = %s and id = %s
+                        returning id, org_id, patient_id, uploaded_by, file_name,
+                          content_type, file_size, storage_path, created_at
+                        """,
+                        (org_id, patient_id, attachment_id),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("Attachment not found for this patient.")
+                    return _row_to_dict(row, cursor)
+
+        return await asyncio.to_thread(_delete)

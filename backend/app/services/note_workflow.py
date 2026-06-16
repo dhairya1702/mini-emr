@@ -1,4 +1,6 @@
+import base64
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import HTTPException
 
@@ -25,6 +27,7 @@ from app.services.auth_flow import enforce_rate_limit
 from app.services.document_helpers import build_document_context_for_user, serialize_note_assets
 from app.services.email_service import send_clinic_email_message
 from app.services.pdf_service import build_letter_pdf, build_note_pdf
+from app.storage import PatientAttachmentStorage
 
 PEDIATRIC_HANDOUT_TITLES = {
     "fever_home_care": "Fever Home Care",
@@ -32,6 +35,79 @@ PEDIATRIC_HANDOUT_TITLES = {
     "well_visit_summary": "Well-Visit Summary",
     "hydration_uri_home_care": "Hydration and Cold Care",
 }
+
+
+def _decode_note_asset_bytes(asset: dict[str, Any]) -> bytes:
+    try:
+        raw_bytes = base64.b64decode(str(asset.get("data_base64") or ""), validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Attachment '{asset.get('name') or 'file'}' is invalid.") from exc
+    if not raw_bytes:
+        raise HTTPException(status_code=400, detail=f"Attachment '{asset.get('name') or 'file'}' is empty.")
+    return raw_bytes
+
+
+def _stored_note_asset(asset: dict[str, Any], attachment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(asset.get("id") or attachment["id"]),
+        "kind": str(asset.get("kind") or "attachment"),
+        "name": str(asset.get("name") or attachment.get("file_name") or "Attachment"),
+        "content_type": str(asset.get("content_type") or attachment.get("content_type") or "application/octet-stream"),
+        "attachment_id": str(attachment["id"]),
+    }
+
+
+async def persist_note_attachments(
+    repo: AppRepository,
+    storage: PatientAttachmentStorage,
+    current_user: UserOut,
+    *,
+    patient_id: str,
+    assets: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    stored_assets: list[dict[str, Any]] = []
+    for asset in assets:
+        if asset.get("kind") != "attachment" or asset.get("attachment_id"):
+            stored_assets.append(asset)
+            continue
+        raw_bytes = _decode_note_asset_bytes(asset)
+        content_type = str(asset.get("content_type") or "application/octet-stream").strip() or "application/octet-stream"
+        row = await repo.prepare_patient_attachment_metadata(
+            str(current_user.org_id),
+            patient_id,
+            uploaded_by=str(current_user.id),
+            filename=str(asset.get("name") or "attachment"),
+            content_type=content_type,
+            file_size=len(raw_bytes),
+        )
+        await storage.upload(str(row["storage_path"]), raw_bytes, content_type)
+        created = await repo.create_patient_attachment_metadata(row)
+        stored_assets.append(_stored_note_asset(asset, created))
+    return stored_assets
+
+
+async def hydrate_note_assets_for_pdf(
+    repo: AppRepository,
+    storage: PatientAttachmentStorage,
+    org_id: str,
+    assets: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    hydrated: list[dict[str, Any]] = []
+    for asset in assets:
+        if asset.get("data_base64") or not asset.get("attachment_id"):
+            hydrated.append(asset)
+            continue
+        attachment = await repo.get_patient_attachment(org_id, str(asset["attachment_id"]))
+        raw_bytes = await storage.download(str(attachment["storage_path"]))
+        hydrated.append(
+            {
+                **asset,
+                "name": str(asset.get("name") or attachment.get("file_name") or "Attachment"),
+                "content_type": str(asset.get("content_type") or attachment.get("content_type") or "application/octet-stream"),
+                "data_base64": base64.b64encode(raw_bytes).decode("ascii"),
+            }
+        )
+    return hydrated
 
 
 async def _record_note_delivery_failure(
@@ -67,6 +143,7 @@ async def _record_note_delivery_failure(
 
 async def generate_note_workflow(
     repo: AppRepository,
+    storage: PatientAttachmentStorage,
     current_user: UserOut,
     payload: GenerateNoteRequest,
 ) -> GenerateNoteResponse:
@@ -91,6 +168,14 @@ async def generate_note_workflow(
     )
     note = None
     asset_payload = serialize_note_assets(payload.assets)
+    if payload.patient_id:
+        asset_payload = await persist_note_attachments(
+            repo,
+            storage,
+            current_user,
+            patient_id=str(payload.patient_id),
+            assets=asset_payload,
+        )
     structured_modules = [module.model_dump(mode="json") for module in payload.structured_modules]
     if payload.patient_id:
         patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
@@ -392,6 +477,7 @@ async def finalize_note_workflow(
 
 async def send_note_workflow(
     repo: AppRepository,
+    storage: PatientAttachmentStorage,
     current_user: UserOut,
     payload: SendNoteRequest,
 ) -> SendNoteResponse:
@@ -412,11 +498,17 @@ async def send_note_workflow(
     if not snapshot_content:
         raise HTTPException(status_code=400, detail="Saved note content is empty.")
     generated_on = format_display_datetime(finalized_note.get("finalized_at") or finalized_note.get("created_at") or datetime.now())
+    note_assets = await hydrate_note_assets_for_pdf(
+        repo,
+        storage,
+        str(current_user.org_id),
+        finalized_note.get("snapshot_asset_payload") or finalized_note.get("asset_payload") or [],
+    )
     pdf_bytes = build_note_pdf(
         patient={**patient, **clinic_settings},
         note_content=snapshot_content,
         generated_on=generated_on,
-        assets=finalized_note.get("snapshot_asset_payload") or finalized_note.get("asset_payload") or [],
+        assets=note_assets,
     )
     patient_name = str(patient.get("name") or "").strip() or "Patient"
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"

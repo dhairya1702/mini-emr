@@ -43,6 +43,7 @@ function normalizeVisit(value: PatientVisit): PatientVisit {
       value.status === "consultation" || value.status === "done" || value.status === "waiting"
         ? value.status
         : "waiting",
+    date_of_birth: value.date_of_birth ?? null,
     age: value.age ?? null,
     weight: value.weight ?? null,
     height: value.height ?? null,
@@ -154,10 +155,11 @@ export default function HistoryPage() {
       email: string;
       address: string;
       reason: string;
-      age: number;
-      weight: number;
+      date_of_birth?: string | null;
+      age: number | null;
+      weight: number | null;
       height: number | null;
-      temperature: number;
+      temperature: number | null;
     },
   ) {
     const saved = await api.updatePatient(patientId, payload);

@@ -15,6 +15,26 @@ def _render_pipe_table(title: str, headers: list[str], rows: list[list[str]]) ->
     return "\n".join(table_lines)
 
 
+NON_CLINICAL_STRUCTURED_KEYS = {
+    "template_key",
+    "preset_key",
+    "generated_title",
+    "generated_content",
+}
+
+
+def _format_structured_label(value: str) -> str:
+    return value.replace("_", " ").strip().title()
+
+
+def _render_structured_notes(title: str, rows: list[list[str]]) -> str:
+    if not rows:
+        return ""
+    lines = [title]
+    lines.extend(f"- {label}: {value}" for label, value in rows if value)
+    return "\n".join(lines)
+
+
 def build_clinic_context(clinic_settings: dict) -> str:
     clinic_context_bits = [
         f"Clinic Name: {clinic_settings.get('clinic_name', 'ClinicOS') or 'ClinicOS'}",
@@ -331,17 +351,16 @@ def build_measurements_context(payload: GenerateNoteRequest) -> str:
         if not module_type:
             continue
         module_rows = [
-            [key.replace("_", " ").title(), str(value)]
+            [_format_structured_label(key), str(value)]
             for key, value in module.payload.items()
-            if value not in (None, "", [], {})
+            if key not in NON_CLINICAL_STRUCTURED_KEYS and value not in (None, "", [], {})
         ]
         if not module_rows:
             continue
-        module_table = _render_pipe_table(
+        module_notes = _render_structured_notes(
             f"Structured Module: {module_type}",
-            ["Field", "Value"],
             module_rows,
         )
-        if module_table:
-            measurement_bits.append(module_table)
+        if module_notes:
+            measurement_bits.append(module_notes)
     return "\n".join(bit for bit in measurement_bits if bit)

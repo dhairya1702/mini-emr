@@ -59,7 +59,73 @@ def test_patient_video_attachment_upload_list_and_download(client):
     downloaded = test_client.get(f"/attachments/{attachment['id']}/file", headers=headers)
     assert downloaded.status_code == 200
     assert downloaded.content == b"video-bytes"
+    assert downloaded.headers["accept-ranges"] == "bytes"
     assert repo.patient_attachment_files[attachment["storage_path"]] == b"video-bytes"
+
+    ranged = test_client.get(
+        f"/attachments/{attachment['id']}/file",
+        headers={**headers, "Range": "bytes=0-4"},
+    )
+    assert ranged.status_code == 206
+    assert ranged.content == b"video"
+    assert ranged.headers["content-range"] == "bytes 0-4/11"
+
+
+def test_patient_document_attachment_upload_list_and_download(client):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="attachments-document@clinic.com",
+        clinic_name="Attachments Document Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = _create_patient(test_client, headers)
+
+    upload = test_client.post(
+        f"/patients/{patient['id']}/attachments",
+        files={"file": ("scan.pdf", b"pdf-bytes", "application/pdf")},
+        headers=headers,
+    )
+
+    assert upload.status_code == 201
+    attachment = upload.json()
+    assert attachment["file_name"] == "scan.pdf"
+    assert attachment["content_type"] == "application/pdf"
+    assert attachment["file_size"] == len(b"pdf-bytes")
+
+    downloaded = test_client.get(f"/attachments/{attachment['id']}/file", headers=headers)
+    assert downloaded.status_code == 200
+    assert downloaded.content == b"pdf-bytes"
+    assert repo.patient_attachment_files[attachment["storage_path"]] == b"pdf-bytes"
+
+
+def test_patient_attachment_delete_removes_metadata_and_storage(client):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="attachments-delete@clinic.com",
+        clinic_name="Attachments Delete Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = _create_patient(test_client, headers)
+
+    upload = test_client.post(
+        f"/patients/{patient['id']}/attachments",
+        files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
+        headers=headers,
+    )
+    assert upload.status_code == 201
+    attachment = upload.json()
+
+    deleted = test_client.delete(
+        f"/patients/{patient['id']}/attachments/{attachment['id']}",
+        headers=headers,
+    )
+
+    assert deleted.status_code == 200
+    assert attachment["id"] == deleted.json()["id"]
+    assert attachment["id"] not in repo.patient_attachments
+    assert attachment["storage_path"] not in repo.patient_attachment_files
 
 
 def test_patient_attachment_rejects_unsupported_file_type(client):
@@ -74,12 +140,18 @@ def test_patient_attachment_rejects_unsupported_file_type(client):
 
     upload = test_client.post(
         f"/patients/{patient['id']}/attachments",
-        files={"file": ("photo.jpg", b"jpg-bytes", "image/jpeg")},
+        files={
+            "file": (
+                "notes.docx",
+                b"docx-bytes",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
         headers=headers,
     )
 
     assert upload.status_code == 400
-    assert "videos" in upload.json()["detail"]
+    assert "attachments" in upload.json()["detail"]
 
 
 def test_patient_attachment_download_is_org_scoped(client):
@@ -188,6 +260,7 @@ def test_gcs_patient_attachment_storage_uploads_and_downloads_bytes():
         def __init__(self) -> None:
             self.uploaded_bytes = b""
             self.content_type = ""
+            self.deleted = False
 
         def upload_from_string(self, raw_bytes, content_type=None):
             self.uploaded_bytes = raw_bytes
@@ -195,6 +268,9 @@ def test_gcs_patient_attachment_storage_uploads_and_downloads_bytes():
 
         def download_as_bytes(self):
             return self.uploaded_bytes
+
+        def delete(self):
+            self.deleted = True
 
     class FakeBucket:
         def __init__(self) -> None:
@@ -217,9 +293,11 @@ def test_gcs_patient_attachment_storage_uploads_and_downloads_bytes():
 
     asyncio.run(storage.upload("org/patient/attachment/video.mp4", b"video-bytes", "video/mp4"))
     downloaded = asyncio.run(storage.download("org/patient/attachment/video.mp4"))
+    asyncio.run(storage.delete("org/patient/attachment/video.mp4"))
 
     blob = fake_client.fake_bucket.blobs["org/patient/attachment/video.mp4"]
     assert fake_client.bucket_name == "clinic-media"
     assert blob.uploaded_bytes == b"video-bytes"
     assert blob.content_type == "video/mp4"
     assert downloaded == b"video-bytes"
+    assert blob.deleted is True

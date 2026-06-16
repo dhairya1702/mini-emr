@@ -1,0 +1,18 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - web/Dockerfile
+      - -t
+      - asia-south1-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/clinic-emr-web:${SHORT_SHA}
+      - --build-arg
+      - NEXT_PUBLIC_API_BASE_URL=${_API_BASE_URL}
+      - web
+
+images:
+  - asia-south1-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/clinic-emr-web:${SHORT_SHA}
+
+substitutions:
+  _AR_REPO: clinic-emr
+  _API_BASE_URL: https://REPLACE_WITH_BACKEND_RUN_URL

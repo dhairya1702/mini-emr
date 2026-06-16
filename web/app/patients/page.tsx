@@ -118,10 +118,11 @@ export default function PatientsPage() {
       email: string;
       address: string;
       reason: string;
-      age: number;
-      weight: number;
+      date_of_birth?: string | null;
+      age: number | null;
+      weight: number | null;
       height: number | null;
-      temperature: number;
+      temperature: number | null;
     },
   ) {
     const saved = await api.updatePatient(patientId, payload);

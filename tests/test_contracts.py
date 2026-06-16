@@ -316,6 +316,43 @@ def test_build_clinic_and_measurement_contexts_include_structured_fields() -> No
     assert "Treatment Type | Atropine 0.01%" in measurements_context
 
 
+def test_measurements_context_filters_non_clinical_structured_module_metadata() -> None:
+    measurements_context = build_measurements_context(
+        GenerateNoteRequest(
+            symptoms="Dry cough",
+            diagnosis="Viral URI",
+            medications="Paracetamol",
+            notes="Warm fluids.",
+            structured_modules=[
+                {
+                    "module_type": "parent_handout_request",
+                    "payload": {
+                        "template_key": "well_visit_summary",
+                        "instructions": "Explain warning signs.",
+                    },
+                },
+                {
+                    "module_type": "pediatric_follow_up_plan",
+                    "payload": {
+                        "preset_key": "routine_review",
+                        "suggested_interval": "1 week",
+                        "notes": "Review if symptoms persist.",
+                    },
+                },
+            ],
+        )
+    )
+
+    assert "Template Key" not in measurements_context
+    assert "well_visit_summary" not in measurements_context
+    assert "Preset Key" not in measurements_context
+    assert "routine_review" not in measurements_context
+    assert "Field | Value" not in measurements_context
+    assert "Instructions: Explain warning signs." in measurements_context
+    assert "Suggested Interval: 1 week" in measurements_context
+    assert "Notes: Review if symptoms persist." in measurements_context
+
+
 def test_export_helpers_preserve_latest_visit_and_filter_date_ranges() -> None:
     created_at = datetime(2026, 4, 1, 9, 0, tzinfo=UTC)
     last_visit_at = datetime(2026, 4, 10, 10, 0, tzinfo=UTC)

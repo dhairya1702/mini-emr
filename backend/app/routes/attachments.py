@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
+from fastapi.responses import Response, StreamingResponse
 
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
@@ -14,11 +14,20 @@ from app.storage import PatientAttachmentStorage, get_patient_attachment_storage
 router = APIRouter()
 
 ALLOWED_PATIENT_ATTACHMENT_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "application/pdf",
     "video/mp4",
     "video/quicktime",
     "video/webm",
 }
 ALLOWED_PATIENT_ATTACHMENT_EXTENSIONS = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".pdf": "application/pdf",
     ".mp4": "video/mp4",
     ".mov": "video/quicktime",
     ".webm": "video/webm",
@@ -33,7 +42,10 @@ def _resolve_attachment_content_type(upload: UploadFile) -> str:
     extension = Path(upload.filename or "").suffix.lower()
     if extension in ALLOWED_PATIENT_ATTACHMENT_EXTENSIONS:
         return ALLOWED_PATIENT_ATTACHMENT_EXTENSIONS[extension]
-    raise HTTPException(status_code=400, detail="Only MP4, MOV, and WEBM videos are supported for patient media.")
+    raise HTTPException(
+        status_code=400,
+        detail="Only JPG, PNG, WEBP, PDF, MP4, MOV, and WEBM attachments are supported.",
+    )
 
 
 @router.get("/patients/{patient_id}/attachments", response_model=list[PatientAttachmentOut])
@@ -84,21 +96,70 @@ async def upload_patient_attachment(
 @router.get("/attachments/{attachment_id}/file")
 async def download_patient_attachment(
     attachment_id: str,
+    range_header: str | None = Header(default=None, alias="Range"),
     repo: AppRepository = Depends(get_repository),
     storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
     current_user: UserOut = Depends(get_current_user),
-) -> StreamingResponse:
+):
     try:
         row = await repo.get_patient_attachment(str(current_user.org_id), attachment_id)
         if not row:
             raise ValueError("Attachment not found for this organization.")
         raw_bytes = await storage.download(str(row["storage_path"]))
+        content_type = str(row.get("content_type") or "application/octet-stream")
+        filename = str(row.get("file_name") or "attachment")
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Content-Disposition": f'inline; filename="{filename}"',
+        }
+        if range_header and range_header.startswith("bytes="):
+            range_spec = range_header.removeprefix("bytes=").split(",", 1)[0].strip()
+            start_raw, _, end_raw = range_spec.partition("-")
+            try:
+                start = int(start_raw) if start_raw else 0
+                end = int(end_raw) if end_raw else len(raw_bytes) - 1
+            except ValueError:
+                start, end = 0, len(raw_bytes) - 1
+            start = max(0, min(start, len(raw_bytes) - 1))
+            end = max(start, min(end, len(raw_bytes) - 1))
+            chunk = raw_bytes[start:end + 1]
+            return Response(
+                content=chunk,
+                status_code=206,
+                media_type=content_type,
+                headers={
+                    **headers,
+                    "Content-Range": f"bytes {start}-{end}/{len(raw_bytes)}",
+                    "Content-Length": str(len(chunk)),
+                },
+            )
         return StreamingResponse(
             iter([raw_bytes]),
-            media_type=str(row.get("content_type") or "application/octet-stream"),
-            headers={"Content-Disposition": f'inline; filename="{row.get("file_name") or "attachment"}"'},
+            media_type=content_type,
+            headers={**headers, "Content-Length": str(len(raw_bytes))},
         )
     except ValueError as exc:
         raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="download_patient_attachment") from exc
+
+
+@router.delete("/patients/{patient_id}/attachments/{attachment_id}", response_model=PatientAttachmentOut)
+async def delete_patient_attachment(
+    patient_id: str,
+    attachment_id: str,
+    repo: AppRepository = Depends(get_repository),
+    storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
+    current_user: UserOut = Depends(get_current_user),
+) -> PatientAttachmentOut:
+    try:
+        row = await repo.get_patient_attachment(str(current_user.org_id), attachment_id)
+        if str(row.get("patient_id") or "") != patient_id:
+            raise ValueError("Attachment not found for this patient.")
+        await storage.delete(str(row["storage_path"]))
+        deleted = await repo.delete_patient_attachment_metadata(str(current_user.org_id), patient_id, attachment_id)
+        return PatientAttachmentOut(**deleted)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="delete_patient_attachment") from exc

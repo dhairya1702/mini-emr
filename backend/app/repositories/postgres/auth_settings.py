@@ -106,6 +106,7 @@ SUPERUSER_ORG_SUMMARY_COLUMNS = [
     "invoice_count",
     "follow_up_count",
     "total_tokens",
+    "media_storage_bytes",
     "last_activity_at",
 ]
 
@@ -201,6 +202,7 @@ class PostgresAuthSettingsRepository:
                           coalesce(invoices.invoice_count, 0)::int as invoice_count,
                           coalesce(follow_ups.follow_up_count, 0)::int as follow_up_count,
                           coalesce(usage.total_tokens, 0)::int as total_tokens,
+                          coalesce(patient_attachments.media_storage_bytes, 0)::bigint as media_storage_bytes,
                           greatest(
                             o.created_at,
                             coalesce(users.last_activity_at, o.created_at),
@@ -247,6 +249,11 @@ class PostgresAuthSettingsRepository:
                           from public.ai_usage_events
                           where org_id = o.id
                         ) usage on true
+                        left join lateral (
+                          select sum(file_size) as media_storage_bytes
+                          from public.patient_attachments
+                          where org_id = o.id
+                        ) patient_attachments on true
                         order by o.created_at desc
                         """,
                         (),

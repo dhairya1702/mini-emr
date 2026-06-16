@@ -307,7 +307,7 @@ export default function MobileConsultationPage() {
               {form.assets.map((asset) => (
                 <div key={asset.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-2">
                   <div className="flex min-w-0 items-center gap-3">
-                    {asset.content_type.startsWith("image/") ? (
+                    {asset.content_type.startsWith("image/") && asset.data_base64 ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={assetDataUrl(asset)} alt="" className="h-10 w-10 rounded-lg border border-[#dbe7ef] object-cover" />
                     ) : (

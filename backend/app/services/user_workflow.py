@@ -14,6 +14,15 @@ from app.services.audit_service import write_audit_event
 from app.services.auth_flow import enforce_rate_limit, normalize_identifier
 
 
+def _session_identity(row: dict) -> dict[str, str]:
+    return {
+        "id": str(row["id"]),
+        "org_id": str(row["org_id"]),
+        "role": str(row["role"]),
+        "identifier": str(row["identifier"]),
+    }
+
+
 def build_user_out(row: dict) -> UserOut:
     return UserOut(**{
         key: row.get(key)
@@ -62,7 +71,7 @@ async def register_user_workflow(
         password_hash=hash_password(payload.password),
         role="admin",
     )
-    return AuthResponse(token=issue_session_headers(response, created), user=build_user_out(created))
+    return AuthResponse(token=issue_session_headers(response, _session_identity(created)), user=build_user_out(created))
 
 
 async def login_user_workflow(
@@ -75,7 +84,7 @@ async def login_user_workflow(
     existing = await repo.get_user_by_identifier(identifier)
     if not existing or not verify_password(payload.password, existing["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email/phone or password.")
-    return AuthResponse(token=issue_session_headers(response, existing), user=build_user_out(existing))
+    return AuthResponse(token=issue_session_headers(response, _session_identity(existing)), user=build_user_out(existing))
 
 
 async def create_staff_user_workflow(

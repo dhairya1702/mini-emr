@@ -1,0 +1,15 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - backend/Dockerfile
+      - -t
+      - asia-south1-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/clinic-emr-backend:${SHORT_SHA}
+      - backend
+
+images:
+  - asia-south1-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/clinic-emr-backend:${SHORT_SHA}
+
+substitutions:
+  _AR_REPO: clinic-emr

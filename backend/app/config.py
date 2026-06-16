@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     database_url: str = ""
     storage_backend: str = "supabase"
     gcs_patient_attachments_bucket: str = ""
+    internal_scheduler_token: str = ""
     app_origin: str = "http://127.0.0.1:3000"
     app_origins: str = ""
     super_admin_identifiers: str = ""

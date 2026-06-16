@@ -530,6 +530,7 @@ export default function HomePage() {
     email: string;
     address: string;
     reason: string;
+    date_of_birth?: string | null;
     age: number | null;
     weight: number | null;
     height: number | null;
@@ -549,6 +550,7 @@ export default function HomePage() {
         email: payload.email,
         address: payload.address,
         reason: payload.reason,
+        date_of_birth: payload.date_of_birth ?? null,
         age: payload.age,
         weight: payload.weight,
         height: payload.height,
@@ -571,6 +573,7 @@ export default function HomePage() {
           email: payload.email,
           address: payload.address,
           reason: payload.reason,
+          date_of_birth: payload.date_of_birth ?? null,
           age: payload.age,
           weight: payload.weight,
           height: payload.height,
@@ -593,10 +596,11 @@ export default function HomePage() {
           email: payload.email,
           address: payload.address,
           reason: payload.reason,
-          age: payload.age ?? 0,
-          weight: payload.weight ?? 0,
+          date_of_birth: payload.date_of_birth ?? null,
+          age: payload.age,
+          weight: payload.weight,
           height: payload.height,
-          temperature: payload.temperature ?? 0,
+          temperature: payload.temperature,
         });
         setPatients((current) => [updated, ...current.filter((patient) => patient.id !== updated.id)]);
         setError("");
@@ -618,6 +622,7 @@ export default function HomePage() {
       email: payload.email,
       address: payload.address,
       reason: payload.reason,
+      date_of_birth: payload.date_of_birth ?? null,
       age: payload.age,
       weight: payload.weight,
       height: payload.height,
@@ -632,10 +637,11 @@ export default function HomePage() {
         email: payload.email,
         address: payload.address,
         reason: payload.reason,
-        age: payload.age ?? 0,
-        weight: payload.weight ?? 0,
+        date_of_birth: payload.date_of_birth ?? null,
+        age: payload.age,
+        weight: payload.weight,
         height: payload.height,
-        temperature: payload.temperature ?? 0,
+        temperature: payload.temperature,
       });
       setPatients((current) =>
         current.map((patient) => (patient.id === optimisticPatient.id ? created : patient)),
@@ -847,10 +853,11 @@ export default function HomePage() {
       email: string;
       address: string;
       reason: string;
-      age: number;
-      weight: number;
+      date_of_birth?: string | null;
+      age: number | null;
+      weight: number | null;
       height: number | null;
-      temperature: number;
+      temperature: number | null;
     },
   ) {
     const previousPatients = patients;

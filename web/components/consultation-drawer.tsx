@@ -409,6 +409,7 @@ export function ConsultationDrawer({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
   const [isEyeExamOpen, setIsEyeExamOpen] = useState(false);
@@ -460,6 +461,7 @@ export function ConsultationDrawer({
     setIsGeneratingHandout(false);
     setIsGeneratingHandoutPdf(false);
     setIsCompleting(false);
+    setIsFinalizing(false);
     setIsSending(false);
     setIsEyeExamOpen(false);
     setIsContactLensOpen(false);
@@ -890,6 +892,39 @@ export function ConsultationDrawer({
       onClose();
     } finally {
       setIsCompleting(false);
+    }
+  }
+
+  async function handleFinalize() {
+    if (!currentNoteId || !hasGeneratedNote || !form.generatedNote.trim()) {
+      setStatusMessage("Generate a consultation note before finalizing it.");
+      return;
+    }
+    if (noteStatus === "final" || noteStatus === "sent") {
+      setStatusMessage(noteStatus === "sent" ? "Note was already sent and locked." : "Note already finalized.");
+      return;
+    }
+    setIsFinalizing(true);
+    setStatusMessage("");
+    try {
+      if (isTrainingMode) {
+        setNoteStatus("final");
+        setStatusMessage("Training note finalized. You can mark the patient done without sending.");
+        return;
+      }
+      const finalized = await api.finalizeNote(currentNoteId);
+      setCurrentNoteId(finalized.id);
+      setNoteStatus(finalized.status);
+      setForm((current) => ({
+        ...current,
+        generatedNote: finalized.snapshot_content || finalized.content || current.generatedNote,
+        assets: (finalized.snapshot_asset_payload || finalized.asset_payload || current.assets) as NoteAsset[],
+      }));
+      setStatusMessage("Note finalized. You can mark the patient done without sending.");
+    } catch (finalizeError) {
+      setStatusMessage(finalizeError instanceof Error ? finalizeError.message : "Failed to finalize note.");
+    } finally {
+      setIsFinalizing(false);
     }
   }
 
@@ -1475,7 +1510,7 @@ export function ConsultationDrawer({
                   {attachmentAssets.length ? attachmentAssets.map((asset) => (
                     <div key={asset.id} className="flex items-center justify-between gap-3 rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/40 px-3 py-2">
                       <div className="flex min-w-0 items-center gap-3">
-                        {asset.content_type.startsWith("image/") ? (
+                        {asset.content_type.startsWith("image/") && asset.data_base64 ? (
                           <NextImage
                             src={`data:${asset.content_type};base64,${asset.data_base64}`}
                             alt={asset.name}
@@ -1944,6 +1979,15 @@ export function ConsultationDrawer({
                     </label>
                   </div>
                   <div className="flex flex-col gap-3">
+                    <button
+                      type="button"
+                      disabled={isFinalizing || !currentNoteId || !form.generatedNote.trim() || noteStatus !== "draft"}
+                      onClick={handleFinalize}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                    >
+                      <PenLine className="h-4 w-4" />
+                      {isFinalizing ? "Finalizing..." : noteStatus === "draft" ? "Finalize Note" : "Note Finalized"}
+                    </button>
                     <button
                       type="button"
                       disabled={isSending || !currentNoteId || isSent || !recipientEmail.trim()}

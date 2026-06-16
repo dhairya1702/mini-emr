@@ -46,5 +46,5 @@ export function validateMobileAttachmentFile(file: FileLike) {
 }
 
 export function assetDataUrl(asset: NoteAsset) {
-  return `data:${asset.content_type};base64,${asset.data_base64}`;
+  return `data:${asset.content_type};base64,${asset.data_base64 || ""}`;
 }

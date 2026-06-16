@@ -18,6 +18,9 @@ class PatientAttachmentStorage(Protocol):
     async def download(self, storage_path: str) -> bytes:
         ...
 
+    async def delete(self, storage_path: str) -> None:
+        ...
+
 
 class SupabasePatientAttachmentStorage:
     def __init__(self) -> None:
@@ -51,6 +54,11 @@ class SupabasePatientAttachmentStorage:
             lambda: self.client.storage.from_(PATIENT_ATTACHMENTS_BUCKET).download(storage_path)
         )
 
+    async def delete(self, storage_path: str) -> None:
+        await asyncio.to_thread(
+            lambda: self.client.storage.from_(PATIENT_ATTACHMENTS_BUCKET).remove([storage_path])
+        )
+
 
 class GcsPatientAttachmentStorage:
     def __init__(self, bucket_name: str, client=None) -> None:
@@ -72,6 +80,16 @@ class GcsPatientAttachmentStorage:
 
     async def download(self, storage_path: str) -> bytes:
         return await asyncio.to_thread(lambda: self.bucket.blob(storage_path).download_as_bytes())
+
+    async def delete(self, storage_path: str) -> None:
+        def _delete() -> None:
+            try:
+                self.bucket.blob(storage_path).delete()
+            except Exception as exc:  # pragma: no cover - provider-specific missing-object handling
+                if exc.__class__.__name__ != "NotFound":
+                    raise
+
+        await asyncio.to_thread(_delete)
 
 
 @lru_cache

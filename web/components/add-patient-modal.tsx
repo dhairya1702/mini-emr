@@ -18,6 +18,7 @@ interface AddPatientModalProps {
     email: string;
     address: string;
     reason: string;
+    date_of_birth?: string | null;
     age: number | null;
     weight: number | null;
     height: number | null;
@@ -37,6 +38,7 @@ export function AddPatientModal({
     phone: "",
     email: "",
     address: "",
+    dateOfBirth: "",
     reason: "",
     age: "",
     weight: "",
@@ -74,6 +76,7 @@ export function AddPatientModal({
       phone: "",
       email: "",
       address: "",
+      dateOfBirth: "",
       reason: "",
       age: "",
       weight: "",
@@ -116,6 +119,7 @@ export function AddPatientModal({
       phone: match.phone,
       email: match.email ?? "",
       address: match.address ?? "",
+      dateOfBirth: match.date_of_birth ?? "",
       reason: "",
       age: "",
       weight: "",
@@ -165,7 +169,7 @@ export function AddPatientModal({
   async function submitPatient(skipExistingCheck = false) {
     const digits = getPhoneDigits(form.phone);
     const isAppointment = form.entryType === "appointment";
-    const age = form.age.trim() ? Number(form.age) : null;
+    const age = null;
     const weight = form.weight.trim() ? Number(form.weight) : null;
     const rawTemperature = form.temperature.trim() ? Number(form.temperature) : null;
     const rawHeight = form.height.trim() ? Number(form.height) : null;
@@ -191,17 +195,12 @@ export function AddPatientModal({
       return;
     }
 
-    if (!isAppointment && (age === null || !Number.isFinite(age) || age <= 0)) {
-      setError("Enter a valid age.");
-      return;
-    }
-
-    if (!isAppointment && (weight === null || !Number.isFinite(weight) || weight <= 0)) {
+    if (!isAppointment && weight !== null && (!Number.isFinite(weight) || weight <= 0)) {
       setError("Enter a valid weight.");
       return;
     }
 
-    if (!isAppointment && (rawTemperature === null || !Number.isFinite(rawTemperature))) {
+    if (!isAppointment && rawTemperature !== null && !Number.isFinite(rawTemperature)) {
       setError("Enter a valid temperature.");
       return;
     }
@@ -254,6 +253,7 @@ export function AddPatientModal({
         email: normalizedEmail,
         address: form.address.trim(),
         reason: form.reason,
+        date_of_birth: form.dateOfBirth || null,
         age,
         weight,
         height,
@@ -410,15 +410,15 @@ export function AddPatientModal({
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-800">Address</span>
+              <span className="mb-2 block text-sm font-medium text-slate-800">DOB</span>
               <input
-                value={form.address}
+                type="date"
+                value={form.dateOfBirth}
                 onChange={(event) => {
                   setError("");
-                  setForm((current) => ({ ...current, address: event.target.value }));
+                  setForm((current) => ({ ...current, dateOfBirth: event.target.value }));
                 }}
                 className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
-                placeholder="Street, locality"
               />
             </label>
           </div>
@@ -517,25 +517,9 @@ export function AddPatientModal({
             <>
               <div className="grid grid-cols-2 gap-4">
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-800">Age</span>
-                  <input
-                    required
-                    inputMode="numeric"
-                    value={form.age}
-                    onChange={(event) => {
-                      setError("");
-                      setForm((current) => ({ ...current, age: event.target.value }));
-                    }}
-                    className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
-                    placeholder="Years"
-                  />
-                </label>
-
-                <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-800">Temperature</span>
                   <div className="flex gap-2">
                     <input
-                      required
                       inputMode="decimal"
                       value={form.temperature}
                       onChange={(event) => {
@@ -567,7 +551,6 @@ export function AddPatientModal({
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-800">Weight</span>
                   <input
-                    required
                     inputMode="decimal"
                     value={form.weight}
                     onChange={(event) => {

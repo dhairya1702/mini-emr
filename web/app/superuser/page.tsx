@@ -25,6 +25,20 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
+function formatStorage(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
 function cn(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
@@ -118,6 +132,7 @@ export default function SuperuserPage() {
         acc.invoiceCount += org.invoice_count;
         acc.followUpCount += org.follow_up_count;
         acc.totalTokens += org.total_tokens;
+        acc.mediaStorageBytes += org.media_storage_bytes;
         return acc;
       },
       {
@@ -128,6 +143,7 @@ export default function SuperuserPage() {
         invoiceCount: 0,
         followUpCount: 0,
         totalTokens: 0,
+        mediaStorageBytes: 0,
       },
     );
 
@@ -321,14 +337,16 @@ export default function SuperuserPage() {
                 ["Organizations", overview.orgCount, "Total clinics currently onboarded."],
                 ["Users", overview.userCount, "All staff and admin accounts across orgs."],
                 ["Errors", overview.errorCount, "Recent platform errors in the current feed."],
-                ["Tokens", overview.totalTokens, "Total recorded AI token usage across orgs."],
+                ["Media storage", formatStorage(overview.mediaStorageBytes), "Patient media and video stored across orgs."],
               ].map(([label, value, copy], index) => (
                 <article
                   key={String(label)}
                   className={cn("rounded-[30px] border px-5 py-5", index === 2 ? rosePanel : index === 0 ? surface : softSurface)}
                 >
                   <p className={cn("text-[11px] uppercase tracking-[0.22em]", subtleText)}>{label}</p>
-                  <p className={cn("mt-5 text-4xl font-semibold tracking-[-0.05em]", sectionHeader)}>{formatNumber(Number(value))}</p>
+                  <p className={cn("mt-5 text-4xl font-semibold tracking-[-0.05em]", sectionHeader)}>
+                    {typeof value === "number" ? formatNumber(value) : String(value)}
+                  </p>
                   <p className={cn("mt-3 max-w-[26ch] text-sm leading-6", bodyText)}>{copy}</p>
                 </article>
               ))}
@@ -351,12 +369,14 @@ export default function SuperuserPage() {
                     ["Notes", overview.noteCount],
                     ["Invoices", overview.invoiceCount],
                     ["Follow-ups", overview.followUpCount],
+                    ["Media storage", formatStorage(overview.mediaStorageBytes)],
                     ["Active orgs", overview.activeOrgs.length],
-                    ["Recent errors", overview.errorCount],
                   ].map(([label, value]) => (
                     <div key={String(label)} className={cn("rounded-[22px] border px-4 py-4", softSurface)}>
                       <p className={cn("text-[11px] uppercase tracking-[0.2em]", subtleText)}>{label}</p>
-                      <p className={cn("mt-3 text-2xl font-semibold tracking-[-0.03em]", sectionHeader)}>{formatNumber(Number(value))}</p>
+                      <p className={cn("mt-3 text-2xl font-semibold tracking-[-0.03em]", sectionHeader)}>
+                        {typeof value === "number" ? formatNumber(value) : String(value)}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -378,11 +398,12 @@ export default function SuperuserPage() {
                         ["Patients", selectedOrgDetail.summary.patient_count],
                         ["Notes", selectedOrgDetail.summary.note_count],
                         ["Invoices", selectedOrgDetail.summary.invoice_count],
+                        ["Media", formatStorage(selectedOrgDetail.summary.media_storage_bytes)],
                         ["Tokens", selectedOrgDetail.summary.total_tokens],
                       ].map(([label, value]) => (
                         <div key={String(label)} className={cn("flex items-center justify-between rounded-[20px] border px-4 py-3 text-sm", softSurface, isDark ? "text-slate-200" : "text-slate-700")}>
                           <span>{label}</span>
-                          <span className="font-semibold">{formatNumber(Number(value))}</span>
+                          <span className="font-semibold">{typeof value === "number" ? formatNumber(value) : String(value)}</span>
                         </div>
                       ))}
                     </>
@@ -418,7 +439,7 @@ export default function SuperuserPage() {
                         </div>
                         <div>
                           <p className={cn("text-sm font-semibold", sectionHeader)}>{org.clinic_name}</p>
-                          <p className={cn("mt-1 text-xs", subtleText)}>{org.user_count} users • {org.invoice_count} invoices</p>
+                          <p className={cn("mt-1 text-xs", subtleText)}>{org.user_count} users • {formatStorage(org.media_storage_bytes)}</p>
                         </div>
                       </div>
                       <div className="text-right">
@@ -482,7 +503,7 @@ export default function SuperuserPage() {
                         <span>{org.patient_count} patients</span>
                         <span>{org.note_count} notes</span>
                         <span>{org.invoice_count} invoices</span>
-                        <span>{formatNumber(org.total_tokens)} tokens</span>
+                        <span>{formatStorage(org.media_storage_bytes)} media</span>
                       </div>
                       <p className={cn("mt-3 text-xs", subtleText)}>Last activity: {formatDateTime(org.last_activity_at)}</p>
                     </button>
@@ -523,11 +544,14 @@ export default function SuperuserPage() {
                       ["Notes", selectedOrgDetail.summary.note_count],
                       ["Invoices", selectedOrgDetail.summary.invoice_count],
                       ["Follow-ups", selectedOrgDetail.summary.follow_up_count],
+                      ["Media storage", formatStorage(selectedOrgDetail.summary.media_storage_bytes)],
                       ["Tokens", selectedOrgDetail.summary.total_tokens],
                     ].map(([label, value]) => (
                       <div key={String(label)} className={cn("rounded-[22px] border px-4 py-3", softSurface)}>
                         <p className={cn("text-[11px] uppercase tracking-[0.16em]", subtleText)}>{label}</p>
-                        <p className={cn("mt-2 text-lg font-semibold", sectionHeader)}>{formatNumber(Number(value))}</p>
+                        <p className={cn("mt-2 text-lg font-semibold", sectionHeader)}>
+                          {typeof value === "number" ? formatNumber(value) : String(value)}
+                        </p>
                       </div>
                     ))}
                     </div>

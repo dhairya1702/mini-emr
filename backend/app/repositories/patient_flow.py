@@ -91,7 +91,7 @@ class PatientFlowRepositoryMixin(BaseSupabaseRepository):
             .insert(
                 {
                     "org_id": org_id,
-                    **payload.model_dump(),
+                    **payload.model_dump(mode="json"),
                     "phone": normalize_phone_number(payload.phone),
                     "email": payload.email.strip().lower(),
                     "address": payload.address.strip(),

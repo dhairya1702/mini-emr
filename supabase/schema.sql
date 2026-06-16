@@ -14,6 +14,7 @@ create table if not exists public.patients (
   email text not null default '',
   address text not null default '',
   reason text not null,
+  date_of_birth date,
   age integer,
   weight double precision,
   height double precision,
@@ -22,6 +23,22 @@ create table if not exists public.patients (
   billed boolean not null default false,
   created_at timestamptz not null default now(),
   last_visit_at timestamptz not null default now()
+);
+
+create table if not exists public.clinic_users (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  identifier text not null unique,
+  name text not null default '',
+  doctor_dob date,
+  doctor_address text not null default '',
+  doctor_signature_name text,
+  doctor_signature_content_type text,
+  doctor_signature_data_base64 text,
+  updated_at timestamptz not null default now(),
+  password_hash text not null,
+  role text not null check (role in ('admin', 'staff')),
+  created_at timestamptz not null default now()
 );
 
 create table if not exists public.notes (
@@ -59,22 +76,6 @@ create table if not exists public.patient_attachments (
 insert into storage.buckets (id, name, public)
 values ('patient-attachments', 'patient-attachments', false)
 on conflict (id) do nothing;
-
-create table if not exists public.clinic_users (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  identifier text not null unique,
-  name text not null default '',
-  doctor_dob date,
-  doctor_address text not null default '',
-  doctor_signature_name text,
-  doctor_signature_content_type text,
-  doctor_signature_data_base64 text,
-  updated_at timestamptz not null default now(),
-  password_hash text not null,
-  role text not null check (role in ('admin', 'staff')),
-  created_at timestamptz not null default now()
-);
 
 create table if not exists public.clinic_settings (
   id uuid primary key default gen_random_uuid(),
@@ -219,6 +220,7 @@ create table if not exists public.appointments (
   email text not null default '',
   address text not null default '',
   reason text not null,
+  date_of_birth date,
   age integer,
   weight double precision,
   height double precision,
@@ -239,6 +241,7 @@ create table if not exists public.patient_visits (
   email text not null default '',
   address text not null default '',
   reason text not null,
+  date_of_birth date,
   age integer,
   weight double precision,
   height double precision,
@@ -306,6 +309,15 @@ create index if not exists case_studies_org_created_at_idx
 
 create index if not exists case_studies_org_patient_updated_at_idx
   on public.case_studies(org_id, patient_id, updated_at desc);
+
+alter table public.patients
+add column if not exists date_of_birth date;
+
+alter table public.patient_visits
+add column if not exists date_of_birth date;
+
+alter table public.appointments
+add column if not exists date_of_birth date;
 
 alter table public.patients
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;
@@ -618,6 +630,7 @@ begin
       email = v_appointment.email,
       address = v_appointment.address,
       reason = v_appointment.reason,
+      date_of_birth = v_appointment.date_of_birth,
       age = v_appointment.age,
       weight = v_appointment.weight,
       height = v_appointment.height,
@@ -635,6 +648,7 @@ begin
       email,
       address,
       reason,
+      date_of_birth,
       age,
       weight,
       height,
@@ -650,6 +664,7 @@ begin
       v_appointment.email,
       v_appointment.address,
       v_appointment.reason,
+      v_appointment.date_of_birth,
       v_appointment.age,
       v_appointment.weight,
       v_appointment.height,
@@ -669,6 +684,7 @@ begin
     email,
     address,
     reason,
+    date_of_birth,
     age,
     weight,
     height,
@@ -684,6 +700,7 @@ begin
     v_appointment.email,
     v_appointment.address,
     v_appointment.reason,
+    v_appointment.date_of_birth,
     v_appointment.age,
     v_appointment.weight,
     v_appointment.height,

@@ -343,6 +343,58 @@ def test_patient_lookup_returns_most_recent_matches_first_and_honors_limit(clien
     assert [match["name"] for match in matches] == ["Newest Patient", "Middle Patient"]
 
 
+def test_patient_visit_detail_deduplicates_note_attachments_across_versions(client):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="patients-dedupe@clinic.com", clinic_name="Patient Dedupe Clinic")
+    headers = auth_headers_for_token(session["token"])
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Attachment Deduped",
+            "phone": "5550191919",
+            "reason": "Review hand pain",
+            "age": 37,
+            "weight": 69,
+            "temperature": 98.6,
+        },
+        headers=headers,
+    ).json()
+    visit = repo.patient_visits[next(iter(repo.patient_visits))]
+    shared_asset = {
+        "id": "asset-1",
+        "kind": "attachment",
+        "name": "scan.png",
+        "content_type": "image/png",
+        "data_base64": "YWJj",
+    }
+    import asyncio
+    from app.schema_domains.patients import NoteCreate
+
+    first_note = asyncio.run(repo.create_note(session["user"]["org_id"], NoteCreate(
+        patient_id=patient["id"],
+        content="Draft note",
+        asset_payload=[shared_asset],
+        structured_modules=[],
+    )))
+    second_note = asyncio.run(repo.create_note(session["user"]["org_id"], NoteCreate(
+        patient_id=patient["id"],
+        content="Final note",
+        asset_payload=[shared_asset],
+        structured_modules=[],
+    )))
+    asyncio.run(repo.finalize_note(session["user"]["org_id"], first_note["id"]))
+    asyncio.run(repo.finalize_note(session["user"]["org_id"], second_note["id"]))
+
+    detail = test_client.get(
+        f"/patients/{patient['id']}/visits/{visit['id']}/details",
+        headers=headers,
+    )
+
+    assert detail.status_code == 200
+    note_attachments = [row for row in detail.json()["attachments"] if row["source_type"] == "note_attachment"]
+    assert len(note_attachments) == 1
+
+
 def test_patient_phone_is_normalized_for_lookup_and_storage(client):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="patients-normalize@clinic.com", clinic_name="Patient Normalize Clinic")

@@ -6,7 +6,8 @@ Clinic-focused EMR covering queue management, appointments and check-in, patient
 
 - Frontend: Next.js App Router, React, TypeScript, Tailwind CSS
 - Backend: FastAPI
-- Database: Supabase PostgreSQL
+- Database: PostgreSQL (Cloud SQL target)
+- File storage: Google Cloud Storage for patient attachments
 - AI: Anthropic Claude
 
 ## Structure
@@ -14,7 +15,8 @@ Clinic-focused EMR covering queue management, appointments and check-in, patient
 ```text
 web/      Next.js frontend
 backend/  FastAPI API
-supabase/ SQL schema
+db/       Cloud SQL / PostgreSQL schema
+supabase/ legacy migration-era schema reference
 ```
 
 ## Frontend setup
@@ -72,15 +74,20 @@ Frontend:
 
 Backend:
 
-- `SUPABASE_URL=...`
-- `SUPABASE_SERVICE_ROLE_KEY=...`
+- `DATABASE_BACKEND=postgres`
+- `DATABASE_URL=...`
+- `STORAGE_BACKEND=gcs`
+- `GCS_PATIENT_ATTACHMENTS_BUCKET=...`
 - `AUTH_SECRET=...` required and must stay fixed across restarts so signed sessions remain valid
 - `ANTHROPIC_API_KEY=...`
 - `ANTHROPIC_MODEL=claude-sonnet-4-20250514`
+- `INTERNAL_SCHEDULER_TOKEN=...` used by Cloud Scheduler to trigger follow-up reminders over HTTP
 - `APP_ORIGIN=http://127.0.0.1:3000`
 - `SUPER_ADMIN_IDENTIFIERS=you@example.com` optional, comma-separated allowlist for the hidden `/superuser` dashboard
 - `FOLLOW_UP_REMINDER_RUNNER_ENABLED=false`
 - `FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300`
+
+Supabase fallback support still exists in code during the migration window, but the intended deployment path is PostgreSQL plus GCS on GCP.
 
 ## Follow-up reminders
 
@@ -102,11 +109,14 @@ Example cron entry every 5 minutes:
 */5 * * * * cd /path/to/repo/backend && /path/to/python3 -m app.tasks.send_follow_up_reminders >> /tmp/clinic-followups.log 2>&1
 ```
 
+- Cloud Scheduler:
+  deploy the backend on Cloud Run and trigger `POST /internal/run-follow-up-reminders` with `X-Internal-Token`. See [GCP_DEPLOYMENT.md](/Users/dhairyalalwani/PycharmProjects/mr/GCP_DEPLOYMENT.md).
+
 ## Architecture
 
 - The frontend only talks to the FastAPI backend over HTTP.
 - All database access and AI provider access live in the backend.
-- Supabase credentials and Anthropic credentials are only used by the backend.
+- Database/storage credentials and Anthropic credentials are only used by the backend.
 - Sessions are custom backend-signed tokens with a 30-day TTL, returned in both cookies and `X-Session-Token` headers.
 - Authenticated API requests reissue fresh session headers, so the app behaves like a sliding session while the user is active.
 - The frontend mirrors session state in `localStorage` and refreshes/clears it based on `X-Session-Expires-At`, but the backend remains the source of truth.
@@ -128,7 +138,9 @@ Example cron entry every 5 minutes:
 
 ## Database
 
-Run the SQL in `supabase/schema.sql` in your Supabase project.
+For PostgreSQL or Cloud SQL, run the SQL in [db/schema.sql](/Users/dhairyalalwani/PycharmProjects/mr/db/schema.sql).
+
+The older [supabase/schema.sql](/Users/dhairyalalwani/PycharmProjects/mr/supabase/schema.sql) is only a legacy migration reference while Supabase fallback support still exists in code.
 
 If your database is already live, do not assume only `clinic_settings` and `clinic_users` are needed. The current app also depends on:
 

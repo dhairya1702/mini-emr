@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -7,15 +7,24 @@ from pydantic import BaseModel, Field
 from app.schema_domains.common import AppointmentStatus, FollowUpStatus, NoteStatus, PatientStatus, TimelineEventType
 
 
+def calculate_age_from_dob(date_of_birth: date | None) -> int | None:
+    if not date_of_birth:
+        return None
+    today = datetime.now(UTC).date()
+    age = today.year - date_of_birth.year - ((today.month, today.day) < (date_of_birth.month, date_of_birth.day))
+    return max(age, 0)
+
+
 class PatientCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     phone: str = Field(min_length=5, max_length=30)
     email: str = Field(default="", max_length=200)
     address: str = Field(default="", max_length=300)
     reason: str = Field(min_length=1, max_length=200)
-    age: int = Field(ge=0, le=130)
-    weight: float = Field(gt=0, le=500)
-    temperature: float = Field(ge=90, le=110)
+    date_of_birth: date | None = None
+    age: int | None = Field(default=None, ge=0, le=130)
+    weight: float | None = Field(default=None, gt=0, le=500)
+    temperature: float | None = Field(default=None, ge=90, le=110)
     height: float | None = Field(default=None, gt=0, le=300)
 
 
@@ -27,6 +36,7 @@ class PatientUpdate(BaseModel):
     email: str | None = Field(default=None, max_length=200)
     address: str | None = Field(default=None, max_length=300)
     reason: str | None = Field(default=None, min_length=1, max_length=200)
+    date_of_birth: date | None = None
     age: int | None = Field(default=None, ge=0, le=130)
     weight: float | None = Field(default=None, gt=0, le=500)
     temperature: float | None = Field(default=None, ge=90, le=110)
@@ -40,6 +50,7 @@ class PatientOut(BaseModel):
     email: str = ""
     address: str = ""
     reason: str
+    date_of_birth: date | None = None
     age: int | None = None
     weight: float | None = None
     temperature: float | None = None
@@ -58,6 +69,7 @@ class PatientVisitOut(BaseModel):
     email: str = ""
     address: str = ""
     reason: str
+    date_of_birth: date | None = None
     age: int | None = None
     weight: float | None = None
     temperature: float | None = None
@@ -107,6 +119,7 @@ class AppointmentCreate(BaseModel):
     email: str = Field(default="", max_length=200)
     address: str = Field(default="", max_length=300)
     reason: str = Field(min_length=1, max_length=200)
+    date_of_birth: date | None = None
     age: int | None = Field(default=None, ge=0, le=130)
     weight: float | None = Field(default=None, gt=0, le=500)
     temperature: float | None = Field(default=None, ge=90, le=110)
@@ -122,6 +135,7 @@ class AppointmentOut(BaseModel):
     email: str = ""
     address: str = ""
     reason: str
+    date_of_birth: date | None = None
     age: int | None = None
     weight: float | None = None
     temperature: float | None = None
@@ -150,6 +164,7 @@ class PatientMatchOut(BaseModel):
     email: str = ""
     address: str = ""
     reason: str
+    date_of_birth: date | None = None
     age: int | None = None
     weight: float | None = None
     height: float | None = None
@@ -166,9 +181,10 @@ class PatientVisitCreate(BaseModel):
     email: str = Field(default="", max_length=200)
     address: str = Field(default="", max_length=300)
     reason: str = Field(min_length=1, max_length=200)
-    age: int = Field(ge=0, le=130)
-    weight: float = Field(gt=0, le=500)
-    temperature: float = Field(ge=90, le=110)
+    date_of_birth: date | None = None
+    age: int | None = Field(default=None, ge=0, le=130)
+    weight: float | None = Field(default=None, gt=0, le=500)
+    temperature: float | None = Field(default=None, ge=90, le=110)
     height: float | None = Field(default=None, gt=0, le=300)
 
 

@@ -36,8 +36,23 @@ function formatDate(value: string | null | undefined) {
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-function assetDataUrl(asset: NoteAsset) {
-  return `data:${asset.content_type};base64,${asset.data_base64}`;
+function noteAttachmentKey(asset: NoteAsset) {
+  if (asset.attachment_id?.trim()) {
+    return `attachment:${asset.attachment_id.trim()}`;
+  }
+  return asset.id?.trim()
+    ? `id:${asset.id.trim()}`
+    : `fallback:${asset.name.trim()}:${asset.content_type.trim()}:${(asset.data_base64 || "").trim()}`;
+}
+
+function openNoteAttachmentViewer(asset: NoteAsset) {
+  const key = `clinic_note_attachment:${globalThis.crypto?.randomUUID?.() || `${Date.now()}`}`;
+  window.sessionStorage.setItem(key, JSON.stringify(asset));
+  window.open(`/attachment-view/note?key=${encodeURIComponent(key)}`, "_blank");
+}
+
+function openPatientAttachmentViewer(attachmentId: string) {
+  window.open(`/attachment-view/${attachmentId}`, "_blank");
 }
 
 function ChartTabButton({
@@ -364,28 +379,36 @@ export default function MobilePatientPage() {
   const selectedVisitDetail = selectedVisit ? visitDetailsById[selectedVisit.id] ?? null : null;
 
   const patientWideAttachments = useMemo(() => {
+    const seen = new Set<string>();
     const noteRows = notes.flatMap((note) => {
       const assets = note.snapshot_asset_payload?.length ? note.snapshot_asset_payload : note.asset_payload || [];
       return assets
         .filter((asset) => asset.kind === "attachment")
-        .map((asset) => ({
-          id: `note-${note.id}-${asset.id}`,
-          label: asset.name,
-          timestamp: note.finalized_at || note.created_at,
-          open: () => window.open(assetDataUrl(asset), "_blank", "noopener,noreferrer"),
-        }));
+        .flatMap((asset) => {
+          const key = noteAttachmentKey(asset);
+          if (seen.has(key)) {
+            return [];
+          }
+          seen.add(key);
+          return [{
+            id: `note-${note.id}-${asset.id}`,
+            label: asset.name,
+            timestamp: note.finalized_at || note.created_at,
+            attachmentId: asset.attachment_id,
+            open: () => asset.attachment_id ? openPatientAttachmentViewer(asset.attachment_id) : openNoteAttachmentViewer(asset),
+          }];
+        });
     });
-    const patientRows = attachments.map((attachment) => ({
-      id: `patient-${attachment.id}`,
-      label: attachment.file_name,
-      timestamp: attachment.created_at,
-      open: async () => {
-        const blob = await api.downloadPatientAttachment(attachment.id);
-        const url = URL.createObjectURL(blob);
-        window.open(url, "_blank", "noopener,noreferrer");
-        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      },
-    }));
+    const noteAttachmentIds = new Set(noteRows.map((row) => row.attachmentId).filter(Boolean));
+    const patientRows = attachments
+      .filter((attachment) => !noteAttachmentIds.has(attachment.id))
+      .map((attachment) => ({
+        id: `patient-${attachment.id}`,
+        label: attachment.file_name,
+        timestamp: attachment.created_at,
+        attachmentId: attachment.id,
+        open: async () => openPatientAttachmentViewer(attachment.id),
+      }));
     return [...noteRows, ...patientRows].sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
   }, [attachments, notes]);
 
@@ -396,14 +419,17 @@ export default function MobilePatientPage() {
   async function openVisitAttachment(attachment: PatientVisitAttachmentRow) {
     try {
       if (attachment.source_type === "note_attachment" && attachment.data_base64) {
-        window.open(`data:${attachment.content_type};base64,${attachment.data_base64}`, "_blank", "noopener,noreferrer");
+        openNoteAttachmentViewer({
+          id: attachment.id,
+          kind: "attachment",
+          name: attachment.label,
+          content_type: attachment.content_type,
+          data_base64: attachment.data_base64,
+        });
         return;
       }
       if (attachment.attachment_id) {
-        const blob = await api.downloadPatientAttachment(attachment.attachment_id);
-        const url = URL.createObjectURL(blob);
-        window.open(url, "_blank", "noopener,noreferrer");
-        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        openPatientAttachmentViewer(attachment.attachment_id!);
       }
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : "Failed to open attachment.");
@@ -435,16 +461,14 @@ export default function MobilePatientPage() {
               {patient.phone} · Age {patient.age ?? "-"} · {patient.address || "No address"} · last visit {formatDate(patient.last_visit_at)}
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <ChartTabButton active={activeTab === "visits"} count={visits.length} label="Visits" onClick={() => setActiveTab("visits")} />
+              <ChartTabButton active={activeTab === "visits"} label="Visits" onClick={() => setActiveTab("visits")} />
               <ChartTabButton
                 active={activeTab === "tests"}
-                count={(myopiaHistory?.records.length ?? 0) + (growthHistory?.records.length ?? 0)}
                 label="Tests"
                 onClick={() => setActiveTab("tests")}
               />
               <ChartTabButton
                 active={activeTab === "attachments"}
-                count={hasLoadedAttachmentsTab ? patientWideAttachments.length : undefined}
                 label="Attachments"
                 onClick={() => setActiveTab("attachments")}
               />

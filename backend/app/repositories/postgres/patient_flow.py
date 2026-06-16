@@ -30,6 +30,7 @@ PATIENT_COLUMNS = [
     "email",
     "address",
     "reason",
+    "date_of_birth",
     "age",
     "weight",
     "height",
@@ -48,6 +49,7 @@ PATIENT_UPDATE_COLUMNS = {
     "email",
     "address",
     "reason",
+    "date_of_birth",
     "age",
     "weight",
     "height",
@@ -62,6 +64,7 @@ APPOINTMENT_COLUMNS = [
     "email",
     "address",
     "reason",
+    "date_of_birth",
     "age",
     "weight",
     "height",
@@ -82,6 +85,7 @@ PATIENT_VISIT_COLUMNS = [
     "email",
     "address",
     "reason",
+    "date_of_birth",
     "age",
     "weight",
     "height",
@@ -133,10 +137,10 @@ class PostgresPatientFlowRepository:
                     cursor.execute(
                         f"""
                         insert into public.patients (
-                          org_id, name, phone, email, address, reason, age, weight,
+                          org_id, name, phone, email, address, reason, date_of_birth, age, weight,
                           height, temperature, last_visit_at
                         )
-                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         returning {_columns_sql(PATIENT_COLUMNS)}
                         """,
                         (
@@ -146,6 +150,7 @@ class PostgresPatientFlowRepository:
                             values["email"],
                             values["address"],
                             values["reason"],
+                            values["date_of_birth"],
                             values["age"],
                             values["weight"],
                             values["height"],
@@ -161,9 +166,9 @@ class PostgresPatientFlowRepository:
                         """
                         insert into public.patient_visits (
                           org_id, patient_id, name, phone, email, address, reason,
-                          age, weight, height, temperature, source
+                          date_of_birth, age, weight, height, temperature, source
                         )
-                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'queue')
+                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'queue')
                         """,
                         (
                             org_id,
@@ -173,6 +178,7 @@ class PostgresPatientFlowRepository:
                             values["email"],
                             values["address"],
                             values["reason"],
+                            values["date_of_birth"],
                             values["age"],
                             values["weight"],
                             values["height"],
@@ -200,7 +206,7 @@ class PostgresPatientFlowRepository:
                         f"""
                         update public.patients
                         set name = %s, phone = %s, email = %s, address = %s, reason = %s,
-                          age = %s, weight = %s, height = %s, temperature = %s,
+                          date_of_birth = %s, age = %s, weight = %s, height = %s, temperature = %s,
                           status = 'waiting', billed = false, last_visit_at = %s
                         where org_id = %s and id = %s
                         returning {_columns_sql(PATIENT_COLUMNS)}
@@ -211,6 +217,7 @@ class PostgresPatientFlowRepository:
                             values["email"],
                             values["address"],
                             values["reason"],
+                            values["date_of_birth"],
                             values["age"],
                             values["weight"],
                             values["height"],
@@ -228,9 +235,9 @@ class PostgresPatientFlowRepository:
                         """
                         insert into public.patient_visits (
                           org_id, patient_id, name, phone, email, address, reason,
-                          age, weight, height, temperature, source
+                          date_of_birth, age, weight, height, temperature, source
                         )
-                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'queue')
+                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'queue')
                         """,
                         (
                             org_id,
@@ -240,6 +247,7 @@ class PostgresPatientFlowRepository:
                             values["email"],
                             values["address"],
                             values["reason"],
+                            values["date_of_birth"],
                             values["age"],
                             values["weight"],
                             values["height"],
@@ -265,10 +273,10 @@ class PostgresPatientFlowRepository:
                     cursor.execute(
                         f"""
                         insert into public.appointments (
-                          org_id, name, phone, email, address, reason, age, weight,
+                          org_id, name, phone, email, address, reason, date_of_birth, age, weight,
                           height, temperature, scheduled_for, status
                         )
-                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'scheduled')
+                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'scheduled')
                         returning {_columns_sql(APPOINTMENT_COLUMNS)}
                         """,
                         (
@@ -278,6 +286,7 @@ class PostgresPatientFlowRepository:
                             values["email"],
                             values["address"],
                             values["reason"],
+                            values["date_of_birth"],
                             values["age"],
                             values["weight"],
                             values["height"],

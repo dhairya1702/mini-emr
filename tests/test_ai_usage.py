@@ -128,3 +128,43 @@ async def test_fallback_generation_does_not_record_ai_usage(monkeypatch):
 
     assert "Presenting Complaint:" in content
     assert repo.events == []
+
+
+def test_normalized_note_strips_pipe_tables_from_generated_content():
+    content = anthropic_service._normalize_note_content(
+        """
+Presenting Complaint:
+Dry cough since yesterday.
+
+Diagnosis:
+Viral URI.
+
+Clinical Notes:
+Field | Value
+--- | ---
+Template Key | well_visit_summary
+
+Field | Value
+--- | ---
+Preset Key | routine_review
+
+Patient appears well.
+
+Treatment:
+Paracetamol.
+
+Follow-up Advice:
+Review if worsening.
+""",
+        symptoms="Dry cough",
+        diagnosis="Viral URI",
+        medications="Paracetamol",
+        notes="Patient appears well.",
+    )
+
+    assert "Field | Value" not in content
+    assert "Template Key" not in content
+    assert "Preset Key" not in content
+    assert "well_visit_summary" not in content
+    assert "routine_review" not in content
+    assert "Patient appears well." in content

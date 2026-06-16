@@ -482,6 +482,81 @@ def test_postgres_audit_repository_lists_org_events():
     ]
 
 
+def test_postgres_audit_repository_serializes_datetime_metadata():
+    class FakeCursor:
+        description = [(column,) for column in AUDIT_EVENT_COLUMNS]
+
+        def __init__(self) -> None:
+            self.executed: list[tuple[str, tuple]] = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def execute(self, statement: str, params: tuple) -> None:
+            self.executed.append((statement, params))
+
+        def fetchone(self):
+            return (
+                "audit-4",
+                "org-1",
+                "user-1",
+                "Dr Test",
+                "note",
+                "note-1",
+                "note_sent",
+                "Sent note",
+                {"sent_at": "2026-06-16 09:00:00+00:00"},
+                "2026-06-16T09:00:01+00:00",
+            )
+
+    class FakeConnection:
+        def __init__(self, cursor: FakeCursor) -> None:
+            self.cursor_instance = cursor
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def cursor(self):
+            return self.cursor_instance
+
+    class FakePool:
+        def __init__(self) -> None:
+            self.cursor = FakeCursor()
+
+        def connection(self):
+            return FakeConnection(self.cursor)
+
+    class FakeManager:
+        def __init__(self) -> None:
+            self.pool = FakePool()
+
+    manager = FakeManager()
+    repo = PostgresAuditRepository(manager)  # type: ignore[arg-type]
+
+    row = asyncio.run(
+        repo.create_audit_event(
+            "org-1",
+            "user-1",
+            "Dr Test",
+            "note",
+            "note-1",
+            "note_sent",
+            "Sent note",
+            {"sent_at": datetime(2026, 6, 16, 9, 0, tzinfo=UTC)},
+        )
+    )
+
+    _statement, params = manager.pool.cursor.executed[0]
+    assert params[7] == '{"sent_at": "2026-06-16 09:00:00+00:00"}'
+    assert row["id"] == "audit-4"
+
+
 class ScriptedCursor:
     def __init__(
         self,
@@ -885,6 +960,7 @@ def test_postgres_auth_settings_repository_lists_superuser_org_summaries():
                     3,
                     1,
                     1200,
+                    4096,
                     "2026-06-11T16:10:00+00:00",
                 )
             ]
@@ -906,6 +982,7 @@ def test_postgres_auth_settings_repository_lists_superuser_org_summaries():
             "invoice_count": 3,
             "follow_up_count": 1,
             "total_tokens": 1200,
+            "media_storage_bytes": 4096,
             "last_activity_at": "2026-06-11T16:10:00+00:00",
         }
     ]
@@ -936,6 +1013,7 @@ def _patient_row(patient_id: str = "patient-1", *, phone: str = "1234567890") ->
         "dl@example.com",
         "Main Road",
         "fever",
+        date(2014, 1, 20),
         12,
         78,
         175,
@@ -956,6 +1034,7 @@ def _appointment_row(*, status: str = "scheduled", phone: str = "1234567890") ->
         "dl@example.com",
         "Main Road",
         "fever",
+        date(2014, 1, 20),
         12,
         78,
         175,
@@ -1199,7 +1278,9 @@ def test_postgres_records_repository_finalizes_and_marks_note_sent():
     sent = asyncio.run(repo.mark_note_sent("org-1", "note-1", sent_by="user-1", sent_to="patient@example.com"))
 
     assert cursor.executed[1][1][0] == "Visit note"
-    assert cursor.executed[3][1][2:4] == ("user-1", "patient@example.com")
+    assert cursor.executed[1][1][1] == "[]"
+    assert cursor.executed[3][1][1] == "[]"
+    assert cursor.executed[3][1][3:5] == ("user-1", "patient@example.com")
     assert finalized["status"] == "final"
     assert sent["status"] == "sent"
 
@@ -1466,6 +1547,19 @@ def test_postgres_attachments_repository_metadata_flow():
     assert prepared["file_name"] == "scan-file.pdf"
     assert cursor.executed[1][1][0] == "attachment-1"
     assert created["storage_path"] == "org-1/patient-1/attachment-1/scan.pdf"
+
+
+def test_postgres_attachments_repository_deletes_attachment_metadata():
+    cursor = ScriptedCursor(
+        descriptions=[PATIENT_ATTACHMENT_COLUMNS],
+        fetchone_rows=[_attachment_row()],
+    )
+    repo = PostgresAttachmentsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    deleted = asyncio.run(repo.delete_patient_attachment_metadata("org-1", "patient-1", "attachment-1"))
+
+    assert cursor.executed[0][1] == ("org-1", "patient-1", "attachment-1")
+    assert deleted["id"] == "attachment-1"
 
 
 def test_postgres_myopia_repository_create_list_update():

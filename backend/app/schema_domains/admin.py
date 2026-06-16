@@ -18,6 +18,7 @@ class SuperuserOrgSummaryOut(BaseModel):
     invoice_count: int = 0
     follow_up_count: int = 0
     total_tokens: int = 0
+    media_storage_bytes: int = 0
     last_activity_at: datetime | None = None
 
 

@@ -11,7 +11,7 @@ const navItems = [
   { href: "/m", label: "Queue", icon: Stethoscope },
   { href: "/m/patients", label: "Patients", icon: UserRound },
   { href: "/m/history", label: "History", icon: Search },
-  { href: "/account", label: "Account", icon: Settings },
+  { href: "/m/account", label: "Account", icon: Settings },
 ];
 
 export function MobileShell({
