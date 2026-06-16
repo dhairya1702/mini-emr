@@ -161,7 +161,8 @@ export function SettingsDrawerUsersPanel({
 
         {users.length ? (
           <div className="overflow-hidden rounded-[22px] border border-[#bfd7e8]">
-            <table className="w-full border-collapse text-sm">
+            <div className="overflow-x-auto">
+              <table className="min-w-[620px] w-full border-collapse text-sm">
               <thead className="bg-[#f3f8fb]/80 text-slate-600">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold">Name</th>
@@ -203,7 +204,8 @@ export function SettingsDrawerUsersPanel({
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         ) : <p className="text-sm text-slate-600">No users found for this clinic yet.</p>}
       </div>

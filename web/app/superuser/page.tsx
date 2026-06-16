@@ -48,6 +48,7 @@ export default function SuperuserPage() {
   const [activeTab, setActiveTab] = useState<SuperuserTab>("dashboard");
   const [theme, setTheme] = useState<SuperuserTheme>("light");
   const [orgs, setOrgs] = useState<SuperuserOrgSummary[]>([]);
+  const [orgQuery, setOrgQuery] = useState("");
   const [selectedOrgId, setSelectedOrgId] = useState("");
   const [selectedOrgDetail, setSelectedOrgDetail] = useState<SuperuserOrgDetail | null>(null);
   const [errors, setErrors] = useState<PlatformError[]>([]);
@@ -121,6 +122,16 @@ export default function SuperuserPage() {
     () => orgs.find((org) => org.org_id === selectedOrgId) ?? null,
     [orgs, selectedOrgId],
   );
+
+  const filteredOrgs = useMemo(() => {
+    const normalized = orgQuery.trim().toLowerCase();
+    if (!normalized) {
+      return orgs;
+    }
+    return orgs.filter((org) =>
+      [org.clinic_name, org.org_id].some((value) => value.toLowerCase().includes(normalized)),
+    );
+  }, [orgQuery, orgs]);
 
   const overview = useMemo(() => {
     const totals = orgs.reduce(
@@ -200,20 +211,18 @@ export default function SuperuserPage() {
     }
   }
 
-  async function handleDeleteOrg() {
-    if (!selectedOrgDetail) {
-      return;
-    }
-    if (!window.confirm(`Delete ${selectedOrgDetail.summary.clinic_name}? This removes the entire org.`)) {
+  async function handleDeleteOrg(org: SuperuserOrgSummary) {
+    if (!window.confirm(`Delete ${org.clinic_name}? This removes the organization and all its users.`)) {
       return;
     }
     setIsDeleting(true);
     setError("");
     setStatus("");
     try {
-      await api.deleteSuperuserOrg(selectedOrgDetail.summary.org_id);
-      await loadDashboard();
-      setStatus("Organization deleted.");
+      await api.deleteSuperuserOrg(org.org_id);
+      const nextSelectedOrgId = selectedOrgIdRef.current === org.org_id ? "" : selectedOrgIdRef.current;
+      await loadDashboard(nextSelectedOrgId);
+      setStatus(`Deleted organization ${org.clinic_name}.`);
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "Failed to delete organization.");
     } finally {
@@ -470,6 +479,80 @@ export default function SuperuserPage() {
                 </div>
               </article>
             </section>
+
+            <section className={cn("rounded-[30px] border p-5", surface)}>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className={cn("text-[11px] uppercase tracking-[0.22em]", subtleText)}>All organizations</p>
+                  <h3 className={cn("mt-2 text-xl font-semibold tracking-[-0.03em]", sectionHeader)}>Org control surface</h3>
+                  <p className={cn("mt-2 text-sm leading-6", bodyText)}>
+                    Full org list with direct selection and destructive delete access.
+                  </p>
+                </div>
+                <input
+                  value={orgQuery}
+                  onChange={(event) => setOrgQuery(event.target.value)}
+                  placeholder="Search org by name or id"
+                  className={cn(
+                    "w-full max-w-[320px] rounded-full border px-4 py-2 text-sm outline-none transition",
+                    strongSurface,
+                    isDark ? "placeholder:text-slate-500 focus:border-sky-500" : "placeholder:text-slate-400 focus:border-sky-400",
+                  )}
+                />
+              </div>
+              <div className="mt-5 space-y-3">
+                {filteredOrgs.length ? filteredOrgs.map((org) => {
+                  const active = org.org_id === selectedOrgId;
+                  return (
+                    <div
+                      key={org.org_id}
+                      className={cn(
+                        "flex flex-wrap items-center justify-between gap-3 rounded-[24px] border px-4 py-4",
+                        active ? (isDark ? "border-sky-500/50 bg-slate-900" : "border-sky-400 bg-sky-50") : softSurface,
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab("orgs");
+                          void handleSelectOrg(org.org_id);
+                        }}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <p className={cn("text-sm font-semibold", sectionHeader)}>{org.clinic_name}</p>
+                        <p className={cn("mt-1 truncate text-xs", subtleText)}>{org.org_id}</p>
+                        <div className={cn("mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs", bodyText)}>
+                          <span>{org.user_count} users</span>
+                          <span>{org.patient_count} patients</span>
+                          <span>{org.note_count} notes</span>
+                          <span>{formatStorage(org.media_storage_bytes)} media</span>
+                        </div>
+                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab("orgs");
+                            void handleSelectOrg(org.org_id);
+                          }}
+                          className={neutralButton}
+                        >
+                          Manage
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isDeleting}
+                          onClick={() => void handleDeleteOrg(org)}
+                          className={dangerButton}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }) : <p className={cn("text-sm", bodyText)}>No organizations match this search.</p>}
+              </div>
+            </section>
           </div>
         ) : null}
 
@@ -478,26 +561,48 @@ export default function SuperuserPage() {
             <section className={cn("rounded-[30px] border p-5", surface)}>
               <div className="mb-4">
                 <p className={cn("text-[11px] uppercase tracking-[0.22em]", subtleText)}>Organizations</p>
-                <h2 className={cn("mt-2 text-xl font-semibold tracking-[-0.03em]", sectionHeader)}>{orgs.length} orgs</h2>
+                <h2 className={cn("mt-2 text-xl font-semibold tracking-[-0.03em]", sectionHeader)}>{filteredOrgs.length} orgs</h2>
               </div>
+              <input
+                value={orgQuery}
+                onChange={(event) => setOrgQuery(event.target.value)}
+                placeholder="Search org by name or id"
+                className={cn(
+                  "mb-4 w-full rounded-full border px-4 py-2 text-sm outline-none transition",
+                  strongSurface,
+                  isDark ? "placeholder:text-slate-500 focus:border-sky-500" : "placeholder:text-slate-400 focus:border-sky-400",
+                )}
+              />
               <div className="space-y-3">
-                {orgs.map((org) => {
+                {filteredOrgs.map((org) => {
                   const active = org.org_id === selectedOrgId;
                   return (
-                    <button
+                    <div
                       key={org.org_id}
-                      type="button"
-                      onClick={() => void handleSelectOrg(org.org_id)}
-                      className={cn("w-full rounded-[24px] border px-4 py-4 text-left transition", active ? (isDark ? "border-sky-500/50 bg-slate-900" : "border-sky-400 bg-sky-50") : softSurface, !active && (isDark ? "hover:bg-slate-800" : "hover:bg-slate-100"))}
+                      className={cn("rounded-[24px] border px-4 py-4 transition", active ? (isDark ? "border-sky-500/50 bg-slate-900" : "border-sky-400 bg-sky-50") : softSurface, !active && (isDark ? "hover:bg-slate-800" : "hover:bg-slate-100"))}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div>
+                        <button
+                          type="button"
+                          onClick={() => void handleSelectOrg(org.org_id)}
+                          className="min-w-0 flex-1 text-left"
+                        >
                           <p className={cn("text-sm font-semibold", sectionHeader)}>{org.clinic_name}</p>
                           <p className={cn("mt-1 text-xs", subtleText)}>{org.org_id}</p>
+                        </button>
+                        <div className="flex items-center gap-2">
+                          <span className={cn("rounded-full border px-3 py-1 text-xs font-medium", chip)}>
+                            {org.user_count} users
+                          </span>
+                          <button
+                            type="button"
+                            disabled={isDeleting}
+                            onClick={() => void handleDeleteOrg(org)}
+                            className={dangerButton}
+                          >
+                            Delete
+                          </button>
                         </div>
-                        <span className={cn("rounded-full border px-3 py-1 text-xs font-medium", chip)}>
-                          {org.user_count} users
-                        </span>
                       </div>
                       <div className={cn("mt-3 grid grid-cols-2 gap-2 text-xs", bodyText)}>
                         <span>{org.patient_count} patients</span>
@@ -506,7 +611,7 @@ export default function SuperuserPage() {
                         <span>{formatStorage(org.media_storage_bytes)} media</span>
                       </div>
                       <p className={cn("mt-3 text-xs", subtleText)}>Last activity: {formatDateTime(org.last_activity_at)}</p>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -523,7 +628,7 @@ export default function SuperuserPage() {
                   <button
                     type="button"
                     disabled={!selectedOrgDetail || isDeleting}
-                    onClick={() => void handleDeleteOrg()}
+                    onClick={() => selectedOrgSummary ? void handleDeleteOrg(selectedOrgSummary) : undefined}
                     className={dangerButton}
                   >
                     Delete org

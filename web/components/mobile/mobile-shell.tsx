@@ -2,16 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Menu, Search, Settings, Stethoscope, UserRound, X } from "lucide-react";
+import { LogOut, Menu, Search, Settings, Stethoscope, UserRound, Users, X } from "lucide-react";
 import { ReactNode, useState } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 
-const navItems = [
+const baseNavItems = [
   { href: "/m", label: "Queue", icon: Stethoscope },
   { href: "/m/patients", label: "Patients", icon: UserRound },
   { href: "/m/history", label: "History", icon: Search },
-  { href: "/m/account", label: "Account", icon: Settings },
 ];
 
 export function MobileShell({
@@ -26,6 +25,11 @@ export function MobileShell({
   const pathname = usePathname();
   const { clinicSettings, currentUser, handleLogout } = useClinicShell();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const navItems = [
+    ...baseNavItems,
+    ...(currentUser?.role === "admin" ? [{ href: "/m/users", label: "Users", icon: Users }] : []),
+    { href: "/m/account", label: "Account", icon: Settings },
+  ];
 
   return (
     <main className="clinic-page text-slate-800">
