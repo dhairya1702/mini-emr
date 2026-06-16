@@ -541,31 +541,13 @@ export function ConsultationDrawer({
     setIsSent(cachedWorkspace?.isSent ?? false);
     setRecipientEmail(cachedWorkspace?.recipientEmail ?? patient.email ?? "");
 
-    void Promise.all([
-      api.listCatalogItems(),
-      isTrainingMode ? Promise.resolve([]) : api.listPatientNotes(patient.id),
-    ])
-      .then(([items, notes]) => {
+    void Promise.all([api.listCatalogItems()])
+      .then(([items]) => {
         if (!active) {
           return;
         }
 
         setMedicineItems(items.filter((item) => item.item_type === "medicine"));
-
-        const latestNote = notes[0] ?? null;
-
-        if (latestNote && !cachedWorkspace?.currentNoteId) {
-          setCurrentNoteId(String(latestNote.id));
-          setNoteStatus(latestNote.status);
-          setHasGeneratedNote(Boolean((latestNote.content || "").trim()));
-          if (!cachedWorkspace?.form.generatedNote.trim()) {
-            setForm((current) => ({
-              ...current,
-              generatedNote: latestNote.content || "",
-              assets: (latestNote.snapshot_asset_payload || latestNote.asset_payload || []) as NoteAsset[],
-            }));
-          }
-        }
       })
       .catch((error) => {
         if (!active) {

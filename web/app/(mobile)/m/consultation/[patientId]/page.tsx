@@ -83,23 +83,22 @@ export default function MobileConsultationPage() {
     }
     let active = true;
     setIsLoading(true);
-    Promise.all([api.listPatients(), api.listPatientNotes(patientId), api.listPatientAttachments(patientId)])
-      .then(([patientRows, noteRows, attachmentRows]) => {
+    Promise.all([api.listPatients(), api.listPatientAttachments(patientId)])
+      .then(([patientRows, attachmentRows]) => {
         if (!active) {
           return;
         }
         setPatients(patientRows);
         setPatientAttachments(attachmentRows);
         const localDraft = scope ? readMobileConsultationDraft(scope) : null;
-        const latestDraft = noteRows.find((note) => note.status === "draft");
         setForm({
           symptoms: localDraft?.symptoms || "",
           diagnosis: localDraft?.diagnosis || "",
           medications: localDraft?.medications || "",
           notes: localDraft?.notes || "",
-          generatedNote: localDraft?.generatedNote || latestDraft?.content || "",
-          noteId: localDraft?.noteId || latestDraft?.id || "",
-          assets: localDraft?.assets?.length ? localDraft.assets : latestDraft?.asset_payload || [],
+          generatedNote: localDraft?.generatedNote || "",
+          noteId: localDraft?.noteId || "",
+          assets: localDraft?.assets?.length ? localDraft.assets : [],
         });
         setError("");
       })
