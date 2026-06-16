@@ -17,7 +17,7 @@ from app.schema_domains.case_studies import (
     PatientCaseStudySourceOut,
 )
 from app.schema_domains.patients import NoteOut, PatientOut, PatientVisitOut
-from app.services.anthropic_service import generate_case_study_document
+from app.services.ai_generation_service import generate_case_study_document
 from app.services.auth_flow import enforce_rate_limit
 from app.services.audit_service import write_audit_event
 from app.services.case_study_specialty import apply_case_study_specialty_enrichment

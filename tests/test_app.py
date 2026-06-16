@@ -1414,14 +1414,13 @@ def client(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         auth_module,
         "get_settings",
-        lambda: SimpleNamespace(auth_secret="test-secret", supabase_service_role_key=""),
+        lambda: SimpleNamespace(auth_secret="test-secret"),
     )
     monkeypatch.setattr(
         config_module,
         "get_settings",
         lambda: SimpleNamespace(
             auth_secret="test-secret",
-            supabase_service_role_key="",
             app_origin="http://127.0.0.1:3000",
         ),
     )

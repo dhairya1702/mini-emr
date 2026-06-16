@@ -1,47 +1,12 @@
-from __future__ import annotations
-
-import time
 from typing import Any
 
-import httpcore
-import httpx
-
 from app.schema_domains.patients import PatientCreate, PatientVisitCreate, calculate_age_from_dob
-
-
-RETRYABLE_TRANSPORT_EXCEPTIONS = (
-    httpcore.RemoteProtocolError,
-    httpx.RemoteProtocolError,
-    httpx.ReadError,
-    httpx.ReadTimeout,
-    httpx.ConnectError,
-)
-SUPABASE_RETRY_ATTEMPTS = 2
-SUPABASE_RETRY_DELAY_SECONDS = 0.15
 
 
 class DuplicateCheckInCandidateError(ValueError):
     def __init__(self, matches: list[dict[str, Any]]) -> None:
         super().__init__("Possible duplicate active patients found.")
         self.matches = matches
-
-
-class BaseSupabaseRepository:
-    client: Any
-
-    def execute_with_retry(self, operation):
-        last_error: Exception | None = None
-        for attempt in range(1, SUPABASE_RETRY_ATTEMPTS + 1):
-            try:
-                return operation()
-            except RETRYABLE_TRANSPORT_EXCEPTIONS as exc:
-                last_error = exc
-                if attempt >= SUPABASE_RETRY_ATTEMPTS:
-                    raise
-                time.sleep(SUPABASE_RETRY_DELAY_SECONDS)
-        if last_error is not None:
-            raise last_error
-        raise RuntimeError("Supabase operation failed without an exception.")
 
 
 def display_name(row: dict[str, Any]) -> str:
@@ -54,45 +19,6 @@ def display_name(row: dict[str, Any]) -> str:
         local_part = identifier.split("@", 1)[0]
         return local_part.replace(".", " ").replace("_", " ").strip().title() or "User"
     return identifier or "User"
-
-
-def rpc_single(result: Any) -> dict[str, Any]:
-    if isinstance(result, list):
-        return result[0] if result else {}
-    return result or {}
-
-
-def rpc_json_array(result: Any, key: str) -> list[dict[str, Any]]:
-    if result is None:
-        return []
-    if isinstance(result, list):
-        if len(result) == 1 and isinstance(result[0], dict) and key in result[0]:
-            value = result[0].get(key)
-            return value if isinstance(value, list) else []
-        return result
-    if isinstance(result, dict):
-        value = result.get(key)
-        return value if isinstance(value, list) else []
-    return []
-
-
-def rpc_json_object(result: Any, key: str) -> dict[str, Any]:
-    if result is None:
-        return {}
-    if isinstance(result, list):
-        if not result:
-            return {}
-        first = result[0]
-        if isinstance(first, dict) and key in first:
-            value = first.get(key)
-            return value if isinstance(value, dict) else {}
-        return first if isinstance(first, dict) else {}
-    if isinstance(result, dict):
-        if key in result:
-            value = result.get(key)
-            return value if isinstance(value, dict) else {}
-        return result
-    return {}
 
 
 def escape_ilike(value: str) -> str:
@@ -152,37 +78,3 @@ def visit_payload(payload: PatientCreate | PatientVisitCreate) -> dict[str, Any]
         "height": payload.height,
         "temperature": payload.temperature,
     }
-
-
-def find_check_in_matches(client: Any, org_id: str, appointment_id: str) -> list[dict[str, Any]]:
-    appointment = (
-        client.table("appointments")
-        .select("*")
-        .eq("org_id", org_id)
-        .eq("id", appointment_id)
-        .single()
-        .execute()
-        .data
-    )
-    if not appointment:
-        raise ValueError("Appointment not found for this organization.")
-
-    normalized_phone = normalize_phone_number(appointment.get("phone"))
-    if not normalized_phone:
-        return []
-
-    candidates = (
-        client.table("patients")
-        .select("*")
-        .eq("org_id", org_id)
-        .eq("billed", False)
-        .order("last_visit_at", desc=True)
-        .limit(50)
-        .execute()
-        .data
-    )
-    return [
-        candidate
-        for candidate in candidates
-        if normalize_phone_number(candidate.get("phone")) == normalized_phone
-    ]

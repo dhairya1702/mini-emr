@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from app.postgres import PostgresConnectionManager
-from app.repositories.attachments import _safe_filename
 from app.repositories.postgres.ai_usage import _row_to_dict
 
 
@@ -21,6 +22,12 @@ PATIENT_ATTACHMENT_COLUMNS = [
     "storage_path",
     "created_at",
 ]
+
+
+def _safe_filename(filename: str) -> str:
+    stem = Path(filename or "attachment").name.strip() or "attachment"
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip(".-")
+    return cleaned or "attachment"
 
 
 class PostgresAttachmentsRepository:

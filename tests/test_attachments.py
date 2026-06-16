@@ -4,11 +4,9 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
-from postgrest.exceptions import APIError
 
 from test_app import auth_headers_for_token, client, register_test_clinic
 from app import storage as storage_module
-from app.repositories.attachments import _is_missing_patient_attachments_table
 
 
 def _create_patient(test_client, headers, name="Attachment Patient"):
@@ -181,43 +179,7 @@ def test_patient_attachment_download_is_org_scoped(client):
     assert "not found" in blocked.json()["detail"].lower()
 
 
-def test_patient_attachment_missing_table_error_is_detected():
-    missing_table_error = APIError(
-        {
-            "message": "Could not find the table 'public.patient_attachments' in the schema cache",
-            "code": "PGRST205",
-            "hint": "Perhaps you meant the table 'public.patient_visits'",
-            "details": None,
-        }
-    )
-    unrelated_error = APIError(
-        {
-            "message": "Could not find the table 'public.other_table' in the schema cache",
-            "code": "PGRST205",
-            "hint": None,
-            "details": None,
-        }
-    )
-
-    assert _is_missing_patient_attachments_table(missing_table_error)
-    assert not _is_missing_patient_attachments_table(unrelated_error)
-
-
-def test_patient_attachment_storage_defaults_to_supabase(monkeypatch):
-    marker = object()
-    storage_module.get_patient_attachment_storage.cache_clear()
-    monkeypatch.setattr(
-        storage_module,
-        "get_settings",
-        lambda: SimpleNamespace(storage_backend="supabase", gcs_patient_attachments_bucket=""),
-    )
-    monkeypatch.setattr(storage_module, "SupabasePatientAttachmentStorage", lambda: marker)
-
-    assert storage_module.get_patient_attachment_storage() is marker
-    storage_module.get_patient_attachment_storage.cache_clear()
-
-
-def test_patient_attachment_storage_can_select_gcs(monkeypatch):
+def test_patient_attachment_storage_uses_gcs(monkeypatch):
     class FakeGcsStorage:
         def __init__(self, bucket_name: str) -> None:
             self.bucket_name = bucket_name
@@ -226,7 +188,7 @@ def test_patient_attachment_storage_can_select_gcs(monkeypatch):
     monkeypatch.setattr(
         storage_module,
         "get_settings",
-        lambda: SimpleNamespace(storage_backend="gcs", gcs_patient_attachments_bucket="clinic-media"),
+        lambda: SimpleNamespace(gcs_patient_attachments_bucket="clinic-media"),
     )
     monkeypatch.setattr(storage_module, "GcsPatientAttachmentStorage", FakeGcsStorage)
 
@@ -234,19 +196,6 @@ def test_patient_attachment_storage_can_select_gcs(monkeypatch):
 
     assert isinstance(selected, FakeGcsStorage)
     assert selected.bucket_name == "clinic-media"
-    storage_module.get_patient_attachment_storage.cache_clear()
-
-
-def test_patient_attachment_storage_rejects_invalid_backend(monkeypatch):
-    storage_module.get_patient_attachment_storage.cache_clear()
-    monkeypatch.setattr(
-        storage_module,
-        "get_settings",
-        lambda: SimpleNamespace(storage_backend="filesystem", gcs_patient_attachments_bucket=""),
-    )
-
-    with pytest.raises(RuntimeError, match="STORAGE_BACKEND"):
-        storage_module.get_patient_attachment_storage()
     storage_module.get_patient_attachment_storage.cache_clear()
 
 

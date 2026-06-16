@@ -47,26 +47,27 @@ from app.schema_domains.patients import (
 from app.schema_domains.specialty import LongitudinalTrackCreate
 
 
-def test_postgres_database_backend_requires_database_url():
+def test_settings_requires_database_url():
     settings = Settings(
         auth_secret="test-secret",
         app_origin="http://127.0.0.1:3000",
-        database_backend="postgres",
         database_url="",
+        gcs_patient_attachments_bucket="clinic-media",
     )
 
     with pytest.raises(RuntimeError, match="DATABASE_URL"):
         settings.validate_runtime()
 
 
-def test_invalid_database_backend_is_rejected():
+def test_settings_requires_gcs_bucket():
     settings = Settings(
         auth_secret="test-secret",
         app_origin="http://127.0.0.1:3000",
-        database_backend="sqlite",
+        database_url="postgresql://clinic:secret@localhost:5432/clinic",
+        gcs_patient_attachments_bucket="",
     )
 
-    with pytest.raises(RuntimeError, match="DATABASE_BACKEND"):
+    with pytest.raises(RuntimeError, match="GCS_PATIENT_ATTACHMENTS_BUCKET"):
         settings.validate_runtime()
 
 
@@ -164,8 +165,8 @@ def test_postgres_ai_usage_repository_creates_event_with_total_tokens():
             return (
                 "usage-1",
                 "org-1",
-                "anthropic",
-                "claude-test",
+                "gemini",
+                "gemini-test",
                 "consultation_note",
                 10,
                 20,
@@ -206,8 +207,8 @@ def test_postgres_ai_usage_repository_creates_event_with_total_tokens():
     row = asyncio.run(
         repo.create_ai_usage_event(
             org_id="org-1",
-            provider="anthropic",
-            model="claude-test",
+            provider="gemini",
+            model="gemini-test",
             feature="consultation_note",
             input_tokens=10,
             output_tokens=20,
@@ -220,8 +221,8 @@ def test_postgres_ai_usage_repository_creates_event_with_total_tokens():
     _statement, params = manager.pool.cursor.executed[0]
     assert params == (
         "org-1",
-        "anthropic",
-        "claude-test",
+        "gemini",
+        "gemini-test",
         "consultation_note",
         10,
         20,
@@ -256,8 +257,8 @@ def test_postgres_ai_usage_repository_lists_org_events():
                 (
                     "usage-2",
                     "org-1",
-                    "anthropic",
-                    "claude-test",
+                    "gemini",
+                    "gemini-test",
                     "clinic_letter",
                     5,
                     7,
@@ -304,8 +305,8 @@ def test_postgres_ai_usage_repository_lists_org_events():
         {
             "id": "usage-2",
             "org_id": "org-1",
-            "provider": "anthropic",
-            "model": "claude-test",
+            "provider": "gemini",
+            "model": "gemini-test",
             "feature": "clinic_letter",
             "input_tokens": 5,
             "output_tokens": 7,
@@ -1697,7 +1698,7 @@ def test_postgres_case_studies_repository_rejects_unknown_update_fields():
         asyncio.run(repo.update_case_study("org-1", "case-1", {"org_id": "other-org"}))
 
 
-def test_get_repository_selects_postgres_backend(monkeypatch):
+def test_get_repository_returns_postgres_repository(monkeypatch):
     class FakeManager:
         def __init__(self) -> None:
             self.opened = False
@@ -1706,16 +1707,6 @@ def test_get_repository_selects_postgres_backend(monkeypatch):
             self.opened = True
 
     manager = FakeManager()
-    monkeypatch.setattr(
-        db_module,
-        "get_settings",
-        lambda: Settings(
-            auth_secret="test-secret",
-            app_origin="http://127.0.0.1:3000",
-            database_backend="postgres",
-            database_url="postgresql://clinic:secret@localhost:5432/clinic",
-        ),
-    )
     monkeypatch.setattr(db_module, "get_postgres_connection_manager", lambda: manager)
     db_module.get_repository.cache_clear()
 

@@ -1,5 +1,4 @@
 -- Cloud SQL PostgreSQL-compatible schema.
--- Derived from supabase/schema.sql with Supabase Storage bucket setup removed.
 
 create extension if not exists "pgcrypto";
 
@@ -474,7 +473,7 @@ alter table public.ai_usage_events
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;
 
 alter table public.ai_usage_events
-add column if not exists provider text not null default 'anthropic';
+add column if not exists provider text not null default 'gemini';
 
 alter table public.ai_usage_events
 add column if not exists model text not null default '';

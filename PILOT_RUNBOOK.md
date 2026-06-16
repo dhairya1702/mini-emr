@@ -5,9 +5,7 @@ This project is pilot-ready for a supervised clinic rollout. Use this file as th
 ## Before Go-Live
 
 - Confirm backend env vars are set:
-  - `DATABASE_BACKEND=postgres`
   - `DATABASE_URL`
-  - `STORAGE_BACKEND=gcs`
   - `GCS_PATIENT_ATTACHMENTS_BUCKET`
   - `AUTH_SECRET`
   - `INTERNAL_SCHEDULER_TOKEN` if Cloud Scheduler is enabled

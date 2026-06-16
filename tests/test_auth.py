@@ -78,7 +78,7 @@ def test_access_token_requires_explicit_auth_secret(monkeypatch: pytest.MonkeyPa
         lambda: type(
             "Settings",
             (),
-            {"auth_secret": "", "supabase_service_role_key": "service-role-key"},
+            {"auth_secret": ""},
         )(),
     )
 

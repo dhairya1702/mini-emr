@@ -3,12 +3,12 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 
 from app.postgres import PostgresConnectionManager
-from app.repositories.auth_settings import _clinic_settings_defaults, _hidden_clinic_template_defaults
 from app.repositories.base import display_name
 from app.repositories.postgres.ai_usage import _row_to_dict
-from app.schema_domains.auth_settings import ClinicSettingsUpdate, UserAccountUpdate, UserRoleUpdate
+from app.schema_domains.auth_settings import ClinicSettingsOut, ClinicSettingsUpdate, UserAccountUpdate, UserRoleUpdate
 from app.schema_domains.common import UserRole
 
 
@@ -68,6 +68,42 @@ CLINIC_SETTINGS_MUTABLE_COLUMNS = [
     "document_template_margin_bottom",
     "document_template_margin_left",
 ]
+
+
+def _clinic_settings_defaults() -> dict[str, Any]:
+    nil_uuid = UUID("00000000-0000-0000-0000-000000000000")
+    field_names = {
+        "clinic_name",
+        "clinic_address",
+        "clinic_phone",
+        "clinic_specialty",
+        "appointment_start_time",
+        "appointment_end_time",
+        "appointments_per_hour",
+        "doctor_name",
+        "sender_name",
+        "sender_email",
+        "custom_header",
+        "custom_footer",
+        "document_template_name",
+        "document_template_url",
+        "document_template_notes_enabled",
+        "document_template_letters_enabled",
+        "document_template_invoices_enabled",
+        "document_template_margin_top",
+        "document_template_margin_right",
+        "document_template_margin_bottom",
+        "document_template_margin_left",
+    }
+    return ClinicSettingsOut.model_construct(id=nil_uuid, org_id=nil_uuid).model_dump(include=field_names)
+
+
+def _hidden_clinic_template_defaults() -> dict[str, Any]:
+    return {
+        "document_template_content_type": None,
+        "document_template_data_base64": None,
+        "sender_email_app_password": None,
+    }
 
 USER_COLUMNS = [
     "id",

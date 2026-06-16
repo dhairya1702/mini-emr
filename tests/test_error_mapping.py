@@ -8,7 +8,7 @@ def test_unexpected_route_errors_return_generic_500(client):
     session = register_test_clinic(test_client, identifier="errors@clinic.com", clinic_name="Errors Clinic")
 
     async def broken_list_patients(_org_id: str):
-        raise RuntimeError("supabase credentials exploded")
+        raise RuntimeError("database credentials exploded")
 
     repo.list_patients = broken_list_patients
 

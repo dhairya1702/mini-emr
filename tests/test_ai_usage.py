@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from app.services import anthropic_service
+from app.services import ai_generation_service
 
 
 @pytest.fixture
@@ -25,36 +25,38 @@ class _Repo:
         return payload
 
 
-class _Messages:
-    def create(self, **_kwargs):
-        return SimpleNamespace(
-            content=[SimpleNamespace(type="text", text="Generated response")],
-            usage=SimpleNamespace(
-                input_tokens=123,
-                output_tokens=45,
-                cache_creation_input_tokens=6,
-                cache_read_input_tokens=7,
-            ),
-        )
-
-
-class _Anthropic:
-    def __init__(self, api_key: str) -> None:
-        self.api_key = api_key
-        self.messages = _Messages()
+async def _fake_generate_vertex_content(**_kwargs):
+    return {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": "Generated response"}],
+                }
+            }
+        ],
+        "usageMetadata": {
+            "promptTokenCount": 123,
+            "candidatesTokenCount": 45,
+            "cachedContentTokenCount": 7,
+        },
+    }
 
 
 @pytest.mark.anyio
 async def test_generate_soap_note_records_org_ai_usage(monkeypatch):
     repo = _Repo()
-    monkeypatch.setattr(anthropic_service, "Anthropic", _Anthropic)
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_generate_vertex_content)
     monkeypatch.setattr(
-        anthropic_service,
+        ai_generation_service,
         "get_settings",
-        lambda: SimpleNamespace(anthropic_api_key="key", anthropic_model="claude-test"),
+        lambda: SimpleNamespace(
+            google_cloud_project="project-1",
+            google_cloud_location="global",
+            gemini_model="gemini-test",
+        ),
     )
 
-    content = await anthropic_service.generate_soap_note(
+    content = await ai_generation_service.generate_soap_note(
         repo,
         "org-1",
         symptoms="Fever",
@@ -72,26 +74,29 @@ async def test_generate_soap_note_records_org_ai_usage(monkeypatch):
     assert len(repo.events) == 1
     event = repo.events[0]
     assert event["org_id"] == "org-1"
-    assert event["provider"] == "anthropic"
-    assert event["model"] == "claude-test"
+    assert event["provider"] == "gemini"
+    assert event["model"] == "gemini-test"
     assert event["feature"] == "consultation_note"
     assert event["input_tokens"] == 123
     assert event["output_tokens"] == 45
-    assert event["cache_creation_input_tokens"] == 6
     assert event["cache_read_input_tokens"] == 7
 
 
 @pytest.mark.anyio
 async def test_generate_clinic_letter_records_org_ai_usage(monkeypatch):
     repo = _Repo()
-    monkeypatch.setattr(anthropic_service, "Anthropic", _Anthropic)
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_generate_vertex_content)
     monkeypatch.setattr(
-        anthropic_service,
+        ai_generation_service,
         "get_settings",
-        lambda: SimpleNamespace(anthropic_api_key="key", anthropic_model="claude-test"),
+        lambda: SimpleNamespace(
+            google_cloud_project="project-1",
+            google_cloud_location="global",
+            gemini_model="gemini-test",
+        ),
     )
 
-    content = await anthropic_service.generate_clinic_letter(
+    content = await ai_generation_service.generate_clinic_letter(
         repo,
         "org-2",
         to="Patient",
@@ -105,19 +110,23 @@ async def test_generate_clinic_letter_records_org_ai_usage(monkeypatch):
     event = repo.events[0]
     assert event["org_id"] == "org-2"
     assert event["feature"] == "clinic_letter"
-    assert event["model"] == "claude-test"
+    assert event["model"] == "gemini-test"
 
 
 @pytest.mark.anyio
 async def test_fallback_generation_does_not_record_ai_usage(monkeypatch):
     repo = _Repo()
     monkeypatch.setattr(
-        anthropic_service,
+        ai_generation_service,
         "get_settings",
-        lambda: SimpleNamespace(anthropic_api_key="", anthropic_model="claude-test"),
+        lambda: SimpleNamespace(
+            google_cloud_project="",
+            google_cloud_location="global",
+            gemini_model="",
+        ),
     )
 
-    content = await anthropic_service.generate_soap_note(
+    content = await ai_generation_service.generate_soap_note(
         repo,
         "org-3",
         symptoms="",
@@ -131,7 +140,7 @@ async def test_fallback_generation_does_not_record_ai_usage(monkeypatch):
 
 
 def test_normalized_note_strips_pipe_tables_from_generated_content():
-    content = anthropic_service._normalize_note_content(
+    content = ai_generation_service._normalize_note_content(
         """
 Presenting Complaint:
 Dry cough since yesterday.

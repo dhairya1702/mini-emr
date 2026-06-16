@@ -89,9 +89,8 @@ async def lifespan(app: FastAPI):
             reminder_task.cancel()
             with suppress(asyncio.CancelledError):
                 await reminder_task
-        if str(getattr(settings, "database_backend", "supabase") or "supabase").strip().lower() == "postgres":
-            with suppress(Exception):
-                get_postgres_connection_manager().close()
+        with suppress(Exception):
+            get_postgres_connection_manager().close()
 
 
 settings = config_module.get_settings()

@@ -8,7 +8,7 @@ Clinic-focused EMR covering queue management, appointments and check-in, patient
 - Backend: FastAPI
 - Database: PostgreSQL (Cloud SQL target)
 - File storage: Google Cloud Storage for patient attachments
-- AI: Anthropic Claude
+- AI: Google Gemini on Vertex AI
 
 ## Structure
 
@@ -16,7 +16,6 @@ Clinic-focused EMR covering queue management, appointments and check-in, patient
 web/      Next.js frontend
 backend/  FastAPI API
 db/       Cloud SQL / PostgreSQL schema
-supabase/ legacy migration-era schema reference
 ```
 
 ## Frontend setup
@@ -74,20 +73,17 @@ Frontend:
 
 Backend:
 
-- `DATABASE_BACKEND=postgres`
 - `DATABASE_URL=...`
-- `STORAGE_BACKEND=gcs`
 - `GCS_PATIENT_ATTACHMENTS_BUCKET=...`
 - `AUTH_SECRET=...` required and must stay fixed across restarts so signed sessions remain valid
-- `ANTHROPIC_API_KEY=...`
-- `ANTHROPIC_MODEL=claude-sonnet-4-20250514`
+- `GOOGLE_CLOUD_PROJECT=...`
+- `GOOGLE_CLOUD_LOCATION=global`
+- `GEMINI_MODEL=gemini-2.5-flash`
 - `INTERNAL_SCHEDULER_TOKEN=...` used by Cloud Scheduler to trigger follow-up reminders over HTTP
 - `APP_ORIGIN=http://127.0.0.1:3000`
 - `SUPER_ADMIN_IDENTIFIERS=you@example.com` optional, comma-separated allowlist for the hidden `/superuser` dashboard
 - `FOLLOW_UP_REMINDER_RUNNER_ENABLED=false`
 - `FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300`
-
-Supabase fallback support still exists in code during the migration window, but the intended deployment path is PostgreSQL plus GCS on GCP.
 
 ## Follow-up reminders
 
@@ -116,7 +112,7 @@ Example cron entry every 5 minutes:
 
 - The frontend only talks to the FastAPI backend over HTTP.
 - All database access and AI provider access live in the backend.
-- Database/storage credentials and Anthropic credentials are only used by the backend.
+- Database/storage credentials and Vertex AI access are only used by the backend.
 - Sessions are custom backend-signed tokens with a 30-day TTL, returned in both cookies and `X-Session-Token` headers.
 - Authenticated API requests reissue fresh session headers, so the app behaves like a sliding session while the user is active.
 - The frontend mirrors session state in `localStorage` and refreshes/clears it based on `X-Session-Expires-At`, but the backend remains the source of truth.
@@ -139,8 +135,6 @@ Example cron entry every 5 minutes:
 ## Database
 
 For PostgreSQL or Cloud SQL, run the SQL in [db/schema.sql](/Users/dhairyalalwani/PycharmProjects/mr/db/schema.sql).
-
-The older [supabase/schema.sql](/Users/dhairyalalwani/PycharmProjects/mr/supabase/schema.sql) is only a legacy migration reference while Supabase fallback support still exists in code.
 
 If your database is already live, do not assume only `clinic_settings` and `clinic_users` are needed. The current app also depends on:
 
@@ -170,7 +164,7 @@ If your database is already live, do not assume only `clinic_settings` and `clin
 - `POST /notes/finalize` finalizes a stored consultation note.
 - `GET /patients/{patient_id}/notes` returns note history and versions.
 - `GET /notes/{note_id}/pdf` renders a saved note snapshot.
-- If no Anthropic key is configured, the backend returns deterministic structured clinical text so setup and testing still work.
+- If Gemini is not configured, the backend returns deterministic structured clinical text so setup and testing still work.
 - `POST /generate-letter` and `POST /generate-letter-pdf` use the same clinic branding settings as notes and invoices.
 - Generated note PDFs, saved note PDFs, generated letter PDFs, and sent letters all use the current logged-in user's name and signature when available.
 - Uploaded signatures are normalized into transparent PNGs before storage so document rendering can place them cleanly.

@@ -21,7 +21,7 @@ from app.schema_domains.patients import (
     NoteCreate,
     NoteOut,
 )
-from app.services.anthropic_service import generate_clinic_letter, generate_soap_note
+from app.services.ai_generation_service import generate_clinic_letter, generate_soap_note
 from app.services.audit_service import get_actor_name, write_audit_event
 from app.services.auth_flow import enforce_rate_limit
 from app.services.document_helpers import build_document_context_for_user, serialize_note_assets

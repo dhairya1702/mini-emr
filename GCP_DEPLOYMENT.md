@@ -12,7 +12,6 @@ This repo can be deployed to GCP with:
 - Reminder runner: Cloud Scheduler invoking the backend
 - URL strategy: temporary `run.app` URLs
 - Secret handling for now: plain environment variables
-- Supabase fallback: kept in code for now, but GCP is the intended deployment path
 
 ## Chosen Defaults
 
@@ -33,6 +32,7 @@ Enable at least:
 - Cloud Run
 - Cloud Build
 - Artifact Registry
+- Vertex AI API
 - Cloud SQL Admin API
 - Cloud Scheduler
 - IAM
@@ -42,13 +42,12 @@ Enable at least:
 
 ### Backend
 
-- `DATABASE_BACKEND=postgres`
 - `DATABASE_URL=postgresql://USER:PASSWORD@/DB_NAME?host=/cloudsql/PROJECT:REGION:INSTANCE`
-- `STORAGE_BACKEND=gcs`
 - `GCS_PATIENT_ATTACHMENTS_BUCKET=clinic-emr-patient-attachments-prod`
 - `AUTH_SECRET=...`
-- `ANTHROPIC_API_KEY=...`
-- `ANTHROPIC_MODEL=claude-sonnet-4-20250514`
+- `GOOGLE_CLOUD_PROJECT=project-e8d0eb79-8682-4bd9-b31`
+- `GOOGLE_CLOUD_LOCATION=global`
+- `GEMINI_MODEL=gemini-2.5-flash`
 - `INTERNAL_SCHEDULER_TOKEN=...`
 - `APP_ORIGIN=https://WEB_RUN_URL`
 - `APP_ORIGINS=https://WEB_RUN_URL`
@@ -74,7 +73,7 @@ When deploying the backend Cloud Run service, attach the Cloud SQL instance with
 
 ## GCS Notes
 
-Attachment bytes are selected by `STORAGE_BACKEND=gcs` in [backend/app/storage.py](/Users/dhairyalalwani/PycharmProjects/mr/backend/app/storage.py).
+Attachment bytes are stored in Google Cloud Storage by [backend/app/storage.py](/Users/dhairyalalwani/PycharmProjects/mr/backend/app/storage.py).
 
 Create the chosen bucket:
 
@@ -136,7 +135,7 @@ gcloud run deploy clinic-emr-backend \
   --platform=managed \
   --allow-unauthenticated \
   --add-cloudsql-instances=PROJECT:REGION:INSTANCE \
-  --set-env-vars=DATABASE_BACKEND=postgres,STORAGE_BACKEND=gcs,GCS_PATIENT_ATTACHMENTS_BUCKET=clinic-emr-patient-attachments-prod,FOLLOW_UP_REMINDER_RUNNER_ENABLED=false,FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300,APP_ORIGIN=https://WEB_RUN_URL,APP_ORIGINS=https://WEB_RUN_URL,DATABASE_URL='postgresql://DB_USER:DB_PASSWORD@/DB_NAME?host=/cloudsql/PROJECT:REGION:INSTANCE',AUTH_SECRET=REPLACE_ME,ANTHROPIC_API_KEY=REPLACE_ME,ANTHROPIC_MODEL=claude-sonnet-4-20250514,SUPER_ADMIN_IDENTIFIERS=REPLACE_ME
+  --set-env-vars=GCS_PATIENT_ATTACHMENTS_BUCKET=clinic-emr-patient-attachments-prod,FOLLOW_UP_REMINDER_RUNNER_ENABLED=false,FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300,APP_ORIGIN=https://WEB_RUN_URL,APP_ORIGINS=https://WEB_RUN_URL,DATABASE_URL='postgresql://DB_USER:DB_PASSWORD@/DB_NAME?host=/cloudsql/PROJECT:REGION:INSTANCE',AUTH_SECRET=REPLACE_ME,GOOGLE_CLOUD_PROJECT=project-e8d0eb79-8682-4bd9-b31,GOOGLE_CLOUD_LOCATION=global,GEMINI_MODEL=gemini-2.5-flash,SUPER_ADMIN_IDENTIFIERS=REPLACE_ME
 ```
 
 ## Deploy Web
@@ -200,14 +199,10 @@ Run these checks against the Cloud Run deployment:
 
 ## What Is Still Not Done
 
-- real Cloud SQL validation is not yet documented as completed
-- real GCS validation is not yet documented as completed
-- data migration from Supabase DB and Supabase Storage is not yet implemented
 - Secret Manager wiring is not yet in place
 
 ## Recommended Next Steps
 
 1. Stand up Cloud SQL and run the backend against [db/schema.sql](/Users/dhairyalalwani/PycharmProjects/mr/db/schema.sql).
 2. Validate GCS attachment upload/download.
-3. Rehearse data migration off Supabase.
-4. Move env secrets into Secret Manager when you are ready.
+3. Move env secrets into Secret Manager when you are ready.

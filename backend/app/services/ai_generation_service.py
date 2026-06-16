@@ -1,11 +1,15 @@
 import asyncio
 from collections import OrderedDict
+from typing import Any
 
-from anthropic import Anthropic
+import httpx
 
 from app.config import get_settings
 from app.db import AppRepository
-from app.services.ai_usage_service import record_anthropic_usage
+from app.services.ai_usage_service import record_model_usage
+
+VERTEX_AI_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+VERTEX_AI_TIMEOUT_SECONDS = 60.0
 
 
 def build_fallback_note(
@@ -59,22 +63,6 @@ def _match_section_label(raw_line: str) -> tuple[str, str] | None:
     return normalized_label, remainder.strip()
 
 
-def _extract_pipe_table_blocks(value: str) -> list[str]:
-    blocks: list[str] = []
-    current: list[str] = []
-    for raw_line in value.splitlines():
-        line = raw_line.rstrip()
-        if "|" in line:
-            current.append(line)
-            continue
-        if current:
-            blocks.append("\n".join(current).strip())
-            current = []
-    if current:
-        blocks.append("\n".join(current).strip())
-    return [block for block in blocks if block]
-
-
 def _strip_pipe_tables(value: str) -> str:
     cleaned_lines: list[str] = []
     skipping_table = False
@@ -120,7 +108,6 @@ def _normalize_note_content(
     current_section: str | None = None
 
     for raw_line in note_text.splitlines():
-        stripped = raw_line.strip()
         matched = _match_section_label(raw_line)
         if matched:
             matched_section, remainder = matched
@@ -163,9 +150,9 @@ def build_fallback_letter(
     clinic_bits = [line.strip() for line in clinic_context.splitlines() if line.strip()]
     doctor_name = ""
     for line in clinic_bits:
-      if line.startswith("Doctor Name:"):
-          doctor_name = line.split(":", 1)[1].strip()
-          break
+        if line.startswith("Doctor Name:"):
+            doctor_name = line.split(":", 1)[1].strip()
+            break
 
     signature_name = doctor_name or "Clinic Team"
     body = content.strip()
@@ -216,6 +203,86 @@ def build_fallback_case_study(
     )
 
 
+def _vertex_ai_api_endpoint(location: str) -> str:
+    normalized = (location or "global").strip() or "global"
+    if normalized == "global":
+        return "https://aiplatform.googleapis.com"
+    return f"https://{normalized}-aiplatform.googleapis.com"
+
+
+async def _resolve_vertex_credentials(configured_project: str) -> tuple[str, str]:
+    def _load_credentials() -> tuple[str, str]:
+        import google.auth
+        from google.auth.transport.requests import Request
+
+        credentials, detected_project = google.auth.default(scopes=[VERTEX_AI_SCOPE])
+        if not credentials.valid or credentials.expired or not credentials.token:
+            credentials.refresh(Request())
+
+        token = str(credentials.token or "").strip()
+        project_id = str(configured_project or detected_project or "").strip()
+        if not token:
+            raise RuntimeError("Vertex AI access token could not be resolved.")
+        if not project_id:
+            raise RuntimeError("GOOGLE_CLOUD_PROJECT must be configured for Vertex AI calls.")
+        return token, project_id
+
+    return await asyncio.to_thread(_load_credentials)
+
+
+def _extract_text_from_vertex_response(response: dict[str, Any]) -> str:
+    candidates = response.get("candidates") or []
+    text_parts: list[str] = []
+    for candidate in candidates:
+        content = candidate.get("content") or {}
+        for part in content.get("parts") or []:
+            text = str(part.get("text") or "").strip()
+            if text:
+                text_parts.append(text)
+    return "\n".join(text_parts).strip()
+
+
+async def _generate_vertex_content(
+    *,
+    project_id: str,
+    location: str,
+    model: str,
+    system_instruction: str,
+    prompt: str,
+    max_output_tokens: int,
+    temperature: float,
+) -> dict[str, Any]:
+    token, resolved_project = await _resolve_vertex_credentials(project_id)
+    base_url = _vertex_ai_api_endpoint(location)
+    url = (
+        f"{base_url}/v1/projects/{resolved_project}/locations/{location}/publishers/google/models/"
+        f"{model}:generateContent"
+    )
+    payload = {
+        "systemInstruction": {
+            "parts": [{"text": system_instruction}],
+        },
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}],
+            }
+        ],
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_output_tokens,
+        },
+    }
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=VERTEX_AI_TIMEOUT_SECONDS) as client:
+        response = await client.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        return response.json()
+
+
 async def generate_soap_note(
     repo: AppRepository,
     org_id: str,
@@ -228,11 +295,6 @@ async def generate_soap_note(
     measurements_context: str = "",
 ) -> str:
     settings = get_settings()
-
-    if not settings.anthropic_api_key:
-        return build_fallback_note(symptoms, diagnosis, medications, notes, patient_context, measurements_context)
-
-    client = Anthropic(api_key=settings.anthropic_api_key)
     prompt = f"""
 Write a detailed, clinic-ready consultation note in a clean structured format.
 Use these exact section headings in this order:
@@ -272,35 +334,38 @@ Structured measurements:
 {measurements_context or 'Not provided'}
 """.strip()
 
+    if not str(settings.gemini_model or "").strip():
+        return build_fallback_note(symptoms, diagnosis, medications, notes, patient_context, measurements_context)
+
     try:
-        response = await asyncio.to_thread(
-            lambda: client.messages.create(
-                model=settings.anthropic_model,
-                max_tokens=600,
-                temperature=0.35,
-                system=(
-                    "You write polished outpatient consultation notes for small clinics. "
-                    "Return only the final note text. "
-                    "Return only the five requested section headings and their content. "
-                    "Do not include patient demographics, phone numbers, ages, or any header block in the note body."
-                ),
-                messages=[{"role": "user", "content": prompt}],
-            )
+        response = await _generate_vertex_content(
+            project_id=settings.google_cloud_project,
+            location=settings.google_cloud_location,
+            model=settings.gemini_model,
+            max_output_tokens=600,
+            temperature=0.35,
+            system_instruction=(
+                "You write polished outpatient consultation notes for small clinics. "
+                "Return only the final note text. "
+                "Return only the five requested section headings and their content. "
+                "Do not include patient demographics, phone numbers, ages, or any header block in the note body."
+            ),
+            prompt=prompt,
         )
     except Exception:
         return build_fallback_note(symptoms, diagnosis, medications, notes, patient_context, measurements_context)
 
-    await record_anthropic_usage(
+    await record_model_usage(
         repo,
         org_id=org_id,
-        model=settings.anthropic_model,
+        provider="gemini",
+        model=settings.gemini_model,
         feature="consultation_note",
         response=response,
         metadata={"has_patient_context": bool(patient_context), "has_measurements_context": bool(measurements_context)},
     )
 
-    blocks = [block.text for block in response.content if getattr(block, "type", "") == "text"]
-    generated_text = "\n".join(blocks).strip() or build_fallback_note(
+    generated_text = _extract_text_from_vertex_response(response) or build_fallback_note(
         symptoms,
         diagnosis,
         medications,
@@ -328,11 +393,6 @@ async def generate_clinic_letter(
     clinic_context: str = "",
 ) -> str:
     settings = get_settings()
-
-    if not settings.anthropic_api_key:
-        return build_fallback_letter(to, subject, content, clinic_context)
-
-    client = Anthropic(api_key=settings.anthropic_api_key)
     prompt = f"""
 Write a polished clinic letter in plain text.
 Use this exact top structure:
@@ -357,33 +417,36 @@ Content instructions:
 {content}
 """.strip()
 
+    if not str(settings.gemini_model or "").strip():
+        return build_fallback_letter(to, subject, content, clinic_context)
+
     try:
-        response = await asyncio.to_thread(
-            lambda: client.messages.create(
-                model=settings.anthropic_model,
-                max_tokens=500,
-                temperature=0.35,
-                system=(
-                    "You write clear professional clinic letters. "
-                    "Return only the final letter text."
-                ),
-                messages=[{"role": "user", "content": prompt}],
-            )
+        response = await _generate_vertex_content(
+            project_id=settings.google_cloud_project,
+            location=settings.google_cloud_location,
+            model=settings.gemini_model,
+            max_output_tokens=500,
+            temperature=0.35,
+            system_instruction=(
+                "You write clear professional clinic letters. "
+                "Return only the final letter text."
+            ),
+            prompt=prompt,
         )
     except Exception:
         return build_fallback_letter(to, subject, content, clinic_context)
 
-    await record_anthropic_usage(
+    await record_model_usage(
         repo,
         org_id=org_id,
-        model=settings.anthropic_model,
+        provider="gemini",
+        model=settings.gemini_model,
         feature="clinic_letter",
         response=response,
         metadata={"has_clinic_context": bool(clinic_context), "recipient": to.strip()},
     )
 
-    blocks = [block.text for block in response.content if getattr(block, "type", "") == "text"]
-    return "\n".join(blocks).strip() or build_fallback_letter(to, subject, content, clinic_context)
+    return _extract_text_from_vertex_response(response) or build_fallback_letter(to, subject, content, clinic_context)
 
 
 async def generate_case_study_document(
@@ -398,11 +461,6 @@ async def generate_case_study_document(
     anonymized: bool,
 ) -> str:
     settings = get_settings()
-
-    if not settings.anthropic_api_key:
-        return build_fallback_case_study(title, template_key, author_instructions, source_context)
-
-    client = Anthropic(api_key=settings.anthropic_api_key)
     prompt = f"""
 Write a polished, presentation-ready medical case study in plain text.
 Use these exact headings in this order:
@@ -442,30 +500,38 @@ Source case history:
 {source_context or 'No source context provided'}
 """.strip()
 
+    if not str(settings.gemini_model or "").strip():
+        return build_fallback_case_study(title, template_key, author_instructions, source_context)
+
     try:
-        response = await asyncio.to_thread(
-            lambda: client.messages.create(
-                model=settings.anthropic_model,
-                max_tokens=1200,
-                temperature=0.35,
-                system=(
-                    "You write polished clinical case studies for doctors presenting in conferences and hospitals. "
-                    "Return only the final case study text with the requested section headings."
-                ),
-                messages=[{"role": "user", "content": prompt}],
-            )
+        response = await _generate_vertex_content(
+            project_id=settings.google_cloud_project,
+            location=settings.google_cloud_location,
+            model=settings.gemini_model,
+            max_output_tokens=1200,
+            temperature=0.35,
+            system_instruction=(
+                "You write polished clinical case studies for doctors presenting in conferences and hospitals. "
+                "Return only the final case study text with the requested section headings."
+            ),
+            prompt=prompt,
         )
     except Exception:
         return build_fallback_case_study(title, template_key, author_instructions, source_context)
 
-    await record_anthropic_usage(
+    await record_model_usage(
         repo,
         org_id=org_id,
-        model=settings.anthropic_model,
+        provider="gemini",
+        model=settings.gemini_model,
         feature="case_study",
         response=response,
         metadata={"template_key": template_key, "anonymized": anonymized},
     )
 
-    blocks = [block.text for block in response.content if getattr(block, "type", "") == "text"]
-    return "\n".join(blocks).strip() or build_fallback_case_study(title, template_key, author_instructions, source_context)
+    return _extract_text_from_vertex_response(response) or build_fallback_case_study(
+        title,
+        template_key,
+        author_instructions,
+        source_context,
+    )

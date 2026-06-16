@@ -13,7 +13,7 @@ class PostgresConnectionManager:
     def __init__(self, database_url: str, pool_factory: PoolFactory | None = None) -> None:
         normalized_database_url = str(database_url or "").strip()
         if not normalized_database_url:
-            raise RuntimeError("DATABASE_URL must be configured when DATABASE_BACKEND=postgres.")
+            raise RuntimeError("DATABASE_URL must be configured.")
         self.database_url = normalized_database_url
         self._pool_factory = pool_factory
         self._pool: Any | None = None
