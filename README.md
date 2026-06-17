@@ -160,6 +160,10 @@ Example cron entry every 5 minutes:
 - Org-scoped authentication with admin and staff roles
 - Hidden `/superuser` dashboard for platform org/user visibility and recent backend errors
 
+## User Guide
+
+For a non-technical end-to-end usage writeup you can hand to a clinic user or evaluator, see [PLATFORM_USER_GUIDE.md](/Users/dhairyalalwani/PycharmProjects/mr/PLATFORM_USER_GUIDE.md).
+
 ## Database
 
 For PostgreSQL or Cloud SQL, run the SQL in [db/schema.sql](/Users/dhairyalalwani/PycharmProjects/mr/db/schema.sql).

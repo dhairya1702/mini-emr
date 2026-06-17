@@ -163,10 +163,10 @@ export function MobileAddPatientModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 p-3">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/35 p-3">
       <form
         onSubmit={submitPatient}
-        className="w-full max-w-md rounded-[22px] border border-[#bfd7e8] bg-white p-4 shadow-[0_18px_50px_rgba(64,131,181,0.18)] sm:p-5"
+        className="mx-auto mt-3 w-full max-w-md rounded-[22px] border border-[#bfd7e8] bg-white p-4 shadow-[0_18px_50px_rgba(64,131,181,0.18)] max-h-[calc(100dvh-1.5rem)] overflow-y-auto sm:mt-6 sm:p-5"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -214,12 +214,12 @@ export function MobileAddPatientModal({
           </div>
         ) : null}
 
-        <div className="mt-4 grid grid-cols-1 gap-3 min-[430px]:grid-cols-2">
-          <label className="col-span-2 grid gap-1 text-sm font-medium text-slate-700">
+        <div className="mt-4 grid grid-cols-1 gap-3">
+          <label className="grid gap-1 text-sm font-medium text-slate-700">
             Name
-            <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="clinic-input h-11 rounded-xl text-base" />
+            <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" />
           </label>
-          <label className="col-span-2 grid gap-1 text-sm font-medium text-slate-700">
+          <label className="grid gap-1 text-sm font-medium text-slate-700">
             Phone
             <input
               value={form.phone}
@@ -228,34 +228,38 @@ export function MobileAddPatientModal({
                 setSelectedMatchId("");
                 setForm((current) => ({ ...current, phone: phoneDigits(event.target.value) }));
               }}
-              className="clinic-input h-11 rounded-xl text-base"
+              className="clinic-input h-11 min-w-0 rounded-xl text-base"
               inputMode="tel"
               placeholder="10-digit phone number"
             />
           </label>
-          <label className="col-span-2 grid gap-1 text-sm font-medium text-slate-700">
+          <label className="grid gap-1 text-sm font-medium text-slate-700">
             Reason
-            <input value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} className="clinic-input h-11 rounded-xl text-base" />
+            <input value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" />
           </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700 min-[430px]:col-span-1">
-            DOB
-            <input type="date" value={form.dateOfBirth} onChange={(event) => setForm((current) => ({ ...current, dateOfBirth: event.target.value }))} className="clinic-input h-11 rounded-xl text-base" />
-          </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700 min-[430px]:col-span-1">
-            Weight
-            <input value={form.weight} onChange={(event) => setForm((current) => ({ ...current, weight: event.target.value }))} className="clinic-input h-11 rounded-xl text-base" inputMode="decimal" />
-          </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700 min-[430px]:col-span-1">
-            Temp
-            <input value={form.temperature} onChange={(event) => setForm((current) => ({ ...current, temperature: event.target.value }))} className="clinic-input h-11 rounded-xl text-base" inputMode="decimal" />
-          </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700 min-[430px]:col-span-1">
-            Height
-            <input value={form.height} onChange={(event) => setForm((current) => ({ ...current, height: event.target.value }))} className="clinic-input h-11 rounded-xl text-base" inputMode="decimal" />
-          </label>
-          <label className="col-span-2 grid gap-1 text-sm font-medium text-slate-700">
+          <div className="grid grid-cols-[minmax(0,1.45fr)_minmax(0,0.75fr)] gap-3">
+            <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-700">
+              DOB
+              <input type="date" value={form.dateOfBirth} onChange={(event) => setForm((current) => ({ ...current, dateOfBirth: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" />
+            </label>
+            <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-700">
+              Temp
+              <input value={form.temperature} onChange={(event) => setForm((current) => ({ ...current, temperature: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" inputMode="decimal" />
+            </label>
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+            <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-700">
+              Height
+              <input value={form.height} onChange={(event) => setForm((current) => ({ ...current, height: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" inputMode="decimal" />
+            </label>
+            <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-700">
+              Weight
+              <input value={form.weight} onChange={(event) => setForm((current) => ({ ...current, weight: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" inputMode="decimal" />
+            </label>
+          </div>
+          <label className="grid gap-1 text-sm font-medium text-slate-700">
             Email
-            <input value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} className="clinic-input h-11 rounded-xl text-base" type="email" />
+            <input value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" type="email" />
           </label>
         </div>
 
