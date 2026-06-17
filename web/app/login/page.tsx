@@ -179,7 +179,7 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="rounded-[22px] border border-[#dbe7ef] bg-white/95 p-8 shadow-[0_14px_38px_rgba(64,131,181,0.09)] sm:p-10">
+        <section className="hidden rounded-[22px] border border-[#dbe7ef] bg-white/95 p-8 shadow-[0_14px_38px_rgba(64,131,181,0.09)] sm:p-10 lg:block">
           <div>
             <div className="inline-flex items-center gap-2 rounded-xl bg-[#f3f8fb] px-3 py-1 text-xs tracking-[0.22em] text-[#2a6fa8]">
               <Stethoscope className="h-3.5 w-3.5" />

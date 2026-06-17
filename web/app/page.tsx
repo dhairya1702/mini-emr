@@ -1227,10 +1227,16 @@ export default function HomePage() {
         onGenerate={async (payload) => {
           if (isTrainingMode) {
             const response = createTrainingNote(payload);
-            return { content: response.content, noteId: response.noteId, status: response.status };
+            return { content: response.content, noteId: response.noteId, status: response.status, usedFallback: false, warning: null };
           }
           const response = await api.generateNote(payload);
-          return { content: response.content, noteId: response.note_id, status: response.status };
+          return {
+            content: response.content,
+            noteId: response.note_id,
+            status: response.status,
+            usedFallback: response.used_fallback,
+            warning: response.warning,
+          };
         }}
         onGeneratePdf={(payload) => {
           if (isTrainingMode) {

@@ -114,7 +114,13 @@ interface ConsultationDrawerProps {
     myopia_measurement?: MyopiaMeasurementPayload | null;
     structured_modules?: Array<{ module_type: string; payload: Record<string, unknown> }>;
     assets?: NoteAsset[];
-  }) => Promise<{ content: string; noteId?: string | null; status?: "draft" | "final" | "sent" | null }>;
+  }) => Promise<{
+    content: string;
+    noteId?: string | null;
+    status?: "draft" | "final" | "sent" | null;
+    usedFallback?: boolean;
+    warning?: string | null;
+  }>;
   onGeneratePdf: (payload: { note_id?: string; patient_id: string; content: string; assets?: NoteAsset[] }) => Promise<Blob>;
   onSend: (payload: { note_id: string; patient_id: string; recipient_email: string }) => Promise<string>;
 }
@@ -770,7 +776,8 @@ export function ConsultationDrawer({
       setCurrentNoteId(generated.noteId || "");
       setNoteStatus(generated.status || "draft");
       setIsSent(false);
-      setStatusMessage(refreshingDraft ? "Draft note refreshed." : "Draft SOAP note generated.");
+      const baseMessage = refreshingDraft ? "Draft note refreshed." : "Draft SOAP note generated.";
+      setStatusMessage(generated.usedFallback ? `${baseMessage} ${generated.warning || "AI unavailable, used fallback template."}` : baseMessage);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to generate SOAP note.");
     } finally {

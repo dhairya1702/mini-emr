@@ -218,6 +218,35 @@ async def record_invoice_shared(
     )
 
 
+async def record_invoice_completed(
+    repo: AppRepository,
+    current_user: UserOut,
+    invoice: dict,
+    *,
+    patient_name: str,
+    stock_deductions: list[dict],
+) -> None:
+    await write_audit_event(
+        repo,
+        current_user,
+        entity_type="invoice",
+        entity_id=str(invoice["id"]),
+        action="invoice_completed",
+        summary=f"Completed invoice for {patient_name}.",
+        metadata={
+            "patient_id": str(invoice["patient_id"]),
+            "patient_name": patient_name,
+            "completed_at": invoice.get("completed_at"),
+            "completed_by": invoice.get("completed_by"),
+            "completed_by_name": get_actor_name(current_user),
+            "payment_status": invoice.get("payment_status"),
+            "amount_paid": invoice.get("amount_paid"),
+            "balance_due": invoice.get("balance_due"),
+            "stock_deductions": stock_deductions,
+        },
+    )
+
+
 async def record_catalog_item_created(
     repo: AppRepository,
     current_user: UserOut,

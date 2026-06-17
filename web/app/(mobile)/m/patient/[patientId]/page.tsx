@@ -418,6 +418,10 @@ export default function MobilePatientPage() {
 
   async function openVisitAttachment(attachment: PatientVisitAttachmentRow) {
     try {
+      if (attachment.attachment_id) {
+        openPatientAttachmentViewer(attachment.attachment_id!);
+        return;
+      }
       if (attachment.source_type === "note_attachment" && attachment.data_base64) {
         openNoteAttachmentViewer({
           id: attachment.id,
@@ -427,9 +431,6 @@ export default function MobilePatientPage() {
           data_base64: attachment.data_base64,
         });
         return;
-      }
-      if (attachment.attachment_id) {
-        openPatientAttachmentViewer(attachment.attachment_id!);
       }
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : "Failed to open attachment.");

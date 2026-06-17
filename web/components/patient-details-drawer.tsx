@@ -947,16 +947,6 @@ export function PatientDetailsDrawer({
   }
 
   async function handleOpenVisitAttachment(attachment: PatientVisitAttachmentRow) {
-    if (attachment.source_type === "note_attachment" && attachment.data_base64) {
-      openNoteAttachmentViewer({
-        id: attachment.id,
-        kind: "attachment",
-        name: attachment.label,
-        content_type: attachment.content_type,
-        data_base64: attachment.data_base64,
-      });
-      return;
-    }
     if (attachment.attachment_id) {
       if (!currentPatient) {
         return;
@@ -972,6 +962,17 @@ export function PatientDetailsDrawer({
         storage_path: "",
         created_at: attachment.timestamp,
       });
+      return;
+    }
+    if (attachment.source_type === "note_attachment" && attachment.data_base64) {
+      openNoteAttachmentViewer({
+        id: attachment.id,
+        kind: "attachment",
+        name: attachment.label,
+        content_type: attachment.content_type,
+        data_base64: attachment.data_base64,
+      });
+      return;
     }
   }
 

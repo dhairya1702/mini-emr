@@ -98,7 +98,7 @@ export default function EarningsPage() {
   const paidInvoices = useMemo(
     () =>
       invoices
-        .filter((invoice) => invoice.payment_status === "paid")
+        .filter((invoice) => invoice.payment_status === "paid" && Boolean(invoice.completed_at))
         .sort((left, right) => (right.paid_at || right.created_at).localeCompare(left.paid_at || left.created_at)),
     [invoices],
   );

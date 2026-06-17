@@ -41,6 +41,8 @@ class GenerateNoteResponse(BaseModel):
     note_id: UUID | None = None
     status: NoteStatus | None = None
     content: str
+    used_fallback: bool = False
+    warning: str | None = None
 
 
 class FinalizeNoteRequest(BaseModel):

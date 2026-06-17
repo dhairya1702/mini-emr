@@ -512,6 +512,8 @@ export interface GenerateNoteResponse {
   note_id?: string | null;
   status?: "draft" | "final" | "sent" | null;
   content: string;
+  used_fallback?: boolean;
+  warning?: string | null;
 }
 
 export interface MobileFinalizeConsultationResponse {
@@ -767,15 +769,26 @@ export interface InvoiceItemInput {
 }
 
 export interface InvoiceCreatePayload {
+  invoice_id?: string | null;
   patient_id: string;
   items: InvoiceItemInput[];
   payment_status: PaymentStatus;
   amount_paid?: number | null;
 }
 
+export interface FinalizeInvoicePayload {
+  invoice_id: string;
+}
+
 export interface SendInvoicePayload {
   invoice_id: string;
   recipient_email: string;
+}
+
+export interface InvoiceActionResult {
+  success: boolean;
+  message: string;
+  invoice: Invoice;
 }
 
 export interface AppointmentCreatePayload {

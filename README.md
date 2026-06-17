@@ -65,6 +65,34 @@ From the project root:
 
 This starts the backend on `http://127.0.0.1:8001` and the frontend dev server from `web/`. Press `Ctrl+C` once to stop both.
 
+## GCP Deploy Scripts
+
+The repo includes manual deploy helpers under [scripts/](/Users/dhairyalalwani/PycharmProjects/mr/scripts):
+
+- `./scripts/deploy-backend.sh`
+- `./scripts/deploy-web.sh`
+- `./scripts/deploy-all.sh`
+
+Before first use:
+
+```bash
+cp .env.deploy.example .env.deploy
+```
+
+Then fill in `.env.deploy` with the real values for:
+
+- `DB_PASSWORD`
+- `AUTH_SECRET`
+- `SUPER_ADMIN_IDENTIFIERS`
+
+Notes:
+
+- `.env.deploy` is gitignored and is the intended place for local deploy secrets.
+- The scripts refuse to run unless `gcloud` is pointed at:
+  - account `dhairya911@gmail.com`
+  - project `project-e8d0eb79-8682-4bd9-b31`
+- The scripts treat the stable regional Cloud Run URL (`*.asia-south1.run.app`) as the primary public frontend origin and only allow the canonical `*.a.run.app` hostname as a secondary CORS origin.
+
 ## Environment
 
 Frontend:

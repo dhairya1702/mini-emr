@@ -8,9 +8,19 @@ from app.api_errors import bad_request_error, internal_server_error
 from app.auth import require_admin
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
-from app.schema_domains.billing import InvoiceCreate, InvoiceOut, SendInvoiceRequest
-from app.schema_domains.documents import SendNoteResponse
-from app.services.billing_workflow import create_invoice_workflow, list_invoices_with_user_names, send_invoice_workflow
+from app.schema_domains.billing import (
+    FinalizeInvoiceRequest,
+    InvoiceActionResponse,
+    InvoiceCreate,
+    InvoiceOut,
+    SendInvoiceRequest,
+)
+from app.services.billing_workflow import (
+    create_invoice_workflow,
+    finalize_invoice_workflow,
+    list_invoices_with_user_names,
+    send_invoice_workflow,
+)
 from app.services.pdf_service import build_invoice_pdf
 
 
@@ -37,12 +47,24 @@ async def list_invoices(
     return await list_invoices_with_user_names(repo, str(current_user.org_id))
 
 
-@router.post("/send-invoice", response_model=SendNoteResponse)
+@router.post("/invoices/finalize", response_model=InvoiceActionResponse)
+async def finalize_invoice(
+    payload: FinalizeInvoiceRequest,
+    current_user: UserOut = Depends(require_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> InvoiceActionResponse:
+    try:
+        return await finalize_invoice_workflow(repo, current_user, payload)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+
+
+@router.post("/send-invoice", response_model=InvoiceActionResponse)
 async def send_invoice(
     payload: SendInvoiceRequest,
     current_user: UserOut = Depends(require_admin),
     repo: AppRepository = Depends(get_repository),
-) -> SendNoteResponse:
+) -> InvoiceActionResponse:
     try:
         return await send_invoice_workflow(repo, current_user, payload)
     except ValueError as exc:

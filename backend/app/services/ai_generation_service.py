@@ -1,6 +1,7 @@
 import asyncio
+import logging
 from collections import OrderedDict
-from typing import Any
+from typing import Any, TypedDict
 
 import httpx
 
@@ -10,6 +11,14 @@ from app.services.ai_usage_service import record_model_usage
 
 VERTEX_AI_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 VERTEX_AI_TIMEOUT_SECONDS = 60.0
+logger = logging.getLogger(__name__)
+
+
+class GeneratedNoteResult(TypedDict):
+    content: str
+    used_fallback: bool
+    warning: str | None
+    error_message: str | None
 
 
 def build_fallback_note(
@@ -293,7 +302,7 @@ async def generate_soap_note(
     patient_context: str = "",
     clinic_context: str = "",
     measurements_context: str = "",
-) -> str:
+) -> GeneratedNoteResult:
     settings = get_settings()
     prompt = f"""
 Write a detailed, clinic-ready consultation note in a clean structured format.
@@ -335,7 +344,19 @@ Structured measurements:
 """.strip()
 
     if not str(settings.gemini_model or "").strip():
-        return build_fallback_note(symptoms, diagnosis, medications, notes, patient_context, measurements_context)
+        return {
+            "content": build_fallback_note(
+                symptoms,
+                diagnosis,
+                medications,
+                notes,
+                patient_context,
+                measurements_context,
+            ),
+            "used_fallback": True,
+            "warning": "AI unavailable, used fallback template.",
+            "error_message": "GEMINI_MODEL is not configured.",
+        }
 
     try:
         response = await _generate_vertex_content(
@@ -352,8 +373,21 @@ Structured measurements:
             ),
             prompt=prompt,
         )
-    except Exception:
-        return build_fallback_note(symptoms, diagnosis, medications, notes, patient_context, measurements_context)
+    except Exception as exc:
+        logger.exception("Vertex AI consultation note generation failed")
+        return {
+            "content": build_fallback_note(
+                symptoms,
+                diagnosis,
+                medications,
+                notes,
+                patient_context,
+                measurements_context,
+            ),
+            "used_fallback": True,
+            "warning": "AI unavailable, used fallback template.",
+            "error_message": str(exc),
+        }
 
     await record_model_usage(
         repo,
@@ -365,23 +399,35 @@ Structured measurements:
         metadata={"has_patient_context": bool(patient_context), "has_measurements_context": bool(measurements_context)},
     )
 
-    generated_text = _extract_text_from_vertex_response(response) or build_fallback_note(
-        symptoms,
-        diagnosis,
-        medications,
-        notes,
-        patient_context,
-        measurements_context,
-    )
-    return _normalize_note_content(
-        generated_text,
-        symptoms,
-        diagnosis,
-        medications,
-        notes,
-        patient_context,
-        measurements_context,
-    )
+    generated_text = _extract_text_from_vertex_response(response)
+    if not generated_text:
+        return {
+            "content": build_fallback_note(
+                symptoms,
+                diagnosis,
+                medications,
+                notes,
+                patient_context,
+                measurements_context,
+            ),
+            "used_fallback": True,
+            "warning": "AI returned no content, used fallback template.",
+            "error_message": "Vertex AI returned an empty response.",
+        }
+    return {
+        "content": _normalize_note_content(
+            generated_text,
+            symptoms,
+            diagnosis,
+            medications,
+            notes,
+            patient_context,
+            measurements_context,
+        ),
+        "used_fallback": False,
+        "warning": None,
+        "error_message": None,
+    }
 
 
 async def generate_clinic_letter(

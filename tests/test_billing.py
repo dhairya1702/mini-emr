@@ -70,6 +70,18 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypat
     assert invoice["sent_at"] is None
     assert repo.patients[patient["id"]]["billed"] is False
     assert repo.catalog_items[item["id"]]["stock_quantity"] == 10
+    assert repo.invoices[invoice["id"]]["completed_at"] is None
+
+    completed = test_client.post(
+        "/invoices/finalize",
+        json={"invoice_id": invoice["id"]},
+        headers=auth_headers_for_token(session["token"]),
+    )
+    assert completed.status_code == 200
+    assert repo.patients[patient["id"]]["billed"] is True
+    assert repo.catalog_items[item["id"]]["stock_quantity"] == 7
+    assert repo.invoices[invoice["id"]]["completed_at"] is not None
+    assert repo.invoices[invoice["id"]]["sent_at"] is None
 
     first_send = test_client.post(
         "/send-invoice",
@@ -80,7 +92,6 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypat
     assert repo.patients[patient["id"]]["billed"] is True
     assert repo.catalog_items[item["id"]]["stock_quantity"] == 7
     assert repo.invoices[invoice["id"]]["sent_at"] is not None
-    assert repo.invoices[invoice["id"]]["completed_at"] is not None
     assert repo.invoices[invoice["id"]]["completed_by"] == session["user"]["id"]
     assert len(sent_messages) == 1
     assert sent_messages[0]["recipient"] == patient["email"]
@@ -92,7 +103,7 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypat
     )
     assert second_send.status_code == 200
     assert repo.catalog_items[item["id"]]["stock_quantity"] == 7
-    assert "already finalized" in second_send.json()["message"].lower()
+    assert "already emailed" in second_send.json()["message"].lower()
 
 
 def test_invoice_can_be_created_with_partial_payment_status(client):
@@ -138,6 +149,58 @@ def test_invoice_can_be_created_with_partial_payment_status(client):
     assert invoice["balance_due"] == 350
     assert invoice["paid_at"] is None
     assert repo.patients[patient["id"]]["billed"] is False
+
+
+def test_invoice_create_with_invoice_id_updates_existing_draft(client):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="billing-update@clinic.com", clinic_name="Billing Update Clinic")
+    headers = auth_headers_for_token(session["token"])
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Draft Update Patient",
+            "phone": "5550103131",
+            "reason": "Consultation",
+            "age": 33,
+            "weight": 70,
+            "height": 170,
+            "temperature": 98.7,
+        },
+        headers=headers,
+    ).json()
+
+    first = test_client.post(
+        "/invoices",
+        json={
+            "patient_id": patient["id"],
+            "payment_status": "paid",
+            "items": [{"item_type": "service", "label": "Consultation", "quantity": 1, "unit_price": 500}],
+        },
+        headers=headers,
+    )
+    assert first.status_code == 201
+    invoice = first.json()
+
+    second = test_client.post(
+        "/invoices",
+        json={
+            "invoice_id": invoice["id"],
+            "patient_id": patient["id"],
+            "payment_status": "paid",
+            "items": [
+                {"item_type": "service", "label": "Consultation", "quantity": 1, "unit_price": 500},
+                {"item_type": "service", "label": "Procedure", "quantity": 1, "unit_price": 250},
+            ],
+        },
+        headers=headers,
+    )
+    assert second.status_code == 201
+    updated = second.json()
+    assert updated["id"] == invoice["id"]
+    assert updated["total"] == 750
+    assert len(updated["items"]) == 2
+    assert len(repo.invoices) == 1
 
 
 def test_cross_org_invoice_and_negative_stock_adjustment_are_rejected(client):

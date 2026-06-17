@@ -56,7 +56,7 @@ async def test_generate_soap_note_records_org_ai_usage(monkeypatch):
         ),
     )
 
-    content = await ai_generation_service.generate_soap_note(
+    result = await ai_generation_service.generate_soap_note(
         repo,
         "org-1",
         symptoms="Fever",
@@ -68,9 +68,10 @@ async def test_generate_soap_note_records_org_ai_usage(monkeypatch):
         measurements_context="Temperature: 101 F",
     )
 
-    assert "Presenting Complaint:" in content
-    assert "Fever" in content
-    assert "Diagnosis:" in content
+    assert "Presenting Complaint:" in result["content"]
+    assert "Fever" in result["content"]
+    assert "Diagnosis:" in result["content"]
+    assert result["used_fallback"] is False
     assert len(repo.events) == 1
     event = repo.events[0]
     assert event["org_id"] == "org-1"
@@ -126,7 +127,7 @@ async def test_fallback_generation_does_not_record_ai_usage(monkeypatch):
         ),
     )
 
-    content = await ai_generation_service.generate_soap_note(
+    result = await ai_generation_service.generate_soap_note(
         repo,
         "org-3",
         symptoms="",
@@ -135,7 +136,8 @@ async def test_fallback_generation_does_not_record_ai_usage(monkeypatch):
         notes="",
     )
 
-    assert "Presenting Complaint:" in content
+    assert "Presenting Complaint:" in result["content"]
+    assert result["used_fallback"] is True
     assert repo.events == []
 
 

@@ -17,6 +17,7 @@ import {
   ClinicSettings,
   ClinicSettingsUpdatePayload,
   FinalizeNotePayload,
+  FinalizeInvoicePayload,
   FollowUp,
   FollowUpCreatePayload,
   FollowUpUpdatePayload,
@@ -29,6 +30,7 @@ import {
   GenerateCaseStudyResponse,
   GeneratePdfPayload,
   Invoice,
+  InvoiceActionResult,
   InvoiceCreatePayload,
   GenerateNotePayload,
   GenerateNoteResponse,
@@ -442,6 +444,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  finalizeInvoice: (payload: FinalizeInvoicePayload) =>
+    request<InvoiceActionResult>("/invoices/finalize", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   generateInvoicePdf: (invoiceId: string) =>
     requestBlob(`/invoices/${invoiceId}/pdf`),
   exportPatientsCsv: () => requestBlob("/exports/patients.csv"),
@@ -449,7 +456,7 @@ export const api = {
     requestBlob(withQuery("/exports/visits.csv", params ?? {})),
   exportInvoicesCsv: () => requestBlob("/exports/invoices.csv"),
   sendInvoice: (payload: SendInvoicePayload) =>
-    request<OperationResult>("/send-invoice", {
+    request<InvoiceActionResult>("/send-invoice", {
       method: "POST",
       body: JSON.stringify(payload),
     }),

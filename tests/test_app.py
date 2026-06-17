@@ -1128,7 +1128,24 @@ class FakeRepo:
             amount_paid = round(float(payload.amount_paid or 0), 2)
             if amount_paid <= 0 or amount_paid >= subtotal:
                 raise ValueError("Partial invoice amount must be less than the invoice total.")
-        invoice_id = str(uuid4())
+        existing_invoice_id = str(payload.invoice_id) if getattr(payload, "invoice_id", None) else None
+        if existing_invoice_id:
+            existing = self.invoices.get(existing_invoice_id)
+            if not existing or existing["org_id"] != org_id or existing["patient_id"] != str(payload.patient_id) or existing["completed_at"] is not None:
+                raise ValueError("Draft invoice not found for this patient.")
+            for item_id, item in list(self.invoice_items.items()):
+                if item.get("invoice_id") == existing_invoice_id:
+                    self.invoice_items.pop(item_id, None)
+            invoice_id = existing_invoice_id
+            invoice = existing
+        else:
+            invoice_id = str(uuid4())
+            invoice = {
+                "id": invoice_id,
+                "org_id": org_id,
+                "patient_id": str(payload.patient_id),
+                "created_at": _now(),
+            }
         items = []
         for raw_item in payload.items:
             if raw_item.catalog_item_id:
@@ -1147,10 +1164,7 @@ class FakeRepo:
             self.invoice_items[invoice_item["id"]] = invoice_item | {"invoice_id": invoice_id}
             items.append(invoice_item)
 
-        invoice = {
-            "id": invoice_id,
-            "org_id": org_id,
-            "patient_id": str(payload.patient_id),
+        invoice.update({
             "subtotal": subtotal,
             "total": subtotal,
             "payment_status": payload.payment_status,
@@ -1160,9 +1174,8 @@ class FakeRepo:
             "completed_at": None,
             "completed_by": None,
             "sent_at": None,
-            "created_at": _now(),
             "items": items,
-        }
+        })
         self.invoices[invoice_id] = invoice
         return invoice
 
@@ -1231,56 +1244,64 @@ class FakeRepo:
             "appointments": await self.list_appointments_for_patient(org_id, patient_id),
         }
 
-    async def finalize_invoice(self, org_id: str, invoice_id: str, *, completed_by: str) -> dict:
+    async def finalize_invoice(self, org_id: str, invoice_id: str, *, completed_by: str, mark_sent: bool = False) -> dict:
         invoice = self.invoices[invoice_id]
         if invoice["org_id"] != org_id:
             raise ValueError("Invoice not found for this organization.")
-        if invoice["sent_at"] is not None:
+        already_completed = invoice["completed_at"] is not None
+        already_sent = invoice["sent_at"] is not None
+        if already_completed and (already_sent or not mark_sent):
             return {
                 "patient_id": invoice["patient_id"],
                 "completed_at": invoice["completed_at"],
                 "completed_by": invoice["completed_by"],
                 "sent_at": invoice["sent_at"],
-                "already_finalized": True,
+                "already_completed": True,
+                "already_sent": already_sent,
+                "stock_deductions": [],
             }
 
-        required_by_item: dict[str, float] = {}
-        for item in invoice["items"]:
-            catalog_item_id = item.get("catalog_item_id")
-            if not catalog_item_id:
-                continue
-            catalog_item = self.catalog_items[catalog_item_id]
-            if catalog_item["org_id"] != org_id:
-                raise ValueError("Inventory item not found for this organization.")
-            if catalog_item["track_inventory"]:
-                required_by_item[catalog_item_id] = required_by_item.get(catalog_item_id, 0) + item["quantity"]
+        stock_deductions: list[dict] = []
+        if not already_completed:
+            required_by_item: dict[str, float] = {}
+            for item in invoice["items"]:
+                catalog_item_id = item.get("catalog_item_id")
+                if not catalog_item_id:
+                    continue
+                catalog_item = self.catalog_items[catalog_item_id]
+                if catalog_item["org_id"] != org_id:
+                    raise ValueError("Inventory item not found for this organization.")
+                if catalog_item["track_inventory"]:
+                    required_by_item[catalog_item_id] = required_by_item.get(catalog_item_id, 0) + item["quantity"]
 
-        for item_id, quantity in required_by_item.items():
-            catalog_item = self.catalog_items[item_id]
-            if catalog_item["stock_quantity"] < quantity:
-                raise ValueError(f"Insufficient stock for {catalog_item['name']}.")
+            for item_id, quantity in required_by_item.items():
+                catalog_item = self.catalog_items[item_id]
+                if catalog_item["stock_quantity"] < quantity:
+                    raise ValueError(f"Insufficient stock for {catalog_item['name']}.")
 
-        for item_id, quantity in required_by_item.items():
-            self.catalog_items[item_id]["stock_quantity"] -= quantity
+            for item_id, quantity in required_by_item.items():
+                self.catalog_items[item_id]["stock_quantity"] -= quantity
+                stock_deductions.append(
+                    {
+                        "catalog_item_id": item_id,
+                        "item_name": self.catalog_items[item_id]["name"],
+                        "quantity": quantity,
+                    }
+                )
 
-        self.patients[invoice["patient_id"]]["billed"] = True
-        invoice["completed_at"] = invoice["completed_at"] or _now()
-        invoice["completed_by"] = invoice["completed_by"] or completed_by
-        invoice["sent_at"] = _now()
+            self.patients[invoice["patient_id"]]["billed"] = True
+            invoice["completed_at"] = invoice["completed_at"] or _now()
+            invoice["completed_by"] = invoice["completed_by"] or completed_by
+        if mark_sent and invoice["sent_at"] is None:
+            invoice["sent_at"] = _now()
         return {
             "patient_id": invoice["patient_id"],
             "completed_at": invoice["completed_at"],
             "completed_by": invoice["completed_by"],
             "sent_at": invoice["sent_at"],
-            "already_finalized": False,
-            "stock_deductions": [
-                {
-                    "catalog_item_id": item_id,
-                    "item_name": self.catalog_items[item_id]["name"],
-                    "quantity": quantity,
-                }
-                for item_id, quantity in required_by_item.items()
-            ],
+            "already_completed": already_completed,
+            "already_sent": already_sent,
+            "stock_deductions": stock_deductions,
         }
 
     async def create_follow_up(self, org_id: str, patient_id: str, created_by: str, payload) -> dict:

@@ -6,9 +6,18 @@ from app.db import AppRepository
 from app.services.email_service import send_clinic_email_message
 from app.services.pdf_service import build_invoice_pdf
 from app.schema_domains.auth_settings import UserOut
-from app.schema_domains.billing import InvoiceCreate, InvoiceOut, SendInvoiceRequest
-from app.schema_domains.documents import SendNoteResponse
-from app.services.audit_service import record_invoice_created, record_invoice_shared
+from app.schema_domains.billing import (
+    FinalizeInvoiceRequest,
+    InvoiceActionResponse,
+    InvoiceCreate,
+    InvoiceOut,
+    SendInvoiceRequest,
+)
+from app.services.audit_service import (
+    record_invoice_completed,
+    record_invoice_created,
+    record_invoice_shared,
+)
 
 
 async def _record_invoice_delivery_failure(
@@ -46,7 +55,26 @@ async def create_invoice_workflow(
     created = await repo.create_invoice(str(current_user.org_id), payload)
     patient = await repo.get_patient(str(current_user.org_id), str(created["patient_id"]))
     patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
-    await record_invoice_created(repo, current_user, created, patient_name)
+    if payload.invoice_id:
+        await repo.create_audit_event(
+            org_id=str(current_user.org_id),
+            actor_user_id=str(current_user.id),
+            actor_name=current_user.name.strip() or current_user.identifier.strip() or "Clinic User",
+            entity_type="invoice",
+            entity_id=str(created["id"]),
+            action="invoice_updated",
+            summary=f"Updated draft invoice for {patient_name}.",
+            metadata={
+                "patient_id": str(created["patient_id"]),
+                "patient_name": patient_name,
+                "item_count": len(created.get("items", [])),
+                "payment_status": created.get("payment_status"),
+                "amount_paid": created.get("amount_paid"),
+                "balance_due": created.get("balance_due"),
+            },
+        )
+    else:
+        await record_invoice_created(repo, current_user, created, patient_name)
     return InvoiceOut(**{**created, "patient_name": patient_name})
 
 
@@ -55,11 +83,42 @@ async def list_invoices_with_user_names(repo: AppRepository, org_id: str) -> lis
     return [InvoiceOut(**invoice) for invoice in invoices]
 
 
+async def finalize_invoice_workflow(
+    repo: AppRepository,
+    current_user: UserOut,
+    payload: FinalizeInvoiceRequest,
+) -> InvoiceActionResponse:
+    invoice = await repo.get_invoice(str(current_user.org_id), str(payload.invoice_id))
+    patient = await repo.get_patient(str(current_user.org_id), str(invoice["patient_id"]))
+    patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
+    finalized = await repo.finalize_invoice(
+        str(current_user.org_id),
+        str(payload.invoice_id),
+        completed_by=str(current_user.id),
+        mark_sent=False,
+    )
+    refreshed = await repo.get_invoice(str(current_user.org_id), str(payload.invoice_id))
+    output_invoice = InvoiceOut(**{**refreshed, "patient_name": patient_name})
+    if not finalized.get("already_completed"):
+        await record_invoice_completed(
+            repo,
+            current_user,
+            output_invoice.model_dump(mode="json"),
+            patient_name=patient_name,
+            stock_deductions=finalized.get("stock_deductions", []),
+        )
+    return InvoiceActionResponse(
+        success=True,
+        message="Invoice already completed." if finalized.get("already_completed") else "Invoice completed.",
+        invoice=output_invoice,
+    )
+
+
 async def send_invoice_workflow(
     repo: AppRepository,
     current_user: UserOut,
     payload: SendInvoiceRequest,
-) -> SendNoteResponse:
+) -> InvoiceActionResponse:
     recipient_email = payload.recipient_email.strip()
     if "@" not in recipient_email:
         raise HTTPException(status_code=400, detail="Enter a valid recipient email.")
@@ -87,12 +146,14 @@ async def send_invoice_workflow(
         str(current_user.org_id),
         str(payload.invoice_id),
         completed_by=str(current_user.id),
+        mark_sent=True,
     )
+    refreshed_invoice = await repo.get_invoice(str(current_user.org_id), str(payload.invoice_id))
     generated_on = datetime.now().strftime("%b %d, %Y %I:%M %p")
     pdf_bytes = build_invoice_pdf(
         clinic=clinic_settings,
         patient=patient,
-        invoice=invoice,
+        invoice=refreshed_invoice,
         generated_on=generated_on,
     )
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
@@ -129,6 +190,15 @@ async def send_invoice_workflow(
                 "finalized": True,
             },
         ) from exc
+    output_invoice = InvoiceOut(**{**refreshed_invoice, "patient_name": patient_name})
+    if not finalized.get("already_completed"):
+        await record_invoice_completed(
+            repo,
+            current_user,
+            output_invoice.model_dump(mode="json"),
+            patient_name=patient_name,
+            stock_deductions=finalized.get("stock_deductions", []),
+        )
     await record_invoice_shared(
         repo,
         current_user,
@@ -137,14 +207,15 @@ async def send_invoice_workflow(
         patient_name=patient_name,
         recipient=recipient_email,
         stock_deductions=stock_deductions,
-        amount_paid=invoice.get("amount_paid"),
-        balance_due=invoice.get("balance_due"),
+        amount_paid=refreshed_invoice.get("amount_paid"),
+        balance_due=refreshed_invoice.get("balance_due"),
     )
-    return SendNoteResponse(
+    return InvoiceActionResponse(
         success=True,
         message=(
-            f"Invoice already finalized and emailed to {recipient_email}."
-            if finalized.get("already_finalized")
+            f"Invoice already emailed to {recipient_email}."
+            if finalized.get("already_sent")
             else f"Invoice emailed to {recipient_email}."
         ),
+        invoice=output_invoice,
     )

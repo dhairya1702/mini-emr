@@ -80,7 +80,7 @@ const connectSources = buildDevConnectSources();
 
 const scriptSrc = isDev
   ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-  : "script-src 'self'";
+  : "script-src 'self' 'unsafe-inline'";
 
 /** @type {import("next").NextConfig} */
 const nextConfig = {

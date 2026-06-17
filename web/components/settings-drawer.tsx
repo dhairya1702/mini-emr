@@ -86,6 +86,7 @@ interface SettingsDrawerProps {
   onGenerateLetterPdf: (payload: { content: string }) => Promise<Blob>;
   onSendLetter: (payload: { recipient_email: string; subject: string; content: string }) => Promise<string>;
   onCreateInvoice: (payload: {
+    invoice_id?: string | null;
     patient_id: string;
     items: Array<{
       catalog_item_id?: string | null;
@@ -97,8 +98,9 @@ interface SettingsDrawerProps {
     payment_status: PaymentStatus;
     amount_paid?: number | null;
   }) => Promise<Invoice>;
+  onFinalizeInvoice?: (payload: { invoice_id: string }) => Promise<{ success: boolean; message: string; invoice: Invoice }>;
   onGenerateInvoicePdf: (invoiceId: string) => Promise<Blob>;
-  onSendInvoice: (payload: { invoice_id: string; recipient_email: string }) => Promise<string>;
+  onSendInvoice: (payload: { invoice_id: string; recipient_email: string }) => Promise<{ success: boolean; message: string; invoice: Invoice }>;
   onExportPatientsCsv: () => Promise<Blob>;
   onExportVisitsCsv: () => Promise<Blob>;
   onExportInvoicesCsv: () => Promise<Blob>;
@@ -457,6 +459,7 @@ export function SettingsDrawer({
   onGenerateLetterPdf,
   onSendLetter,
   onCreateInvoice,
+  onFinalizeInvoice,
   onGenerateInvoicePdf,
   onSendInvoice,
   onExportPatientsCsv,
@@ -542,8 +545,10 @@ export function SettingsDrawer({
   const [exportStatus, setExportStatus] = useState("");
   const [exportError, setExportError] = useState("");
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
+  const [isFinalizingInvoice, setIsFinalizingInvoice] = useState(false);
   const [isPreparingInvoicePdf, setIsPreparingInvoicePdf] = useState(false);
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
+  const [isInvoiceDirty, setIsInvoiceDirty] = useState(false);
   const [billingPatients, setBillingPatients] = useState<Patient[]>(patients);
   const [isBillingPatientsLoading, setIsBillingPatientsLoading] = useState(false);
   const [hasLoadedBillingPatients, setHasLoadedBillingPatients] = useState(false);
@@ -1260,7 +1265,7 @@ export function SettingsDrawer({
     ]);
     setBillingStatus("");
     setBillingError("");
-    setSavedInvoice(null);
+    setIsInvoiceDirty(true);
   }
 
   function updateInvoiceItem(itemId: string, patch: Partial<DraftInvoiceItem>) {
@@ -1269,14 +1274,14 @@ export function SettingsDrawer({
     );
     setBillingStatus("");
     setBillingError("");
-    setSavedInvoice(null);
+    setIsInvoiceDirty(true);
   }
 
   function removeInvoiceItem(itemId: string) {
     setInvoiceItems((current) => current.filter((item) => item.id !== itemId));
     setBillingStatus("");
     setBillingError("");
-    setSavedInvoice(null);
+    setIsInvoiceDirty(true);
   }
 
   function addCustomInvoiceItem() {
@@ -1313,37 +1318,52 @@ export function SettingsDrawer({
     setCustomItemUnitPrice("");
     setBillingStatus("");
     setBillingError("");
-    setSavedInvoice(null);
+    setIsInvoiceDirty(true);
+  }
+
+  function buildInvoicePayload() {
+    if (!selectedBillingPatient) {
+      throw new Error("Select a done patient to bill.");
+    }
+    if (!invoiceItems.length) {
+      throw new Error("Add at least one service or medicine.");
+    }
+    return {
+      invoice_id: savedInvoice?.id ?? null,
+      patient_id: selectedBillingPatient.id,
+      items: invoiceItems.map((item) => ({
+        catalog_item_id: item.catalog_item_id ?? null,
+        item_type: item.item_type,
+        label: item.label,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+      })),
+      payment_status: paymentStatus,
+      amount_paid: paymentStatus === "partial" ? normalizedAmountPaid : undefined,
+    } as const;
+  }
+
+  async function saveInvoiceDraft() {
+    const invoice = await onCreateInvoice(buildInvoicePayload());
+    setSavedInvoice(invoice);
+    setIsInvoiceDirty(false);
+    return invoice;
+  }
+
+  async function ensureSavedInvoice() {
+    if (!savedInvoice || isInvoiceDirty) {
+      return saveInvoiceDraft();
+    }
+    return savedInvoice;
   }
 
   async function handleCreateBill() {
-    if (!selectedBillingPatient) {
-      setBillingError("Select a done patient to bill.");
-      return;
-    }
-    if (!invoiceItems.length) {
-      setBillingError("Add at least one service or medicine.");
-      return;
-    }
-
     setIsSavingInvoice(true);
     setBillingError("");
     setBillingStatus("");
     try {
-      const created = await onCreateInvoice({
-        patient_id: selectedBillingPatient.id,
-        items: invoiceItems.map((item) => ({
-          catalog_item_id: item.catalog_item_id ?? null,
-          item_type: item.item_type,
-          label: item.label,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-        })),
-        payment_status: paymentStatus,
-        amount_paid: paymentStatus === "partial" ? normalizedAmountPaid : undefined,
-      });
-      setSavedInvoice(created);
-      setBillingStatus("Invoice created.");
+      await saveInvoiceDraft();
+      setBillingStatus(savedInvoice ? "Invoice draft updated." : "Invoice draft created.");
     } catch (createError) {
       setBillingError(createError instanceof Error ? createError.message : "Failed to create bill.");
     } finally {
@@ -1352,16 +1372,12 @@ export function SettingsDrawer({
   }
 
   async function handleInvoicePdf(action: "preview" | "download") {
-    if (!savedInvoice) {
-      setBillingError("Send the bill first to save it, then preview the PDF.");
-      return;
-    }
-
     setIsPreparingInvoicePdf(true);
     setBillingError("");
     setBillingStatus("");
     try {
-      const blob = await onGenerateInvoicePdf(savedInvoice.id);
+      const invoice = await ensureSavedInvoice();
+      const blob = await onGenerateInvoicePdf(invoice.id);
       const url = URL.createObjectURL(blob);
       const patientLabel = selectedBillingPatient?.name.replace(/\s+/g, "_") || "patient";
       if (action === "preview") {
@@ -1392,42 +1408,50 @@ export function SettingsDrawer({
       setBillingError("This patient does not have an email address saved.");
       return;
     }
-    if (!invoiceItems.length) {
-      setBillingError("Add at least one service or medicine.");
-      return;
-    }
 
     setIsSendingInvoice(true);
     setBillingError("");
     setBillingStatus("");
     try {
-      const invoice =
-        savedInvoice ??
-        (await onCreateInvoice({
-          patient_id: selectedBillingPatient.id,
-          items: invoiceItems.map((item) => ({
-            catalog_item_id: item.catalog_item_id ?? null,
-            item_type: item.item_type,
-            label: item.label,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-          })),
-          payment_status: paymentStatus,
-          amount_paid: paymentStatus === "partial" ? normalizedAmountPaid : undefined,
-        }));
-      if (!savedInvoice) {
-        setSavedInvoice(invoice);
-      }
-      const message = await onSendInvoice({
+      const invoice = await ensureSavedInvoice();
+      const result = await onSendInvoice({
         invoice_id: invoice.id,
         recipient_email: selectedBillingPatient.email,
       });
-      setBillingStatus(message);
+      setSavedInvoice(result.invoice);
+      setIsInvoiceDirty(false);
+      setBillingStatus(result.message);
       onBillingComplete(selectedBillingPatient.id);
     } catch (sendError) {
       setBillingError(sendError instanceof Error ? sendError.message : "Failed to mark invoice as shared.");
     } finally {
       setIsSendingInvoice(false);
+    }
+  }
+
+  async function handleCompleteInvoice() {
+    if (!selectedBillingPatient) {
+      setBillingError("Select a done patient to bill.");
+      return;
+    }
+    if (!onFinalizeInvoice) {
+      setBillingError("Invoice completion is unavailable on this page.");
+      return;
+    }
+    setIsFinalizingInvoice(true);
+    setBillingError("");
+    setBillingStatus("");
+    try {
+      const invoice = await ensureSavedInvoice();
+      const result = await onFinalizeInvoice({ invoice_id: invoice.id });
+      setSavedInvoice(result.invoice);
+      setIsInvoiceDirty(false);
+      setBillingStatus(result.message);
+      onBillingComplete(selectedBillingPatient.id);
+    } catch (finalizeError) {
+      setBillingError(finalizeError instanceof Error ? finalizeError.message : "Failed to complete invoice.");
+    } finally {
+      setIsFinalizingInvoice(false);
     }
   }
 
@@ -1958,6 +1982,7 @@ export function SettingsDrawer({
         }
         setupWarnings={documentSetupWarnings}
         isSavingInvoice={isSavingInvoice}
+        isFinalizingInvoice={isFinalizingInvoice}
         isPreparingInvoicePdf={isPreparingInvoicePdf}
         isSendingInvoice={isSendingInvoice}
         savedInvoice={savedInvoice}
@@ -1968,6 +1993,7 @@ export function SettingsDrawer({
           setSelectedBillingPatientId(patientId);
           setInvoiceItems([]);
           setSavedInvoice(null);
+          setIsInvoiceDirty(false);
           setBillingError("");
           setBillingStatus("");
           setAmountPaidInput("");
@@ -1983,12 +2009,18 @@ export function SettingsDrawer({
         onPaymentStatusChange={(status) => {
           setPaymentStatus(status);
           setAmountPaidInput(status === "partial" ? invoiceSubtotal.toFixed(2) : "");
-          setSavedInvoice(null);
+          setIsInvoiceDirty(true);
           setBillingStatus("");
           setBillingError("");
         }}
-        onAmountPaidChange={setAmountPaidInput}
+        onAmountPaidChange={(value) => {
+          setAmountPaidInput(value);
+          setIsInvoiceDirty(true);
+          setBillingStatus("");
+          setBillingError("");
+        }}
         onPreviewPdf={() => handleInvoicePdf("preview")}
+        onFinalizeInvoice={handleCompleteInvoice}
         onSendInvoice={handleSendInvoice}
       />
     );

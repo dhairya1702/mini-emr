@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { api } from "@/lib/api";
-import { AuditEvent, AuthUser, CatalogItem, ClinicSettings, ClinicSettingsUpdatePayload, Invoice } from "@/lib/types";
+import { AuditEvent, AuthUser, CatalogItem, ClinicSettings, ClinicSettingsUpdatePayload, Invoice, InvoiceActionResult } from "@/lib/types";
 
 const PAGE_LOAD_RETRY_DELAY_MS = 400;
 const PAGE_LOAD_MAX_ATTEMPTS = 2;
@@ -20,6 +20,7 @@ export type ClinicCatalogItemPayload = {
 };
 
 export type ClinicInvoicePayload = {
+  invoice_id?: string | null;
   patient_id: string;
   items: Array<{
     catalog_item_id?: string | null;
@@ -252,6 +253,10 @@ export function useClinicShellPage<T>({
     return api.createInvoice(payload);
   }, []);
 
+  const handleFinalizeInvoice = useCallback(async (payload: { invoice_id: string }): Promise<InvoiceActionResult> => {
+    return api.finalizeInvoice(payload);
+  }, []);
+
   const handleGenerateLetter = useCallback(async (payload: {
     to: string;
     subject: string;
@@ -266,9 +271,8 @@ export function useClinicShellPage<T>({
     return response.message;
   }, []);
 
-  const handleSendInvoice = useCallback(async (payload: { invoice_id: string; recipient_email: string }) => {
-    const response = await api.sendInvoice(payload);
-    return response.message;
+  const handleSendInvoice = useCallback(async (payload: { invoice_id: string; recipient_email: string }): Promise<InvoiceActionResult> => {
+    return api.sendInvoice(payload);
   }, []);
 
   const handleExportPatientsCsv = useCallback(async () => api.exportPatientsCsv(), []);
@@ -314,6 +318,7 @@ export function useClinicShellPage<T>({
     handleAdjustCatalogStock,
     handleDeleteCatalogItem,
     handleCreateInvoice,
+    handleFinalizeInvoice,
     handleGenerateLetter,
     handleSendLetter,
     handleSendInvoice,

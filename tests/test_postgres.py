@@ -1478,21 +1478,41 @@ def test_postgres_billing_repository_catalog_and_stock_flow():
 
 def test_postgres_billing_repository_invoice_rpc_and_invoice_items():
     cursor = ScriptedCursor(
-        descriptions=[["create_invoice_atomic"], INVOICE_COLUMNS, INVOICE_ITEM_COLUMNS],
+        descriptions=[
+            ["id"],
+            ["id"],
+            INVOICE_COLUMNS,
+            INVOICE_COLUMNS,
+            [],
+            INVOICE_ITEM_COLUMNS,
+            INVOICE_ITEM_COLUMNS,
+            INVOICE_COLUMNS,
+            INVOICE_ITEM_COLUMNS,
+        ],
         fetchone_rows=[
+            ("patient-1",),
             (
-                {
-                    "id": "invoice-1",
-                    "org_id": "org-1",
-                    "patient_id": "00000000-0000-0000-0000-000000000001",
-                    "total": 500,
-                    "amount_paid": 500,
-                    "items": [],
-                },
+                "invoice-1",
+                "org-1",
+                "patient-1",
+                500,
+                500,
+                "paid",
+                500,
+                None,
+                None,
+                None,
+                None,
+                "2026-06-11T20:00:00+00:00",
             ),
             _invoice_row(),
+            _invoice_row(),
         ],
-        fetchall_rows=[[_invoice_item_row()]],
+        fetchall_rows=[
+            [("00000000-0000-0000-0000-000000000002",)],
+            [_invoice_item_row()],
+            [_invoice_item_row()],
+        ],
     )
     repo = PostgresBillingRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
 
@@ -1516,10 +1536,10 @@ def test_postgres_billing_repository_invoice_rpc_and_invoice_items():
     )
     loaded = asyncio.run(repo.get_invoice("org-1", "invoice-1"))
 
-    assert cursor.executed[0][1][0:4] == (
+    assert cursor.executed[2][1][0:4] == (
         "org-1",
         "00000000-0000-0000-0000-000000000001",
-        "paid",
+        500.0,
         500.0,
     )
     assert invoice["balance_due"] == 0

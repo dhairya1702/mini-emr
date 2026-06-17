@@ -44,6 +44,7 @@ class InvoiceItemOut(InvoiceItemInput):
 
 
 class InvoiceCreate(BaseModel):
+    invoice_id: UUID | None = None
     patient_id: UUID
     items: list[InvoiceItemInput] = Field(min_length=1)
     payment_status: PaymentStatus = "paid"
@@ -72,3 +73,13 @@ class InvoiceOut(BaseModel):
 class SendInvoiceRequest(BaseModel):
     invoice_id: UUID
     recipient_email: str = Field(min_length=5, max_length=200)
+
+
+class FinalizeInvoiceRequest(BaseModel):
+    invoice_id: UUID
+
+
+class InvoiceActionResponse(BaseModel):
+    success: bool
+    message: str
+    invoice: InvoiceOut

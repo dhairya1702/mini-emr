@@ -29,6 +29,7 @@ interface SettingsDrawerBillingPanelProps {
   billingStatus: string;
   setupWarnings?: string[];
   isSavingInvoice: boolean;
+  isFinalizingInvoice: boolean;
   isPreparingInvoicePdf: boolean;
   isSendingInvoice: boolean;
   savedInvoice: Invoice | null;
@@ -47,6 +48,7 @@ interface SettingsDrawerBillingPanelProps {
   onPaymentStatusChange: (status: PaymentStatus) => void;
   onAmountPaidChange: (value: string) => void;
   onPreviewPdf: () => void | Promise<void>;
+  onFinalizeInvoice: () => void | Promise<void>;
   onSendInvoice: () => void | Promise<void>;
 }
 
@@ -64,6 +66,7 @@ export function SettingsDrawerBillingPanel({
   billingStatus,
   setupWarnings = [],
   isSavingInvoice,
+  isFinalizingInvoice,
   isPreparingInvoicePdf,
   isSendingInvoice,
   savedInvoice,
@@ -81,6 +84,7 @@ export function SettingsDrawerBillingPanel({
   onPaymentStatusChange,
   onAmountPaidChange,
   onPreviewPdf,
+  onFinalizeInvoice,
   onSendInvoice,
 }: SettingsDrawerBillingPanelProps) {
   return (
@@ -270,7 +274,15 @@ export function SettingsDrawerBillingPanel({
               disabled={isSavingInvoice}
               className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
             >
-              {isSavingInvoice ? "Saving..." : savedInvoice ? "Recreate Invoice" : "Create Invoice"}
+              {isSavingInvoice ? "Saving..." : savedInvoice ? "Save Changes" : "Create Invoice"}
+            </button>
+            <button
+              type="button"
+              onClick={onFinalizeInvoice}
+              disabled={isFinalizingInvoice || isSavingInvoice}
+              className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+            >
+              {isFinalizingInvoice ? "Completing..." : "Done"}
             </button>
             <button
               type="button"

@@ -166,7 +166,7 @@ export function MobileAddPatientModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 p-3">
       <form
         onSubmit={submitPatient}
-        className="w-full max-w-md rounded-[22px] border border-[#bfd7e8] bg-white p-4 shadow-[0_18px_50px_rgba(64,131,181,0.18)]"
+        className="w-full max-w-md rounded-[22px] border border-[#bfd7e8] bg-white p-4 shadow-[0_18px_50px_rgba(64,131,181,0.18)] sm:p-5"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -214,7 +214,7 @@ export function MobileAddPatientModal({
           </div>
         ) : null}
 
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 min-[430px]:grid-cols-2">
           <label className="col-span-2 grid gap-1 text-sm font-medium text-slate-700">
             Name
             <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="clinic-input h-11 rounded-xl text-base" />
@@ -237,19 +237,19 @@ export function MobileAddPatientModal({
             Reason
             <input value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} className="clinic-input h-11 rounded-xl text-base" />
           </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
+          <label className="grid gap-1 text-sm font-medium text-slate-700 min-[430px]:col-span-1">
             DOB
             <input type="date" value={form.dateOfBirth} onChange={(event) => setForm((current) => ({ ...current, dateOfBirth: event.target.value }))} className="clinic-input h-11 rounded-xl text-base" />
           </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
+          <label className="grid gap-1 text-sm font-medium text-slate-700 min-[430px]:col-span-1">
             Weight
             <input value={form.weight} onChange={(event) => setForm((current) => ({ ...current, weight: event.target.value }))} className="clinic-input h-11 rounded-xl text-base" inputMode="decimal" />
           </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
+          <label className="grid gap-1 text-sm font-medium text-slate-700 min-[430px]:col-span-1">
             Temp
             <input value={form.temperature} onChange={(event) => setForm((current) => ({ ...current, temperature: event.target.value }))} className="clinic-input h-11 rounded-xl text-base" inputMode="decimal" />
           </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
+          <label className="grid gap-1 text-sm font-medium text-slate-700 min-[430px]:col-span-1">
             Height
             <input value={form.height} onChange={(event) => setForm((current) => ({ ...current, height: event.target.value }))} className="clinic-input h-11 rounded-xl text-base" inputMode="decimal" />
           </label>

@@ -146,7 +146,8 @@ export default function MobileConsultationPage() {
         generatedNote: generated.content,
         noteId: generated.note_id || current.noteId,
       }));
-      setStatusMessage(generated.note_id ? "Draft saved." : "Draft generated.");
+      const baseMessage = generated.note_id ? "Draft saved." : "Draft generated.";
+      setStatusMessage(generated.used_fallback ? `${baseMessage} ${generated.warning || "AI unavailable, used fallback template."}` : baseMessage);
     } catch (generateError) {
       setStatusMessage(generateError instanceof Error ? generateError.message : "Failed to generate note.");
     } finally {

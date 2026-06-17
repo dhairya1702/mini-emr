@@ -122,7 +122,7 @@ export default function MobileQueuePage() {
         <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{shellError || error}</p>
       ) : null}
 
-      <section className="flex min-h-[calc(100vh-150px)] flex-col rounded-[18px] border border-[#bfd7e8] bg-white/95 p-4 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
+      <section className="flex min-h-[calc(100vh-150px)] flex-col rounded-[18px] border border-[#bfd7e8] bg-white/95 px-5 py-4 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
         <div className="mb-4 flex shrink-0 items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-slate-800">Waiting</h2>

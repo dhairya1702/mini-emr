@@ -53,7 +53,7 @@ export function MobileShell({
         </div>
       </header>
 
-      <div className="mx-auto max-w-2xl px-4 py-5">{children}</div>
+      <div className="mx-auto max-w-[44rem] px-2 py-5 sm:px-4">{children}</div>
 
       {isMenuOpen ? (
         <div className="fixed inset-0 z-40 bg-slate-900/30" onClick={() => setIsMenuOpen(false)}>

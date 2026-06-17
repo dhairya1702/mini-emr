@@ -155,7 +155,7 @@ async def generate_note_workflow(
     patient_context = build_patient_context(patient)
     measurements_context = build_measurements_context(payload)
 
-    content = await generate_soap_note(
+    generation = await generate_soap_note(
         repo,
         str(current_user.org_id),
         symptoms=payload.symptoms,
@@ -166,6 +166,24 @@ async def generate_note_workflow(
         clinic_context=clinic_context,
         measurements_context=measurements_context,
     )
+    content = generation["content"]
+    if generation["used_fallback"]:
+        await repo.create_platform_error(
+            org_id=str(current_user.org_id),
+            user_id=str(current_user.id),
+            identifier=current_user.identifier,
+            path="/generate-note",
+            method="POST",
+            status_code=502,
+            error_type="AIGenerationFallback",
+            message=generation.get("warning") or "AI unavailable, used fallback template.",
+            details=str(generation.get("error_message") or ""),
+            context={
+                "patient_id": str(payload.patient_id) if payload.patient_id else None,
+                "used_fallback": True,
+                "provider": "gemini",
+            },
+        )
     note = None
     asset_payload = serialize_note_assets(payload.assets)
     if payload.patient_id:
@@ -260,6 +278,8 @@ async def generate_note_workflow(
         content=content,
         note_id=note["id"] if note else None,
         status=note.get("status") if note else None,
+        used_fallback=generation["used_fallback"],
+        warning=generation.get("warning"),
     )
 
 

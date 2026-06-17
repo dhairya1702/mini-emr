@@ -9,9 +9,11 @@ __pycache__/
 !.env.example
 !backend/.env.example
 !web/.env.example
+!.env.deploy.example
 
 backend/.env
 backend/.venv/
+.env.deploy
 
 web/.env.local
 web/node_modules/

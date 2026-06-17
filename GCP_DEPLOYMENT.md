@@ -59,6 +59,50 @@ Enable at least:
 
 - `NEXT_PUBLIC_API_BASE_URL=https://BACKEND_RUN_URL`
 
+## Deploy Script Workflow
+
+The repo now includes manual deploy helpers:
+
+- `./scripts/deploy-backend.sh`
+- `./scripts/deploy-web.sh`
+- `./scripts/deploy-all.sh`
+
+They all source `scripts/deploy-common.sh`, which:
+
+- verifies `gcloud` is using:
+  - account `dhairya911@gmail.com`
+  - project `project-e8d0eb79-8682-4bd9-b31`
+- loads local secrets from `.env.deploy` if present
+- keeps the stable regional Cloud Run URL as the primary frontend origin
+
+First-time local setup:
+
+```bash
+cp .env.deploy.example .env.deploy
+```
+
+Then edit `.env.deploy` and fill in:
+
+- `DB_PASSWORD`
+- `AUTH_SECRET`
+- `SUPER_ADMIN_IDENTIFIERS`
+
+`.env.deploy` is gitignored and should never be committed.
+
+## Cloud Run URL Note
+
+Cloud Run exposes two hostnames for the same service:
+
+- the stable regional URL shown in deploy output, e.g. `https://clinic-emr-web-388811826415.asia-south1.run.app`
+- the canonical URL returned by `gcloud run services describe --format='value(status.url)'`, e.g. `https://clinic-emr-web-gmyeejkiaa-el.a.run.app`
+
+They both point to the same service. For this project:
+
+- use the regional `asia-south1.run.app` URL as the primary public frontend URL
+- allow the canonical `a.run.app` hostname only as a secondary CORS origin
+
+This avoids backend CORS mismatches when the browser is opened on the regional URL.
+
 ## Cloud SQL Notes
 
 This repo's Postgres code expects a normal PostgreSQL connection string in `DATABASE_URL`.
