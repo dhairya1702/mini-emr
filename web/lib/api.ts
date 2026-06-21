@@ -16,6 +16,10 @@ import {
   CatalogStockUpdatePayload,
   ClinicSettings,
   ClinicSettingsUpdatePayload,
+  ClinicalAnalysisPayload,
+  ClinicalAnalysisResponse,
+  ClinicalQuestionsPayload,
+  ClinicalQuestionsResponse,
   FinalizeNotePayload,
   FinalizeInvoicePayload,
   FollowUp,
@@ -608,6 +612,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  generateClinicalQuestions: (payload: ClinicalQuestionsPayload) =>
+    request<ClinicalQuestionsResponse>("/ai/clinical-questions", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }, { timeoutMs: LONG_REQUEST_TIMEOUT_MS }),
+  generateClinicalAnalysis: (payload: ClinicalAnalysisPayload) =>
+    request<ClinicalAnalysisResponse>("/ai/clinical-analysis", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }, { timeoutMs: LONG_REQUEST_TIMEOUT_MS }),
   finalizeNote: (noteId: string) =>
     request<ConsultationNote>("/notes/finalize", {
       method: "POST",

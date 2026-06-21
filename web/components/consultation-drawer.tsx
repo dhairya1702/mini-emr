@@ -8,7 +8,26 @@ import type { ReactNode } from "react";
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { specialtyHasModule } from "@/lib/specialty";
 import { clearConsultationWorkspace, readConsultationWorkspace, writeConsultationWorkspace } from "@/lib/consultation-workspace";
-import { AuthUser, BinocularVisionPayload, CatalogItem, ContactLensEyeEntry, ContactLensPayload, EyeExamEntry, LowVisionPayload, MyopiaMeasurementPayload, NoteAsset, Patient, PediatricGrowthMeasurementPayload, TestScoreEntry, WellChildVisitPayload } from "@/lib/types";
+import {
+  AuthUser,
+  BinocularVisionPayload,
+  CatalogItem,
+  ClinicalAnalysisResponse,
+  ClinicalAssistantAnswer,
+  ClinicalAssistantQuestion,
+  ClinicalQuestionsResponse,
+  ContactLensEyeEntry,
+  ContactLensPayload,
+  EyeExamEntry,
+  GenerateNotePayload,
+  LowVisionPayload,
+  MyopiaMeasurementPayload,
+  NoteAsset,
+  Patient,
+  PediatricGrowthMeasurementPayload,
+  TestScoreEntry,
+  WellChildVisitPayload,
+} from "@/lib/types";
 import { api } from "@/lib/api";
 import { BinocularVisionModal } from "@/components/optometry/binocular-vision-modal";
 import { ContactLensModal } from "@/components/optometry/contact-lens-modal";
@@ -392,9 +411,6 @@ export function ConsultationDrawer({
   patient,
   currentUser = null,
   clinicSpecialty = null,
-  emailConfigured = false,
-  hasUserSignature = false,
-  hasClinicDocumentTemplate = false,
   isTrainingMode = false,
   onClose,
   onDone,
@@ -433,6 +449,13 @@ export function ConsultationDrawer({
   const [brushSize, setBrushSize] = useState(3);
   const [isGeneratingHandout, setIsGeneratingHandout] = useState(false);
   const [isGeneratingHandoutPdf, setIsGeneratingHandoutPdf] = useState(false);
+  const [assistantQuestions, setAssistantQuestions] = useState<ClinicalQuestionsResponse | null>(null);
+  const [assistantAnswers, setAssistantAnswers] = useState<Record<string, string>>({});
+  const [assistantQuestionIndex, setAssistantQuestionIndex] = useState(0);
+  const [assistantAnalysis, setAssistantAnalysis] = useState<ClinicalAnalysisResponse | null>(null);
+  const [isLoadingAssistantQuestions, setIsLoadingAssistantQuestions] = useState(false);
+  const [isAnalyzingAssistant, setIsAnalyzingAssistant] = useState(false);
+  const [assistantError, setAssistantError] = useState("");
   const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingHistoryRef = useRef<string[]>([]);
   const patientId = patient?.id ?? "";
@@ -466,6 +489,13 @@ export function ConsultationDrawer({
     setIsGeneratingPdf(false);
     setIsGeneratingHandout(false);
     setIsGeneratingHandoutPdf(false);
+    setAssistantQuestions(null);
+    setAssistantAnswers({});
+    setAssistantQuestionIndex(0);
+    setAssistantAnalysis(null);
+    setAssistantError("");
+    setIsLoadingAssistantQuestions(false);
+    setIsAnalyzingAssistant(false);
     setIsCompleting(false);
     setIsFinalizing(false);
     setIsSending(false);
@@ -635,20 +665,6 @@ export function ConsultationDrawer({
 
     return [manualPlan, structuredPlan].filter(Boolean).join("\n\n");
   }, [form.medications, form.prescriptions]);
-  const setupWarnings = useMemo(() => {
-    const warnings: string[] = [];
-    if (!emailConfigured) {
-      warnings.push("Clinic sender email is not configured yet. Email actions can fail until Clinic Settings is finished.");
-    }
-    if (!hasUserSignature) {
-      warnings.push("Your signature is missing. Generated notes and letters will not include doctor signoff yet.");
-    }
-    if (!hasClinicDocumentTemplate) {
-      warnings.push("No clinic paper template is uploaded. PDFs will use the fallback header and footer layout.");
-    }
-    return warnings;
-  }, [emailConfigured, hasClinicDocumentTemplate, hasUserSignature]);
-
   useEffect(() => {
     const canvas = drawingCanvasRef.current;
     const context = canvas?.getContext("2d");
@@ -672,105 +688,114 @@ export function ConsultationDrawer({
 
   const currentPatient = patient;
 
+  function buildStructuredModules() {
+    const structuredModules: Array<{ module_type: string; payload: Record<string, unknown> }> = [];
+    if (isPediatricsClinic && form.growthMeasurement.height_cm && form.growthMeasurement.weight_kg) {
+      structuredModules.push({
+        module_type: "pediatric_growth_measurement",
+        payload: {
+          measured_at: new Date(form.growthMeasurement.measured_at).toISOString(),
+          height_cm: Number(form.growthMeasurement.height_cm),
+          weight_kg: Number(form.growthMeasurement.weight_kg),
+          head_circumference_cm: form.growthMeasurement.head_circumference_cm ? Number(form.growthMeasurement.head_circumference_cm) : null,
+          visit_notes: form.growthMeasurement.visit_notes.trim(),
+        },
+      });
+    }
+    if (isPediatricsClinic && (
+      form.wellChildVisit.nutrition_summary.trim() ||
+      form.wellChildVisit.sleep_summary.trim() ||
+      form.wellChildVisit.elimination_summary.trim() ||
+      form.wellChildVisit.school_behavior_summary.trim() ||
+      form.wellChildVisit.parent_concerns.trim() ||
+      form.wellChildVisit.assessment_summary.trim()
+    )) {
+      structuredModules.push({
+        module_type: "well_child_visit",
+        payload: form.wellChildVisit,
+      });
+    }
+    if (isPediatricsClinic && form.parentHandoutRequest.template_key.trim()) {
+      structuredModules.push({
+        module_type: "parent_handout_request",
+        payload: {
+          template_key: form.parentHandoutRequest.template_key,
+          instructions: form.parentHandoutRequest.instructions,
+        },
+      });
+    }
+    if (isPediatricsClinic && (
+      form.pediatricFollowUpPlan.preset_key.trim() ||
+      form.pediatricFollowUpPlan.suggested_interval.trim() ||
+      form.pediatricFollowUpPlan.notes.trim()
+    )) {
+      structuredModules.push({
+        module_type: "pediatric_follow_up_plan",
+        payload: form.pediatricFollowUpPlan,
+      });
+    }
+    return structuredModules;
+  }
+
+  function buildConsultationPayload(options?: { includeNoteId?: boolean }): GenerateNotePayload {
+    const refreshingDraft = Boolean(options?.includeNoteId && currentNoteId && noteStatus === "draft");
+    return {
+      note_id: refreshingDraft ? currentNoteId : undefined,
+      patient_id: currentPatient.id,
+      symptoms: form.symptoms,
+      diagnosis: form.diagnosis,
+      medications: medicationPlan,
+      notes: form.notes,
+      blood_pressure_systolic: form.bloodPressureSystolic ? Number(form.bloodPressureSystolic) : null,
+      blood_pressure_diastolic: form.bloodPressureDiastolic ? Number(form.bloodPressureDiastolic) : null,
+      pulse: form.pulse ? Number(form.pulse) : null,
+      spo2: form.spo2 ? Number(form.spo2) : null,
+      blood_sugar: form.bloodSugar ? Number(form.bloodSugar) : null,
+      test_scores: form.testScores
+        .filter((entry) => entry.label.trim() && entry.value.trim())
+        .map((entry) => ({ label: entry.label.trim(), value: entry.value.trim() })),
+      eye_exam: isOptometryClinic
+        ? form.eyeExam.filter((entry) =>
+            entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim(),
+          )
+        : [],
+      contact_lens: isOptometryClinic && hasContactLensData(form.contactLens)
+        ? {
+            ...form.contactLens,
+            eyes: form.contactLens.eyes.filter((entry) => hasContactLensEyeData(entry)),
+          }
+        : null,
+      binocular_vision: isOptometryClinic && hasBinocularVisionData(form.binocularVision)
+        ? form.binocularVision
+        : null,
+      low_vision: isOptometryClinic && hasLowVisionData(form.lowVision)
+        ? form.lowVision
+        : null,
+      myopia_measurement: isOptometryClinic && hasMyopiaManagementData(form.myopiaManagement)
+        ? {
+            measured_at: new Date(form.myopiaManagement.measured_at).toISOString(),
+            age_years: form.myopiaManagement.age_years,
+            axial_length_right_mm: form.myopiaManagement.axial_length_right_mm,
+            axial_length_left_mm: form.myopiaManagement.axial_length_left_mm,
+            treatment_type: form.myopiaManagement.treatment_type,
+            treatment_notes: form.myopiaManagement.treatment_notes,
+            visit_notes: form.myopiaManagement.visit_notes,
+            refraction_right: form.myopiaManagement.refraction_right,
+            refraction_left: form.myopiaManagement.refraction_left,
+          }
+        : null,
+      structured_modules: buildStructuredModules(),
+      assets: form.assets,
+    };
+  }
+
   async function handleGenerate(event?: FormEvent) {
     event?.preventDefault();
     setIsGenerating(true);
     setStatusMessage("");
     try {
       const refreshingDraft = Boolean(currentNoteId && noteStatus === "draft");
-      const structuredModules: Array<{ module_type: string; payload: Record<string, unknown> }> = [];
-      if (isPediatricsClinic && form.growthMeasurement.height_cm && form.growthMeasurement.weight_kg) {
-        structuredModules.push({
-          module_type: "pediatric_growth_measurement",
-          payload: {
-            measured_at: new Date(form.growthMeasurement.measured_at).toISOString(),
-            height_cm: Number(form.growthMeasurement.height_cm),
-            weight_kg: Number(form.growthMeasurement.weight_kg),
-            head_circumference_cm: form.growthMeasurement.head_circumference_cm ? Number(form.growthMeasurement.head_circumference_cm) : null,
-            visit_notes: form.growthMeasurement.visit_notes.trim(),
-          },
-        });
-      }
-      if (isPediatricsClinic && (
-        form.wellChildVisit.nutrition_summary.trim() ||
-        form.wellChildVisit.sleep_summary.trim() ||
-        form.wellChildVisit.elimination_summary.trim() ||
-        form.wellChildVisit.school_behavior_summary.trim() ||
-        form.wellChildVisit.parent_concerns.trim() ||
-        form.wellChildVisit.assessment_summary.trim()
-      )) {
-        structuredModules.push({
-          module_type: "well_child_visit",
-          payload: form.wellChildVisit,
-        });
-      }
-      if (isPediatricsClinic && form.parentHandoutRequest.template_key.trim()) {
-        structuredModules.push({
-          module_type: "parent_handout_request",
-          payload: {
-            template_key: form.parentHandoutRequest.template_key,
-            instructions: form.parentHandoutRequest.instructions,
-          },
-        });
-      }
-      if (isPediatricsClinic && (
-        form.pediatricFollowUpPlan.preset_key.trim() ||
-        form.pediatricFollowUpPlan.suggested_interval.trim() ||
-        form.pediatricFollowUpPlan.notes.trim()
-      )) {
-        structuredModules.push({
-          module_type: "pediatric_follow_up_plan",
-          payload: form.pediatricFollowUpPlan,
-        });
-      }
-      const generated = await onGenerate({
-        note_id: refreshingDraft ? currentNoteId : undefined,
-        patient_id: currentPatient.id,
-        symptoms: form.symptoms,
-        diagnosis: form.diagnosis,
-        medications: medicationPlan,
-        notes: form.notes,
-        blood_pressure_systolic: form.bloodPressureSystolic ? Number(form.bloodPressureSystolic) : null,
-        blood_pressure_diastolic: form.bloodPressureDiastolic ? Number(form.bloodPressureDiastolic) : null,
-        pulse: form.pulse ? Number(form.pulse) : null,
-        spo2: form.spo2 ? Number(form.spo2) : null,
-        blood_sugar: form.bloodSugar ? Number(form.bloodSugar) : null,
-        test_scores: form.testScores
-          .filter((entry) => entry.label.trim() && entry.value.trim())
-          .map((entry) => ({ label: entry.label.trim(), value: entry.value.trim() })),
-        eye_exam: isOptometryClinic
-          ? form.eyeExam.filter((entry) =>
-              entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim(),
-            )
-          : [],
-        contact_lens: isOptometryClinic && hasContactLensData(form.contactLens)
-          ? {
-              ...form.contactLens,
-              eyes: form.contactLens.eyes.filter((entry) => hasContactLensEyeData(entry)),
-            }
-          : null,
-        binocular_vision: isOptometryClinic && hasBinocularVisionData(form.binocularVision)
-          ? form.binocularVision
-          : null,
-        low_vision: isOptometryClinic && hasLowVisionData(form.lowVision)
-          ? form.lowVision
-          : null,
-        myopia_measurement: isOptometryClinic && hasMyopiaManagementData(form.myopiaManagement)
-          ? {
-              measured_at: new Date(form.myopiaManagement.measured_at).toISOString(),
-              age_years: form.myopiaManagement.age_years,
-              axial_length_right_mm: form.myopiaManagement.axial_length_right_mm,
-              axial_length_left_mm: form.myopiaManagement.axial_length_left_mm,
-              treatment_type: form.myopiaManagement.treatment_type,
-              treatment_notes: form.myopiaManagement.treatment_notes,
-              visit_notes: form.myopiaManagement.visit_notes,
-              refraction_right: form.myopiaManagement.refraction_right,
-              refraction_left: form.myopiaManagement.refraction_left,
-            }
-          : null,
-        structured_modules: structuredModules,
-        assets: form.assets,
-      });
+      const generated = await onGenerate(buildConsultationPayload({ includeNoteId: true }));
       setForm((current) => ({ ...current, generatedNote: generated.content }));
       setHasGeneratedNote(true);
       setCurrentNoteId(generated.noteId || "");
@@ -783,6 +808,101 @@ export function ConsultationDrawer({
     } finally {
       setIsGenerating(false);
     }
+  }
+
+  function setAssistantAnswer(question: ClinicalAssistantQuestion, answer: string) {
+    setAssistantAnswers((current) => ({ ...current, [question.id]: answer }));
+  }
+
+  function toggleAssistantMultiAnswer(question: ClinicalAssistantQuestion, option: string) {
+    setAssistantAnswers((current) => {
+      const existing = String(current[question.id] || "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+      const next = existing.includes(option)
+        ? existing.filter((entry) => entry !== option)
+        : [...existing, option];
+      return { ...current, [question.id]: next.join(", ") };
+    });
+  }
+
+  function assistantAnswerPayload(): ClinicalAssistantAnswer[] {
+    return (assistantQuestions?.questions || [])
+      .map((question) => ({
+        question_id: question.id,
+        label: question.label,
+        answer: String(assistantAnswers[question.id] || "").trim(),
+      }))
+      .filter((answer) => answer.answer);
+  }
+
+  async function handleAskClinicalQuestions() {
+    if (!isOptometryClinic) {
+      setAssistantError("Clinical assistant is available for optometry clinics only.");
+      return;
+    }
+    setIsLoadingAssistantQuestions(true);
+    setAssistantError("");
+    setAssistantAnalysis(null);
+    try {
+      const response = await api.generateClinicalQuestions({
+        patient_id: currentPatient.id,
+        consultation: buildConsultationPayload(),
+      });
+      setAssistantQuestions(response);
+      setAssistantAnswers({});
+      setAssistantQuestionIndex(0);
+      if (response.warning) {
+        setAssistantError(response.warning);
+      }
+    } catch (error) {
+      setAssistantError(error instanceof Error ? error.message : "Failed to generate clinical questions.");
+    } finally {
+      setIsLoadingAssistantQuestions(false);
+    }
+  }
+
+  async function handleAnalyzeClinicalAnswers() {
+    if (!assistantQuestions?.questions.length) {
+      setAssistantError("Ask clinical questions before analyzing.");
+      return;
+    }
+    setIsAnalyzingAssistant(true);
+    setAssistantError("");
+    try {
+      const response = await api.generateClinicalAnalysis({
+        patient_id: currentPatient.id,
+        consultation: buildConsultationPayload(),
+        answers: assistantAnswerPayload(),
+      });
+      setAssistantAnalysis(response);
+      if (response.warning) {
+        setAssistantError(response.warning);
+      }
+    } catch (error) {
+      setAssistantError(error instanceof Error ? error.message : "Failed to analyze clinical answers.");
+    } finally {
+      setIsAnalyzingAssistant(false);
+    }
+  }
+
+  function appendAssistantNoteAdditions() {
+    const additions = assistantAnalysis?.note_additions.trim();
+    if (!additions) {
+      setAssistantError("No note additions available yet.");
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      notes: [current.notes.trim(), additions].filter(Boolean).join("\n\n"),
+    }));
+    setStatusMessage("AI Q&A added to clinical notes.");
+  }
+
+  function applyAssistantDiagnosis(label: string) {
+    setForm((current) => ({ ...current, diagnosis: label }));
+    setStatusMessage("AI consideration copied into diagnosis for clinician review.");
   }
 
   async function handleSend() {
@@ -1387,6 +1507,405 @@ export function ConsultationDrawer({
     { label: "Weight", value: currentPatient.weight !== null ? `${currentPatient.weight} kg` : "-" },
     { label: "Height", value: currentPatient.height !== null ? `${currentPatient.height} cm` : "-" },
   ];
+
+  function renderAssistantQuestionControl(question: ClinicalAssistantQuestion) {
+    const value = String(assistantAnswers[question.id] || "");
+    const options = question.options.length
+      ? question.options
+      : question.type === "yes_no"
+        ? ["No", "Yes", "Not asked"]
+        : [];
+    if (["yes_no", "single_choice", "module_request"].includes(question.type)) {
+      return (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setAssistantAnswer(question, option)}
+              className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
+                value === option
+                  ? "border-[#6daed8] bg-[#e8f2fa] text-[#235f8e]"
+                  : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      );
+    }
+    if (question.type === "multi_choice") {
+      const selected = value.split(",").map((entry) => entry.trim()).filter(Boolean);
+      return (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => toggleAssistantMultiAnswer(question, option)}
+              className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
+                selected.includes(option)
+                  ? "border-[#6daed8] bg-[#e8f2fa] text-[#235f8e]"
+                  : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      );
+    }
+    return (
+      <input
+        value={value}
+        inputMode={question.type === "number" ? "decimal" : "text"}
+        onChange={(event) => setAssistantAnswer(question, event.target.value)}
+        placeholder={question.type === "duration" ? "e.g. 2 days" : "Answer"}
+        className="mt-3 w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+      />
+    );
+  }
+
+  function renderModuleButton(label: string, description: string, active: boolean, onClick: () => void) {
+    return (
+      <button
+        key={label}
+        type="button"
+        onClick={onClick}
+        className={`min-w-[160px] rounded-[18px] border px-4 py-3 text-left transition ${
+          active
+            ? "border-[#6daed8] bg-[#e8f2fa] text-[#235f8e]"
+            : "border-[#dbe7ef] bg-white text-slate-700 hover:bg-[#f3f8fb]"
+        }`}
+      >
+        <span className="block text-sm font-semibold text-slate-900">{label}</span>
+        <span className="mt-1 block text-xs leading-4 text-slate-500">{description}</span>
+      </button>
+    );
+  }
+
+  function renderInlineModuleDetail() {
+    if (activeInlineModule === "vitals") {
+      return (
+        <ConsultationModuleDetail title="Vitals">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              ["BP Systolic", "bloodPressureSystolic", "120", "numeric"],
+              ["BP Diastolic", "bloodPressureDiastolic", "80", "numeric"],
+              ["Pulse", "pulse", "72", "numeric"],
+              ["SpO2", "spo2", "98", "numeric"],
+              ["Blood Sugar", "bloodSugar", "110", "decimal"],
+            ].map(([label, key, placeholder, inputMode]) => (
+              <label key={key} className="block">
+                <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">{label}</span>
+                <input
+                  value={String(form[key as keyof typeof form] || "")}
+                  inputMode={inputMode as "numeric" | "decimal"}
+                  onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}
+                  placeholder={placeholder}
+                  className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                />
+              </label>
+            ))}
+          </div>
+        </ConsultationModuleDetail>
+      );
+    }
+    if (activeInlineModule === "medicines") {
+      return (
+        <ConsultationModuleDetail title="Medicines">
+          <input
+            value={medicineSearch}
+            onChange={(event) => setMedicineSearch(event.target.value)}
+            placeholder="Search medicines by name or unit"
+            className="w-full rounded-xl border border-emerald-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
+          />
+          {form.prescriptions.length ? (
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              {form.prescriptions.map((entry) => (
+                <div key={entry.itemId} className="rounded-[20px] border border-emerald-100 bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{entry.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">{entry.unit || "unit not set"}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removePrescription(entry.itemId)}
+                      className="rounded-xl border border-emerald-200 p-2 text-slate-600 transition hover:bg-emerald-50"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <input
+                      value={entry.quantity}
+                      inputMode="decimal"
+                      onChange={(event) => updatePrescription(entry.itemId, { quantity: event.target.value })}
+                      placeholder="Quantity"
+                      className="w-full rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                    />
+                    <input
+                      value={entry.duration}
+                      onChange={(event) => updatePrescription(entry.itemId, { duration: event.target.value })}
+                      placeholder="Duration"
+                      className="w-full rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                    />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(["morning", "afternoon", "night"] as const).map((slot) => (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => updatePrescription(entry.itemId, { [slot]: !entry[slot] })}
+                        className={`rounded-xl border px-3 py-1.5 text-xs font-medium capitalize transition ${
+                          entry[slot]
+                            ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                            : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
+                        }`}
+                      >
+                        {slot}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {PRESCRIPTION_NOTE_OPTIONS.map((option) => {
+                      const active = normalizePrescriptionNotes(entry.notes).includes(option);
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => updatePrescription(entry.itemId, { notes: togglePrescriptionNoteValue(entry.notes, option) })}
+                          className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
+                            active
+                              ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                              : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
+                          }`}
+                        >
+                          {option}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="mt-3 grid max-h-72 gap-2 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
+            {filteredMedicineItems.length ? (
+              filteredMedicineItems.slice(0, 12).map((item) => {
+                const active = selectedMedicineIds.includes(item.id);
+                const outOfStock = item.track_inventory && item.stock_quantity <= 0;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => toggleMedicine(item.id)}
+                    disabled={outOfStock}
+                    className={`flex items-center justify-between gap-3 rounded-[18px] border px-4 py-3 text-left transition ${
+                      active
+                        ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                        : "border-emerald-100 bg-white text-slate-700 hover:bg-emerald-50"
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    <span>
+                      <span className="block text-sm font-medium text-slate-900">{item.name}</span>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        {item.default_price.toFixed(2)}{item.unit ? ` · ${item.unit}` : ""}
+                      </span>
+                    </span>
+                    <span className="rounded-xl border border-emerald-200 px-3 py-1 text-xs font-medium">
+                      {active ? "Selected" : outOfStock ? "Out" : "Add"}
+                    </span>
+                  </button>
+                );
+              })
+            ) : (
+              <p className="rounded-[18px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">
+                No medicines match this search.
+              </p>
+            )}
+          </div>
+        </ConsultationModuleDetail>
+      );
+    }
+    return null;
+  }
+
+  function renderAssistantPanel() {
+    const questions = assistantQuestions?.questions || [];
+    const safeQuestionIndex = questions.length
+      ? Math.min(assistantQuestionIndex, questions.length - 1)
+      : 0;
+    const currentQuestion = questions[safeQuestionIndex];
+    const answeredCount = questions.filter((question) => String(assistantAnswers[question.id] || "").trim()).length;
+    const currentFlagStatus = (flag: ClinicalAnalysisResponse["red_flags"][number]) => {
+      if (flag.present === true) {
+        return "present";
+      }
+      if (flag.present === false) {
+        return "not present";
+      }
+      return "ask/check";
+    };
+
+    return (
+      <section className="rounded-[18px] border border-[#bfd7e8] bg-white/90 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-600">AI Assistant</p>
+          </div>
+          <Sparkles className="h-5 w-5 text-[#2f8fd3]" />
+        </div>
+        {!isOptometryClinic ? (
+          <p className="mt-4 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/60 p-3 text-sm text-slate-600">
+            Clinical assistant is currently enabled for optometry clinics only.
+          </p>
+        ) : (
+          <div className="mt-4 space-y-4">
+            <button
+              type="button"
+              onClick={() => void handleAskClinicalQuestions()}
+              disabled={isLoadingAssistantQuestions}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+            >
+              <Sparkles className="h-4 w-4" />
+              {isLoadingAssistantQuestions ? "Building questions..." : assistantQuestions ? "Refresh Questions" : "Ask AI Questions"}
+            </button>
+            {assistantError ? (
+              <p className="rounded-[16px] border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900">{assistantError}</p>
+            ) : null}
+            {assistantQuestions?.warning ? (
+              <p className="rounded-[16px] border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900">{assistantQuestions.warning}</p>
+            ) : null}
+            {assistantQuestions ? (
+              <div className="space-y-3">
+                {currentQuestion ? (
+                  <div className="rounded-[16px] border border-[#dbe7ef] bg-white p-3">
+                    <div className="mb-3 flex items-center justify-between gap-3 border-b border-[#edf3f7] pb-3">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Question {safeQuestionIndex + 1} of {questions.length}
+                      </span>
+                      <span className="rounded-full border border-[#dbe7ef] bg-[#f3f8fb] px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                        {answeredCount}/{questions.length} answered
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-medium leading-5 text-slate-900">{currentQuestion.label}</p>
+                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                        currentQuestion.priority === "high" ? "bg-rose-50 text-rose-700" : currentQuestion.priority === "medium" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"
+                      }`}>
+                        {currentQuestion.priority}
+                      </span>
+                    </div>
+                    {currentQuestion.rationale ? <p className="mt-2 text-xs leading-5 text-slate-500">{currentQuestion.rationale}</p> : null}
+                    {renderAssistantQuestionControl(currentQuestion)}
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setAssistantQuestionIndex((current) => Math.max(0, current - 1))}
+                        disabled={safeQuestionIndex === 0}
+                        className="inline-flex items-center justify-center rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-50"
+                      >
+                        ← Previous
+                      </button>
+                      <div className="flex items-center gap-1.5">
+                        {questions.map((question, index) => (
+                          <button
+                            key={question.id}
+                            type="button"
+                            aria-label={`Go to question ${index + 1}`}
+                            onClick={() => setAssistantQuestionIndex(index)}
+                            className={`h-2.5 rounded-full transition ${
+                              index === safeQuestionIndex
+                                ? "w-6 bg-[#2f8fd3]"
+                                : assistantAnswers[question.id]
+                                  ? "w-2.5 bg-emerald-300"
+                                  : "w-2.5 bg-[#dbe7ef]"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAssistantQuestionIndex((current) => Math.min(questions.length - 1, current + 1))}
+                        disabled={safeQuestionIndex >= questions.length - 1}
+                        className="inline-flex items-center justify-center rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-50"
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void handleAnalyzeClinicalAnswers()}
+                  disabled={isAnalyzingAssistant}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                >
+                  {isAnalyzingAssistant ? "Analyzing..." : "Analyze Answers"}
+                </button>
+              </div>
+            ) : null}
+            {assistantAnalysis ? (
+              <div className="space-y-3 border-t border-[#dbe7ef] pt-4">
+                {assistantAnalysis.possibilities.map((possibility) => (
+                  <div key={possibility.label} className="rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{possibility.label}</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">{possibility.why}</p>
+                        {possibility.what_to_check ? (
+                          <p className="mt-1 text-xs leading-5 text-slate-500">Check: {possibility.what_to_check}</p>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => applyAssistantDiagnosis(possibility.label)}
+                        className="rounded-xl border border-[#9fc7e1] bg-white px-3 py-1.5 text-xs font-medium text-[#235f8e] transition hover:bg-[#f3f8fb]"
+                      >
+                        Use
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {assistantAnalysis.red_flags.length ? (
+                  <div className="rounded-[16px] border border-rose-200 bg-rose-50/70 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700">Red flags</p>
+                    <div className="mt-2 space-y-2">
+                      {assistantAnalysis.red_flags.map((flag) => (
+                        <p key={flag.label} className="text-sm leading-5 text-rose-900">
+                          <span className="font-medium">{flag.label}</span> · {currentFlagStatus(flag)} · {flag.severity}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {assistantAnalysis.suggested_tests.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {assistantAnalysis.suggested_tests.map((test) => (
+                      <span key={test} className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-slate-700">
+                        {test}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={appendAssistantNoteAdditions}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0]"
+                >
+                  Add AI summary to notes
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </section>
+    );
+  }
+
   return (
     <aside className="fixed inset-0 z-30 w-screen overflow-y-auto border-l-2 border-[#9fc7e1] bg-white p-5 shadow-[0_20px_60px_rgba(64,131,181,0.10)] sm:p-6">
       <div className="flex min-h-full flex-col">
@@ -1417,7 +1936,7 @@ export function ConsultationDrawer({
           </button>
         </div>
 
-        <form className="grid gap-5 pr-1 xl:grid-cols-[minmax(0,1.7fr)_360px]" onSubmit={handleGenerate}>
+        <form className="grid gap-5 pr-1 xl:grid-cols-[minmax(0,1fr)_410px]" onSubmit={handleGenerate}>
           <div className="space-y-4">
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Symptoms</span>
@@ -1470,6 +1989,45 @@ export function ConsultationDrawer({
                 placeholder="Exam findings, vitals, advice, follow-up"
               />
             </label>
+
+            <section className="rounded-[18px] border border-[#bfd7e8] bg-white/90 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-600">Modules</p>
+                <p className="text-xs text-slate-500">Add structured details when needed.</p>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {renderModuleButton(
+                  "Vitals",
+                  "BP, pulse, sugar",
+                  activeInlineModule === "vitals",
+                  () => setActiveInlineModule((current) => (current === "vitals" ? null : "vitals")),
+                )}
+                {renderModuleButton(
+                  "Medicines",
+                  "Inventory schedule",
+                  activeInlineModule === "medicines",
+                  () => setActiveInlineModule((current) => (current === "medicines" ? null : "medicines")),
+                )}
+                {isOptometryClinic ? (
+                  <>
+                    {renderModuleButton("Eye exam", "Vision and refraction", false, openEyeExamModule)}
+                    {renderModuleButton("Contact lens", "Trial and order", false, () => openOptometryModule("contactLens"))}
+                    {renderModuleButton("Binocular vision", "Alignment and vergence", false, () => openOptometryModule("binocularVision"))}
+                    {renderModuleButton("Low vision", "Aids and function", false, () => openOptometryModule("lowVision"))}
+                    {renderModuleButton("Myopia", "Axial and therapy", false, () => openOptometryModule("myopiaManagement"))}
+                  </>
+                ) : null}
+                {isPediatricsClinic ? (
+                  <>
+                    {renderModuleButton("Growth", "Height, weight, BMI", false, () => setActivePediatricModule("growth"))}
+                    {renderModuleButton("Well-child", "Structured visit", false, () => setActivePediatricModule("wellChild"))}
+                    {renderModuleButton("Handout", "Parent PDF", false, () => setActivePediatricModule("parentHandout"))}
+                    {renderModuleButton("Follow-up", "Timing presets", false, () => setActivePediatricModule("pediatricFollowUp"))}
+                  </>
+                ) : null}
+              </div>
+              <div className="mt-4">{renderInlineModuleDetail()}</div>
+            </section>
 
             <div className="grid gap-4 xl:grid-cols-2">
               <ConsultationExpandableCard
@@ -1649,7 +2207,8 @@ export function ConsultationDrawer({
             </div>
           </div>
           <div className="space-y-4">
-            <section className="overflow-hidden rounded-[18px] border border-[#bfd7e8] bg-white/90">
+            {renderAssistantPanel()}
+            <section className="hidden overflow-hidden rounded-[18px] border border-[#bfd7e8] bg-white/90">
               <div className="border-b border-[#dbe7ef] px-4 py-4">
                 <p className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-600">Modules</p>
               </div>
@@ -1915,16 +2474,6 @@ export function ConsultationDrawer({
               <div className="flex flex-col gap-4">
                 <p className="text-sm text-slate-700">{statusMessage || "Ready to generate and send."}</p>
                 <div className="flex flex-col gap-3">
-                  {setupWarnings.length ? (
-                    <div className="rounded-[16px] border border-amber-200 bg-amber-50/80 p-4">
-                      <p className="text-sm font-semibold text-amber-900">Setup notes</p>
-                      <div className="mt-2 space-y-2 text-sm leading-6 text-amber-900">
-                        {setupWarnings.map((warning) => (
-                          <p key={warning}>{warning}</p>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
                   {isFollowUpOpen ? (
                     <div className="rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/40 p-4">
                       <div className="grid gap-3">

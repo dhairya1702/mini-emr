@@ -8,6 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
+from app.schema_domains.clinical_assistant import ClinicalAssistantAnswer
 from app.services import ai_generation_service
 
 
@@ -294,3 +295,120 @@ Review if worsening.
     assert "well_visit_summary" not in content
     assert "routine_review" not in content
     assert "Patient appears well." in content
+
+
+@pytest.mark.anyio
+async def test_generate_optometry_clinical_questions_records_usage(monkeypatch):
+    repo = _Repo()
+    seen_kwargs = {}
+
+    async def _fake_clinical_questions_content(**kwargs):
+        seen_kwargs.update(kwargs)
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": """
+                                {
+                                  "complaint_category": "red_eye",
+                                  "detected_factors": ["redness", "pain screening"],
+                                  "questions": [
+                                    {
+                                      "id": "contact_lens_use",
+                                      "group": "History",
+                                      "label": "Does the patient use contact lenses?",
+                                      "type": "yes_no",
+                                      "priority": "high",
+                                      "options": ["No", "Yes", "Not asked"],
+                                      "rationale": "Contact lens red eye changes urgency."
+                                    }
+                                  ],
+                                  "module_suggestions": [
+                                    {"module": "eye_exam", "reason": "Check VA and anterior segment findings."}
+                                  ],
+                                  "safety_notice": "For clinician review only. Not a diagnosis."
+                                }
+                                """
+                            }
+                        ],
+                    }
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 50,
+                "candidatesTokenCount": 20,
+            },
+        }
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_clinical_questions_content)
+    monkeypatch.setattr(
+        ai_generation_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_cloud_project="project-1",
+            google_cloud_location="global",
+            gemini_model="gemini-test",
+        ),
+    )
+
+    result = await ai_generation_service.generate_optometry_clinical_questions(
+        repo,
+        "org-4",
+        patient_context="Name: Test Patient\nReason: red eye",
+        clinic_context="Specialty: optometry",
+        consultation_context="Symptoms: red eye",
+        measurement_context="",
+    )
+
+    assert result.complaint_category == "red_eye"
+    assert result.questions[0].id == "contact_lens_use"
+    assert seen_kwargs["response_mime_type"] == "application/json"
+    assert seen_kwargs["thinking_budget"] == 0
+    assert repo.events[0]["feature"] == "optometry_clinical_questions"
+
+
+@pytest.mark.anyio
+async def test_generate_optometry_clinical_analysis_falls_back_on_truncated_output(monkeypatch):
+    repo = _Repo()
+
+    async def _fake_truncated_analysis_content(**_kwargs):
+        return {
+            "candidates": [
+                {
+                    "content": {"parts": [{"text": "{\"possibilities\": ["}]},
+                    "finishReason": "MAX_TOKENS",
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 80,
+                "candidatesTokenCount": 5,
+            },
+        }
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_truncated_analysis_content)
+    monkeypatch.setattr(
+        ai_generation_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_cloud_project="project-1",
+            google_cloud_location="global",
+            gemini_model="gemini-test",
+        ),
+    )
+
+    result = await ai_generation_service.generate_optometry_clinical_analysis(
+        repo,
+        "org-5",
+        patient_context="Name: Test Patient\nReason: blurred vision",
+        clinic_context="Specialty: optometry",
+        consultation_context="Symptoms: blurred vision",
+        measurement_context="",
+        answers=[ClinicalAssistantAnswer(question_id="duration", label="Duration", answer="2 days")],
+    )
+
+    assert result.used_fallback is True
+    assert "fallback optometry analysis" in (result.warning or "")
+    assert result.possibilities
+    assert repo.events == []

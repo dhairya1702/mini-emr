@@ -1,5 +1,7 @@
 import asyncio
+import json
 import logging
+import re
 from collections import OrderedDict
 from typing import Any, TypedDict
 
@@ -7,6 +9,13 @@ import httpx
 
 from app.config import get_settings
 from app.db import AppRepository
+from app.schema_domains.clinical_assistant import (
+    ClinicalAnalysisResponse,
+    ClinicalAssistantAnswer,
+    ClinicalAssistantModuleSuggestion,
+    ClinicalAssistantQuestion,
+    ClinicalQuestionsResponse,
+)
 from app.services.ai_usage_service import record_model_usage
 
 VERTEX_AI_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
@@ -256,6 +265,356 @@ def _has_max_tokens_finish(response: dict[str, Any]) -> bool:
     return any(str(candidate.get("finishReason") or "").upper() == "MAX_TOKENS" for candidate in candidates)
 
 
+def _fallback_optometry_category(reason_text: str) -> str:
+    text = reason_text.lower()
+    if any(term in text for term in ("red", "redness", "pink", "irritation", "discharge")):
+        return "red_eye"
+    if any(term in text for term in ("blur", "blurry", "vision", "power", "glasses", "refraction")):
+        return "blurred_vision"
+    if any(term in text for term in ("contact lens", "lens", "cl")):
+        return "contact_lens_issue"
+    if any(term in text for term in ("headache", "strain", "screen", "reading")):
+        return "headache_eye_strain"
+    if any(term in text for term in ("myopia", "progress", "axial")):
+        return "myopia_progression"
+    if any(term in text for term in ("dry", "burning", "foreign body", "gritty")):
+        return "dry_eye"
+    return "general_eye_complaint"
+
+
+def build_fallback_optometry_questions(reason_text: str, warning: str | None = None) -> ClinicalQuestionsResponse:
+    category = _fallback_optometry_category(reason_text)
+    base_questions = {
+        "red_eye": [
+            ("which_eye", "Red eye triage", "Which eye is affected?", "single_choice", ["Right", "Left", "Both", "Not asked"], "Laterality helps localize and prioritize the eye exam."),
+            ("duration", "Red eye triage", "How long has the redness been present?", "duration", [], "Duration helps separate acute red-eye causes from chronic irritation."),
+            ("pain", "Red flags", "Any eye pain?", "single_choice", ["None", "Mild", "Moderate", "Severe", "Not asked"], "Pain severity helps screen urgent red-eye causes."),
+            ("photophobia", "Red flags", "Any photophobia?", "yes_no", ["No", "Yes", "Not asked"], "Photophobia can indicate corneal or intraocular inflammation."),
+            ("vision_reduced", "Red flags", "Any reduction in vision?", "yes_no", ["No", "Yes", "Not asked"], "Reduced vision with red eye needs urgent attention."),
+            ("contact_lens_use", "Contact lens", "Does the patient wear contact lenses?", "yes_no", ["No", "Yes", "Not asked"], "Contact lens red eye requires corneal assessment."),
+            ("trauma_foreign_body", "Red flags", "Any trauma, chemical exposure, or foreign body sensation?", "yes_no", ["No", "Yes", "Not asked"], "Trauma and chemical exposure change urgency."),
+            ("discharge", "Symptoms", "What type of discharge is present?", "single_choice", ["None", "Watery", "Mucopurulent", "Sticky lids", "Not asked"], "Discharge pattern helps guide differential considerations."),
+        ],
+        "blurred_vision": [
+            ("which_eye", "Blurred vision", "Is blur in one eye or both?", "single_choice", ["Right", "Left", "Both", "Not asked"], "Laterality changes the concern level."),
+            ("distance_near", "Blurred vision", "Is blur for distance, near, or both?", "single_choice", ["Distance", "Near", "Both", "Variable", "Not asked"], "Pattern guides refraction and binocular workup."),
+            ("onset", "Red flags", "Was onset sudden or gradual?", "single_choice", ["Sudden", "Gradual", "Not sure", "Not asked"], "Sudden visual change is a red flag."),
+            ("pain_redness", "Red flags", "Any pain, redness, flashes, floaters, or curtain?", "multi_choice", ["Pain", "Redness", "Flashes", "Floaters", "Curtain", "None"], "These symptoms can indicate urgent pathology."),
+            ("current_correction", "Refraction", "Current glasses or contact lens use?", "short_text", [], "Existing correction is needed before refraction decisions."),
+        ],
+        "contact_lens_issue": [
+            ("pain_redness", "Red flags", "Any pain, redness, photophobia, or reduced vision?", "multi_choice", ["Pain", "Redness", "Photophobia", "Reduced vision", "None"], "Contact lens complications can be urgent."),
+            ("overnight_wear", "Contact lens", "Any overnight wear?", "yes_no", ["No", "Yes", "Not asked"], "Overnight wear increases keratitis risk."),
+            ("wear_schedule", "Contact lens", "What is the wear schedule and replacement frequency?", "short_text", [], "Wear pattern helps assess lens-related problems."),
+            ("hygiene", "Contact lens", "Any hygiene or solution concerns?", "short_text", [], "Care routine can explain irritation or infection risk."),
+        ],
+        "headache_eye_strain": [
+            ("near_work", "Asthenopia", "Is it worse with near work or screens?", "yes_no", ["No", "Yes", "Not asked"], "Near-work symptoms guide binocular/accommodation checks."),
+            ("diplopia", "Red flags", "Any double vision?", "yes_no", ["No", "Yes", "Not asked"], "Diplopia changes the workup."),
+            ("end_day", "Asthenopia", "Worse toward end of day?", "yes_no", ["No", "Yes", "Not asked"], "Timing helps identify strain/fatigue patterns."),
+            ("current_rx", "Refraction", "Current prescription and last refraction date?", "short_text", [], "Old correction may explain symptoms."),
+        ],
+        "myopia_progression": [
+            ("previous_rx", "Myopia history", "Previous prescription and date?", "short_text", [], "Progression requires comparison."),
+            ("family_history", "Risk factors", "Family history of myopia?", "yes_no", ["No", "Yes", "Not asked"], "Family history is a myopia risk factor."),
+            ("near_outdoor", "Risk factors", "Near work and outdoor time?", "short_text", [], "Lifestyle risk factors guide counseling."),
+            ("axial_length", "Module request", "Record axial length if available.", "module_request", ["myopia_management"], "Axial length supports progression monitoring."),
+        ],
+        "dry_eye": [
+            ("symptom_pattern", "Dry eye", "Burning, grittiness, watering, or fluctuating vision?", "multi_choice", ["Burning", "Grittiness", "Watering", "Fluctuating vision", "None"], "Symptom pattern supports ocular surface assessment."),
+            ("screen_environment", "Dry eye", "Screen use, AC exposure, or low blinking context?", "short_text", [], "Environment often contributes to dry eye symptoms."),
+            ("contact_lens_use", "Contact lens", "Does the patient wear contact lenses?", "yes_no", ["No", "Yes", "Not asked"], "Contact lenses can worsen dryness."),
+            ("red_flags", "Red flags", "Any pain, photophobia, or reduced vision?", "multi_choice", ["Pain", "Photophobia", "Reduced vision", "None"], "These move beyond routine dry eye."),
+        ],
+        "general_eye_complaint": [
+            ("main_issue", "Triage", "What is the main issue?", "single_choice", ["Blurred vision", "Red eye", "Pain", "Headache/strain", "Contact lens", "Follow-up"], "Classifies the optometry workflow."),
+            ("which_eye", "Triage", "One eye or both?", "single_choice", ["Right", "Left", "Both", "Not asked"], "Laterality is needed early."),
+            ("onset", "Triage", "Sudden or gradual onset?", "single_choice", ["Sudden", "Gradual", "Not sure", "Not asked"], "Sudden symptoms can be urgent."),
+            ("red_flags", "Red flags", "Any pain, photophobia, vision loss, trauma, flashes, floaters, or chemical exposure?", "multi_choice", ["Pain", "Photophobia", "Vision loss", "Trauma", "Flashes/floaters", "Chemical exposure", "None"], "Screens urgent eye conditions."),
+        ],
+    }
+    question_rows = base_questions.get(category, base_questions["general_eye_complaint"])
+    questions = [
+        ClinicalAssistantQuestion(
+            id=row[0],
+            group=row[1],
+            label=row[2],
+            type=row[3],  # type: ignore[arg-type]
+            priority="high" if row[1] == "Red flags" else "medium",
+            options=row[4],
+            rationale=row[5],
+        )
+        for row in question_rows
+    ]
+    modules = [ClinicalAssistantModuleSuggestion(module="eye_exam", reason="Record visual acuity and relevant ocular findings.")]
+    if category in {"red_eye", "contact_lens_issue", "dry_eye"}:
+        modules.append(ClinicalAssistantModuleSuggestion(module="contact_lens", reason="Capture lens use, wear schedule, hygiene, and comfort issues if relevant."))
+    if category == "headache_eye_strain":
+        modules.append(ClinicalAssistantModuleSuggestion(module="binocular_vision", reason="Screen convergence, accommodation, and binocular symptoms."))
+    if category == "myopia_progression":
+        modules.append(ClinicalAssistantModuleSuggestion(module="myopia_management", reason="Capture refraction history and axial length where available."))
+    return ClinicalQuestionsResponse(
+        complaint_category=category,
+        detected_factors=[category],
+        questions=questions,
+        module_suggestions=modules,
+        used_fallback=bool(warning),
+        warning=warning,
+    )
+
+
+def build_fallback_optometry_analysis(
+    reason_text: str,
+    answers: list[ClinicalAssistantAnswer],
+    warning: str | None = None,
+) -> ClinicalAnalysisResponse:
+    category = _fallback_optometry_category(reason_text)
+    answer_lines = [f"{answer.label}: {answer.answer}" for answer in answers if answer.answer.strip()]
+    note_additions = "AI assistant Q&A:\n" + "\n".join(f"- {line}" for line in answer_lines) if answer_lines else ""
+    possibilities = {
+        "red_eye": [
+            {"label": "Conjunctivitis / ocular surface irritation", "likelihood": "consider", "why": "Red eye symptoms can fit surface irritation or conjunctivitis depending on discharge, pain, and vision.", "what_to_check": "Visual acuity, discharge type, corneal staining, contact lens history."},
+            {"label": "Keratitis or corneal involvement", "likelihood": "rule_out", "why": "Pain, photophobia, reduced vision, or contact lens use would increase concern.", "what_to_check": "Corneal clarity/staining and contact lens risk factors."},
+        ],
+        "blurred_vision": [
+            {"label": "Refractive change", "likelihood": "consider", "why": "Blurred vision often requires refraction comparison.", "what_to_check": "Unaided/aided VA, pinhole, refraction, onset pattern."},
+            {"label": "Ocular pathology requiring referral", "likelihood": "rule_out", "why": "Sudden blur, flashes, floaters, curtain, pain, or redness are red flags.", "what_to_check": "Red flag symptoms and ocular findings."},
+        ],
+        "contact_lens_issue": [
+            {"label": "Contact lens-related irritation", "likelihood": "consider", "why": "Lens wear pattern, dryness, and hygiene can explain symptoms.", "what_to_check": "Wear schedule, overnight wear, lens age, solution, corneal staining."},
+            {"label": "Contact lens-associated keratitis", "likelihood": "rule_out", "why": "Painful red eye, photophobia, or reduced vision in a lens wearer is urgent.", "what_to_check": "VA, cornea, photophobia, pain severity."},
+        ],
+        "headache_eye_strain": [
+            {"label": "Asthenopia / binocular vision issue", "likelihood": "consider", "why": "Near work, screens, diplopia, and end-of-day symptoms guide this.", "what_to_check": "Cover test, NPC, accommodation, current prescription."},
+        ],
+        "myopia_progression": [
+            {"label": "Myopia progression", "likelihood": "consider", "why": "Requires comparison with previous refraction or axial length.", "what_to_check": "Previous Rx, axial length, family history, near work, outdoor time."},
+        ],
+        "dry_eye": [
+            {"label": "Dry eye / ocular surface disease", "likelihood": "consider", "why": "Burning, grittiness, watering, and fluctuating vision can fit dry eye.", "what_to_check": "Tear film, staining, screen/AC exposure, contact lens use."},
+        ],
+        "general_eye_complaint": [
+            {"label": "Optometry triage incomplete", "likelihood": "contextual", "why": "The main complaint needs classification before reasoning support is useful.", "what_to_check": "Blur/redness/pain/contact lens/trauma/vision loss category."},
+        ],
+    }
+    module_suggestions = ["eye_exam"]
+    if category in {"red_eye", "contact_lens_issue", "dry_eye"}:
+        module_suggestions.append("contact_lens")
+    if category == "headache_eye_strain":
+        module_suggestions.append("binocular_vision")
+    if category == "myopia_progression":
+        module_suggestions.append("myopia_management")
+    return ClinicalAnalysisResponse(
+        possibilities=possibilities.get(category, possibilities["general_eye_complaint"]),
+        red_flags=[
+            {"label": "Sudden vision loss", "severity": "urgent", "present": False},
+            {"label": "Severe pain or photophobia", "severity": "urgent", "present": False},
+            {"label": "Contact lens red eye", "severity": "urgent", "present": False},
+            {"label": "Trauma, chemical injury, flashes/floaters/curtain", "severity": "urgent", "present": False},
+        ],
+        suggested_tests=["Visual acuity", "Relevant anterior segment/corneal assessment", "Refraction or specialty module as indicated"],
+        documentation_gaps=["Vision change status", "Pain/photophobia status", "Contact lens history", "Laterality and duration"],
+        module_suggestions=module_suggestions,  # type: ignore[arg-type]
+        note_additions=note_additions,
+        used_fallback=bool(warning),
+        warning=warning,
+    )
+
+
+async def generate_optometry_clinical_questions(
+    repo: AppRepository,
+    org_id: str,
+    *,
+    patient_context: str,
+    clinic_context: str,
+    consultation_context: str,
+    measurement_context: str,
+) -> ClinicalQuestionsResponse:
+    settings = get_settings()
+    reason_text = "\n".join([patient_context, consultation_context])
+    if not str(settings.gemini_model or "").strip():
+        return build_fallback_optometry_questions(reason_text, "AI unavailable, used fallback optometry questions.")
+
+    prompt = f"""
+Return JSON only for an optometry clinical assistant.
+Generate focused, case-specific questions from the queue reason and current consultation draft.
+Do not diagnose. Do not recommend treatment. Ask red-flag and optometry history questions.
+Use only these question types: yes_no, single_choice, multi_choice, short_text, number, duration, module_request.
+Use only these modules: eye_exam, contact_lens, binocular_vision, low_vision, myopia_management, attachments, medicines, vitals.
+Return at most 8 questions.
+
+JSON shape:
+{{
+  "complaint_category": "red_eye | blurred_vision | contact_lens_issue | headache_eye_strain | myopia_progression | dry_eye | general_eye_complaint",
+  "detected_factors": ["short factor"],
+  "questions": [
+    {{
+      "id": "stable_snake_case",
+      "group": "Red flags",
+      "label": "Question text?",
+      "type": "single_choice",
+      "priority": "high",
+      "options": ["No", "Yes", "Not asked"],
+      "rationale": "Why this matters"
+    }}
+  ],
+  "module_suggestions": [
+    {{"module": "eye_exam", "reason": "Why this module helps"}}
+  ],
+  "safety_notice": "For clinician review only. Not a diagnosis."
+}}
+
+Clinic context:
+{clinic_context or 'Not provided'}
+
+Patient context:
+{patient_context or 'Not provided'}
+
+Current consultation draft:
+{consultation_context or 'Not provided'}
+
+Structured optometry/module context:
+{measurement_context or 'Not provided'}
+""".strip()
+    try:
+        response = await _generate_vertex_content(
+            project_id=settings.google_cloud_project,
+            location=settings.google_cloud_location,
+            model=settings.gemini_model,
+            max_output_tokens=2048,
+            temperature=0.15,
+            thinking_budget=0,
+            response_mime_type="application/json",
+            system_instruction=(
+                "You are an optometry clinical question assistant. "
+                "Return valid JSON only. Do not diagnose or recommend treatment."
+            ),
+            prompt=prompt,
+        )
+        generated_text = _extract_text_from_vertex_response(response)
+        if _has_max_tokens_finish(response) or not generated_text:
+            return build_fallback_optometry_questions(reason_text, "AI returned incomplete content, used fallback optometry questions.")
+        parsed = _extract_json_object(generated_text)
+        result = ClinicalQuestionsResponse.model_validate(parsed)
+    except Exception:
+        logger.exception("Vertex AI optometry clinical questions failed; returning fallback.")
+        return build_fallback_optometry_questions(reason_text, "AI unavailable, used fallback optometry questions.")
+
+    await record_model_usage(
+        repo,
+        org_id=org_id,
+        provider="gemini",
+        model=settings.gemini_model,
+        feature="optometry_clinical_questions",
+        response=response,
+        metadata={"has_measurements_context": bool(measurement_context)},
+    )
+    return result
+
+
+async def generate_optometry_clinical_analysis(
+    repo: AppRepository,
+    org_id: str,
+    *,
+    patient_context: str,
+    clinic_context: str,
+    consultation_context: str,
+    measurement_context: str,
+    answers: list[ClinicalAssistantAnswer],
+) -> ClinicalAnalysisResponse:
+    settings = get_settings()
+    reason_text = "\n".join([patient_context, consultation_context])
+    if not str(settings.gemini_model or "").strip():
+        return build_fallback_optometry_analysis(reason_text, answers, "AI unavailable, used fallback optometry analysis.")
+
+    answer_context = "\n".join(f"- {answer.label}: {answer.answer}" for answer in answers if answer.answer.strip())
+    prompt = f"""
+Return JSON only for an optometry clinical reasoning support assistant.
+Use the current consultation draft and answered questions to provide clinician-review support.
+Do not state a final diagnosis. Do not recommend treatment. Do not invent examination findings.
+Use wording such as consider, fits with, rule out, and what to check.
+
+JSON shape:
+{{
+  "possibilities": [
+    {{
+      "label": "Possible consideration",
+      "likelihood": "likely | consider | rule_out | contextual",
+      "why": "Why this fits or may fit",
+      "what_to_check": "Specific optometry history/exam/module data to check"
+    }}
+  ],
+  "red_flags": [
+    {{"label": "Sudden vision loss", "severity": "urgent", "present": false}}
+  ],
+  "suggested_tests": ["Visual acuity"],
+  "documentation_gaps": ["Contact lens use not recorded"],
+  "module_suggestions": ["eye_exam"],
+  "note_additions": "Brief note-ready Q&A summary, not a diagnosis.",
+  "safety_notice": "For clinician review only. Not a diagnosis."
+}}
+
+Required red-flag screening concepts:
+- sudden vision loss
+- severe pain
+- photophobia
+- contact lens red eye
+- trauma or foreign body
+- flashes, floaters, curtain
+- corneal opacity
+- chemical injury
+
+Clinic context:
+{clinic_context or 'Not provided'}
+
+Patient context:
+{patient_context or 'Not provided'}
+
+Current consultation draft:
+{consultation_context or 'Not provided'}
+
+Structured optometry/module context:
+{measurement_context or 'Not provided'}
+
+Answered assistant questions:
+{answer_context or 'No answers provided'}
+""".strip()
+    try:
+        response = await _generate_vertex_content(
+            project_id=settings.google_cloud_project,
+            location=settings.google_cloud_location,
+            model=settings.gemini_model,
+            max_output_tokens=2048,
+            temperature=0.15,
+            thinking_budget=0,
+            response_mime_type="application/json",
+            system_instruction=(
+                "You are an optometry clinical reasoning support assistant. "
+                "Return valid JSON only. Do not provide final diagnosis or treatment."
+            ),
+            prompt=prompt,
+        )
+        generated_text = _extract_text_from_vertex_response(response)
+        if _has_max_tokens_finish(response) or not generated_text:
+            return build_fallback_optometry_analysis(reason_text, answers, "AI returned incomplete content, used fallback optometry analysis.")
+        parsed = _extract_json_object(generated_text)
+        result = ClinicalAnalysisResponse.model_validate(parsed)
+    except Exception:
+        logger.exception("Vertex AI optometry clinical analysis failed; returning fallback.")
+        return build_fallback_optometry_analysis(reason_text, answers, "AI unavailable, used fallback optometry analysis.")
+
+    await record_model_usage(
+        repo,
+        org_id=org_id,
+        provider="gemini",
+        model=settings.gemini_model,
+        feature="optometry_clinical_analysis",
+        response=response,
+        metadata={"answer_count": len(answers), "has_measurements_context": bool(measurement_context)},
+    )
+    return result
+
+
 async def _generate_vertex_content(
     *,
     project_id: str,
@@ -266,6 +625,7 @@ async def _generate_vertex_content(
     max_output_tokens: int,
     temperature: float,
     thinking_budget: int | None = None,
+    response_mime_type: str | None = None,
 ) -> dict[str, Any]:
     token, resolved_project = await _resolve_vertex_credentials(project_id)
     base_url = _vertex_ai_api_endpoint(location)
@@ -290,6 +650,8 @@ async def _generate_vertex_content(
     }
     if thinking_budget is not None:
         payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": thinking_budget}
+    if response_mime_type:
+        payload["generationConfig"]["responseMimeType"] = response_mime_type
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -298,6 +660,23 @@ async def _generate_vertex_content(
         response = await client.post(url, headers=headers, json=payload)
         response.raise_for_status()
         return response.json()
+
+
+def _extract_json_object(text: str) -> dict[str, Any]:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+        if not match:
+            raise
+        parsed = json.loads(match.group(0))
+    if not isinstance(parsed, dict):
+        raise ValueError("Vertex AI JSON response must be an object.")
+    return parsed
 
 
 async def generate_soap_note(

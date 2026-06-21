@@ -488,7 +488,7 @@ export interface CaseStudySavePayload {
 
 export interface GenerateNotePayload {
   note_id?: string;
-  patient_id?: string;
+  patient_id: string;
   symptoms: string;
   diagnosis: string;
   medications: string;
@@ -512,6 +512,94 @@ export interface GenerateNoteResponse {
   note_id?: string | null;
   status?: "draft" | "final" | "sent" | null;
   content: string;
+  used_fallback?: boolean;
+  warning?: string | null;
+}
+
+export type ClinicalQuestionType =
+  | "yes_no"
+  | "single_choice"
+  | "multi_choice"
+  | "short_text"
+  | "number"
+  | "duration"
+  | "module_request";
+
+export type ClinicalQuestionPriority = "high" | "medium" | "low";
+
+export type ClinicalAssistantModule =
+  | "eye_exam"
+  | "contact_lens"
+  | "binocular_vision"
+  | "low_vision"
+  | "myopia_management"
+  | "attachments"
+  | "medicines"
+  | "vitals";
+
+export interface ClinicalAssistantQuestion {
+  id: string;
+  group: string;
+  label: string;
+  type: ClinicalQuestionType;
+  priority: ClinicalQuestionPriority;
+  options: string[];
+  rationale: string;
+}
+
+export interface ClinicalAssistantModuleSuggestion {
+  module: ClinicalAssistantModule;
+  reason: string;
+}
+
+export interface ClinicalQuestionsPayload {
+  patient_id: string;
+  consultation: GenerateNotePayload;
+}
+
+export interface ClinicalQuestionsResponse {
+  complaint_category: string;
+  detected_factors: string[];
+  questions: ClinicalAssistantQuestion[];
+  module_suggestions: ClinicalAssistantModuleSuggestion[];
+  safety_notice: string;
+  used_fallback?: boolean;
+  warning?: string | null;
+}
+
+export interface ClinicalAssistantAnswer {
+  question_id: string;
+  label: string;
+  answer: string;
+}
+
+export interface ClinicalAnalysisPayload {
+  patient_id: string;
+  consultation: GenerateNotePayload;
+  answers: ClinicalAssistantAnswer[];
+}
+
+export interface ClinicalPossibility {
+  label: string;
+  likelihood: "likely" | "consider" | "rule_out" | "contextual";
+  why: string;
+  what_to_check: string;
+}
+
+export interface ClinicalRedFlag {
+  label: string;
+  severity: "routine" | "caution" | "urgent";
+  present: boolean | null;
+}
+
+export interface ClinicalAnalysisResponse {
+  possibilities: ClinicalPossibility[];
+  red_flags: ClinicalRedFlag[];
+  suggested_tests: string[];
+  documentation_gaps: string[];
+  module_suggestions: ClinicalAssistantModule[];
+  note_additions: string;
+  safety_notice: string;
   used_fallback?: boolean;
   warning?: string | null;
 }
