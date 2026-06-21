@@ -2,10 +2,20 @@ import { NextRequest, NextResponse, userAgent } from "next/server";
 
 const mobileRouteMap = new Map<string, string>([
   ["/", "/m"],
+  ["/appointments", "/m/appointments"],
   ["/patients", "/m/patients"],
+  ["/billing", "/m/billing"],
+  ["/inventory", "/m/inventory"],
   ["/history", "/m/history"],
-  ["/account", "/m/account"],
+  ["/generate-letter", "/m/generate-letter"],
+  ["/earnings", "/m/earnings"],
+  ["/case-study", "/m/case-study"],
   ["/users", "/m/users"],
+  ["/clinic", "/m/clinic"],
+  ["/account", "/m/account"],
+  ["/audit", "/m/audit"],
+  ["/training", "/m/training"],
+  ["/about", "/m/about"],
 ]);
 
 const excludedPrefixes = [

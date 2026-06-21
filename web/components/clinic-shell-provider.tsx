@@ -14,12 +14,14 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
+import { requiresOnboarding } from "@/lib/onboarding";
 import { createTrainingScope, readTrainingMode, resetTrainingData, writeTrainingMode } from "@/lib/training-mode";
 import { AuthUser, ClinicSettings } from "@/lib/types";
 
 const SESSION_EXPIRED_REDIRECT = "/login?reason=session-expired";
 const PUBLIC_PATHS = new Set(["/login", "/follow-up"]);
-const SPECIALTY_ONBOARDING_PATH = "/onboarding/specialty";
+const SETUP_ONBOARDING_PATH = "/onboarding/setup";
+const MOBILE_SETUP_ONBOARDING_PATH = "/m/onboarding/setup";
 const SHELL_LOAD_MAX_ATTEMPTS = 2;
 const SHELL_LOAD_RETRY_DELAY_MS = 350;
 
@@ -96,7 +98,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   }, [trainingScope]);
 
   const loadShell = useCallback(async (force = false) => {
-    const isPublicPath = PUBLIC_PATHS.has(pathname);
+    const isPublicPath = PUBLIC_PATHS.has(pathname) || pathname.startsWith("/login/");
     if (isPublicPath) {
       hasBootstrappedRef.current = false;
       setError("");
@@ -137,9 +139,6 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
           authStorage.setUser(user);
           setCurrentUser(user);
           setClinicSettings(settings);
-          const requiresSpecialtyOnboarding =
-            authStorage.isSpecialtyOnboardingPending() &&
-            !settings.clinic_specialty;
           if (settings.clinic_specialty) {
             authStorage.setSpecialtyOnboardingPending(false);
           }
@@ -147,12 +146,15 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
           setIsRedirectingToLogin(false);
           setIsAuthReady(true);
           hasBootstrappedRef.current = true;
-          if (requiresSpecialtyOnboarding && pathname !== SPECIALTY_ONBOARDING_PATH) {
-            router.replace(SPECIALTY_ONBOARDING_PATH);
+          const shouldRunOnboarding = requiresOnboarding(settings);
+          const isOnboardingPath = pathname.startsWith("/onboarding") || pathname.startsWith("/m/onboarding");
+          const setupOnboardingPath = pathname.startsWith("/m") ? MOBILE_SETUP_ONBOARDING_PATH : SETUP_ONBOARDING_PATH;
+          if (shouldRunOnboarding && pathname !== setupOnboardingPath) {
+            router.replace(setupOnboardingPath);
             return;
           }
-          if (!requiresSpecialtyOnboarding && pathname === SPECIALTY_ONBOARDING_PATH) {
-            router.replace("/");
+          if (!shouldRunOnboarding && isOnboardingPath) {
+            router.replace(pathname.startsWith("/m") ? "/m" : "/");
             return;
           }
           return;
@@ -211,6 +213,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
 
   const handleLogout = useCallback(() => {
     setIsRedirectingToLogin(true);
+    const loginPath = pathname.startsWith("/m") ? "/login/m" : "/login";
     void api.logout()
       .catch(() => undefined)
       .finally(() => {
@@ -219,9 +222,9 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
         setClinicSettings(null);
         setIsTrainingMode(false);
         hasBootstrappedRef.current = false;
-        router.replace("/login");
+        router.replace(loginPath);
       });
-  }, [router]);
+  }, [pathname, router]);
 
   const enterTrainingMode = useCallback(() => {
     writeTrainingMode(trainingScope, true);

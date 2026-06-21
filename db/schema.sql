@@ -102,6 +102,8 @@ create table if not exists public.clinic_settings (
   document_template_margin_right double precision not null default 54,
   document_template_margin_bottom double precision not null default 54,
   document_template_margin_left double precision not null default 54,
+  onboarding_required boolean not null default false,
+  onboarding_completed_at timestamptz,
   updated_at timestamptz not null default now()
 );
 
@@ -465,6 +467,12 @@ add column if not exists document_template_margin_bottom double precision not nu
 
 alter table public.clinic_settings
 add column if not exists document_template_margin_left double precision not null default 54;
+
+alter table public.clinic_settings
+add column if not exists onboarding_required boolean not null default false;
+
+alter table public.clinic_settings
+add column if not exists onboarding_completed_at timestamptz;
 
 alter table public.catalog_items
 add column if not exists track_inventory boolean not null default false;

@@ -45,7 +45,13 @@ async def _fake_generate_vertex_content(**_kwargs):
 @pytest.mark.anyio
 async def test_generate_soap_note_records_org_ai_usage(monkeypatch):
     repo = _Repo()
-    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_generate_vertex_content)
+    seen_kwargs = {}
+
+    async def _fake_generate_note_content(**kwargs):
+        seen_kwargs.update(kwargs)
+        return await _fake_generate_vertex_content(**kwargs)
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_generate_note_content)
     monkeypatch.setattr(
         ai_generation_service,
         "get_settings",
@@ -72,6 +78,8 @@ async def test_generate_soap_note_records_org_ai_usage(monkeypatch):
     assert "Fever" in result["content"]
     assert "Diagnosis:" in result["content"]
     assert result["used_fallback"] is False
+    assert seen_kwargs["max_output_tokens"] == 2048
+    assert seen_kwargs["thinking_budget"] == 0
     assert len(repo.events) == 1
     event = repo.events[0]
     assert event["org_id"] == "org-1"
@@ -84,9 +92,62 @@ async def test_generate_soap_note_records_org_ai_usage(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_generate_soap_note_discards_truncated_vertex_output(monkeypatch):
+    repo = _Repo()
+
+    async def _fake_truncated_note_content(**_kwargs):
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [{"text": "Presenting Complaint:\nFever"}],
+                    },
+                    "finishReason": "MAX_TOKENS",
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 123,
+                "candidatesTokenCount": 8,
+            },
+        }
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_truncated_note_content)
+    monkeypatch.setattr(
+        ai_generation_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_cloud_project="project-1",
+            google_cloud_location="global",
+            gemini_model="gemini-test",
+        ),
+    )
+
+    result = await ai_generation_service.generate_soap_note(
+        repo,
+        "org-1",
+        symptoms="Fever",
+        diagnosis="Viral infection",
+        medications="Paracetamol",
+        notes="Rest well",
+    )
+
+    assert result["used_fallback"] is True
+    assert result["warning"] == "AI returned incomplete content, used fallback template."
+    assert "Presenting Complaint:" in result["content"]
+    assert "Fever" in result["content"]
+    assert repo.events == []
+
+
+@pytest.mark.anyio
 async def test_generate_clinic_letter_records_org_ai_usage(monkeypatch):
     repo = _Repo()
-    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_generate_vertex_content)
+    seen_kwargs = {}
+
+    async def _fake_generate_letter_content(**kwargs):
+        seen_kwargs.update(kwargs)
+        return await _fake_generate_vertex_content(**kwargs)
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_generate_letter_content)
     monkeypatch.setattr(
         ai_generation_service,
         "get_settings",
@@ -107,11 +168,65 @@ async def test_generate_clinic_letter_records_org_ai_usage(monkeypatch):
     )
 
     assert content == "Generated response"
+    assert seen_kwargs["max_output_tokens"] == 2048
+    assert seen_kwargs["thinking_budget"] == 0
     assert len(repo.events) == 1
     event = repo.events[0]
     assert event["org_id"] == "org-2"
     assert event["feature"] == "clinic_letter"
     assert event["model"] == "gemini-test"
+
+
+@pytest.mark.anyio
+async def test_generate_clinic_letter_discards_truncated_vertex_output(monkeypatch):
+    repo = _Repo()
+
+    async def _fake_truncated_letter_content(**_kwargs):
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [{"text": "To: RIT\nSubject: Medical Certificate for Leave\n\nThis"}],
+                    },
+                    "finishReason": "MAX_TOKENS",
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 123,
+                "candidatesTokenCount": 8,
+            },
+        }
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_truncated_letter_content)
+    monkeypatch.setattr(
+        ai_generation_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_cloud_project="project-1",
+            google_cloud_location="global",
+            gemini_model="gemini-test",
+        ),
+    )
+
+    content = await ai_generation_service.generate_clinic_letter(
+        repo,
+        "org-2",
+        to="RIT",
+        subject="Medical Certificate for Leave",
+        content="This patient requires leave.",
+        clinic_context="Doctor Name: Dr. Demo",
+    )
+
+    assert content == (
+        "To: RIT\n"
+        "Subject: Medical Certificate for Leave\n\n"
+        "Dear Sir/Madam,\n\n"
+        "This patient requires leave.\n\n"
+        "Please feel free to contact the clinic if any further clarification is required.\n\n"
+        "Sincerely,\n"
+        "Dr. Demo"
+    )
+    assert repo.events == []
 
 
 @pytest.mark.anyio

@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import Cookie, Depends, Header, HTTPException, Request, Response, status
 
 from app.config import get_settings
-from app.db import AppRepository, get_repository
+from app.db import get_repository
 from app.schema_domains.auth_settings import UserOut
 
 
@@ -133,7 +133,6 @@ async def get_current_user(
     request: Request,
     authorization: str | None = Header(default=None),
     session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
-    repo: AppRepository = Depends(get_repository),
 ) -> UserOut:
     bearer_token = ""
     cookie_token = session_token.strip() if session_token else ""
@@ -161,6 +160,8 @@ async def get_current_user(
     if not isinstance(user_id, str):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
 
+    repo_factory = request.app.dependency_overrides.get(get_repository, get_repository)
+    repo = repo_factory()
     try:
         user = await repo.get_auth_user(user_id)
     except Exception as exc:

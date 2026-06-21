@@ -251,6 +251,11 @@ def _extract_text_from_vertex_response(response: dict[str, Any]) -> str:
     return "\n".join(text_parts).strip()
 
 
+def _has_max_tokens_finish(response: dict[str, Any]) -> bool:
+    candidates = response.get("candidates") or []
+    return any(str(candidate.get("finishReason") or "").upper() == "MAX_TOKENS" for candidate in candidates)
+
+
 async def _generate_vertex_content(
     *,
     project_id: str,
@@ -260,6 +265,7 @@ async def _generate_vertex_content(
     prompt: str,
     max_output_tokens: int,
     temperature: float,
+    thinking_budget: int | None = None,
 ) -> dict[str, Any]:
     token, resolved_project = await _resolve_vertex_credentials(project_id)
     base_url = _vertex_ai_api_endpoint(location)
@@ -282,6 +288,8 @@ async def _generate_vertex_content(
             "maxOutputTokens": max_output_tokens,
         },
     }
+    if thinking_budget is not None:
+        payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": thinking_budget}
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -315,11 +323,13 @@ Follow-up Advice:
 
 Write each section in clear clinical prose using full sentences and short paragraphs.
 Make it specific and natural, for example phrasing like "The patient presents with fever for the last 3 days..."
-When details are missing, use neutral clinical wording and do not invent risky facts such as vitals, labs, or durations.
+When details are missing, use neutral clinical wording and do not invent facts such as vitals, labs, durations, exam findings, negative findings, or test results.
+Only include physical examination findings, normal findings, and negative findings if they are explicitly provided in the input.
 Do not use SOAP headings.
 Keep the output plain text only.
 If the Structured measurements input includes pipe-delimited tables, preserve them in the Clinical Notes section before the prose notes.
 If the Medications input includes a pipe-delimited regimen table, preserve it in the Treatment section before any prose explanation.
+In the Treatment section, include all provided medication and care instructions unless they are clearly unsafe or contradictory.
 
 Patient context:
 {patient_context or 'Not provided'}
@@ -363,13 +373,15 @@ Structured measurements:
             project_id=settings.google_cloud_project,
             location=settings.google_cloud_location,
             model=settings.gemini_model,
-            max_output_tokens=600,
+            max_output_tokens=2048,
             temperature=0.35,
+            thinking_budget=0,
             system_instruction=(
                 "You write polished outpatient consultation notes for small clinics. "
                 "Return only the final note text. "
                 "Return only the five requested section headings and their content. "
-                "Do not include patient demographics, phone numbers, ages, or any header block in the note body."
+                "Do not include patient demographics, phone numbers, ages, or any header block in the note body. "
+                "Do not invent examination findings, normal findings, negative findings, tests, vitals, or durations."
             ),
             prompt=prompt,
         )
@@ -389,18 +401,26 @@ Structured measurements:
             "error_message": str(exc),
         }
 
-    await record_model_usage(
-        repo,
-        org_id=org_id,
-        provider="gemini",
-        model=settings.gemini_model,
-        feature="consultation_note",
-        response=response,
-        metadata={"has_patient_context": bool(patient_context), "has_measurements_context": bool(measurements_context)},
-    )
-
     generated_text = _extract_text_from_vertex_response(response)
-    if not generated_text:
+    finish_reasons = [
+        str(candidate.get("finishReason") or "")
+        for candidate in response.get("candidates") or []
+        if isinstance(candidate, dict)
+    ]
+    logger.info(
+        "Vertex AI consultation note response: finish_reasons=%s generated_chars=%s usage=%s",
+        finish_reasons,
+        len(generated_text),
+        response.get("usageMetadata") or {},
+    )
+    if _has_max_tokens_finish(response) or not generated_text:
+        warning = "AI returned incomplete content, used fallback template." if generated_text else "AI returned no content, used fallback template."
+        error_message = "Vertex AI returned MAX_TOKENS." if generated_text else "Vertex AI returned an empty response."
+        logger.warning(
+            "Vertex AI consultation note response was unusable; returning fallback. finish_reasons=%s generated_chars=%s",
+            finish_reasons,
+            len(generated_text),
+        )
         return {
             "content": build_fallback_note(
                 symptoms,
@@ -411,9 +431,20 @@ Structured measurements:
                 measurements_context,
             ),
             "used_fallback": True,
-            "warning": "AI returned no content, used fallback template.",
-            "error_message": "Vertex AI returned an empty response.",
+            "warning": warning,
+            "error_message": error_message,
         }
+
+    await record_model_usage(
+        repo,
+        org_id=org_id,
+        provider="gemini",
+        model=settings.gemini_model,
+        feature="consultation_note",
+        response=response,
+        metadata={"has_patient_context": bool(patient_context), "has_measurements_context": bool(measurements_context)},
+    )
+
     return {
         "content": _normalize_note_content(
             generated_text,
@@ -464,6 +495,7 @@ Content instructions:
 """.strip()
 
     if not str(settings.gemini_model or "").strip():
+        logger.info("Clinic letter generation using fallback because GEMINI_MODEL is not configured.")
         return build_fallback_letter(to, subject, content, clinic_context)
 
     try:
@@ -471,8 +503,9 @@ Content instructions:
             project_id=settings.google_cloud_project,
             location=settings.google_cloud_location,
             model=settings.gemini_model,
-            max_output_tokens=500,
+            max_output_tokens=2048,
             temperature=0.35,
+            thinking_budget=0,
             system_instruction=(
                 "You write clear professional clinic letters. "
                 "Return only the final letter text."
@@ -480,6 +513,27 @@ Content instructions:
             prompt=prompt,
         )
     except Exception:
+        logger.exception("Vertex AI clinic letter generation failed; returning fallback letter.")
+        return build_fallback_letter(to, subject, content, clinic_context)
+
+    generated_text = _extract_text_from_vertex_response(response)
+    finish_reasons = [
+        str(candidate.get("finishReason") or "")
+        for candidate in response.get("candidates") or []
+        if isinstance(candidate, dict)
+    ]
+    logger.info(
+        "Vertex AI clinic letter response: finish_reasons=%s generated_chars=%s usage=%s",
+        finish_reasons,
+        len(generated_text),
+        response.get("usageMetadata") or {},
+    )
+    if _has_max_tokens_finish(response) or not generated_text:
+        logger.warning(
+            "Vertex AI clinic letter response was unusable; returning fallback. finish_reasons=%s generated_chars=%s",
+            finish_reasons,
+            len(generated_text),
+        )
         return build_fallback_letter(to, subject, content, clinic_context)
 
     await record_model_usage(
@@ -492,7 +546,7 @@ Content instructions:
         metadata={"has_clinic_context": bool(clinic_context), "recipient": to.strip()},
     )
 
-    return _extract_text_from_vertex_response(response) or build_fallback_letter(to, subject, content, clinic_context)
+    return generated_text
 
 
 async def generate_case_study_document(

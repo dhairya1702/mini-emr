@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Current Consultation + AI Assistant Mockup</title>
+  <style>
+    :root {
+      --text: #0f172a;
+      --muted: #64748b;
+      --soft: #94a3b8;
+      --blue: #4f93d4;
+      --blue-dark: #2f6fa7;
+      --line: #bfd7e8;
+      --line-soft: #dbe7ef;
+      --panel: #ffffff;
+      --wash: #f3f8fb;
+      --amber-bg: #fff8df;
+      --amber-line: #f2d675;
+      --amber-text: #8a4b15;
+      --green-bg: #ecfbf4;
+      --green-line: #bce9d0;
+      --green-text: #17694a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #ffffff;
+      color: var(--text);
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button, input, textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .consultation {
+      min-height: 100vh;
+      padding: 34px 36px;
+      background: #fff;
+    }
+
+    .top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 28px;
+    }
+
+    .eyebrow {
+      margin: 0 0 14px;
+      color: #64748b;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.32em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 40px;
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.2;
+      font-weight: 800;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .close {
+      width: 46px;
+      height: 46px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      background: #fff;
+      color: #334155;
+      font-size: 26px;
+      line-height: 1;
+    }
+
+    .patient-meta {
+      margin-bottom: 18px;
+      color: #475569;
+      font-size: 20px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .chip {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--wash);
+      padding: 6px 18px;
+      color: #475569;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 520px;
+      gap: 28px;
+      align-items: start;
+    }
+
+    .main-column {
+      min-width: 0;
+      display: grid;
+      gap: 24px;
+    }
+
+    .clinical-grid {
+      display: grid;
+      gap: 24px;
+    }
+
+    label {
+      display: grid;
+      gap: 12px;
+      color: #334155;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    textarea,
+    input {
+      width: 100%;
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: #f8fbfd;
+      color: var(--text);
+      outline: none;
+      padding: 22px;
+      font-size: 21px;
+      line-height: 1.45;
+    }
+
+    textarea {
+      min-height: 132px;
+      resize: vertical;
+    }
+
+    input {
+      min-height: 68px;
+    }
+
+    textarea:focus,
+    input:focus {
+      border-color: #6daed8;
+      box-shadow: 0 0 0 4px rgba(109, 174, 216, 0.12);
+      background: #fff;
+    }
+
+    .field-help {
+      color: #64748b;
+      font-size: 15px;
+      font-weight: 500;
+      line-height: 1.5;
+    }
+
+    .two-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+    }
+
+    .small-card,
+    .ai-card,
+    .draft-card,
+    .module-strip,
+    .setup-card {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: #fff;
+    }
+
+    .small-card {
+      min-height: 132px;
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 24px 22px;
+    }
+
+    .small-card button {
+      width: 54px;
+      height: 54px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #f3f8fb;
+      color: #0f172a;
+      font-size: 34px;
+      line-height: 1;
+    }
+
+    .small-card p {
+      margin-top: 12px;
+      color: #64748b;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+
+    .ai-card {
+      overflow: hidden;
+      border-color: #9fc7e1;
+    }
+
+    .ai-card.rail-ai {
+      position: sticky;
+      top: 24px;
+    }
+
+    .ai-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      border-bottom: 1px solid var(--line-soft);
+      background: #f3f8fb;
+      padding: 20px 22px;
+    }
+
+    .ai-title {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .ai-badge {
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      background: #e8f2fa;
+      color: var(--blue-dark);
+      font-weight: 900;
+    }
+
+    .ai-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      padding: 20px 22px 22px;
+    }
+
+    .rail-ai .ai-body {
+      grid-template-columns: 1fr;
+    }
+
+    .question-list,
+    .reasoning {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .question {
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: #fff;
+      padding: 14px;
+    }
+
+    .question strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 15px;
+    }
+
+    .question p {
+      color: #64748b;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .answers {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .answer {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      padding: 7px 12px;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .answer.active {
+      border-color: #6daed8;
+      background: #e8f2fa;
+      color: #235f8e;
+    }
+
+    .ai-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .primary,
+    .secondary {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 14px;
+      padding: 10px 16px;
+      font-weight: 800;
+    }
+
+    .primary {
+      border: 1px solid #4f93d4;
+      background: #4f93d4;
+      color: #fff;
+    }
+
+    .secondary {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: #334155;
+    }
+
+    .reason-box {
+      border: 1px solid var(--green-line);
+      border-radius: 16px;
+      background: var(--green-bg);
+      padding: 14px;
+    }
+
+    .reason-box h3 {
+      color: #0f172a;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    .reason-box p {
+      color: var(--green-text);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .warning-box {
+      border: 1px solid var(--amber-line);
+      border-radius: 16px;
+      background: var(--amber-bg);
+      padding: 14px;
+      color: var(--amber-text);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .draft-card {
+      padding: 22px;
+    }
+
+    .draft-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .note-preview {
+      min-height: 290px;
+      white-space: pre-wrap;
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: #f8fbfd;
+      padding: 20px;
+      color: #334155;
+      font-size: 17px;
+      line-height: 1.6;
+    }
+
+    .module-strip {
+      overflow: hidden;
+    }
+
+    .module-strip-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid var(--line-soft);
+      padding: 18px 22px;
+    }
+
+    .module-row {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(210px, 1fr);
+      overflow-x: auto;
+    }
+
+    .module {
+      min-height: 122px;
+      display: block;
+      width: 100%;
+      border: 0;
+      border-right: 1px solid var(--line-soft);
+      background: #fff;
+      padding: 19px 18px;
+      text-align: left;
+    }
+
+    .module:last-child {
+      border-right: 0;
+    }
+
+    .module strong {
+      display: block;
+      color: #0f172a;
+      font-size: 19px;
+      margin-bottom: 8px;
+    }
+
+    .module span {
+      color: #64748b;
+      font-size: 15px;
+      line-height: 1.4;
+    }
+
+    .module.active {
+      background: #f3f8fb;
+    }
+
+    .vitals-horizontal {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(100px, 1fr));
+      gap: 12px;
+      border-top: 1px solid var(--line-soft);
+      background: #f8fbfd;
+      padding: 16px 18px;
+    }
+
+    .vitals-horizontal label {
+      gap: 6px;
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+
+    .vitals-horizontal input {
+      min-height: 44px;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 15px;
+      background: #fff;
+    }
+
+    .side-column {
+      display: grid;
+      gap: 22px;
+    }
+
+    .status-area {
+      border-top: 1px solid var(--line);
+      padding-top: 26px;
+      color: #475569;
+      font-size: 17px;
+    }
+
+    .setup-card {
+      border-color: var(--amber-line);
+      background: var(--amber-bg);
+      padding: 24px 22px;
+      color: var(--amber-text);
+    }
+
+    .setup-card h3 {
+      margin-bottom: 16px;
+      color: var(--amber-text);
+    }
+
+    .email-box {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #f3f8fb;
+      padding: 16px;
+    }
+
+    .email-box label {
+      gap: 8px;
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+
+    .email-box input {
+      min-height: 46px;
+      border-radius: 12px;
+      background: #fff;
+      padding: 11px 12px;
+      font-size: 15px;
+    }
+
+    .action-stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    @media (max-width: 1280px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .ai-card.rail-ai {
+        position: static;
+      }
+    }
+
+    @media (max-width: 780px) {
+      .consultation {
+        padding: 20px;
+      }
+
+      .ai-body,
+      .two-cards,
+      .vitals-horizontal {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 34px;
+      }
+
+      textarea,
+      input {
+        font-size: 17px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="consultation">
+    <header class="top">
+      <div>
+        <p class="eyebrow">Consultation</p>
+        <h1>LOI</h1>
+        <p class="patient-meta">1234567890 · fever</p>
+        <div class="chips">
+          <span class="chip">Age -</span>
+          <span class="chip">Temp -</span>
+          <span class="chip">Weight -</span>
+          <span class="chip">Height -</span>
+        </div>
+      </div>
+      <button class="close" aria-label="Close">×</button>
+    </header>
+
+    <section class="layout">
+      <div class="main-column">
+        <section class="clinical-grid">
+          <label>
+            Symptoms
+            <textarea placeholder="Chief complaints, duration, key context">Fever for 3 days with cough and body ache</textarea>
+          </label>
+
+          <label>
+            Diagnosis
+            <input placeholder="Provisional or confirmed diagnosis" value="Viral upper respiratory infection" />
+          </label>
+
+          <label>
+            Medications
+            <textarea placeholder="Prescriptions, dosage, duration">Paracetamol 500 mg twice daily for 3 days; steam inhalation</textarea>
+            <span class="field-help">Selected inventory medicines are forced into the treatment section of the generated note.</span>
+          </label>
+
+          <label>
+            Clinical Notes
+            <textarea placeholder="Exam findings, vitals, advice, follow-up">No shortness of breath. Appetite reduced. Advise hydration and rest.</textarea>
+          </label>
+        </section>
+
+        <section class="module-strip">
+          <div class="module-strip-head">
+            <div>
+              <p class="eyebrow" style="margin-bottom:8px;">Modules</p>
+              <h2>Clinical tools</h2>
+            </div>
+            <span class="field-help">Moved from the right rail so AI can live there.</span>
+          </div>
+          <div class="module-row">
+            <button class="module active">
+              <strong>Vitals</strong>
+              <span>Structured table for the note</span>
+            </button>
+            <button class="module">
+              <strong>Medicines</strong>
+              <span>Inventory and treatment schedule</span>
+            </button>
+            <button class="module">
+              <strong>Growth tracking</strong>
+              <span>Height, weight, BMI, and head circumference</span>
+            </button>
+            <button class="module">
+              <strong>Well-child visit</strong>
+              <span>Nutrition, sleep, behavior, and concerns</span>
+            </button>
+            <button class="module">
+              <strong>Parent handout</strong>
+              <span>Parent-facing instructions and PDF</span>
+            </button>
+            <button class="module">
+              <strong>Pediatric follow-up</strong>
+              <span>Apply common follow-up timing</span>
+            </button>
+          </div>
+          <div class="vitals-horizontal">
+            <label>Temp <input value="101" /></label>
+            <label>Pulse <input value="92" /></label>
+            <label>SpO2 <input value="98" /></label>
+            <label>BP <input value="120/80" /></label>
+          </div>
+        </section>
+
+        <div class="two-cards">
+          <div class="small-card">
+            <div>
+              <h3>Attachments</h3>
+              <p>Upload JPG, PNG, or PDF files. Images are appended to the PDF, PDFs are emailed as attachments.</p>
+            </div>
+            <button>+</button>
+          </div>
+          <div class="small-card">
+            <div>
+              <h3>Drawing</h3>
+              <p>Sketch findings, markings, or procedure notes.</p>
+            </div>
+            <button>+</button>
+          </div>
+        </div>
+
+        <section class="draft-card">
+          <div class="draft-top">
+            <div>
+              <p class="eyebrow" style="margin-bottom:8px;">Generated Draft</p>
+              <h2>AI note preview</h2>
+            </div>
+            <button class="primary">Generate Note</button>
+          </div>
+          <div class="note-preview">Presenting Complaint:
+The patient presents with fever for the last 3 days, accompanied by cough and body ache. No shortness of breath is reported.
+
+Diagnosis:
+Viral upper respiratory infection.
+
+Clinical Notes:
+Temperature: pending
+SpO2: pending
+Appetite is reduced. Allergy status should be confirmed before finalizing medications.
+
+Treatment:
+Paracetamol 500 mg twice daily for 3 days. Steam inhalation, hydration, and rest advised.
+
+Follow-up Advice:
+Return in 3 days if fever persists, or earlier for breathlessness, chest pain, rash, bleeding, or worsening symptoms.</div>
+        </section>
+      </div>
+
+      <aside class="side-column">
+        <section class="ai-card rail-ai">
+          <div class="ai-head">
+            <div class="ai-title">
+              <div class="ai-badge">AI</div>
+              <div>
+                <p class="eyebrow" style="margin-bottom:8px;">Clinical Assistant</p>
+                <h2>Ask before generating</h2>
+                <p class="muted" style="margin-top:8px;">Right rail stays visible while the doctor fills the consultation.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="ai-body">
+            <div class="question-list">
+              <div class="question">
+                <strong>Any breathlessness or chest pain?</strong>
+                <p>Needed to screen fever + cough red flags before suggesting likely causes.</p>
+                <div class="answers">
+                  <button class="answer active">None</button>
+                  <button class="answer">Breathless</button>
+                  <button class="answer">Chest pain</button>
+                  <button class="answer">Skip</button>
+                </div>
+              </div>
+
+              <div class="question">
+                <strong>Any rash, bleeding, chills, or mosquito exposure?</strong>
+                <p>Helps decide whether dengue or malaria testing should be considered.</p>
+                <input style="min-height:46px; font-size:15px; padding:10px 12px;" value="No rash or bleeding. Chills not clear." />
+              </div>
+
+              <div class="question">
+                <strong>Allergy status?</strong>
+                <p>This is missing and should be captured before medication advice is finalized.</p>
+                <div class="answers">
+                  <button class="answer">NKDA</button>
+                  <button class="answer">Has allergy</button>
+                  <button class="answer active">Ask patient</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="reasoning">
+              <div class="reason-box">
+                <h3>Possible considerations</h3>
+                <p><strong>Likely:</strong> Viral upper respiratory infection. Fits fever, cough, body ache, normal SpO2 if confirmed.</p>
+                <p style="margin-top:10px;"><strong>Consider:</strong> Influenza-like illness if sudden onset/high fever. Dengue/malaria depending on exposure and local prevalence.</p>
+              </div>
+
+              <div class="warning-box">
+                Red flags to ask directly: breathlessness, chest pain, persistent high fever, altered sensorium, rash/bleeding, dehydration.
+              </div>
+
+              <div class="ai-actions">
+                <button class="primary">Ask questions</button>
+                <button class="secondary">Add Q&A to notes</button>
+                <button class="secondary">Use diagnosis</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="status-area">
+          <p>Ready to generate and send.</p>
+        </section>
+
+        <section class="setup-card">
+          <h3>Setup notes</h3>
+          <p>No clinic paper template is uploaded. PDFs will use the fallback header and footer layout.</p>
+        </section>
+
+        <section class="email-box">
+          <label>
+            Recipient email
+            <input placeholder="patient@example.com" />
+          </label>
+        </section>
+
+        <section class="action-stack">
+          <button class="secondary">Finalize Note</button>
+          <button class="secondary">Preview PDF</button>
+          <button class="secondary">Send Email</button>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    document.querySelectorAll(".answers").forEach((group) => {
+      group.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement) || !target.classList.contains("answer")) return;
+        group.querySelectorAll(".answer").forEach((item) => item.classList.remove("active"));
+        target.classList.add("active");
+      });
+    });
+  </script>
+</body>
+</html>

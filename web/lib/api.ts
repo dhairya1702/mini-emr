@@ -651,6 +651,10 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
+  completeClinicOnboarding: () =>
+    request<ClinicSettings>("/settings/clinic/onboarding/complete", {
+      method: "POST",
+    }),
   uploadClinicDocumentTemplate: (file: File) => {
     const formData = new FormData();
     formData.append("file", file);

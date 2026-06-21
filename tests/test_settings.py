@@ -25,6 +25,8 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
     assert initial.json()["appointment_end_time"] == "18:00"
     assert initial.json()["appointments_per_hour"] == 4
     assert initial.json()["clinic_specialty"] is None
+    assert initial.json()["onboarding_required"] is True
+    assert initial.json()["onboarding_completed_at"] is None
 
     template_bytes = b"%PDF-1.4 sample clinic paper"
     uploaded = test_client.post(
@@ -97,6 +99,10 @@ def test_clinic_settings_can_store_specialty_for_existing_org(client):
     fetched = test_client.get("/settings/clinic", headers=headers)
     assert fetched.status_code == 200
     assert fetched.json()["clinic_specialty"] == "optometry"
+
+    completed = test_client.post("/settings/clinic/onboarding/complete", headers=headers)
+    assert completed.status_code == 200
+    assert completed.json()["onboarding_completed_at"] is not None
 
     removed = test_client.delete("/settings/clinic/document-template", headers=headers)
     assert removed.status_code == 200

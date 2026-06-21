@@ -39,6 +39,8 @@ CLINIC_SETTINGS_COLUMNS = [
     "document_template_margin_right",
     "document_template_margin_bottom",
     "document_template_margin_left",
+    "onboarding_required",
+    "onboarding_completed_at",
     "updated_at",
 ]
 
@@ -67,6 +69,8 @@ CLINIC_SETTINGS_MUTABLE_COLUMNS = [
     "document_template_margin_right",
     "document_template_margin_bottom",
     "document_template_margin_left",
+    "onboarding_required",
+    "onboarding_completed_at",
 ]
 
 
@@ -94,6 +98,8 @@ def _clinic_settings_defaults() -> dict[str, Any]:
         "document_template_margin_right",
         "document_template_margin_bottom",
         "document_template_margin_left",
+        "onboarding_required",
+        "onboarding_completed_at",
     }
     return ClinicSettingsOut.model_construct(id=nil_uuid, org_id=nil_uuid).model_dump(include=field_names)
 

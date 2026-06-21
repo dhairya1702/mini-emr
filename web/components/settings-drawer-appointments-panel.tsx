@@ -4,7 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import { CalendarClock, Plus } from "lucide-react";
 
 import { api } from "@/lib/api";
-import { Appointment, FollowUp, PatientMatch } from "@/lib/types";
+import { Appointment, FollowUp, Patient, PatientMatch } from "@/lib/types";
 
 interface SettingsDrawerAppointmentsPanelProps {
   onCheckInAppointment: (
@@ -19,6 +19,22 @@ interface SettingsDrawerAppointmentsPanelProps {
     followUpId: string,
     payload: { status?: "scheduled" | "completed" | "cancelled"; scheduled_for?: string; notes?: string },
   ) => Promise<FollowUp>;
+  onCreateAppointment?: (payload: {
+    name: string;
+    phone: string;
+    email: string;
+    address: string;
+    reason: string;
+    date_of_birth: null;
+    age: null;
+    weight: null;
+    height: null;
+    temperature: null;
+    scheduled_for: string;
+  }) => Promise<Appointment>;
+  onCreateFollowUp?: (patientId: string, payload: { scheduled_for: string; notes: string }) => Promise<FollowUp>;
+  createSignal?: number;
+  onActiveViewChange?: (view: AppointmentView) => void;
 }
 
 type AppointmentView = "appointments" | "followUps";
@@ -47,9 +63,14 @@ export function SettingsDrawerAppointmentsPanel({
   onCheckInAppointment,
   onUpdateAppointment,
   onUpdateFollowUp,
+  onCreateAppointment,
+  onCreateFollowUp,
+  createSignal = 0,
+  onActiveViewChange,
 }: SettingsDrawerAppointmentsPanelProps) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [activeView, setActiveView] = useState<AppointmentView>("appointments");
   const [appointmentFilter, setAppointmentFilter] = useState<AppointmentFilter>("all");
   const [followUpFilter, setFollowUpFilter] = useState<FollowUpFilter>("all");
@@ -67,6 +88,23 @@ export function SettingsDrawerAppointmentsPanel({
   const [followUpTime, setFollowUpTime] = useState("");
   const [followUpNotes, setFollowUpNotes] = useState("");
   const [savingAppointmentId, setSavingAppointmentId] = useState("");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newAppointment, setNewAppointment] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    address: "",
+    reason: "",
+    date: getTodayIsoDate(),
+    time: "09:00",
+  });
+  const [newFollowUp, setNewFollowUp] = useState({
+    patientId: "",
+    date: getTodayIsoDate(),
+    time: "09:00",
+    notes: "",
+  });
   const [statusMessage, setStatusMessage] = useState("");
   const [loadError, setLoadError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -76,6 +114,49 @@ export function SettingsDrawerAppointmentsPanel({
     matches: PatientMatch[];
   } | null>(null);
   const todayIsoDate = getTodayIsoDate();
+
+  function setView(view: AppointmentView) {
+    setActiveView(view);
+    onActiveViewChange?.(view);
+  }
+
+  useEffect(() => {
+    onActiveViewChange?.(activeView);
+  }, [activeView, onActiveViewChange]);
+
+  useEffect(() => {
+    if (!createSignal) {
+      return;
+    }
+    setIsCreateOpen(true);
+    setStatusMessage("");
+  }, [createSignal]);
+
+  useEffect(() => {
+    if (!isCreateOpen || activeView !== "followUps" || patients.length) {
+      return;
+    }
+    let active = true;
+    void api.listPatients()
+      .then((rows) => {
+        if (!active) {
+          return;
+        }
+        setPatients(rows);
+        setNewFollowUp((current) => ({
+          ...current,
+          patientId: current.patientId || rows[0]?.id || "",
+        }));
+      })
+      .catch((error) => {
+        if (active) {
+          setStatusMessage(error instanceof Error ? error.message : "Failed to load patients for follow-up.");
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeView, isCreateOpen, patients.length]);
 
   useEffect(() => {
     let active = true;
@@ -356,10 +437,98 @@ export function SettingsDrawerAppointmentsPanel({
     }
   }
 
+  async function handleCreateAppointment() {
+    if (!onCreateAppointment) {
+      setStatusMessage("Appointment creation is not available here.");
+      return;
+    }
+    if (!newAppointment.name.trim() || !newAppointment.phone.trim() || !newAppointment.reason.trim()) {
+      setStatusMessage("Enter patient name, phone, and reason.");
+      return;
+    }
+    if (!newAppointment.date || !newAppointment.time) {
+      setStatusMessage("Choose appointment date and time.");
+      return;
+    }
+    setIsCreating(true);
+    setStatusMessage("");
+    try {
+      const created = await onCreateAppointment({
+        name: newAppointment.name.trim(),
+        phone: newAppointment.phone.trim(),
+        email: newAppointment.email.trim(),
+        address: newAppointment.address.trim(),
+        reason: newAppointment.reason.trim(),
+        date_of_birth: null,
+        age: null,
+        weight: null,
+        height: null,
+        temperature: null,
+        scheduled_for: new Date(`${newAppointment.date}T${newAppointment.time}:00`).toISOString(),
+      });
+      setAppointments((current) => [created, ...current]);
+      setSelectedDate(newAppointment.date);
+      setAppointmentFilter("all");
+      setIsCreateOpen(false);
+      setNewAppointment({
+        name: "",
+        phone: "",
+        email: "",
+        address: "",
+        reason: "",
+        date: newAppointment.date,
+        time: newAppointment.time,
+      });
+      setStatusMessage("Appointment added.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Failed to add appointment.");
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  async function handleCreateFollowUp() {
+    if (!onCreateFollowUp) {
+      setStatusMessage("Follow-up creation is not available here.");
+      return;
+    }
+    if (!newFollowUp.patientId) {
+      setStatusMessage("Choose a patient.");
+      return;
+    }
+    if (!newFollowUp.date || !newFollowUp.time) {
+      setStatusMessage("Choose follow-up date and time.");
+      return;
+    }
+    setIsCreating(true);
+    setStatusMessage("");
+    try {
+      const created = await onCreateFollowUp(newFollowUp.patientId, {
+        scheduled_for: new Date(`${newFollowUp.date}T${newFollowUp.time}:00`).toISOString(),
+        notes: newFollowUp.notes.trim(),
+      });
+      setFollowUps((current) => [created, ...current]);
+      setSelectedDate(newFollowUp.date);
+      setFollowUpFilter("all");
+      setIsCreateOpen(false);
+      setNewFollowUp((current) => ({
+        patientId: current.patientId,
+        date: current.date,
+        time: current.time,
+        notes: "",
+      }));
+      setStatusMessage("Follow-up added.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Failed to add follow-up.");
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
-        <div className="mb-4 flex items-center gap-3">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
           <CalendarClock className="h-5 w-5 shrink-0 text-[#2a6fa8]" />
           <div className="inline-flex rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] p-1">
             {[
@@ -372,7 +541,7 @@ export function SettingsDrawerAppointmentsPanel({
                 <button
                   key={view.id}
                   type="button"
-                  onClick={() => setActiveView(view.id as AppointmentView)}
+                  onClick={() => setView(view.id as AppointmentView)}
                   className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
                     isActive
                       ? "bg-white text-[#2a6fa8] shadow-sm"
@@ -384,7 +553,69 @@ export function SettingsDrawerAppointmentsPanel({
               );
             })}
           </div>
+          {onCreateAppointment || onCreateFollowUp ? (
+            <button
+              type="button"
+              onClick={() => {
+                setIsCreateOpen(true);
+                setStatusMessage("");
+              }}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[#edf5fa] text-[#2a6fa8] transition hover:bg-[#dbeaf4]"
+              aria-label={activeView === "appointments" ? "Add appointment" : "Add follow-up"}
+              title={activeView === "appointments" ? "Add appointment" : "Add follow-up"}
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+          ) : null}
         </div>
+
+        {isCreateOpen ? (
+          <div className="mb-4 rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/50 px-4 py-4">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-900">
+                Add {activeView === "appointments" ? "appointment" : "follow-up"}
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen(false)}
+                className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-slate-600"
+              >
+                Close
+              </button>
+            </div>
+            {activeView === "appointments" ? (
+              <div className="grid gap-3">
+                <input value={newAppointment.name} onChange={(event) => setNewAppointment((current) => ({ ...current, name: event.target.value }))} placeholder="Patient name" className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none" />
+                <input value={newAppointment.phone} onChange={(event) => setNewAppointment((current) => ({ ...current, phone: event.target.value }))} placeholder="Phone" className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none" />
+                <input value={newAppointment.reason} onChange={(event) => setNewAppointment((current) => ({ ...current, reason: event.target.value }))} placeholder="Reason" className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none" />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input type="date" min={todayIsoDate} value={newAppointment.date} onChange={(event) => setNewAppointment((current) => ({ ...current, date: event.target.value }))} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none" />
+                  <input type="time" value={newAppointment.time} onChange={(event) => setNewAppointment((current) => ({ ...current, time: event.target.value }))} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none" />
+                </div>
+                <button type="button" disabled={isCreating} onClick={() => void handleCreateAppointment()} className="rounded-xl bg-[#2f8fd3] px-4 py-3 text-sm font-medium text-white disabled:opacity-60">
+                  {isCreating ? "Adding..." : "Add appointment"}
+                </button>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                <select value={newFollowUp.patientId} onChange={(event) => setNewFollowUp((current) => ({ ...current, patientId: event.target.value }))} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none">
+                  {patients.length ? null : <option value="">No patients found</option>}
+                  {patients.map((patient) => (
+                    <option key={patient.id} value={patient.id}>{patient.name} · {patient.phone || "No phone"}</option>
+                  ))}
+                </select>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input type="date" min={todayIsoDate} value={newFollowUp.date} onChange={(event) => setNewFollowUp((current) => ({ ...current, date: event.target.value }))} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none" />
+                  <input type="time" value={newFollowUp.time} onChange={(event) => setNewFollowUp((current) => ({ ...current, time: event.target.value }))} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none" />
+                </div>
+                <input value={newFollowUp.notes} onChange={(event) => setNewFollowUp((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes" className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none" />
+                <button type="button" disabled={isCreating || !patients.length} onClick={() => void handleCreateFollowUp()} className="rounded-xl bg-[#2f8fd3] px-4 py-3 text-sm font-medium text-white disabled:opacity-60">
+                  {isCreating ? "Adding..." : "Add follow-up"}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : null}
 
         {loadError ? (
           <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">

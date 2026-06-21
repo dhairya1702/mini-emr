@@ -62,6 +62,8 @@ async def register_user_workflow(
             clinic_address=payload.clinic_address,
             clinic_phone=payload.clinic_phone,
             doctor_name=payload.doctor_name,
+            onboarding_required=True,
+            onboarding_completed_at=None,
         ),
     )
     created = await repo.create_user(

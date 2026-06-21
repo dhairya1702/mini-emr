@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from io import BytesIO
 from uuid import uuid4
 
 import pytest
+from starlette.requests import Request
 from PIL import Image, ImageDraw
 
 from test_app import auth_headers_for_token, auth_module, client, main_module, register_test_clinic
@@ -69,6 +71,18 @@ def test_auth_cookie_session_and_logout(client):
 
     after_logout = test_client.get("/auth/me")
     assert after_logout.status_code == 401
+
+
+def test_get_current_user_skips_repository_when_session_is_missing(monkeypatch: pytest.MonkeyPatch):
+    def unexpected_repository_call():
+        raise AssertionError("Repository should not be created without a token.")
+
+    monkeypatch.setattr(auth_module, "get_repository", unexpected_repository_call)
+
+    request = Request({"type": "http", "headers": []})
+
+    with pytest.raises(auth_module.HTTPException, match="Authentication required."):
+        asyncio.run(auth_module.get_current_user(request=request, authorization=None, session_token=None))
 
 
 def test_access_token_requires_explicit_auth_secret(monkeypatch: pytest.MonkeyPatch):

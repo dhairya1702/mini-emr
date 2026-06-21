@@ -237,7 +237,7 @@ export function MobileAddPatientModal({
             Reason
             <input value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" />
           </label>
-          <div className="grid grid-cols-[minmax(0,1.45fr)_minmax(0,0.75fr)] gap-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
             <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-700">
               DOB
               <input type="date" value={form.dateOfBirth} onChange={(event) => setForm((current) => ({ ...current, dateOfBirth: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" />

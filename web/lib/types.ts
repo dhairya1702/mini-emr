@@ -635,6 +635,8 @@ export interface ClinicSettings {
   document_template_margin_right: number;
   document_template_margin_bottom: number;
   document_template_margin_left: number;
+  onboarding_required: boolean;
+  onboarding_completed_at: string | null;
   updated_at: string | null;
 }
 
@@ -903,4 +905,6 @@ export interface ClinicSettingsUpdatePayload {
   document_template_margin_right: number;
   document_template_margin_bottom: number;
   document_template_margin_left: number;
+  onboarding_required?: boolean;
+  onboarding_completed_at?: string | null;
 }

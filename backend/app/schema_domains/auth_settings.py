@@ -34,6 +34,8 @@ class ClinicSettingsUpdate(BaseModel):
     document_template_margin_right: float | None = Field(default=None, ge=0, le=288)
     document_template_margin_bottom: float | None = Field(default=None, ge=0, le=288)
     document_template_margin_left: float | None = Field(default=None, ge=0, le=288)
+    onboarding_required: bool | None = None
+    onboarding_completed_at: datetime | None = None
 
     @field_validator("appointment_start_time", "appointment_end_time")
     @classmethod
@@ -85,6 +87,8 @@ class ClinicSettingsOut(BaseModel):
     document_template_margin_right: float = DEFAULT_DOCUMENT_TEMPLATE_MARGIN
     document_template_margin_bottom: float = DEFAULT_DOCUMENT_TEMPLATE_MARGIN
     document_template_margin_left: float = DEFAULT_DOCUMENT_TEMPLATE_MARGIN
+    onboarding_required: bool = False
+    onboarding_completed_at: datetime | None = None
     id: UUID
     org_id: UUID
     updated_at: datetime | None = None

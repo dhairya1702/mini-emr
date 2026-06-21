@@ -49,6 +49,8 @@ function buildSettingsPayload(
     document_template_margin_right: settings.document_template_margin_right,
     document_template_margin_bottom: settings.document_template_margin_bottom,
     document_template_margin_left: settings.document_template_margin_left,
+    onboarding_required: settings.onboarding_required,
+    onboarding_completed_at: settings.onboarding_completed_at,
     ...patch,
   };
 }

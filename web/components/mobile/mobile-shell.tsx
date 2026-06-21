@@ -2,16 +2,48 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Menu, Search, Settings, Stethoscope, UserRound, Users, X } from "lucide-react";
+import {
+  BarChart3,
+  Building2,
+  CalendarClock,
+  CreditCard,
+  FilePenLine,
+  FileText,
+  GraduationCap,
+  History,
+  Info,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Search,
+  Settings2,
+  Stethoscope,
+  User,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { ReactNode, useState } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
+import { getVisibleMobileNavItems, isMobileNavItemActive, MobileNavItemKey } from "@/lib/mobile/navigation";
 
-const baseNavItems = [
-  { href: "/m", label: "Queue", icon: Stethoscope },
-  { href: "/m/patients", label: "Patients", icon: UserRound },
-  { href: "/m/history", label: "History", icon: Search },
-];
+const iconByNavKey: Record<MobileNavItemKey, typeof LayoutDashboard> = {
+  queue: LayoutDashboard,
+  appointments: CalendarClock,
+  patients: Search,
+  billing: CreditCard,
+  inventory: Stethoscope,
+  history: History,
+  "generate-letter": FilePenLine,
+  earnings: BarChart3,
+  "case-study": FileText,
+  users: UserPlus,
+  clinic: Building2,
+  account: User,
+  audit: Settings2,
+  training: GraduationCap,
+  about: Info,
+};
 
 export function MobileShell({
   action,
@@ -25,11 +57,7 @@ export function MobileShell({
   const pathname = usePathname();
   const { clinicSettings, currentUser, handleLogout } = useClinicShell();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const navItems = [
-    ...baseNavItems,
-    ...(currentUser?.role === "admin" ? [{ href: "/m/users", label: "Users", icon: Users }] : []),
-    { href: "/m/account", label: "Account", icon: Settings },
-  ];
+  const navItems = getVisibleMobileNavItems(currentUser?.role);
 
   return (
     <main className="clinic-page text-slate-800">
@@ -49,7 +77,17 @@ export function MobileShell({
           >
             {clinicSettings?.clinic_name || "Clinic EMR"}
           </Link>
-          <div className="flex h-11 w-11 items-center justify-center">{action}</div>
+          {action ?? (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-700 transition hover:bg-rose-50"
+              aria-label="Logout"
+              title="Logout"
+            >
+              <LogOut className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </header>
 
@@ -63,8 +101,8 @@ export function MobileShell({
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Mobile EMR</p>
-                <p className="mt-1 text-lg font-semibold text-slate-800">{currentUser?.name || "Doctor"}</p>
+                <p className="text-lg font-semibold text-slate-800">{currentUser?.name || "Doctor"}</p>
+                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{clinicSettings?.clinic_name || "Clinic EMR"}</p>
               </div>
               <button
                 type="button"
@@ -78,8 +116,8 @@ export function MobileShell({
 
             <nav className="mt-8 grid gap-2">
               {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname === item.href;
+                const Icon = iconByNavKey[item.key];
+                const isActive = isMobileNavItemActive(pathname, item);
                 return (
                   <Link
                     key={item.href}

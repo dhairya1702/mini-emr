@@ -107,16 +107,6 @@ export default function MobileQueuePage() {
     <MobileShell
       title="Queue"
       subtitle={`${queuePatients.length} active consultation${queuePatients.length === 1 ? "" : "s"}`}
-      action={
-        <button
-          type="button"
-          onClick={() => setIsAddOpen(true)}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[#edf5fa] text-[#2a6fa8] transition hover:bg-[#dbeaf4]"
-          aria-label="Add patient"
-        >
-          <Plus className="h-5 w-5" />
-        </button>
-      }
     >
       {shellError || error ? (
         <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{shellError || error}</p>

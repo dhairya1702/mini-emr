@@ -1728,10 +1728,22 @@ def test_get_repository_returns_postgres_repository(monkeypatch):
 
     manager = FakeManager()
     monkeypatch.setattr(db_module, "get_postgres_connection_manager", lambda: manager)
-    db_module.get_repository.cache_clear()
 
     repo = db_module.get_repository()
 
     assert isinstance(repo, db_module.PostgresRepository)
     assert manager.opened is True
-    db_module.get_repository.cache_clear()
+
+
+def test_get_repository_returns_new_repository_instances(monkeypatch):
+    class FakeManager:
+        def open(self) -> None:
+            return None
+
+    manager = FakeManager()
+    monkeypatch.setattr(db_module, "get_postgres_connection_manager", lambda: manager)
+
+    first = db_module.get_repository()
+    second = db_module.get_repository()
+
+    assert first is not second

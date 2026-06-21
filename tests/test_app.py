@@ -308,6 +308,8 @@ class FakeRepo:
             "document_template_data_base64": None,
             "sender_email_app_password": None,
             "clinic_specialty": None,
+            "onboarding_required": False,
+            "onboarding_completed_at": None,
             **values,
             "updated_at": _now(),
         }
@@ -330,6 +332,8 @@ class FakeRepo:
                     "document_template_data_base64": None,
                     "sender_email_app_password": None,
                     "clinic_specialty": None,
+                    "onboarding_required": False,
+                    "onboarding_completed_at": None,
                 }
             ),
             **values,

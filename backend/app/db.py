@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import TypeAlias
 
 from app.postgres import PostgresConnectionManager, get_postgres_connection_manager
@@ -41,7 +40,6 @@ class PostgresRepository(
 AppRepository: TypeAlias = PostgresRepository
 
 
-@lru_cache
 def get_repository() -> AppRepository:
     return PostgresRepository()
 

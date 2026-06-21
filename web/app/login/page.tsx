@@ -8,8 +8,20 @@ import { PasswordInput } from "@/components/password-input";
 import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
 import { api } from "@/lib/api";
 
+function shouldUseMobileWorkspace() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("surface") === "mobile") {
+    return true;
+  }
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+
 export default function LoginPage() {
   const router = useRouter();
+  const [isMobileSurface, setIsMobileSurface] = useState(false);
   const [mode, setMode] = useState<"login" | "register">("login");
   const [registerStep, setRegisterStep] = useState<1 | 2>(1);
   const [identifier, setIdentifier] = useState("");
@@ -22,6 +34,13 @@ export default function LoginPage() {
   const [doctorName, setDoctorName] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    setIsMobileSurface(new URLSearchParams(window.location.search).get("surface") === "mobile");
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -37,10 +56,18 @@ export default function LoginPage() {
         return;
       }
 
+      if (!authStorage.getToken()) {
+        if (expiredReason && active) {
+          authStorage.clear();
+          setError(SESSION_EXPIRED_MESSAGE);
+        }
+        return;
+      }
+
       try {
         await api.getCurrentUser();
         if (active) {
-          router.replace("/");
+          router.replace(shouldUseMobileWorkspace() ? "/m" : "/");
         }
       } catch (error) {
         if (active && error instanceof Error) {
@@ -165,10 +192,14 @@ export default function LoginPage() {
           clinic_phone: clinicPhone.trim(),
           doctor_name: doctorName.trim() || adminName.trim(),
         });
-        authStorage.setSpecialtyOnboardingPending(true);
       }
       authStorage.setSession(session, authStorage.getTokenExpiryMs());
-      router.replace(mode === "register" ? "/onboarding/specialty" : "/");
+      const useMobileWorkspace = shouldUseMobileWorkspace();
+      router.replace(
+        mode === "register"
+          ? useMobileWorkspace ? "/m/onboarding/setup" : "/onboarding/setup"
+          : useMobileWorkspace ? "/m" : "/",
+      );
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Authentication failed.");
     } finally {
@@ -178,8 +209,8 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="hidden rounded-[22px] border border-[#dbe7ef] bg-white/95 p-8 shadow-[0_14px_38px_rgba(64,131,181,0.09)] sm:p-10 lg:block">
+      <div className={isMobileSurface ? "mx-auto flex min-h-[calc(100vh-4rem)] max-w-md items-center" : "mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl gap-6 lg:grid-cols-[1.05fr_0.95fr]"}>
+        <section className={`${isMobileSurface ? "hidden" : "hidden rounded-[22px] border border-[#dbe7ef] bg-white/95 p-8 shadow-[0_14px_38px_rgba(64,131,181,0.09)] sm:p-10 lg:block"}`}>
           <div>
             <div className="inline-flex items-center gap-2 rounded-xl bg-[#f3f8fb] px-3 py-1 text-xs tracking-[0.22em] text-[#2a6fa8]">
               <Stethoscope className="h-3.5 w-3.5" />
@@ -213,17 +244,19 @@ export default function LoginPage() {
           </div>
         </section>
 
-        <section className="flex items-center">
+        <section className="flex w-full items-center">
           <div className="w-full rounded-[22px] border border-[#dbe7ef] bg-white p-7 shadow-[0_25px_80px_rgba(148,163,184,0.14)] sm:p-8">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm uppercase tracking-[0.2em] text-slate-500">
-                  {mode === "login"
-                    ? "Welcome Back"
-                    : registerStep === 1
-                      ? "Create Admin"
-                      : "Account Access"}
-                </p>
+                {!isMobileSurface ? (
+                  <p className="text-sm uppercase tracking-[0.2em] text-slate-500">
+                    {mode === "login"
+                      ? "Welcome Back"
+                      : registerStep === 1
+                        ? "Create Admin"
+                        : "Account Access"}
+                  </p>
+                ) : null}
                 <h2 className="mt-3 text-3xl font-semibold text-slate-900">
                   {mode === "login" ? "Sign in" : "Create account"}
                 </h2>
@@ -257,10 +290,6 @@ export default function LoginPage() {
                 </>
               ) : registerStep === 1 ? (
                 <>
-                  <div className="rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/60 px-4 py-3 text-sm text-slate-600">
-                    Step 1 of 2. Start with clinic and admin details, then create the login credentials.
-                  </div>
-
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-slate-700">Admin name</span>
                     <input
@@ -283,19 +312,17 @@ export default function LoginPage() {
                     />
                   </label>
 
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    <label className="block">
-                      <span className="mb-2 block text-sm font-medium text-slate-700">
-                        Clinic phone
-                      </span>
-                      <input
-                        value={clinicPhone}
-                        onChange={(event) => setClinicPhone(event.target.value)}
-                        placeholder="+1 555 010 2020"
-                        className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
-                      />
-                    </label>
-                  </div>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Clinic phone
+                    </span>
+                    <input
+                      value={clinicPhone}
+                      onChange={(event) => setClinicPhone(event.target.value)}
+                      placeholder="+1 555 010 2020"
+                      className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                    />
+                  </label>
 
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-slate-700">
@@ -324,10 +351,6 @@ export default function LoginPage() {
                 </>
               ) : (
                 <>
-                  <div className="rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/60 px-4 py-3 text-sm text-slate-600">
-                    Step 2 of 2. Choose the login identifier and password for the admin account.
-                  </div>
-
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-slate-700">
                       Username, email, or phone number

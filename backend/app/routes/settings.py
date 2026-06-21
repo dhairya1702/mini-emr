@@ -1,4 +1,5 @@
 from base64 import b64decode, b64encode
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -53,6 +54,15 @@ def _resolve_template_content_type(upload: UploadFile) -> str:
     raise HTTPException(status_code=400, detail="Template must be a PDF, JPG, or PNG file.")
 
 
+def _has_required_onboarding(settings_row: dict) -> bool:
+    return bool(
+        settings_row.get("clinic_specialty")
+        and settings_row.get("appointment_start_time")
+        and settings_row.get("appointment_end_time")
+        and int(settings_row.get("appointments_per_hour") or 0) > 0
+    )
+
+
 @router.get("/settings/clinic", response_model=ClinicSettingsOut)
 async def get_clinic_settings(
     repo: AppRepository = Depends(get_repository),
@@ -86,6 +96,30 @@ async def update_clinic_settings(
         return _serialize_clinic_settings(saved)
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="update_clinic_settings") from exc
+
+
+@router.post("/settings/clinic/onboarding/complete", response_model=ClinicSettingsOut)
+async def complete_clinic_onboarding(
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(require_admin),
+) -> ClinicSettingsOut:
+    try:
+        settings_row = await repo.get_clinic_settings(str(current_user.org_id))
+        if not settings_row or not _has_required_onboarding(settings_row):
+            raise HTTPException(status_code=400, detail="Complete specialty and clinic hours before entering the workspace.")
+        saved = await repo.upsert_clinic_settings(
+            str(current_user.org_id),
+            ClinicSettingsUpdate(
+                onboarding_required=True,
+                onboarding_completed_at=datetime.now(UTC),
+            ),
+        )
+        saved["doctor_name"] = current_user.name or str(saved.get("doctor_name") or "")
+        return _serialize_clinic_settings(saved)
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="complete_clinic_onboarding") from exc
 
 
 @router.post("/settings/clinic/document-template", response_model=ClinicSettingsOut)
