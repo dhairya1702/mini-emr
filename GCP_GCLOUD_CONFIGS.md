@@ -132,6 +132,166 @@ List scheduler jobs:
 gcloud scheduler jobs list --location=asia-south1
 ```
 
+## Deploy Scripts
+
+The repo has three deploy helpers under `scripts/`.
+
+`scripts/deploy-common.sh`
+
+This is shared by all deploy scripts. It:
+
+- Enforces the expected `gcloud` target before deployment.
+- Expected config: `clinic-emr`.
+- Expected account: `dhairya911@gmail.com`.
+- Expected project: `project-e8d0eb79-8682-4bd9-b31`.
+- Expected region: `asia-south1`.
+- Loads local deploy secrets from `.env.deploy` if present.
+- Exports stable service names, Artifact Registry repo, Cloud SQL connection name, GCS bucket, backend service account, and public Cloud Run URLs.
+- Refuses to deploy if `DB_PASSWORD` or `AUTH_SECRET` are still placeholder values.
+
+`scripts/deploy-backend.sh`
+
+This builds and deploys only the backend. It:
+
+- Builds `backend/Dockerfile` with Cloud Build.
+- Pushes the image to Artifact Registry:
+  `asia-south1-docker.pkg.dev/project-e8d0eb79-8682-4bd9-b31/clinic-emr/clinic-emr-backend:<IMAGE_TAG>`
+- Deploys Cloud Run service `clinic-emr-backend`.
+- Attaches Cloud SQL instance `project-e8d0eb79-8682-4bd9-b31:asia-south1:clinic-emr-prod`.
+- Sets backend runtime env vars, including `DATABASE_URL`, `AUTH_SECRET`, `APP_ORIGIN`, `APP_ORIGINS`, Vertex AI settings, GCS bucket, and follow-up reminder settings.
+- Runs a backend `/health` check after deploy.
+
+`scripts/deploy-web.sh`
+
+This builds and deploys only the web app. It:
+
+- Resolves the backend Cloud Run URL.
+- Builds `web/Dockerfile` with Cloud Build.
+- Passes `NEXT_PUBLIC_API_BASE_URL` as the backend URL at build time.
+- Pushes the image to Artifact Registry:
+  `asia-south1-docker.pkg.dev/project-e8d0eb79-8682-4bd9-b31/clinic-emr/clinic-emr-web:<IMAGE_TAG>`
+- Deploys Cloud Run service `clinic-emr-web`.
+
+`scripts/deploy-all.sh`
+
+This is the normal full production deploy. It:
+
+- Creates one shared image tag from Git commit and current time unless `IMAGE_TAG` is already set.
+- Runs `scripts/deploy-backend.sh`.
+- Resolves the deployed backend URL.
+- Runs `scripts/deploy-web.sh`.
+- Updates backend `APP_ORIGIN` and `APP_ORIGINS` after web deploy so CORS points at the stable web URL plus canonical Cloud Run URL.
+
+Run full deploy:
+
+```bash
+gcloud config configurations activate clinic-emr
+./scripts/deploy-all.sh
+```
+
+Run with an explicit image tag:
+
+```bash
+IMAGE_TAG="$(git rev-parse --short HEAD)-manual" ./scripts/deploy-all.sh
+```
+
+Deploy only backend:
+
+```bash
+gcloud config configurations activate clinic-emr
+./scripts/deploy-backend.sh
+```
+
+Deploy only web:
+
+```bash
+gcloud config configurations activate clinic-emr
+./scripts/deploy-web.sh
+```
+
+## `.env.deploy`
+
+`.env.deploy` is gitignored and should stay local only. It contains production deploy secrets and overrides for the scripts.
+
+Required secret values:
+
+```bash
+export DB_PASSWORD='actual database password'
+export AUTH_SECRET='stable auth secret used by production'
+export SUPER_ADMIN_IDENTIFIERS='dhairya911@gmail.com'
+```
+
+Common non-secret values usually stored there as well:
+
+```bash
+export PROJECT_ID='project-e8d0eb79-8682-4bd9-b31'
+export REGION='asia-south1'
+export AR_REPO='clinic-emr'
+export BACKEND_SERVICE='clinic-emr-backend'
+export WEB_SERVICE='clinic-emr-web'
+export SQL_CONNECTION_NAME='project-e8d0eb79-8682-4bd9-b31:asia-south1:clinic-emr-prod'
+export DB_NAME='clinic_emr'
+export DB_USER='clinic_app'
+export GCS_BUCKET='clinic-emr-patient-attachments-prod'
+export BACKEND_SA='clinic-emr-backend@project-e8d0eb79-8682-4bd9-b31.iam.gserviceaccount.com'
+export BACKEND_PUBLIC_URL='https://clinic-emr-backend-388811826415.asia-south1.run.app'
+export WEB_URL='https://clinic-emr-web-388811826415.asia-south1.run.app'
+```
+
+If `.env.deploy` is missing, the deploy script will refuse to run because `DB_PASSWORD` and `AUTH_SECRET` fall back to placeholders.
+
+## Deploy Verification
+
+After every deploy, verify:
+
+```bash
+curl -sS https://clinic-emr-backend-388811826415.asia-south1.run.app/health
+curl -I -sS https://clinic-emr-web-388811826415.asia-south1.run.app
+gcloud run services list --region=asia-south1
+```
+
+Expected backend health:
+
+```json
+{"status":"ok"}
+```
+
+Check recent backend logs:
+
+```bash
+gcloud run services logs read clinic-emr-backend --region=asia-south1 --limit=100
+```
+
+Check recent web logs:
+
+```bash
+gcloud run services logs read clinic-emr-web --region=asia-south1 --limit=100
+```
+
+## Known Deploy Details
+
+`APP_ORIGINS` contains multiple URLs separated by commas. `gcloud --set-env-vars` treats commas as separators, so the deploy scripts use custom delimiter syntax:
+
+```bash
+--set-env-vars="^@^APP_ORIGINS=${WEB_ORIGINS}"
+--update-env-vars="^@^APP_ORIGIN=${WEB_URL}@APP_ORIGINS=${WEB_ORIGINS}"
+```
+
+Do not replace that with plain comma syntax, or backend deploys will fail when multiple origins are present.
+
+Cloud Build source upload currently works reliably when impersonation is temporarily disabled and commands run as `dhairya911@gmail.com` owner. The deploy-agent has Cloud Run, logs, SQL, Scheduler, Secret Manager, Artifact Registry, Cloud Build, Service Usage, and Storage Object roles, but source upload to the Cloud Build staging bucket may still fail under impersonation in this project.
+
+If that happens:
+
+```bash
+gcloud config unset auth/impersonate_service_account --quiet
+./scripts/deploy-all.sh
+gcloud config set auth/impersonate_service_account \
+  clinic-emr-deploy-agent@project-e8d0eb79-8682-4bd9-b31.iam.gserviceaccount.com
+```
+
+Always restore impersonation after deploy.
+
 ## Safety Checklist
 
 Before any deploy, migration, or production-changing command, run:

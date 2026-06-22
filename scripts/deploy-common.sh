@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-EXPECTED_CONFIG_NAME="dhairya-project"
+EXPECTED_CONFIG_NAME="clinic-emr"
 EXPECTED_ACCOUNT="dhairya911@gmail.com"
 EXPECTED_PROJECT_ID="project-e8d0eb79-8682-4bd9-b31"
 EXPECTED_REGION="asia-south1"

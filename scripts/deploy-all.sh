@@ -22,7 +22,7 @@ echo "Syncing backend APP_ORIGIN to stable public URL: $WEB_URL"
 gcloud run services update "$BACKEND_SERVICE" \
   --project="$PROJECT_ID" \
   --region="$REGION" \
-  --update-env-vars="APP_ORIGIN=${WEB_URL},APP_ORIGINS=${WEB_ORIGINS}"
+  --update-env-vars="^@^APP_ORIGIN=${WEB_URL}@APP_ORIGINS=${WEB_ORIGINS}"
 
 echo "Deployment complete."
 echo "Backend: $BACKEND_PUBLIC_URL"
