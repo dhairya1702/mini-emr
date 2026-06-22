@@ -8,6 +8,7 @@ import { useClinicShell } from "@/components/clinic-shell-provider";
 import { PasswordInput } from "@/components/password-input";
 import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
+import { listSupportedTimeZones } from "@/lib/timezone";
 import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload } from "@/lib/types";
 
 type StepKey = "specialty" | "hours" | "signature" | "email" | "staff" | "template" | "patient" | "done";
@@ -40,6 +41,7 @@ function settingsPayload(settings: ClinicSettings, patch: Partial<ClinicSettings
     clinic_address: settings.clinic_address,
     clinic_phone: settings.clinic_phone,
     clinic_specialty: settings.clinic_specialty,
+    timezone: settings.timezone,
     appointment_start_time: settings.appointment_start_time,
     appointment_end_time: settings.appointment_end_time,
     appointments_per_hour: settings.appointments_per_hour,
@@ -60,6 +62,7 @@ function settingsPayload(settings: ClinicSettings, patch: Partial<ClinicSettings
     document_template_margin_left: settings.document_template_margin_left,
     onboarding_required: settings.onboarding_required,
     onboarding_completed_at: settings.onboarding_completed_at,
+    workspace_mode: settings.workspace_mode,
     ...patch,
   };
 }
@@ -91,7 +94,8 @@ export default function OnboardingSetupPage() {
   const [status, setStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [specialty, setSpecialty] = useState<ClinicSpecialty>("optometry");
-  const [hours, setHours] = useState({ start: "09:00", end: "18:00", perHour: "4" });
+  const [hours, setHours] = useState({ timezone: "UTC", start: "09:00", end: "18:00", perHour: "4" });
+  const timeZoneOptions = listSupportedTimeZones();
   const [email, setEmail] = useState({ sender_name: "", sender_email: "", app_password: "" });
   const [staff, setStaff] = useState({ identifier: "", password: "" });
   const [createdStaffUsers, setCreatedStaffUsers] = useState<AuthUser[]>([]);
@@ -113,6 +117,7 @@ export default function OnboardingSetupPage() {
       setCompletedSteps((current) => new Set(current).add("specialty"));
     }
     setHours({
+      timezone: clinicSettings.timezone || "UTC",
       start: clinicSettings.appointment_start_time || "09:00",
       end: clinicSettings.appointment_end_time || "18:00",
       perHour: String(clinicSettings.appointments_per_hour || 4),
@@ -222,6 +227,7 @@ export default function OnboardingSetupPage() {
     setError("");
     try {
       const saved = await api.updateClinicSettings(settingsPayload(clinicSettings, {
+        timezone: hours.timezone,
         appointment_start_time: hours.start,
         appointment_end_time: hours.end,
         appointments_per_hour: appointmentsPerHour,
@@ -478,7 +484,15 @@ export default function OnboardingSetupPage() {
 
           {activeStep.key === "hours" ? (
             <form className="space-y-4" onSubmit={saveHours}>
-              <div className={`grid gap-4 ${isMobileSurface ? "" : "sm:grid-cols-3"}`}>
+              <div className={`grid gap-4 ${isMobileSurface ? "" : "sm:grid-cols-2"}`}>
+                <label className={`block ${isMobileSurface ? "" : "sm:col-span-2"}`}>
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Timezone</span>
+                  <select value={hours.timezone} onChange={(event) => setHours((current) => ({ ...current, timezone: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none">
+                    {timeZoneOptions.map((timeZone) => (
+                      <option key={timeZone} value={timeZone}>{timeZone}</option>
+                    ))}
+                  </select>
+                </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Opening time</span>
                   <input type="time" value={hours.start} onChange={(event) => setHours((current) => ({ ...current, start: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none" />

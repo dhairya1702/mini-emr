@@ -19,6 +19,7 @@ CLINIC_SETTINGS_COLUMNS = [
     "clinic_address",
     "clinic_phone",
     "clinic_specialty",
+    "timezone",
     "appointment_start_time",
     "appointment_end_time",
     "appointments_per_hour",
@@ -41,6 +42,7 @@ CLINIC_SETTINGS_COLUMNS = [
     "document_template_margin_left",
     "onboarding_required",
     "onboarding_completed_at",
+    "workspace_mode",
     "updated_at",
 ]
 
@@ -49,6 +51,7 @@ CLINIC_SETTINGS_MUTABLE_COLUMNS = [
     "clinic_address",
     "clinic_phone",
     "clinic_specialty",
+    "timezone",
     "appointment_start_time",
     "appointment_end_time",
     "appointments_per_hour",
@@ -71,6 +74,7 @@ CLINIC_SETTINGS_MUTABLE_COLUMNS = [
     "document_template_margin_left",
     "onboarding_required",
     "onboarding_completed_at",
+    "workspace_mode",
 ]
 
 
@@ -81,6 +85,7 @@ def _clinic_settings_defaults() -> dict[str, Any]:
         "clinic_address",
         "clinic_phone",
         "clinic_specialty",
+        "timezone",
         "appointment_start_time",
         "appointment_end_time",
         "appointments_per_hour",
@@ -100,6 +105,7 @@ def _clinic_settings_defaults() -> dict[str, Any]:
         "document_template_margin_left",
         "onboarding_required",
         "onboarding_completed_at",
+        "workspace_mode",
     }
     return ClinicSettingsOut.model_construct(id=nil_uuid, org_id=nil_uuid).model_dump(include=field_names)
 

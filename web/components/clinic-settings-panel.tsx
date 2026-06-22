@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import { CLINIC_SPECIALTY_OPTIONS } from "@/lib/clinic-specialty";
+import { listSupportedTimeZones } from "@/lib/timezone";
 import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload } from "@/lib/types";
 
 type ClinicSettingsPanelProps = {
@@ -16,6 +17,7 @@ type ClinicSettingsForm = {
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string;
+  timezone: string;
   appointment_start_time: string;
   appointment_end_time: string;
   appointments_per_hour: string;
@@ -26,6 +28,7 @@ function createForm(settings: ClinicSettings | null): ClinicSettingsForm {
     clinic_name: settings?.clinic_name ?? "",
     clinic_address: settings?.clinic_address ?? "",
     clinic_phone: settings?.clinic_phone ?? "",
+    timezone: settings?.timezone ?? "UTC",
     appointment_start_time: settings?.appointment_start_time ?? "09:00",
     appointment_end_time: settings?.appointment_end_time ?? "18:00",
     appointments_per_hour: String(settings?.appointments_per_hour ?? 4),
@@ -42,6 +45,7 @@ export function ClinicSettingsPanel({
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const timeZoneOptions = listSupportedTimeZones();
   const canEdit = currentUser?.role === "admin";
   const specialtyLabel =
     CLINIC_SPECIALTY_OPTIONS.find((option) => option.value === settings?.clinic_specialty)?.label ??
@@ -74,6 +78,7 @@ export function ClinicSettingsPanel({
         clinic_address: form.clinic_address.trim(),
         clinic_phone: form.clinic_phone.trim(),
         clinic_specialty: settings.clinic_specialty,
+        timezone: form.timezone,
         appointment_start_time: form.appointment_start_time,
         appointment_end_time: form.appointment_end_time,
         appointments_per_hour: appointmentsPerHour,
@@ -92,6 +97,7 @@ export function ClinicSettingsPanel({
         document_template_margin_right: settings.document_template_margin_right,
         document_template_margin_bottom: settings.document_template_margin_bottom,
         document_template_margin_left: settings.document_template_margin_left,
+        workspace_mode: settings.workspace_mode,
       });
       if (saved) {
         onSaved?.(saved);
@@ -144,6 +150,20 @@ export function ClinicSettingsPanel({
             {specialtyLabel}
           </div>
         </div>
+
+        <label className="grid gap-2 md:grid-cols-[180px_1fr] md:items-center">
+          <span className="text-sm font-medium text-slate-700">Timezone</span>
+          <select
+            value={form.timezone}
+            disabled={!canEdit}
+            onChange={(event) => setForm((current) => ({ ...current, timezone: event.target.value }))}
+            className="h-11 rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8] disabled:text-slate-500"
+          >
+            {timeZoneOptions.map((timeZone) => (
+              <option key={timeZone} value={timeZone}>{timeZone}</option>
+            ))}
+          </select>
+        </label>
 
         <label className="grid gap-2 md:grid-cols-[180px_1fr] md:items-center">
           <span className="text-sm font-medium text-slate-700">Address</span>

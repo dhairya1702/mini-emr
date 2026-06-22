@@ -818,6 +818,7 @@ def test_postgres_auth_settings_repository_upserts_clinic_settings_with_defaults
         "12 Main",
         "123",
         None,
+        "UTC",
         "09:00",
         "18:00",
         4,
@@ -838,6 +839,7 @@ def test_postgres_auth_settings_repository_upserts_clinic_settings_with_defaults
         54,
         54,
         54,
+        "solo",
         "2026-06-11T16:00:00+00:00",
     )
     cursor = ScriptedCursor(
@@ -868,6 +870,7 @@ def test_postgres_auth_settings_repository_sets_and_clears_template():
         "",
         "",
         None,
+        "UTC",
         "09:00",
         "18:00",
         4,
@@ -888,6 +891,7 @@ def test_postgres_auth_settings_repository_sets_and_clears_template():
         54,
         54,
         54,
+        "solo",
         "2026-06-11T16:05:00+00:00",
     )
     clear_row = (
@@ -897,6 +901,7 @@ def test_postgres_auth_settings_repository_sets_and_clears_template():
         "",
         "",
         None,
+        "UTC",
         "09:00",
         "18:00",
         4,
@@ -917,6 +922,7 @@ def test_postgres_auth_settings_repository_sets_and_clears_template():
         54,
         54,
         54,
+        "solo",
         "2026-06-11T16:06:00+00:00",
     )
     cursor = ScriptedCursor(

@@ -81,7 +81,8 @@ create table if not exists public.clinic_settings (
   clinic_name text not null default 'ClinicOS',
   clinic_address text not null default '',
   clinic_phone text not null default '',
-  clinic_specialty text check (clinic_specialty in ('optometry', 'general_physician', 'pediatrics')),
+  clinic_specialty text check (clinic_specialty in ('optometry', 'general_physician', 'pediatrics', 'dentistry')),
+  timezone text not null default 'UTC',
   appointment_start_time text not null default '09:00',
   appointment_end_time text not null default '18:00',
   appointments_per_hour integer not null default 4,
@@ -104,6 +105,7 @@ create table if not exists public.clinic_settings (
   document_template_margin_left double precision not null default 54,
   onboarding_required boolean not null default false,
   onboarding_completed_at timestamptz,
+  workspace_mode text not null default 'solo' check (workspace_mode in ('solo', 'team')),
   updated_at timestamptz not null default now()
 );
 
@@ -418,10 +420,13 @@ drop constraint if exists clinic_settings_clinic_specialty_check;
 
 alter table public.clinic_settings
 add constraint clinic_settings_clinic_specialty_check
-check (clinic_specialty in ('optometry', 'general_physician', 'pediatrics'));
+check (clinic_specialty in ('optometry', 'general_physician', 'pediatrics', 'dentistry'));
 
 alter table public.clinic_settings
 add column if not exists appointment_start_time text not null default '09:00';
+
+alter table public.clinic_settings
+add column if not exists timezone text not null default 'UTC';
 
 alter table public.clinic_settings
 add column if not exists appointment_end_time text not null default '18:00';
@@ -727,6 +732,133 @@ begin
   return jsonb_build_object(
     'appointment', to_jsonb(v_appointment),
     'patient', to_jsonb(v_patient)
+  );
+end;
+$$;
+
+create or replace function public.self_book_follow_up_atomic(
+  p_org_id uuid,
+  p_patient_id uuid,
+  p_follow_up_id uuid,
+  p_scheduled_for timestamptz,
+  p_appointments_per_hour integer,
+  p_timezone text default 'UTC'
+) returns jsonb
+language plpgsql
+as $$
+declare
+  v_follow_up public.follow_ups%rowtype;
+  v_patient public.patients%rowtype;
+  v_appointment public.appointments%rowtype;
+  v_scheduled_for timestamptz;
+  v_hour_bucket timestamp;
+  v_capacity integer;
+  v_timezone text;
+  v_reason text;
+begin
+  v_scheduled_for := date_trunc('minute', p_scheduled_for);
+  v_capacity := least(greatest(coalesce(p_appointments_per_hour, 4), 1), 12);
+  v_timezone := coalesce(nullif(trim(p_timezone), ''), 'UTC');
+  v_hour_bucket := date_trunc('hour', v_scheduled_for at time zone v_timezone);
+
+  if v_scheduled_for <= now() then
+    raise exception 'Follow-up time must be in the future.';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext(p_org_id::text), hashtext(v_hour_bucket::text));
+
+  select *
+  into v_follow_up
+  from public.follow_ups
+  where id = p_follow_up_id
+    and org_id = p_org_id
+    and patient_id = p_patient_id
+  for update;
+
+  if not found then
+    raise exception 'Follow-up not found.';
+  end if;
+
+  if v_follow_up.status <> 'scheduled' then
+    raise exception 'This follow-up is no longer available for booking.';
+  end if;
+
+  select *
+  into v_patient
+  from public.patients
+  where id = p_patient_id
+    and org_id = p_org_id
+  for update;
+
+  if not found then
+    raise exception 'Patient not found for this organization.';
+  end if;
+
+  if exists (
+    select 1
+    from public.appointments
+    where org_id = p_org_id
+      and status = 'scheduled'
+      and scheduled_for = v_scheduled_for
+  ) then
+    raise exception 'That follow-up slot is already booked. Choose another time.';
+  end if;
+
+  if (
+    select count(*)::integer
+    from public.appointments
+    where org_id = p_org_id
+      and status = 'scheduled'
+      and date_trunc('hour', scheduled_for at time zone v_timezone) = v_hour_bucket
+  ) >= v_capacity then
+    raise exception 'That hour is fully booked. Choose another follow-up slot.';
+  end if;
+
+  update public.follow_ups
+  set
+    scheduled_for = v_scheduled_for,
+    status = 'completed',
+    completed_at = now()
+  where id = v_follow_up.id
+  returning * into v_follow_up;
+
+  v_reason := 'Follow-up: ' || coalesce(nullif(trim(v_patient.reason), ''), 'Review');
+
+  insert into public.appointments (
+    org_id,
+    name,
+    phone,
+    email,
+    address,
+    reason,
+    date_of_birth,
+    age,
+    weight,
+    height,
+    temperature,
+    scheduled_for,
+    status
+  )
+  values (
+    p_org_id,
+    v_patient.name,
+    v_patient.phone,
+    v_patient.email,
+    v_patient.address,
+    v_reason,
+    v_patient.date_of_birth,
+    v_patient.age,
+    v_patient.weight,
+    v_patient.height,
+    v_patient.temperature,
+    v_scheduled_for,
+    'scheduled'
+  )
+  returning * into v_appointment;
+
+  return jsonb_build_object(
+    'follow_up', to_jsonb(v_follow_up),
+    'appointment', to_jsonb(v_appointment)
   );
 end;
 $$;

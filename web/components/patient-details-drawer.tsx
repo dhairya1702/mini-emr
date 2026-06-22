@@ -30,6 +30,9 @@ type ChartTab = "visits" | "attachments" | "tests";
 interface PatientDetailsDrawerProps {
   patient: Patient | null;
   clinicSpecialty?: ClinicSpecialty | null;
+  workflowActionLabel?: string | null;
+  workflowActionDisabled?: boolean;
+  onWorkflowAction?: (() => void | Promise<void>) | null;
   onClose: () => void;
   onLoadVisits: (patientId: string) => Promise<PatientChartVisit[]>;
   onLoadVisitDetail: (patientId: string, visitId: string) => Promise<PatientVisitDetail>;
@@ -578,6 +581,9 @@ function AttachmentsPanel({
 export function PatientDetailsDrawer({
   patient,
   clinicSpecialty = null,
+  workflowActionLabel = null,
+  workflowActionDisabled = false,
+  onWorkflowAction = null,
   onClose,
   onLoadVisits,
   onLoadVisitDetail,
@@ -1151,6 +1157,19 @@ export function PatientDetailsDrawer({
               label="Attachments"
               onClick={() => setActiveTab("attachments")}
             />
+            {workflowActionLabel && onWorkflowAction ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setError("");
+                  void onWorkflowAction();
+                }}
+                disabled={workflowActionDisabled}
+                className="inline-flex h-10 items-center rounded-xl bg-[#2f8fd3] px-4 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+              >
+                {workflowActionLabel}
+              </button>
+            ) : null}
           </div>
         </div>
 

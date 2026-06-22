@@ -1,6 +1,7 @@
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 
 export type PatientStatus = "waiting" | "consultation" | "done";
+export type WorkspaceMode = "solo" | "team";
 
 export interface Patient {
   id: string;
@@ -533,9 +534,15 @@ export type ClinicalAssistantModule =
   | "binocular_vision"
   | "low_vision"
   | "myopia_management"
+  | "pediatric_growth_measurement"
+  | "well_child_visit"
+  | "parent_handout_request"
+  | "pediatric_follow_up_plan"
   | "attachments"
   | "medicines"
   | "vitals";
+
+export type ClinicalAssistantSpecialty = "optometry" | "pediatrics" | "general_physician" | "dentistry";
 
 export interface ClinicalAssistantQuestion {
   id: string;
@@ -558,6 +565,7 @@ export interface ClinicalQuestionsPayload {
 }
 
 export interface ClinicalQuestionsResponse {
+  assistant_specialty: ClinicalAssistantSpecialty;
   complaint_category: string;
   detected_factors: string[];
   questions: ClinicalAssistantQuestion[];
@@ -593,6 +601,7 @@ export interface ClinicalRedFlag {
 }
 
 export interface ClinicalAnalysisResponse {
+  assistant_specialty: ClinicalAssistantSpecialty;
   possibilities: ClinicalPossibility[];
   red_flags: ClinicalRedFlag[];
   suggested_tests: string[];
@@ -705,6 +714,7 @@ export interface ClinicSettings {
   clinic_address: string;
   clinic_phone: string;
   clinic_specialty: ClinicSpecialty | null;
+  timezone: string;
   appointment_start_time: string;
   appointment_end_time: string;
   appointments_per_hour: number;
@@ -725,6 +735,7 @@ export interface ClinicSettings {
   document_template_margin_left: number;
   onboarding_required: boolean;
   onboarding_completed_at: string | null;
+  workspace_mode: WorkspaceMode;
   updated_at: string | null;
 }
 
@@ -974,6 +985,7 @@ export interface ClinicSettingsUpdatePayload {
   clinic_address: string;
   clinic_phone: string;
   clinic_specialty: ClinicSpecialty | null;
+  timezone: string;
   appointment_start_time: string;
   appointment_end_time: string;
   appointments_per_hour: number;
@@ -995,4 +1007,5 @@ export interface ClinicSettingsUpdatePayload {
   document_template_margin_left: number;
   onboarding_required?: boolean;
   onboarding_completed_at?: string | null;
+  workspace_mode?: WorkspaceMode;
 }

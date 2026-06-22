@@ -25,8 +25,10 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
     assert initial.json()["appointment_end_time"] == "18:00"
     assert initial.json()["appointments_per_hour"] == 4
     assert initial.json()["clinic_specialty"] is None
+    assert initial.json()["timezone"] == "UTC"
     assert initial.json()["onboarding_required"] is True
     assert initial.json()["onboarding_completed_at"] is None
+    assert initial.json()["workspace_mode"] == "solo"
 
     template_bytes = b"%PDF-1.4 sample clinic paper"
     uploaded = test_client.post(
@@ -52,6 +54,7 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
         headers=headers,
         json={
             "clinic_name": "Template Clinic",
+            "timezone": "Asia/Kolkata",
             "appointment_start_time": "08:30",
             "appointment_end_time": "17:30",
             "appointments_per_hour": 2,
@@ -74,6 +77,8 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
     assert updated_json["appointment_start_time"] == "08:30"
     assert updated_json["appointment_end_time"] == "17:30"
     assert updated_json["appointments_per_hour"] == 2
+    assert updated_json["timezone"] == "Asia/Kolkata"
+    assert updated_json["workspace_mode"] == "solo"
 
 
 def test_clinic_settings_can_store_specialty_for_existing_org(client):
@@ -86,7 +91,8 @@ def test_clinic_settings_can_store_specialty_for_existing_org(client):
         headers=headers,
         json={
             "clinic_name": "Specialty Clinic",
-            "clinic_specialty": "optometry",
+            "clinic_specialty": "dentistry",
+            "timezone": "America/New_York",
             "appointment_start_time": "09:00",
             "appointment_end_time": "18:00",
             "appointments_per_hour": 4,
@@ -94,15 +100,20 @@ def test_clinic_settings_can_store_specialty_for_existing_org(client):
     )
 
     assert response.status_code == 200
-    assert response.json()["clinic_specialty"] == "optometry"
+    assert response.json()["clinic_specialty"] == "dentistry"
+    assert response.json()["timezone"] == "America/New_York"
+    assert response.json()["workspace_mode"] == "solo"
 
     fetched = test_client.get("/settings/clinic", headers=headers)
     assert fetched.status_code == 200
-    assert fetched.json()["clinic_specialty"] == "optometry"
+    assert fetched.json()["clinic_specialty"] == "dentistry"
+    assert fetched.json()["timezone"] == "America/New_York"
+    assert fetched.json()["workspace_mode"] == "solo"
 
     completed = test_client.post("/settings/clinic/onboarding/complete", headers=headers)
     assert completed.status_code == 200
     assert completed.json()["onboarding_completed_at"] is not None
+    assert completed.json()["workspace_mode"] == "solo"
 
     removed = test_client.delete("/settings/clinic/document-template", headers=headers)
     assert removed.status_code == 200
@@ -402,6 +413,58 @@ def test_admin_can_change_user_role(client):
     )
     assert updated.status_code == 200
     assert updated.json()["role"] == "admin"
+
+
+def test_staff_creation_upgrades_workspace_mode_to_team(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="workspace-admin@clinic.com", clinic_name="Workspace Clinic")
+    headers = auth_headers_for_token(session["token"])
+
+    initial = test_client.get("/settings/clinic", headers=headers)
+    assert initial.status_code == 200
+    assert initial.json()["workspace_mode"] == "solo"
+
+    created = test_client.post(
+        "/users/staff",
+        headers=headers,
+        json={"identifier": "workspace-staff@clinic.com", "password": "password123"},
+    )
+    assert created.status_code == 201
+
+    updated = test_client.get("/settings/clinic", headers=headers)
+    assert updated.status_code == 200
+    assert updated.json()["workspace_mode"] == "team"
+
+
+def test_onboarding_completion_sets_team_mode_when_staff_exists(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="workspace-onboarding@clinic.com", clinic_name="Workspace Onboarding")
+    headers = auth_headers_for_token(session["token"])
+
+    saved = test_client.put(
+        "/settings/clinic",
+        headers=headers,
+        json={
+            "clinic_name": "Workspace Onboarding",
+            "clinic_specialty": "general_physician",
+            "timezone": "Asia/Kolkata",
+            "appointment_start_time": "09:00",
+            "appointment_end_time": "18:00",
+            "appointments_per_hour": 4,
+        },
+    )
+    assert saved.status_code == 200
+
+    created = test_client.post(
+        "/users/staff",
+        headers=headers,
+        json={"identifier": "workspace-team@clinic.com", "password": "password123"},
+    )
+    assert created.status_code == 201
+
+    completed = test_client.post("/settings/clinic/onboarding/complete", headers=headers)
+    assert completed.status_code == 200
+    assert completed.json()["workspace_mode"] == "team"
 
 
 def test_admin_can_remove_user_but_not_self(client):

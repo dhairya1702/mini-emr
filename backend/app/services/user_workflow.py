@@ -64,6 +64,7 @@ async def register_user_workflow(
             doctor_name=payload.doctor_name,
             onboarding_required=True,
             onboarding_completed_at=None,
+            workspace_mode="solo",
         ),
     )
     created = await repo.create_user(
@@ -114,5 +115,9 @@ async def create_staff_user_workflow(
         action="staff_user_created",
         summary=f"Created staff user {identifier}.",
         metadata={"identifier": identifier, "role": "staff"},
+    )
+    await repo.upsert_clinic_settings(
+        str(current_user.org_id),
+        ClinicSettingsUpdate(workspace_mode="team"),
     )
     return build_user_out(created)

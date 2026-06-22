@@ -27,6 +27,10 @@ ALLOWED_TEMPLATE_EXTENSIONS = {
 MAX_TEMPLATE_BYTES = 10 * 1024 * 1024
 
 
+def _infer_workspace_mode(user_count: int) -> str:
+    return "team" if user_count > 1 else "solo"
+
+
 def _serialize_clinic_settings(settings_row: dict) -> ClinicSettingsOut:
     nil_uuid = UUID("00000000-0000-0000-0000-000000000000")
     defaults = ClinicSettingsOut.model_construct(id=nil_uuid, org_id=nil_uuid).model_dump()
@@ -57,9 +61,27 @@ def _resolve_template_content_type(upload: UploadFile) -> str:
 def _has_required_onboarding(settings_row: dict) -> bool:
     return bool(
         settings_row.get("clinic_specialty")
+        and settings_row.get("timezone")
         and settings_row.get("appointment_start_time")
         and settings_row.get("appointment_end_time")
         and int(settings_row.get("appointments_per_hour") or 0) > 0
+    )
+
+
+async def _ensure_workspace_mode(
+    repo: AppRepository,
+    org_id: str,
+    settings_row: dict,
+) -> dict:
+    existing_mode = str(settings_row.get("workspace_mode") or "").strip()
+    if existing_mode in {"solo", "team"}:
+        return settings_row
+
+    users = await repo.list_users_for_org_any(org_id)
+    resolved_mode = _infer_workspace_mode(len(users))
+    return await repo.upsert_clinic_settings(
+        org_id,
+        ClinicSettingsUpdate(workspace_mode=resolved_mode),
     )
 
 
@@ -75,6 +97,7 @@ async def get_clinic_settings(
                 str(current_user.org_id),
                 ClinicSettingsUpdate(),
             )
+        settings_row = await _ensure_workspace_mode(repo, str(current_user.org_id), settings_row)
         settings_row["doctor_name"] = current_user.name or str(settings_row.get("doctor_name") or "")
         return _serialize_clinic_settings(settings_row)
     except Exception as exc:  # pragma: no cover
@@ -107,11 +130,13 @@ async def complete_clinic_onboarding(
         settings_row = await repo.get_clinic_settings(str(current_user.org_id))
         if not settings_row or not _has_required_onboarding(settings_row):
             raise HTTPException(status_code=400, detail="Complete specialty and clinic hours before entering the workspace.")
+        users = await repo.list_users_for_org_any(str(current_user.org_id))
         saved = await repo.upsert_clinic_settings(
             str(current_user.org_id),
             ClinicSettingsUpdate(
                 onboarding_required=True,
                 onboarding_completed_at=datetime.now(UTC),
+                workspace_mode=_infer_workspace_mode(len(users)),
             ),
         )
         saved["doctor_name"] = current_user.name or str(saved.get("doctor_name") or "")

@@ -17,6 +17,7 @@ interface SettingsDrawerBillingPanelProps {
   patients: Patient[];
   selectedBillingPatientId: string;
   selectedBillingPatient: Patient | null;
+  showPatientSelector?: boolean;
   serviceItems: CatalogItem[];
   medicineItems: CatalogItem[];
   invoiceItems: DraftInvoiceItem[];
@@ -56,6 +57,7 @@ export function SettingsDrawerBillingPanel({
   patients,
   selectedBillingPatientId,
   selectedBillingPatient,
+  showPatientSelector = true,
   invoiceItems,
   invoiceSubtotal,
   amountPaid,
@@ -88,34 +90,36 @@ export function SettingsDrawerBillingPanel({
   onSendInvoice,
 }: SettingsDrawerBillingPanelProps) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[300px_1fr]">
-      <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <ReceiptIndianRupee className="h-4 w-4 text-[#2a6fa8]" />
-          <div>
-            <h3 className="text-base font-semibold text-slate-900">Patients</h3>
-            <p className="mt-1 text-sm text-slate-600">Select a patient to prepare billing.</p>
+    <div className={`grid gap-4 ${showPatientSelector ? "xl:grid-cols-[300px_1fr]" : ""}`}>
+      {showPatientSelector ? (
+        <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <ReceiptIndianRupee className="h-4 w-4 text-[#2a6fa8]" />
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">Patients</h3>
+              <p className="mt-1 text-sm text-slate-600">Select a patient to prepare billing.</p>
+            </div>
+          </div>
+          <div className="space-y-3">
+            {patients.length ? patients.map((patient) => {
+              const active = patient.id === selectedBillingPatientId;
+              return (
+                <button
+                  key={patient.id}
+                  type="button"
+                  onClick={() => onSelectPatient(patient.id)}
+                  className={`w-full rounded-[16px] border px-4 py-3 text-left transition ${
+                    active ? "border-[#9fc7e1] bg-[#f3f8fb]" : "border-[#dbe7ef] bg-white hover:bg-[#f3f8fb]/50"
+                  }`}
+                >
+                  <p className="text-sm font-semibold text-slate-900">{patient.name}</p>
+                  <p className="mt-1 text-xs text-slate-600">{patient.reason}</p>
+                </button>
+              );
+            }) : <p className="text-sm text-slate-600">No done patients yet.</p>}
           </div>
         </div>
-        <div className="space-y-3">
-          {patients.length ? patients.map((patient) => {
-            const active = patient.id === selectedBillingPatientId;
-            return (
-              <button
-                key={patient.id}
-                type="button"
-                onClick={() => onSelectPatient(patient.id)}
-                className={`w-full rounded-[16px] border px-4 py-3 text-left transition ${
-                  active ? "border-[#9fc7e1] bg-[#f3f8fb]" : "border-[#dbe7ef] bg-white hover:bg-[#f3f8fb]/50"
-                }`}
-              >
-                <p className="text-sm font-semibold text-slate-900">{patient.name}</p>
-                <p className="mt-1 text-xs text-slate-600">{patient.reason}</p>
-              </button>
-            );
-          }) : <p className="text-sm text-slate-600">No done patients yet.</p>}
-        </div>
-      </div>
+      ) : null}
 
       <div className="space-y-4">
         <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">

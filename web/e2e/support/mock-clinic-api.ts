@@ -5,7 +5,8 @@ const DEFAULT_TOKEN = "playwright-session-token";
 const DEFAULT_EXPIRY_SECONDS = Math.floor(Date.now() / 1000) + 60 * 60;
 
 type UserRole = "admin" | "staff";
-type ClinicSpecialty = "general_physician" | "optometry" | "pediatrics" | null;
+type ClinicSpecialty = "general_physician" | "optometry" | "pediatrics" | "dentistry" | null;
+type WorkspaceMode = "solo" | "team";
 
 export type MockAuthUser = {
   id: string;
@@ -28,6 +29,7 @@ export type MockClinicSettings = {
   clinic_address: string;
   clinic_phone: string;
   clinic_specialty: ClinicSpecialty;
+  timezone: string;
   appointment_start_time: string;
   appointment_end_time: string;
   appointments_per_hour: number;
@@ -46,6 +48,7 @@ export type MockClinicSettings = {
   document_template_margin_right: number;
   document_template_margin_bottom: number;
   document_template_margin_left: number;
+  workspace_mode: WorkspaceMode;
   updated_at: string | null;
 };
 
@@ -138,6 +141,7 @@ export function buildClinicSettings(overrides: Partial<MockClinicSettings> = {})
     clinic_address: "1 Demo Street",
     clinic_phone: "5550102020",
     clinic_specialty: "general_physician",
+    timezone: "UTC",
     appointment_start_time: "09:00",
     appointment_end_time: "17:00",
     appointments_per_hour: 4,
@@ -156,6 +160,7 @@ export function buildClinicSettings(overrides: Partial<MockClinicSettings> = {})
     document_template_margin_right: 54,
     document_template_margin_bottom: 54,
     document_template_margin_left: 54,
+    workspace_mode: "team",
     updated_at: nowIso(),
     ...overrides,
   };
@@ -514,6 +519,7 @@ export async function mockPublicFollowUpBooking(page: Page) {
       follow_up_id: "follow-up-1",
       patient_name: "Jamie Carter",
       clinic_name: "Bluebird Clinic",
+      timezone: "UTC",
       scheduled_for: scheduledFor,
       notes: "Review symptoms and blood pressure",
       booking_token: "valid-token",

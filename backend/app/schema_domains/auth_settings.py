@@ -1,13 +1,17 @@
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field
 from pydantic import field_validator, model_validator
 
+from app.clinic_timezone import DEFAULT_TIMEZONE
 from app.schema_domains.common import ClinicSpecialty, UserRole
 
 
 DEFAULT_DOCUMENT_TEMPLATE_MARGIN = 54.0
+WorkspaceMode = Literal["solo", "team"]
 
 
 class ClinicSettingsUpdate(BaseModel):
@@ -15,6 +19,7 @@ class ClinicSettingsUpdate(BaseModel):
     clinic_address: str | None = Field(default=None, max_length=300)
     clinic_phone: str | None = Field(default=None, max_length=40)
     clinic_specialty: ClinicSpecialty | None = None
+    timezone: str | None = Field(default=None, min_length=1, max_length=64)
     appointment_start_time: str | None = Field(default=None, min_length=5, max_length=5)
     appointment_end_time: str | None = Field(default=None, min_length=5, max_length=5)
     appointments_per_hour: int | None = Field(default=None, ge=1, le=12)
@@ -36,6 +41,7 @@ class ClinicSettingsUpdate(BaseModel):
     document_template_margin_left: float | None = Field(default=None, ge=0, le=288)
     onboarding_required: bool | None = None
     onboarding_completed_at: datetime | None = None
+    workspace_mode: WorkspaceMode | None = None
 
     @field_validator("appointment_start_time", "appointment_end_time")
     @classmethod
@@ -44,6 +50,18 @@ class ClinicSettingsUpdate(BaseModel):
             return value
         datetime.strptime(value, "%H:%M")
         return value
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip() or DEFAULT_TIMEZONE
+        try:
+            ZoneInfo(normalized)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("Enter a valid IANA timezone.") from exc
+        return normalized
 
     @field_validator("appointments_per_hour")
     @classmethod
@@ -69,6 +87,7 @@ class ClinicSettingsOut(BaseModel):
     clinic_address: str = ""
     clinic_phone: str = ""
     clinic_specialty: ClinicSpecialty | None = None
+    timezone: str = DEFAULT_TIMEZONE
     appointment_start_time: str = "09:00"
     appointment_end_time: str = "18:00"
     appointments_per_hour: int = 4
@@ -89,6 +108,7 @@ class ClinicSettingsOut(BaseModel):
     document_template_margin_left: float = DEFAULT_DOCUMENT_TEMPLATE_MARGIN
     onboarding_required: bool = False
     onboarding_completed_at: datetime | None = None
+    workspace_mode: WorkspaceMode = "solo"
     id: UUID
     org_id: UUID
     updated_at: datetime | None = None

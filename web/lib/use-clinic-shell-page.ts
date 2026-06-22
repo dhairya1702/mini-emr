@@ -195,7 +195,9 @@ export function useClinicShellPage<T>({
     const created = await api.createStaffUser(payload);
     setUsers((current) => [...current, created]);
     setIsUsersLoaded(true);
-  }, []);
+    const refreshedSettings = await api.getClinicSettings();
+    applyShellClinicSettings(refreshedSettings);
+  }, [applyShellClinicSettings]);
 
   const handleUpdateUserRole = useCallback(async (userId: string, role: "admin" | "staff") => {
     const updated = await api.updateUserRole(userId, { role });

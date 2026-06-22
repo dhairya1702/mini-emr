@@ -308,8 +308,10 @@ class FakeRepo:
             "document_template_data_base64": None,
             "sender_email_app_password": None,
             "clinic_specialty": None,
+            "timezone": "UTC",
             "onboarding_required": False,
             "onboarding_completed_at": None,
+            "workspace_mode": "solo",
             **values,
             "updated_at": _now(),
         }
@@ -332,8 +334,10 @@ class FakeRepo:
                     "document_template_data_base64": None,
                     "sender_email_app_password": None,
                     "clinic_specialty": None,
+                    "timezone": "UTC",
                     "onboarding_required": False,
                     "onboarding_completed_at": None,
+                    "workspace_mode": "solo",
                 }
             ),
             **values,
@@ -1394,6 +1398,68 @@ class FakeRepo:
         if "notes" in updates:
             follow_up["notes"] = updates["notes"]
         return follow_up
+
+    async def self_book_follow_up_atomic(
+        self,
+        *,
+        org_id: str,
+        patient_id: str,
+        follow_up_id: str,
+        scheduled_for: datetime,
+        appointments_per_hour: int,
+        timezone: str,
+    ) -> tuple[dict, dict]:
+        del timezone
+        follow_up = self.follow_ups.get(follow_up_id)
+        if not follow_up or follow_up["org_id"] != org_id or follow_up["patient_id"] != patient_id:
+            raise ValueError("Follow-up not found.")
+        if follow_up["status"] != "scheduled":
+            raise ValueError("This follow-up is no longer available for booking.")
+        patient = self.patients.get(patient_id)
+        if not patient or patient["org_id"] != org_id:
+            raise ValueError("Patient not found for this organization.")
+
+        normalized = _as_utc_minute(scheduled_for)
+        hour_bucket = normalized.replace(minute=0, second=0, microsecond=0)
+        scheduled_appointments = [
+            appointment for appointment in self.appointments.values()
+            if appointment["org_id"] == org_id and appointment["status"] == "scheduled"
+        ]
+        if any(_as_utc_minute(appointment["scheduled_for"]) == normalized for appointment in scheduled_appointments):
+            raise ValueError("That follow-up slot is already booked. Choose another time.")
+        same_hour_count = sum(
+            1
+            for appointment in scheduled_appointments
+            if _as_utc_minute(appointment["scheduled_for"]).replace(minute=0, second=0, microsecond=0) == hour_bucket
+        )
+        if same_hour_count >= appointments_per_hour:
+            raise ValueError("That hour is fully booked. Choose another follow-up slot.")
+
+        follow_up["scheduled_for"] = normalized
+        follow_up["status"] = "completed"
+        follow_up["completed_at"] = _now()
+        appointment_id = str(uuid4())
+        appointment = {
+            "id": appointment_id,
+            "org_id": org_id,
+            "name": patient["name"],
+            "phone": patient["phone"],
+            "email": patient.get("email", ""),
+            "address": patient.get("address", ""),
+            "reason": f"Follow-up: {str(patient.get('reason') or '').strip() or 'Review'}",
+            "date_of_birth": patient.get("date_of_birth"),
+            "age": patient.get("age"),
+            "weight": patient.get("weight"),
+            "height": patient.get("height"),
+            "temperature": patient.get("temperature"),
+            "scheduled_for": normalized,
+            "status": "scheduled",
+            "checked_in_patient_id": None,
+            "checked_in_at": None,
+            "created_at": _now(),
+        }
+        self.appointments[appointment_id] = appointment
+        return follow_up, appointment
 
     async def list_due_follow_ups(self, org_id: str, due_before_iso: str) -> list[dict]:
         return [

@@ -33,6 +33,7 @@ import { PasswordInput } from "@/components/password-input";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
 import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
+import { listSupportedTimeZones } from "@/lib/timezone";
 import { Appointment, AuditEvent, AuthUser, CatalogItem, ClinicSettings, ClinicSettingsUpdatePayload, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
 import { hasUserSignature } from "@/lib/setup-checklist";
 
@@ -138,6 +139,7 @@ type ClinicFormState = {
   clinic_address: string;
   clinic_phone: string;
   clinic_specialty: ClinicSpecialty | "";
+  timezone: string;
   appointment_start_time: string;
   appointment_end_time: string;
   appointments_per_hour: string;
@@ -414,6 +416,7 @@ function createClinicFormState(settings?: ClinicSettings | null): ClinicFormStat
     clinic_address: settings?.clinic_address ?? "",
     clinic_phone: settings?.clinic_phone ?? "",
     clinic_specialty: settings?.clinic_specialty ?? "",
+    timezone: settings?.timezone ?? "UTC",
     appointment_start_time: settings?.appointment_start_time ?? "09:00",
     appointment_end_time: settings?.appointment_end_time ?? "18:00",
     appointments_per_hour: String(settings?.appointments_per_hour ?? 4),
@@ -482,6 +485,7 @@ export function SettingsDrawer({
   const pathname = usePathname();
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialActiveTab);
   const [form, setForm] = useState<ClinicFormState>(() => createClinicFormState());
+  const timeZoneOptions = listSupportedTimeZones();
   const [error, setError] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -950,6 +954,7 @@ export function SettingsDrawer({
         clinic_address: form.clinic_address.trim(),
         clinic_phone: form.clinic_phone.trim(),
         clinic_specialty: form.clinic_specialty || null,
+        timezone: form.timezone,
         appointment_start_time: form.appointment_start_time,
         appointment_end_time: form.appointment_end_time,
         appointments_per_hour: appointmentsPerHour,
@@ -967,6 +972,7 @@ export function SettingsDrawer({
         document_template_margin_right: margins.right,
         document_template_margin_bottom: margins.bottom,
         document_template_margin_left: margins.left,
+        workspace_mode: settings?.workspace_mode,
       };
       if (form.sender_email_app_password.trim()) {
         clinicPayload.sender_email_app_password = form.sender_email_app_password.trim();
@@ -1553,7 +1559,21 @@ export function SettingsDrawer({
 
               <div ref={hoursSectionRef}>
                 <h4 className="text-sm font-semibold text-slate-900">Working hours</h4>
-                <div className="mt-3 grid gap-4 md:grid-cols-3">
+                <div className="mt-3 grid gap-4 md:grid-cols-2">
+                  <label className="block md:col-span-2">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Timezone</span>
+                    <select
+                      value={form.timezone}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, timezone: event.target.value }))
+                      }
+                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                    >
+                      {timeZoneOptions.map((timeZone) => (
+                        <option key={timeZone} value={timeZone}>{timeZone}</option>
+                      ))}
+                    </select>
+                  </label>
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-slate-700">Opening Time</span>
                     <input
@@ -1956,6 +1976,7 @@ export function SettingsDrawer({
         onCheckInAppointment={onCheckInAppointment}
         onUpdateAppointment={onUpdateAppointment}
         onUpdateFollowUp={onUpdateFollowUp}
+        clinicTimezone={settings?.timezone || "UTC"}
       />
     );
   }

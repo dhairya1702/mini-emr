@@ -6,6 +6,7 @@ import { Clock, FileText, Mail, PenLine, Settings2, Stethoscope, Trash2, Upload,
 import { PasswordInput } from "@/components/password-input";
 import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
+import { listSupportedTimeZones } from "@/lib/timezone";
 import type { ClinicSetupStepKey } from "@/lib/setup-checklist";
 import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload } from "@/lib/types";
 
@@ -31,6 +32,7 @@ function buildSettingsPayload(
     clinic_address: settings.clinic_address,
     clinic_phone: settings.clinic_phone,
     clinic_specialty: settings.clinic_specialty,
+    timezone: settings.timezone,
     appointment_start_time: settings.appointment_start_time,
     appointment_end_time: settings.appointment_end_time,
     appointments_per_hour: settings.appointments_per_hour,
@@ -51,6 +53,7 @@ function buildSettingsPayload(
     document_template_margin_left: settings.document_template_margin_left,
     onboarding_required: settings.onboarding_required,
     onboarding_completed_at: settings.onboarding_completed_at,
+    workspace_mode: settings.workspace_mode,
     ...patch,
   };
 }
@@ -200,15 +203,18 @@ function HoursSetup({
   onComplete: () => void;
 }) {
   const [form, setForm] = useState({
+    timezone: settings?.timezone ?? "UTC",
     appointment_start_time: settings?.appointment_start_time ?? "",
     appointment_end_time: settings?.appointment_end_time ?? "",
     appointments_per_hour: String(settings?.appointments_per_hour ?? 4),
   });
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const timeZoneOptions = listSupportedTimeZones();
 
   useEffect(() => {
     setForm({
+      timezone: settings?.timezone ?? "UTC",
       appointment_start_time: settings?.appointment_start_time ?? "",
       appointment_end_time: settings?.appointment_end_time ?? "",
       appointments_per_hour: String(settings?.appointments_per_hour ?? 4),
@@ -245,6 +251,7 @@ function HoursSetup({
     try {
       const saved = await onSaveClinic(
         buildSettingsPayload(settings, {
+          timezone: form.timezone,
           appointment_start_time: form.appointment_start_time,
           appointment_end_time: form.appointment_end_time,
           appointments_per_hour: appointmentsPerHour,
@@ -267,7 +274,19 @@ function HoursSetup({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block sm:col-span-2">
+          <span className="mb-2 block text-sm font-medium text-slate-700">Timezone</span>
+          <select
+            value={form.timezone}
+            onChange={(event) => setForm((current) => ({ ...current, timezone: event.target.value }))}
+            className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
+          >
+            {timeZoneOptions.map((timeZone) => (
+              <option key={timeZone} value={timeZone}>{timeZone}</option>
+            ))}
+          </select>
+        </label>
         <label className="block">
           <span className="mb-2 block text-sm font-medium text-slate-700">Opening time</span>
           <input

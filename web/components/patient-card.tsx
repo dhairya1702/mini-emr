@@ -1,21 +1,9 @@
 "use client";
 
-import { ArrowRight, Check, GripVertical, Trash2 } from "lucide-react";
+import { ArrowRight, GripVertical, Trash2 } from "lucide-react";
 import type { HTMLAttributes } from "react";
 
 import { Patient, PatientStatus } from "@/lib/types";
-
-const nextStatus: Record<PatientStatus, PatientStatus | null> = {
-  waiting: "consultation",
-  consultation: "done",
-  done: null,
-};
-
-const actionLabel: Record<PatientStatus, string> = {
-  waiting: "Start consultation",
-  consultation: "Complete consultation",
-  done: "Billing done",
-};
 
 function formatPatientMetadata(patient: Patient) {
   const reason = patient.reason.trim();
@@ -44,12 +32,9 @@ interface PatientCardProps {
 export function PatientCard({
   patient,
   onOpen,
-  onAdvance,
   onRemoveFromQueue,
-  canAdvance = true,
   dragHandleProps,
 }: PatientCardProps) {
-  const target = nextStatus[patient.status];
   const createdAt = new Date(patient.last_visit_at).toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
@@ -112,28 +97,18 @@ export function PatientCard({
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
-          {target && canAdvance ? (
-            <button
-              type="button"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[#2f8fd3] text-white transition hover:bg-[#287fc0]"
-              onClick={(event) => {
-                event.stopPropagation();
-                onAdvance(patient, target);
-              }}
-              aria-label={`${actionLabel[patient.status]} for ${patient.name}`}
-              title={actionLabel[patient.status]}
-            >
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          ) : (
-            <span
-              className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[#edf5fa] text-[#2a6fa8]"
-              aria-label={`${target ? "View patient" : actionLabel[patient.status]} for ${patient.name}`}
-              title={target ? "View patient" : actionLabel[patient.status]}
-            >
-              <Check className="h-4 w-4" />
-            </span>
-          )}
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[#2f8fd3] text-white transition hover:bg-[#287fc0]"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpen(patient);
+            }}
+            aria-label={`Open chart for ${patient.name}`}
+            title="Open chart"
+          >
+            <ArrowRight className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </div>
