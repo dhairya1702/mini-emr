@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { specialtyHasModule } from "@/lib/specialty";
 import { clearConsultationWorkspace, readConsultationWorkspace, writeConsultationWorkspace } from "@/lib/consultation-workspace";
+import { zonedDateTimeInputToUtcIso } from "@/lib/timezone";
 import {
   AuthUser,
   BinocularVisionPayload,
@@ -104,6 +105,7 @@ interface ConsultationDrawerProps {
   patient: Patient | null;
   currentUser?: AuthUser | null;
   clinicSpecialty?: ClinicSpecialty | null;
+  clinicTimeZone?: string;
   emailConfigured?: boolean;
   hasUserSignature?: boolean;
   hasClinicDocumentTemplate?: boolean;
@@ -412,6 +414,7 @@ export function ConsultationDrawer({
   patient,
   currentUser = null,
   clinicSpecialty = null,
+  clinicTimeZone = "UTC",
   isTrainingMode = false,
   onClose,
   onDone,
@@ -992,7 +995,7 @@ export function ConsultationDrawer({
       const followUp =
         form.followUpDate.trim()
           ? {
-              scheduled_for: new Date(`${form.followUpDate}T09:00:00`).toISOString(),
+              scheduled_for: zonedDateTimeInputToUtcIso(`${form.followUpDate}T09:00`, clinicTimeZone),
               notes: form.followUpNotes.trim(),
             }
           : undefined;
@@ -1001,6 +1004,8 @@ export function ConsultationDrawer({
         clearConsultationWorkspace(workspaceScope);
       }
       onClose();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Failed to complete consultation.");
     } finally {
       setIsCompleting(false);
     }

@@ -249,6 +249,8 @@ export default function HomePage() {
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
   const [isInvoiceDirty, setIsInvoiceDirty] = useState(false);
   const [selectedPatientNotes, setSelectedPatientNotes] = useState<ConsultationNote[]>([]);
+  const [isBillingNotesLoading, setIsBillingNotesLoading] = useState(false);
+  const [hasSeededBillingDraft, setHasSeededBillingDraft] = useState(false);
   const [customItemLabel, setCustomItemLabel] = useState("");
   const [customItemQuantity, setCustomItemQuantity] = useState("1");
   const [customItemUnitPrice, setCustomItemUnitPrice] = useState("");
@@ -377,9 +379,11 @@ export default function HomePage() {
 
     void refreshPatients();
 
-    const intervalId = window.setInterval(() => {
-      void refreshPatients();
-    }, QUEUE_REFRESH_INTERVAL_MS);
+    const intervalId = isSoloWorkspace
+      ? null
+      : window.setInterval(() => {
+        void refreshPatients();
+      }, QUEUE_REFRESH_INTERVAL_MS);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -396,11 +400,13 @@ export default function HomePage() {
 
     return () => {
       active = false;
-      window.clearInterval(intervalId);
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+      }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [isAuthReady, isRedirectingToLogin, isTrainingMode]);
+  }, [isAuthReady, isRedirectingToLogin, isSoloWorkspace, isTrainingMode]);
 
   useEffect(() => {
     if (!isAuthReady || currentUser?.role !== "admin") {
@@ -486,14 +492,17 @@ export default function HomePage() {
   useEffect(() => {
     if (!billingPatientId) {
       setSelectedPatientNotes([]);
+      setIsBillingNotesLoading(false);
       return;
     }
 
     let active = true;
+    setIsBillingNotesLoading(true);
     void api.listPatientNotes(billingPatientId)
       .then((notes) => {
         if (active) {
           setSelectedPatientNotes(notes);
+          setIsBillingNotesLoading(false);
         }
       })
       .catch((loadError) => {
@@ -501,6 +510,7 @@ export default function HomePage() {
           return;
         }
         setSelectedPatientNotes([]);
+        setIsBillingNotesLoading(false);
         setBillingStatus("");
         setBillingError(loadError instanceof Error ? loadError.message : "Failed to load consultation notes.");
       });
@@ -511,7 +521,7 @@ export default function HomePage() {
   }, [billingPatientId]);
 
   useEffect(() => {
-    if (!billingPatientId) {
+    if (!billingPatientId || isBillingNotesLoading || hasSeededBillingDraft || isInvoiceDirty) {
       return;
     }
     setInvoiceItems(autoDraftInvoiceItems);
@@ -524,7 +534,8 @@ export default function HomePage() {
         : "",
     );
     setAmountPaidInput("");
-  }, [autoDraftInvoiceItems, billingPatientId]);
+    setHasSeededBillingDraft(true);
+  }, [autoDraftInvoiceItems, billingPatientId, hasSeededBillingDraft, isBillingNotesLoading, isInvoiceDirty]);
 
   function handleClosePatientModal() {
     setIsModalOpen(false);
@@ -539,6 +550,8 @@ export default function HomePage() {
     setBillingStatus("");
     setIsInvoiceDirty(false);
     setSelectedPatientNotes([]);
+    setIsBillingNotesLoading(false);
+    setHasSeededBillingDraft(false);
     setCustomItemLabel("");
     setCustomItemQuantity("1");
     setCustomItemUnitPrice("");
@@ -1512,6 +1525,7 @@ export default function HomePage() {
         patient={drawerMode === "consultation" ? selectedPatient : null}
         currentUser={currentUser}
         clinicSpecialty={clinicSettings?.clinic_specialty ?? null}
+        clinicTimeZone={clinicSettings?.timezone ?? "UTC"}
         emailConfigured={Boolean(clinicSettings?.email_configured)}
         hasUserSignature={hasUserSignature(currentUser)}
         hasClinicDocumentTemplate={hasClinicDocumentTemplate(clinicSettings)}

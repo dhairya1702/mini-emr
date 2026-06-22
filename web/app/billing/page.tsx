@@ -167,6 +167,8 @@ export default function BillingPage() {
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
   const [isInvoiceDirty, setIsInvoiceDirty] = useState(false);
   const [selectedPatientNotes, setSelectedPatientNotes] = useState<ConsultationNote[]>([]);
+  const [isBillingNotesLoading, setIsBillingNotesLoading] = useState(false);
+  const [hasSeededBillingDraft, setHasSeededBillingDraft] = useState(false);
   const [customItemLabel, setCustomItemLabel] = useState("");
   const [customItemQuantity, setCustomItemQuantity] = useState("1");
   const [customItemUnitPrice, setCustomItemUnitPrice] = useState("");
@@ -214,6 +216,8 @@ export default function BillingPage() {
     onPageData,
   });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
+  const workspaceMode = clinicSettings?.workspace_mode ?? "team";
+  const isSoloWorkspace = workspaceMode === "solo";
   const billablePatients = useMemo(() => patients.filter((patient) => patient.status === "done" && !patient.billed), [patients]);
   const selectedBillingPatient = useMemo(() => billablePatients.find((patient) => patient.id === selectedBillingPatientId) ?? null, [billablePatients, selectedBillingPatientId]);
   const invoiceSubtotal = useMemo(() => invoiceItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0), [invoiceItems]);
@@ -265,9 +269,11 @@ export default function BillingPage() {
 
     void refreshBillingData();
 
-    const intervalId = window.setInterval(() => {
-      void refreshBillingData();
-    }, BILLING_REFRESH_INTERVAL_MS);
+    const intervalId = isSoloWorkspace
+      ? null
+      : window.setInterval(() => {
+        void refreshBillingData();
+      }, BILLING_REFRESH_INTERVAL_MS);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -284,11 +290,13 @@ export default function BillingPage() {
 
     return () => {
       active = false;
-      window.clearInterval(intervalId);
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+      }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [currentUser, isAuthReady, isRedirectingToLogin]);
+  }, [currentUser, isAuthReady, isRedirectingToLogin, isSoloWorkspace]);
 
   useEffect(() => {
     if (!selectedBillingPatientId && billablePatients[0]) {
@@ -307,22 +315,26 @@ export default function BillingPage() {
   useEffect(() => {
     if (!selectedBillingPatientId) {
       setSelectedPatientNotes([]);
+      setIsBillingNotesLoading(false);
       return;
     }
 
     let active = true;
+    setIsBillingNotesLoading(true);
     void api.listPatientNotes(selectedBillingPatientId)
       .then((notes) => {
         if (!active) {
           return;
         }
         setSelectedPatientNotes(notes);
+        setIsBillingNotesLoading(false);
       })
       .catch((error) => {
         if (!active) {
           return;
         }
         setSelectedPatientNotes([]);
+        setIsBillingNotesLoading(false);
         setBillingStatus("");
         setBillingError(error instanceof Error ? error.message : "Failed to load consultation notes.");
       });
@@ -333,7 +345,7 @@ export default function BillingPage() {
   }, [selectedBillingPatientId]);
 
   useEffect(() => {
-    if (!selectedBillingPatientId) {
+    if (!selectedBillingPatientId || isBillingNotesLoading || hasSeededBillingDraft || isInvoiceDirty) {
       return;
     }
     setInvoiceItems(autoDraftInvoiceItems);
@@ -346,7 +358,8 @@ export default function BillingPage() {
         : "",
     );
     setAmountPaidInput("");
-  }, [autoDraftInvoiceItems, selectedBillingPatientId]);
+    setHasSeededBillingDraft(true);
+  }, [autoDraftInvoiceItems, hasSeededBillingDraft, isBillingNotesLoading, isInvoiceDirty, selectedBillingPatientId]);
 
   function addCatalogItemToInvoice(item: typeof catalogItems[number]) {
     if (item.track_inventory && item.stock_quantity <= 0) {
@@ -565,6 +578,8 @@ export default function BillingPage() {
             setInvoiceItems([]);
             setSavedInvoice(null);
             setIsInvoiceDirty(false);
+            setIsBillingNotesLoading(false);
+            setHasSeededBillingDraft(false);
             setBillingError("");
             setBillingStatus("");
             setAmountPaidInput("");
