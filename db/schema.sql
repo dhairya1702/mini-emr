@@ -479,6 +479,16 @@ add column if not exists onboarding_required boolean not null default false;
 alter table public.clinic_settings
 add column if not exists onboarding_completed_at timestamptz;
 
+alter table public.clinic_settings
+add column if not exists workspace_mode text not null default 'solo';
+
+alter table public.clinic_settings
+drop constraint if exists clinic_settings_workspace_mode_check;
+
+alter table public.clinic_settings
+add constraint clinic_settings_workspace_mode_check
+check (workspace_mode in ('solo', 'team'));
+
 alter table public.catalog_items
 add column if not exists track_inventory boolean not null default false;
 
