@@ -1,20 +1,17 @@
 from datetime import UTC, datetime, timedelta
 from fastapi import HTTPException
 
+from app.clinic_timezone import as_clinic_time, clinic_day_start_utc, clinic_now, clinic_today, get_clinic_timezone
 from app.config import get_settings
 from app.db import AppRepository
 from app.formatting import format_display_datetime
 from app.schema_domains.auth_settings import UserOut
-from app.schema_domains.patients import AppointmentCreate, FollowUpCreate, FollowUpOut, FollowUpUpdate
+from app.schema_domains.patients import FollowUpCreate, FollowUpOut, FollowUpUpdate
 from app.services.audit_service import record_follow_up_created, record_follow_up_updated
 from app.services.followup_booking_service import create_follow_up_booking_token, decode_follow_up_booking_token
 from app.services.email_service import send_clinic_email_message
 
 FOLLOW_UP_SUGGESTION_DAYS = 7
-
-
-def _start_of_today_utc() -> datetime:
-    return datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def _as_utc_minute(value: object) -> datetime:
@@ -58,12 +55,13 @@ def _format_booking_window(clinic_settings: dict) -> str:
 def _is_within_booking_window(candidate: datetime, clinic_settings: dict) -> bool:
     start_minutes = _parse_time_minutes(clinic_settings.get("appointment_start_time"), "09:00")
     end_minutes = _parse_time_minutes(clinic_settings.get("appointment_end_time"), "18:00")
-    candidate_minutes = candidate.hour * 60 + candidate.minute
+    candidate_local = as_clinic_time(candidate, clinic_settings)
+    candidate_minutes = candidate_local.hour * 60 + candidate_local.minute
     return start_minutes <= candidate_minutes < end_minutes
 
 
-def _hour_bucket(candidate: datetime) -> datetime:
-    return candidate.replace(minute=0, second=0, microsecond=0)
+def _hour_bucket(candidate: datetime, clinic_settings: dict) -> datetime:
+    return as_clinic_time(candidate, clinic_settings).replace(minute=0, second=0, microsecond=0)
 
 
 def _follow_up_email_parts(
@@ -100,20 +98,22 @@ async def _suggest_follow_up_slots(repo: AppRepository, org_id: str, clinic_sett
     end_minutes = _parse_time_minutes(clinic_settings.get("appointment_end_time"), "18:00")
     occupied_by_hour: dict[datetime, int] = {}
     for appointment_time in occupied:
-        bucket = _hour_bucket(appointment_time)
+        bucket = _hour_bucket(appointment_time, clinic_settings)
         occupied_by_hour[bucket] = occupied_by_hour.get(bucket, 0) + 1
     suggestions: list[datetime] = []
-    cursor = datetime.now(UTC).replace(second=0, microsecond=0)
+    timezone = get_clinic_timezone(clinic_settings)
+    now_local = clinic_now(clinic_settings).replace(second=0, microsecond=0)
     for day_offset in range(FOLLOW_UP_SUGGESTION_DAYS):
-        day = (cursor + timedelta(days=day_offset)).date()
+        day = (now_local + timedelta(days=day_offset)).date()
         if day.weekday() == 6:
             continue
         for minute_of_day in range(start_minutes, end_minutes, slot_interval_minutes):
             hour, minute = divmod(minute_of_day, 60)
-            candidate = datetime(day.year, day.month, day.day, hour, minute, tzinfo=UTC)
-            if candidate <= datetime.now(UTC):
+            candidate_local = datetime(day.year, day.month, day.day, hour, minute, tzinfo=timezone)
+            if candidate_local <= now_local:
                 continue
-            hour_bucket = _hour_bucket(candidate)
+            candidate = candidate_local.astimezone(UTC)
+            hour_bucket = _hour_bucket(candidate, clinic_settings)
             if occupied_by_hour.get(hour_bucket, 0) >= capacity:
                 continue
             if candidate in occupied_exact:
@@ -125,7 +125,8 @@ async def _suggest_follow_up_slots(repo: AppRepository, org_id: str, clinic_sett
 
 
 async def expire_stale_schedule_workflow(repo: AppRepository, org_id: str) -> None:
-    stale_before = _start_of_today_utc().isoformat()
+    clinic_settings = await repo.get_clinic_settings(org_id)
+    stale_before = clinic_day_start_utc(clinic_settings).isoformat()
     await repo.cancel_expired_appointments(org_id, stale_before)
     await repo.cancel_expired_follow_ups(org_id, stale_before)
 
@@ -137,7 +138,7 @@ async def _send_follow_up_email_if_needed(repo: AppRepository, current_user: Use
         return
     clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
-    scheduled_for = format_display_datetime(follow_up["scheduled_for"])
+    scheduled_for = format_display_datetime(follow_up["scheduled_for"], str(clinic_settings.get("timezone") or "UTC"))
     booking_token = create_follow_up_booking_token(
         org_id=str(current_user.org_id),
         patient_id=str(follow_up["patient_id"]),
@@ -204,35 +205,20 @@ async def self_book_follow_up_workflow(
     org_id = str(follow_up["org_id"])
     patient_id = str(follow_up["patient_id"])
     follow_up_id = str(follow_up["id"])
+    scheduled_for = _as_utc_minute(scheduled_for)
     if scheduled_for < datetime.now(UTC):
         raise HTTPException(status_code=400, detail="Follow-up time must be in the future.")
-    scheduled_for = _as_utc_minute(scheduled_for)
     if not _is_within_booking_window(scheduled_for, clinic_settings):
         raise HTTPException(status_code=400, detail="Follow-up time must be within clinic booking hours.")
-    scheduled_hour = _hour_bucket(scheduled_for)
-    scheduled_appointments = await repo.list_appointments(org_id, status="scheduled", limit=500)
     capacity = _appointments_per_hour(clinic_settings)
-    same_hour_count = sum(
-        1 for appointment in scheduled_appointments if _hour_bucket(_as_utc_minute(appointment["scheduled_for"])) == scheduled_hour
-    )
-    if same_hour_count >= capacity:
-        raise HTTPException(status_code=400, detail="That hour is fully booked. Choose another follow-up slot.")
-    patient = await repo.get_patient(org_id, patient_id)
-    await repo.update_follow_up(org_id, follow_up_id, FollowUpUpdate(scheduled_for=scheduled_for, status="completed"))
-    created = await repo.create_appointment(
-        org_id,
-        AppointmentCreate(
-            name=str(patient.get("name") or "").strip(),
-            phone=str(patient.get("phone") or "").strip(),
-            email=str(patient.get("email") or "").strip(),
-            address=str(patient.get("address") or "").strip(),
-            reason=f"Follow-up: {str(patient.get('reason') or '').strip() or 'Review'}",
-            age=patient.get("age"),
-            weight=patient.get("weight"),
-            height=patient.get("height"),
-            temperature=patient.get("temperature"),
-            scheduled_for=scheduled_for,
-        ),
+    timezone = str(clinic_settings.get("timezone") or "UTC")
+    _updated_follow_up, created = await repo.self_book_follow_up_atomic(
+        org_id=org_id,
+        patient_id=patient_id,
+        follow_up_id=follow_up_id,
+        scheduled_for=scheduled_for,
+        appointments_per_hour=capacity,
+        timezone=timezone,
     )
     actor_name = str(clinic_settings.get("doctor_name") or clinic_settings.get("clinic_name") or "Clinic Team").strip() or "Clinic Team"
     await repo.create_audit_event(
@@ -265,15 +251,16 @@ async def create_follow_up_workflow(
     )
     patient = await repo.get_patient(str(current_user.org_id), str(created["patient_id"]))
     patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
+    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
     await record_follow_up_created(
         repo,
         current_user,
         created,
         patient_name,
-        format_display_datetime(created["scheduled_for"]),
+        format_display_datetime(created["scheduled_for"], str(clinic_settings.get("timezone") or "UTC")),
     )
-    scheduled_date = payload.scheduled_for.astimezone(UTC).date() if payload.scheduled_for.tzinfo else payload.scheduled_for.date()
-    if scheduled_date <= datetime.now(UTC).date():
+    scheduled_date = as_clinic_time(payload.scheduled_for, clinic_settings).date()
+    if scheduled_date <= clinic_today(clinic_settings):
         await _send_follow_up_email_if_needed(repo, current_user, created)
     return FollowUpOut(**created)
 
@@ -289,8 +276,9 @@ async def update_follow_up_workflow(
     changed_fields = sorted(payload.model_dump(exclude_none=True).keys())
     await record_follow_up_updated(repo, current_user, updated, changed_fields)
     if updated.get("status") == "scheduled":
+        clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
         scheduled_at = updated["scheduled_for"]
-        scheduled_date = scheduled_at.astimezone(UTC).date() if getattr(scheduled_at, "tzinfo", None) else scheduled_at.date()
-        if scheduled_date <= datetime.now(UTC).date():
+        scheduled_date = as_clinic_time(scheduled_at, clinic_settings).date()
+        if scheduled_date <= clinic_today(clinic_settings):
             await _send_follow_up_email_if_needed(repo, current_user, updated)
     return FollowUpOut(**updated)

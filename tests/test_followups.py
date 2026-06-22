@@ -218,3 +218,55 @@ def test_internal_follow_up_reminder_runner_reports_missing_config(client, monke
 
     assert response.status_code == 503
     assert "INTERNAL_SCHEDULER_TOKEN" in response.json()["detail"]
+
+
+def test_follow_up_listing_uses_clinic_local_date_boundaries(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="followup-timezone@clinic.com", clinic_name="Follow Up Timezone Clinic")
+    headers = auth_headers_for_token(session["token"])
+
+    settings_response = test_client.put(
+        "/settings/clinic",
+        headers=headers,
+        json={
+            "clinic_name": "Follow Up Timezone Clinic",
+            "clinic_specialty": "general_physician",
+            "timezone": "Asia/Kolkata",
+            "appointment_start_time": "09:00",
+            "appointment_end_time": "18:00",
+            "appointments_per_hour": 4,
+        },
+    )
+    assert settings_response.status_code == 200
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Boundary Follow Up Patient",
+            "phone": "5550111212",
+            "reason": "Review",
+            "age": 29,
+            "weight": 61,
+            "height": 166,
+            "temperature": 98.5,
+        },
+        headers=headers,
+    ).json()
+
+    create_follow_up = test_client.post(
+        f"/patients/{patient['id']}/follow-ups",
+        json={
+            "scheduled_for": "2026-06-10T19:00:00+00:00",
+            "notes": "Midnight boundary review",
+        },
+        headers=headers,
+    )
+    assert create_follow_up.status_code == 201
+
+    list_follow_ups = test_client.get(
+        "/follow-ups?scheduled_date=2026-06-11",
+        headers=headers,
+    )
+    assert list_follow_ups.status_code == 200
+    assert len(list_follow_ups.json()) == 1
+    assert list_follow_ups.json()[0]["notes"] == "Midnight boundary review"

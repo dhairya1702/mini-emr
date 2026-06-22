@@ -18,12 +18,17 @@ ClinicalQuestionType = Literal[
     "module_request",
 ]
 ClinicalQuestionPriority = Literal["high", "medium", "low"]
+ClinicalAssistantSpecialty = Literal["optometry", "pediatrics", "general_physician", "dentistry"]
 ClinicalAssistantModule = Literal[
     "eye_exam",
     "contact_lens",
     "binocular_vision",
     "low_vision",
     "myopia_management",
+    "pediatric_growth_measurement",
+    "well_child_visit",
+    "parent_handout_request",
+    "pediatric_follow_up_plan",
     "attachments",
     "medicines",
     "vitals",
@@ -51,6 +56,7 @@ class ClinicalQuestionsRequest(BaseModel):
 
 
 class ClinicalQuestionsResponse(BaseModel):
+    assistant_specialty: ClinicalAssistantSpecialty = "general_physician"
     complaint_category: str = Field(default="general_eye_complaint", max_length=120)
     detected_factors: list[str] = Field(default_factory=list, max_length=12)
     questions: list[ClinicalAssistantQuestion] = Field(default_factory=list, max_length=12)
@@ -86,6 +92,7 @@ class ClinicalRedFlag(BaseModel):
 
 
 class ClinicalAnalysisResponse(BaseModel):
+    assistant_specialty: ClinicalAssistantSpecialty = "general_physician"
     possibilities: list[ClinicalPossibility] = Field(default_factory=list, max_length=8)
     red_flags: list[ClinicalRedFlag] = Field(default_factory=list, max_length=10)
     suggested_tests: list[str] = Field(default_factory=list, max_length=10)

@@ -237,6 +237,7 @@ async def build_patient_timeline_view(
         appointments=appointments,
         longitudinal_tracks=longitudinal_tracks,
         clinic_specialty=clinic_settings.get("clinic_specialty"),
+        timezone_name=str(clinic_settings.get("timezone") or "UTC"),
     )
 
 

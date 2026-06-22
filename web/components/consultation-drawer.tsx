@@ -238,6 +238,7 @@ type ConsultationWorkspaceSnapshot = {
 
 type InlineModuleKey = "vitals" | "medicines";
 type PediatricModuleKey = "growth" | "wellChild" | "parentHandout" | "pediatricFollowUp";
+type AssistantStage = "idle" | "questions" | "analysis";
 
 function createClosedConsultationSections() {
   return {
@@ -453,6 +454,7 @@ export function ConsultationDrawer({
   const [assistantAnswers, setAssistantAnswers] = useState<Record<string, string>>({});
   const [assistantQuestionIndex, setAssistantQuestionIndex] = useState(0);
   const [assistantAnalysis, setAssistantAnalysis] = useState<ClinicalAnalysisResponse | null>(null);
+  const [assistantStage, setAssistantStage] = useState<AssistantStage>("idle");
   const [isLoadingAssistantQuestions, setIsLoadingAssistantQuestions] = useState(false);
   const [isAnalyzingAssistant, setIsAnalyzingAssistant] = useState(false);
   const [assistantError, setAssistantError] = useState("");
@@ -493,6 +495,7 @@ export function ConsultationDrawer({
     setAssistantAnswers({});
     setAssistantQuestionIndex(0);
     setAssistantAnalysis(null);
+    setAssistantStage("idle");
     setAssistantError("");
     setIsLoadingAssistantQuestions(false);
     setIsAnalyzingAssistant(false);
@@ -838,13 +841,10 @@ export function ConsultationDrawer({
   }
 
   async function handleAskClinicalQuestions() {
-    if (!isOptometryClinic) {
-      setAssistantError("Clinical assistant is available for optometry clinics only.");
-      return;
-    }
     setIsLoadingAssistantQuestions(true);
     setAssistantError("");
     setAssistantAnalysis(null);
+    setAssistantStage("idle");
     try {
       const response = await api.generateClinicalQuestions({
         patient_id: currentPatient.id,
@@ -853,6 +853,7 @@ export function ConsultationDrawer({
       setAssistantQuestions(response);
       setAssistantAnswers({});
       setAssistantQuestionIndex(0);
+      setAssistantStage("questions");
       if (response.warning) {
         setAssistantError(response.warning);
       }
@@ -877,6 +878,7 @@ export function ConsultationDrawer({
         answers: assistantAnswerPayload(),
       });
       setAssistantAnalysis(response);
+      setAssistantStage("analysis");
       if (response.warning) {
         setAssistantError(response.warning);
       }
@@ -1758,12 +1760,7 @@ export function ConsultationDrawer({
           </div>
           <Sparkles className="h-5 w-5 text-[#2f8fd3]" />
         </div>
-        {!isOptometryClinic ? (
-          <p className="mt-4 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/60 p-3 text-sm text-slate-600">
-            Clinical assistant is currently enabled for optometry clinics only.
-          </p>
-        ) : (
-          <div className="mt-4 space-y-4">
+        <div className="mt-4 space-y-4">
             <button
               type="button"
               onClick={() => void handleAskClinicalQuestions()}
@@ -1771,7 +1768,7 @@ export function ConsultationDrawer({
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
             >
               <Sparkles className="h-4 w-4" />
-              {isLoadingAssistantQuestions ? "Building questions..." : assistantQuestions ? "Refresh Questions" : "Ask AI Questions"}
+              {isLoadingAssistantQuestions ? "Building questions..." : assistantQuestions ? "New Questions" : "Ask AI Questions"}
             </button>
             {assistantError ? (
               <p className="rounded-[16px] border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900">{assistantError}</p>
@@ -1779,7 +1776,7 @@ export function ConsultationDrawer({
             {assistantQuestions?.warning ? (
               <p className="rounded-[16px] border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900">{assistantQuestions.warning}</p>
             ) : null}
-            {assistantQuestions ? (
+            {assistantQuestions && assistantStage === "questions" ? (
               <div className="space-y-3">
                 {currentQuestion ? (
                   <div className="rounded-[16px] border border-[#dbe7ef] bg-white p-3">
@@ -1848,8 +1845,21 @@ export function ConsultationDrawer({
                 </button>
               </div>
             ) : null}
-            {assistantAnalysis ? (
-              <div className="space-y-3 border-t border-[#dbe7ef] pt-4">
+            {assistantAnalysis && assistantStage === "analysis" ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/50 p-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Recommendations</p>
+                    <p className="mt-1 text-xs text-slate-500">{answeredCount}/{questions.length} answers used</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAssistantStage("questions")}
+                    className="rounded-xl border border-[#9fc7e1] bg-white px-3 py-1.5 text-xs font-medium text-[#235f8e] transition hover:bg-[#f3f8fb]"
+                  >
+                    Edit answers
+                  </button>
+                </div>
                 {assistantAnalysis.possibilities.map((possibility) => (
                   <div key={possibility.label} className="rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-3">
                     <div className="flex items-start justify-between gap-3">
@@ -1900,8 +1910,7 @@ export function ConsultationDrawer({
                 </button>
               </div>
             ) : null}
-          </div>
-        )}
+        </div>
       </section>
     );
   }

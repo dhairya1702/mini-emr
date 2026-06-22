@@ -3,7 +3,7 @@ from typing import Literal
 
 PatientStatus = Literal["waiting", "consultation", "done"]
 UserRole = Literal["admin", "staff"]
-ClinicSpecialty = Literal["optometry", "general_physician", "pediatrics"]
+ClinicSpecialty = Literal["optometry", "general_physician", "pediatrics", "dentistry"]
 CatalogItemType = Literal["service", "medicine"]
 PaymentStatus = Literal["unpaid", "paid", "partial"]
 FollowUpStatus = Literal["scheduled", "completed", "cancelled"]

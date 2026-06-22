@@ -1,9 +1,10 @@
-from datetime import UTC, date, datetime, timedelta
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
+from app.clinic_timezone import clinic_today, utc_day_bounds_for_clinic
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.common import AppointmentStatus
@@ -23,14 +24,6 @@ from app.services.appointment_workflow import (
 
 
 router = APIRouter()
-
-
-def _utc_day_bounds(day: date) -> tuple[str, str]:
-    start = datetime(day.year, day.month, day.day, tzinfo=UTC)
-    end = start + timedelta(days=1)
-    return start.isoformat(), end.isoformat()
-
-
 @router.post("/appointments", response_model=AppointmentOut, status_code=201)
 async def create_appointment(
     payload: AppointmentCreate,
@@ -52,8 +45,9 @@ async def list_appointments(
     repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[AppointmentOut]:
-    effective_date = scheduled_date or datetime.now(UTC).date()
-    scheduled_from, scheduled_to = _utc_day_bounds(effective_date)
+    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    effective_date = scheduled_date or clinic_today(clinic_settings)
+    scheduled_from, scheduled_to = utc_day_bounds_for_clinic(effective_date, clinic_settings)
     appointments = await repo.list_appointments(
         str(current_user.org_id),
         status=status,

@@ -4,6 +4,13 @@ import { Fragment, useEffect, useState } from "react";
 import { CalendarClock, Plus } from "lucide-react";
 
 import { api } from "@/lib/api";
+import {
+  formatDateTimeInTimeZone,
+  formatIsoDateInTimeZone,
+  getTodayIsoDateInTimeZone,
+  toDateTimeInputInTimeZone,
+  zonedDateTimeInputToUtcIso,
+} from "@/lib/timezone";
 import { Appointment, FollowUp, Patient, PatientMatch } from "@/lib/types";
 
 interface SettingsDrawerAppointmentsPanelProps {
@@ -35,29 +42,12 @@ interface SettingsDrawerAppointmentsPanelProps {
   onCreateFollowUp?: (patientId: string, payload: { scheduled_for: string; notes: string }) => Promise<FollowUp>;
   createSignal?: number;
   onActiveViewChange?: (view: AppointmentView) => void;
+  clinicTimezone?: string;
 }
 
 type AppointmentView = "appointments" | "followUps";
 type AppointmentFilter = "all" | "scheduled" | "checked_in" | "cancelled";
 type FollowUpFilter = "all" | "scheduled" | "completed" | "cancelled";
-
-function getTodayIsoDate() {
-  const now = new Date();
-  return [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-function toLocalIsoDate(value: string) {
-  const date = new Date(value);
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
-}
 
 export function SettingsDrawerAppointmentsPanel({
   onCheckInAppointment,
@@ -67,6 +57,7 @@ export function SettingsDrawerAppointmentsPanel({
   onCreateFollowUp,
   createSignal = 0,
   onActiveViewChange,
+  clinicTimezone = "UTC",
 }: SettingsDrawerAppointmentsPanelProps) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
@@ -76,7 +67,7 @@ export function SettingsDrawerAppointmentsPanel({
   const [followUpFilter, setFollowUpFilter] = useState<FollowUpFilter>("all");
   const [appointmentQuery, setAppointmentQuery] = useState("");
   const [followUpQuery, setFollowUpQuery] = useState("");
-  const [selectedDate, setSelectedDate] = useState(() => getTodayIsoDate());
+  const [selectedDate, setSelectedDate] = useState(() => getTodayIsoDateInTimeZone(clinicTimezone));
   const [checkingInId, setCheckingInId] = useState("");
   const [expandedAppointmentId, setExpandedAppointmentId] = useState("");
   const [expandedFollowUpId, setExpandedFollowUpId] = useState("");
@@ -95,13 +86,13 @@ export function SettingsDrawerAppointmentsPanel({
     phone: "",
     email: "",
     address: "",
-    reason: "",
-    date: getTodayIsoDate(),
-    time: "09:00",
-  });
+      reason: "",
+      date: getTodayIsoDateInTimeZone(clinicTimezone),
+      time: "09:00",
+    });
   const [newFollowUp, setNewFollowUp] = useState({
     patientId: "",
-    date: getTodayIsoDate(),
+    date: getTodayIsoDateInTimeZone(clinicTimezone),
     time: "09:00",
     notes: "",
   });
@@ -113,7 +104,7 @@ export function SettingsDrawerAppointmentsPanel({
     appointmentName: string;
     matches: PatientMatch[];
   } | null>(null);
-  const todayIsoDate = getTodayIsoDate();
+  const todayIsoDate = getTodayIsoDateInTimeZone(clinicTimezone);
 
   function setView(view: AppointmentView) {
     setActiveView(view);
@@ -123,6 +114,12 @@ export function SettingsDrawerAppointmentsPanel({
   useEffect(() => {
     onActiveViewChange?.(activeView);
   }, [activeView, onActiveViewChange]);
+
+  useEffect(() => {
+    setSelectedDate(todayIsoDate);
+    setNewAppointment((current) => ({ ...current, date: todayIsoDate }));
+    setNewFollowUp((current) => ({ ...current, date: todayIsoDate }));
+  }, [todayIsoDate]);
 
   useEffect(() => {
     if (!createSignal) {
@@ -173,7 +170,7 @@ export function SettingsDrawerAppointmentsPanel({
               if (active) {
                 setAppointments(
                   rows.filter((appointment) => {
-                    const scheduledDate = toLocalIsoDate(appointment.scheduled_for);
+                    const scheduledDate = formatIsoDateInTimeZone(appointment.scheduled_for, clinicTimezone);
                     return scheduledDate >= todayIsoDate && scheduledDate === selectedDate;
                   }),
                 );
@@ -187,7 +184,7 @@ export function SettingsDrawerAppointmentsPanel({
               if (active) {
                 setFollowUps(
                   rows.filter((followUp) => {
-                    const scheduledDate = toLocalIsoDate(followUp.scheduled_for);
+                    const scheduledDate = formatIsoDateInTimeZone(followUp.scheduled_for, clinicTimezone);
                     return scheduledDate >= todayIsoDate && scheduledDate === selectedDate;
                   }),
                 );
@@ -210,15 +207,10 @@ export function SettingsDrawerAppointmentsPanel({
       window.clearTimeout(timeoutId);
       setIsLoading(false);
     };
-  }, [activeView, appointmentFilter, appointmentQuery, followUpFilter, followUpQuery, selectedDate, todayIsoDate]);
+  }, [activeView, appointmentFilter, appointmentQuery, clinicTimezone, followUpFilter, followUpQuery, selectedDate, todayIsoDate]);
 
   function formatDateTime(value: string) {
-    return new Date(value).toLocaleString([], {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    return formatDateTimeInTimeZone(value, clinicTimezone);
   }
 
   function formatStatusLabel(value: string) {
@@ -288,16 +280,11 @@ export function SettingsDrawerAppointmentsPanel({
   }
 
   function startReschedule(appointment: Appointment) {
-    const localDate = new Date(appointment.scheduled_for);
-    const isoDate = [
-      localDate.getFullYear(),
-      String(localDate.getMonth() + 1).padStart(2, "0"),
-      String(localDate.getDate()).padStart(2, "0"),
-    ].join("-");
-    const isoTime = `${String(localDate.getHours()).padStart(2, "0")}:${String(localDate.getMinutes()).padStart(2, "0")}`;
+    const localDateTime = toDateTimeInputInTimeZone(appointment.scheduled_for, clinicTimezone);
+    const [isoDate, isoTime] = localDateTime.split("T");
     setEditingAppointmentId(appointment.id);
-    setRescheduleDate(isoDate);
-    setRescheduleTime(isoTime);
+    setRescheduleDate(isoDate || "");
+    setRescheduleTime(isoTime || "");
     setStatusMessage("");
   }
 
@@ -319,7 +306,7 @@ export function SettingsDrawerAppointmentsPanel({
     setStatusMessage("");
     try {
       const updated = await onUpdateAppointment(appointmentId, {
-        scheduled_for: new Date(`${rescheduleDate}T${rescheduleTime}:00`).toISOString(),
+        scheduled_for: zonedDateTimeInputToUtcIso(`${rescheduleDate}T${rescheduleTime}`, clinicTimezone),
       });
       setAppointments((current) =>
         current.map((appointment) => (appointment.id === appointmentId ? updated : appointment)),
@@ -335,16 +322,11 @@ export function SettingsDrawerAppointmentsPanel({
   }
 
   function startFollowUpEdit(followUp: FollowUp) {
-    const localDate = new Date(followUp.scheduled_for);
-    const isoDate = [
-      localDate.getFullYear(),
-      String(localDate.getMonth() + 1).padStart(2, "0"),
-      String(localDate.getDate()).padStart(2, "0"),
-    ].join("-");
-    const isoTime = `${String(localDate.getHours()).padStart(2, "0")}:${String(localDate.getMinutes()).padStart(2, "0")}`;
+    const localDateTime = toDateTimeInputInTimeZone(followUp.scheduled_for, clinicTimezone);
+    const [isoDate, isoTime] = localDateTime.split("T");
     setEditingFollowUpId(followUp.id);
-    setFollowUpDate(isoDate);
-    setFollowUpTime(isoTime);
+    setFollowUpDate(isoDate || "");
+    setFollowUpTime(isoTime || "");
     setFollowUpNotes(followUp.notes);
     setStatusMessage("");
   }
@@ -367,7 +349,7 @@ export function SettingsDrawerAppointmentsPanel({
     setStatusMessage("");
     try {
       const updated = await onUpdateFollowUp(followUpId, {
-        scheduled_for: new Date(`${followUpDate}T${followUpTime}:00`).toISOString(),
+        scheduled_for: zonedDateTimeInputToUtcIso(`${followUpDate}T${followUpTime}`, clinicTimezone),
         notes: followUpNotes.trim(),
         status: "scheduled",
       });
@@ -464,7 +446,7 @@ export function SettingsDrawerAppointmentsPanel({
         weight: null,
         height: null,
         temperature: null,
-        scheduled_for: new Date(`${newAppointment.date}T${newAppointment.time}:00`).toISOString(),
+        scheduled_for: zonedDateTimeInputToUtcIso(`${newAppointment.date}T${newAppointment.time}`, clinicTimezone),
       });
       setAppointments((current) => [created, ...current]);
       setSelectedDate(newAppointment.date);
@@ -504,7 +486,7 @@ export function SettingsDrawerAppointmentsPanel({
     setStatusMessage("");
     try {
       const created = await onCreateFollowUp(newFollowUp.patientId, {
-        scheduled_for: new Date(`${newFollowUp.date}T${newFollowUp.time}:00`).toISOString(),
+        scheduled_for: zonedDateTimeInputToUtcIso(`${newFollowUp.date}T${newFollowUp.time}`, clinicTimezone),
         notes: newFollowUp.notes.trim(),
       });
       setFollowUps((current) => [created, ...current]);

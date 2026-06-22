@@ -366,7 +366,7 @@ async def test_generate_optometry_clinical_questions_records_usage(monkeypatch):
     assert result.questions[0].id == "contact_lens_use"
     assert seen_kwargs["response_mime_type"] == "application/json"
     assert seen_kwargs["thinking_budget"] == 0
-    assert repo.events[0]["feature"] == "optometry_clinical_questions"
+    assert repo.events[0]["feature"] == "clinical_questions_optometry"
 
 
 @pytest.mark.anyio
@@ -411,4 +411,333 @@ async def test_generate_optometry_clinical_analysis_falls_back_on_truncated_outp
     assert result.used_fallback is True
     assert "fallback optometry analysis" in (result.warning or "")
     assert result.possibilities
+    assert repo.events == []
+
+
+@pytest.mark.anyio
+async def test_generate_pediatrics_clinical_questions_records_usage(monkeypatch):
+    repo = _Repo()
+
+    async def _fake_pediatric_questions_content(**_kwargs):
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": """
+                                {
+                                  "assistant_specialty": "pediatrics",
+                                  "complaint_category": "pediatric_fever",
+                                  "detected_factors": ["fever"],
+                                  "questions": [
+                                    {
+                                      "id": "hydration",
+                                      "group": "Red flags",
+                                      "label": "Any reduced urine or poor feeding?",
+                                      "type": "multi_choice",
+                                      "priority": "high",
+                                      "options": ["Reduced urine", "Poor feeding", "None"],
+                                      "rationale": "Hydration changes urgency."
+                                    }
+                                  ],
+                                  "module_suggestions": [
+                                    {"module": "pediatric_follow_up_plan", "reason": "Set review timing."}
+                                  ],
+                                  "safety_notice": "For clinician review only. Not a diagnosis."
+                                }
+                                """
+                            }
+                        ]
+                    }
+                }
+            ],
+            "usageMetadata": {"promptTokenCount": 40, "candidatesTokenCount": 18},
+        }
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_pediatric_questions_content)
+    monkeypatch.setattr(
+        ai_generation_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_cloud_project="project-1",
+            google_cloud_location="global",
+            gemini_model="gemini-test",
+        ),
+    )
+
+    result = await ai_generation_service.generate_clinical_questions(
+        repo,
+        "org-6",
+        clinic_specialty="pediatrics",
+        patient_context="Name: Child\nReason: fever",
+        clinic_context="Specialty: pediatrics",
+        consultation_context="Symptoms: fever since 2 days",
+        measurement_context="",
+    )
+
+    assert result.assistant_specialty == "pediatrics"
+    assert result.questions[0].id == "hydration"
+    assert result.module_suggestions[0].module == "pediatric_follow_up_plan"
+    assert repo.events[0]["feature"] == "clinical_questions_pediatrics"
+
+
+@pytest.mark.anyio
+async def test_general_clinical_analysis_accepts_null_red_flag_present(monkeypatch):
+    repo = _Repo()
+
+    async def _fake_general_analysis_content(**_kwargs):
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": """
+                                {
+                                  "assistant_specialty": "general_physician",
+                                  "possibilities": [
+                                    {
+                                      "label": "Primary-care respiratory complaint",
+                                      "likelihood": "contextual",
+                                      "why": "Cough requires duration, vitals, and red-flag review.",
+                                      "what_to_check": "Vitals and breathlessness."
+                                    }
+                                  ],
+                                  "red_flags": [
+                                    {"label": "Shortness of breath", "severity": "urgent", "present": null}
+                                  ],
+                                  "suggested_tests": ["Vitals"],
+                                  "documentation_gaps": ["Duration"],
+                                  "module_suggestions": ["vitals", "unknown_module"],
+                                  "note_additions": "AI assistant Q&A:\\n- Duration: 2 days",
+                                  "safety_notice": "For clinician review only. Not a diagnosis."
+                                }
+                                """
+                            }
+                        ]
+                    }
+                }
+            ],
+            "usageMetadata": {"promptTokenCount": 60, "candidatesTokenCount": 30},
+        }
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_general_analysis_content)
+    monkeypatch.setattr(
+        ai_generation_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_cloud_project="project-1",
+            google_cloud_location="global",
+            gemini_model="gemini-test",
+        ),
+    )
+
+    result = await ai_generation_service.generate_clinical_analysis(
+        repo,
+        "org-7",
+        clinic_specialty="general_physician",
+        patient_context="Name: Test Patient\nReason: cough",
+        clinic_context="Specialty: general physician",
+        consultation_context="Symptoms: cough",
+        measurement_context="",
+        answers=[ClinicalAssistantAnswer(question_id="duration", label="Duration", answer="2 days")],
+    )
+
+    assert result.assistant_specialty == "general_physician"
+    assert result.red_flags[0].present is None
+    assert result.module_suggestions == ["vitals"]
+    assert repo.events[0]["feature"] == "clinical_analysis_general_physician"
+
+
+@pytest.mark.anyio
+async def test_unknown_specialty_uses_general_fallback_without_ai_usage(monkeypatch):
+    repo = _Repo()
+    monkeypatch.setattr(
+        ai_generation_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_cloud_project="",
+            google_cloud_location="global",
+            gemini_model="",
+        ),
+    )
+
+    result = await ai_generation_service.generate_clinical_questions(
+        repo,
+        "org-8",
+        clinic_specialty="unknown",
+        patient_context="Name: Test Patient\nReason: cough and fever",
+        clinic_context="Specialty: unknown",
+        consultation_context="Symptoms: cough and fever",
+        measurement_context="",
+    )
+
+    assert result.assistant_specialty == "general_physician"
+    assert result.questions
+    assert repo.events == []
+
+
+@pytest.mark.anyio
+async def test_generate_dentistry_clinical_questions_records_usage(monkeypatch):
+    repo = _Repo()
+
+    async def _fake_dentistry_questions_content(**_kwargs):
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": """
+                                {
+                                  "assistant_specialty": "dentistry",
+                                  "complaint_category": "tooth_pain",
+                                  "detected_factors": ["tooth pain"],
+                                  "questions": [
+                                    {
+                                      "id": "pain_triggers",
+                                      "group": "Pain history",
+                                      "label": "Is pain triggered by hot, cold, sweet, or biting?",
+                                      "type": "multi_choice",
+                                      "priority": "medium",
+                                      "options": ["Hot", "Cold", "Sweet", "Biting", "None"],
+                                      "rationale": "Triggers help characterize dental pain."
+                                    }
+                                  ],
+                                  "module_suggestions": [
+                                    {"module": "attachments", "reason": "Attach dental photo or radiograph."}
+                                  ],
+                                  "safety_notice": "For clinician review only. Not a diagnosis."
+                                }
+                                """
+                            }
+                        ]
+                    }
+                }
+            ],
+            "usageMetadata": {"promptTokenCount": 44, "candidatesTokenCount": 22},
+        }
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_dentistry_questions_content)
+    monkeypatch.setattr(
+        ai_generation_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_cloud_project="project-1",
+            google_cloud_location="global",
+            gemini_model="gemini-test",
+        ),
+    )
+
+    result = await ai_generation_service.generate_clinical_questions(
+        repo,
+        "org-9",
+        clinic_specialty="dentistry",
+        patient_context="Name: Dental Patient\nReason: tooth pain",
+        clinic_context="Specialty: dentistry",
+        consultation_context="Symptoms: tooth pain with cold sensitivity",
+        measurement_context="",
+    )
+
+    assert result.assistant_specialty == "dentistry"
+    assert result.complaint_category == "tooth_pain"
+    assert result.module_suggestions[0].module == "attachments"
+    assert repo.events[0]["feature"] == "clinical_questions_dentistry"
+
+
+@pytest.mark.anyio
+async def test_dentistry_clinical_analysis_filters_modules_and_accepts_unknown_red_flags(monkeypatch):
+    repo = _Repo()
+
+    async def _fake_dentistry_analysis_content(**_kwargs):
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": """
+                                {
+                                  "assistant_specialty": "dentistry",
+                                  "possibilities": [
+                                    {
+                                      "label": "Dental infection concern",
+                                      "likelihood": "rule_out",
+                                      "why": "Swelling and fever need urgent screening.",
+                                      "what_to_check": "Facial swelling, trismus, swallowing, and vitals."
+                                    }
+                                  ],
+                                  "red_flags": [
+                                    {"label": "Facial swelling", "severity": "urgent", "present": null}
+                                  ],
+                                  "suggested_tests": ["Oral exam", "Dental photo/radiograph"],
+                                  "documentation_gaps": ["Tooth/site"],
+                                  "module_suggestions": ["attachments", "vitals", "eye_exam"],
+                                  "note_additions": "AI assistant Q&A:\\n- Site: lower molar",
+                                  "safety_notice": "For clinician review only. Not a diagnosis."
+                                }
+                                """
+                            }
+                        ]
+                    }
+                }
+            ],
+            "usageMetadata": {"promptTokenCount": 66, "candidatesTokenCount": 32},
+        }
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_dentistry_analysis_content)
+    monkeypatch.setattr(
+        ai_generation_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_cloud_project="project-1",
+            google_cloud_location="global",
+            gemini_model="gemini-test",
+        ),
+    )
+
+    result = await ai_generation_service.generate_clinical_analysis(
+        repo,
+        "org-10",
+        clinic_specialty="dentistry",
+        patient_context="Name: Dental Patient\nReason: swelling",
+        clinic_context="Specialty: dentistry",
+        consultation_context="Symptoms: facial swelling",
+        measurement_context="",
+        answers=[ClinicalAssistantAnswer(question_id="site", label="Site", answer="lower molar")],
+    )
+
+    assert result.assistant_specialty == "dentistry"
+    assert result.red_flags[0].present is None
+    assert result.module_suggestions == ["attachments", "vitals"]
+    assert repo.events[0]["feature"] == "clinical_analysis_dentistry"
+
+
+@pytest.mark.anyio
+async def test_dentistry_fallback_questions_without_ai_usage(monkeypatch):
+    repo = _Repo()
+    monkeypatch.setattr(
+        ai_generation_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_cloud_project="",
+            google_cloud_location="global",
+            gemini_model="",
+        ),
+    )
+
+    result = await ai_generation_service.generate_clinical_questions(
+        repo,
+        "org-11",
+        clinic_specialty="dentistry",
+        patient_context="Name: Dental Patient\nReason: braces wire poking",
+        clinic_context="Specialty: dentistry",
+        consultation_context="Symptoms: braces wire poking cheek",
+        measurement_context="",
+    )
+
+    assert result.assistant_specialty == "dentistry"
+    assert result.complaint_category == "orthodontic_or_appliance_issue"
+    assert result.questions
     assert repo.events == []

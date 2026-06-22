@@ -1,7 +1,9 @@
 from datetime import datetime
 
+from app.clinic_timezone import get_clinic_timezone
 
-def format_display_datetime(value: datetime | str) -> str:
+
+def format_display_datetime(value: datetime | str, timezone_name: str | None = None) -> str:
     if isinstance(value, datetime):
         parsed = value
     else:
@@ -11,7 +13,10 @@ def format_display_datetime(value: datetime | str) -> str:
         except ValueError:
             return raw
 
-    local_value = parsed.astimezone() if parsed.tzinfo else parsed
+    if parsed.tzinfo:
+        local_value = parsed.astimezone(get_clinic_timezone({"timezone": timezone_name}) if timezone_name else None)
+    else:
+        local_value = parsed
     month = local_value.strftime("%b")
     day = local_value.day
     hour = local_value.strftime("%I").lstrip("0") or "0"
@@ -19,7 +24,7 @@ def format_display_datetime(value: datetime | str) -> str:
     return f"{month} {day}, {hour}:{minute_period}"
 
 
-def format_export_datetime(value: datetime | str) -> str:
+def format_export_datetime(value: datetime | str, timezone_name: str | None = None) -> str:
     if isinstance(value, datetime):
         parsed = value
     else:
@@ -31,7 +36,10 @@ def format_export_datetime(value: datetime | str) -> str:
         except ValueError:
             return raw
 
-    local_value = parsed.astimezone() if parsed.tzinfo else parsed
+    if parsed.tzinfo:
+        local_value = parsed.astimezone(get_clinic_timezone({"timezone": timezone_name}) if timezone_name else None)
+    else:
+        local_value = parsed
     return local_value.strftime("%d/%m/%Y %I:%M %p")
 
 

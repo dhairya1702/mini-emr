@@ -74,6 +74,7 @@ export default function AppointmentsPage() {
             onCheckInAppointment={handleCheckInAppointment}
             onUpdateAppointment={(appointmentId, payload) => api.updateAppointment(appointmentId, payload)}
             onUpdateFollowUp={(followUpId, payload) => api.updateFollowUp(followUpId, payload)}
+            clinicTimezone={clinicSettings?.timezone || "UTC"}
           />
         </section>
       </div>

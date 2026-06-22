@@ -22,6 +22,7 @@ async def get_follow_up_booking_context(
             follow_up_id=follow_up["id"],
             patient_name=str(patient.get("name") or "Patient").strip() or "Patient",
             clinic_name=str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS",
+            timezone=str(clinic_settings.get("timezone") or "UTC"),
             scheduled_for=follow_up["scheduled_for"],
             notes=str(follow_up.get("notes") or "").strip(),
             booking_token=token,

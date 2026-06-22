@@ -1,10 +1,13 @@
 "use client";
 
 import { SettingsDrawerAppointmentsPanel } from "@/components/settings-drawer-appointments-panel";
+import { useClinicShell } from "@/components/clinic-shell-provider";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { api } from "@/lib/api";
 
 export default function MobileAppointmentsPage() {
+  const { clinicSettings } = useClinicShell();
+
   async function handleCheckInAppointment(
     appointmentId: string,
     options?: { existingPatientId?: string; forceNew?: boolean },
@@ -27,6 +30,7 @@ export default function MobileAppointmentsPage() {
         onUpdateFollowUp={(followUpId, payload) => api.updateFollowUp(followUpId, payload)}
         onCreateAppointment={(payload) => api.createAppointment(payload)}
         onCreateFollowUp={(patientId, payload) => api.createFollowUp(patientId, payload)}
+        clinicTimezone={clinicSettings?.timezone || "UTC"}
       />
     </MobileShell>
   );

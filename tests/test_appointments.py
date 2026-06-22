@@ -365,3 +365,42 @@ def test_appointment_can_be_rescheduled_and_cancelled(client):
     )
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
+
+
+def test_appointment_listing_uses_clinic_local_date_boundaries(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="appointments-timezone@clinic.com", clinic_name="Appointments Timezone Clinic")
+    headers = auth_headers_for_token(session["token"])
+
+    settings_response = test_client.put(
+        "/settings/clinic",
+        headers=headers,
+        json={
+            "clinic_name": "Appointments Timezone Clinic",
+            "timezone": "Asia/Kolkata",
+            "appointment_start_time": "09:00",
+            "appointment_end_time": "18:00",
+            "appointments_per_hour": 4,
+        },
+    )
+    assert settings_response.status_code == 200
+
+    create_appointment = test_client.post(
+        "/appointments",
+        json={
+            "name": "Midnight Boundary Patient",
+            "phone": "5550111111",
+            "reason": "Boundary review",
+            "scheduled_for": "2026-06-10T19:00:00+00:00",
+        },
+        headers=headers,
+    )
+    assert create_appointment.status_code == 201
+
+    list_appointments = test_client.get(
+        "/appointments?scheduled_date=2026-06-11",
+        headers=headers,
+    )
+    assert list_appointments.status_code == 200
+    assert len(list_appointments.json()) == 1
+    assert list_appointments.json()[0]["name"] == "Midnight Boundary Patient"

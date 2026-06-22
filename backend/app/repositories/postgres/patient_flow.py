@@ -5,6 +5,8 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from psycopg import Error as PsycopgError
+
 from app.postgres import PostgresConnectionManager
 from app.repositories.base import (
     DuplicateCheckInCandidateError,
@@ -300,6 +302,44 @@ class PostgresPatientFlowRepository:
                     return _row_to_dict(row, cursor)
 
         return await asyncio.to_thread(_create)
+
+    async def self_book_follow_up_atomic(
+        self,
+        *,
+        org_id: str,
+        patient_id: str,
+        follow_up_id: str,
+        scheduled_for: datetime,
+        appointments_per_hour: int,
+        timezone: str,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        def _book() -> tuple[dict[str, Any], dict[str, Any]]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    try:
+                        cursor.execute(
+                            "select public.self_book_follow_up_atomic(%s, %s, %s, %s, %s, %s)",
+                            (
+                                org_id,
+                                patient_id,
+                                follow_up_id,
+                                scheduled_for.isoformat(),
+                                appointments_per_hour,
+                                timezone,
+                            ),
+                        )
+                    except PsycopgError as exc:
+                        message = str(exc).splitlines()[0].strip() or "Failed to book follow-up appointment."
+                        raise ValueError(message) from exc
+                    row = cursor.fetchone()
+                    payload_data = _json_payload(row[0] if row else None)
+                    follow_up = payload_data.get("follow_up")
+                    appointment = payload_data.get("appointment")
+                    if not follow_up or not appointment:
+                        raise ValueError("Failed to book follow-up appointment.")
+                    return follow_up, appointment
+
+        return await asyncio.to_thread(_book)
 
     async def list_appointments(
         self,

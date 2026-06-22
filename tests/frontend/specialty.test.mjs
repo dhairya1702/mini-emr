@@ -7,6 +7,7 @@ test("specialty modules keep optometry and pediatrics boundaries separate", asyn
   const { getSpecialtyModules, specialtyHasModule } = await importWebModule("lib/specialty.ts");
 
   assert.deepEqual(getSpecialtyModules("general_physician"), []);
+  assert.deepEqual(getSpecialtyModules("dentistry"), []);
   assert.equal(specialtyHasModule("optometry", "eye_exam"), true);
   assert.equal(specialtyHasModule("optometry", "contact_lens"), true);
   assert.equal(specialtyHasModule("pediatrics", "eye_exam"), false);

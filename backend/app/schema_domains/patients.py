@@ -268,6 +268,7 @@ class FollowUpBookingContextOut(BaseModel):
     follow_up_id: UUID
     patient_name: str
     clinic_name: str
+    timezone: str
     scheduled_for: datetime
     notes: str
     booking_token: str

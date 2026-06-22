@@ -14,8 +14,8 @@ from app.schema_domains.clinical_assistant import (
     ClinicalQuestionsResponse,
 )
 from app.services.ai_generation_service import (
-    generate_optometry_clinical_analysis,
-    generate_optometry_clinical_questions,
+    generate_clinical_analysis,
+    generate_clinical_questions,
 )
 from app.services.document_helpers import build_document_context_for_user
 
@@ -38,12 +38,11 @@ async def _build_common_context(
     repo: AppRepository,
     current_user: UserOut,
     payload: ClinicalQuestionsRequest | ClinicalAnalysisRequest,
-) -> tuple[str, str, str, str]:
+) -> tuple[str, str, str, str, str]:
     clinic_settings = await build_document_context_for_user(repo, current_user)
-    if str(clinic_settings.get("clinic_specialty") or "") != "optometry":
-        raise ValueError("Clinical assistant is currently available for optometry only.")
     patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
     return (
+        str(clinic_settings.get("clinic_specialty") or "general_physician"),
         build_patient_context(patient),
         build_clinic_context(clinic_settings),
         _consultation_context(payload),
@@ -58,14 +57,15 @@ async def create_clinical_questions(
     current_user: UserOut = Depends(require_admin),
 ) -> ClinicalQuestionsResponse:
     try:
-        patient_context, clinic_context, consultation_context, measurement_context = await _build_common_context(
+        clinic_specialty, patient_context, clinic_context, consultation_context, measurement_context = await _build_common_context(
             repo,
             current_user,
             payload,
         )
-        return await generate_optometry_clinical_questions(
+        return await generate_clinical_questions(
             repo,
             str(current_user.org_id),
+            clinic_specialty=clinic_specialty,
             patient_context=patient_context,
             clinic_context=clinic_context,
             consultation_context=consultation_context,
@@ -84,14 +84,15 @@ async def create_clinical_analysis(
     current_user: UserOut = Depends(require_admin),
 ) -> ClinicalAnalysisResponse:
     try:
-        patient_context, clinic_context, consultation_context, measurement_context = await _build_common_context(
+        clinic_specialty, patient_context, clinic_context, consultation_context, measurement_context = await _build_common_context(
             repo,
             current_user,
             payload,
         )
-        return await generate_optometry_clinical_analysis(
+        return await generate_clinical_analysis(
             repo,
             str(current_user.org_id),
+            clinic_specialty=clinic_specialty,
             patient_context=patient_context,
             clinic_context=clinic_context,
             consultation_context=consultation_context,

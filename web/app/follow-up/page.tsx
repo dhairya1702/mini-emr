@@ -4,6 +4,13 @@ import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { Calendar, CheckCircle2, Clock3, RefreshCw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
+import {
+  formatDateTimeInTimeZone,
+  getTodayIsoDateInTimeZone,
+  toDateTimeInputInTimeZone,
+  zonedDateTimeInputToUtcIso,
+} from "@/lib/timezone";
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
 
@@ -11,35 +18,12 @@ type FollowUpBookingContext = {
   follow_up_id: string;
   patient_name: string;
   clinic_name: string;
+  timezone: string;
   scheduled_for: string;
   notes: string;
   booking_token: string;
   suggested_slots: string[];
 };
-
-function toLocalDateTimeInput(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  const hours = `${date.getHours()}`.padStart(2, "0");
-  const minutes = `${date.getMinutes()}`.padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
 
 function FollowUpBookingPageContent() {
   const searchParams = useSearchParams();
@@ -53,10 +37,9 @@ function FollowUpBookingPageContent() {
   const [successMessage, setSuccessMessage] = useState("");
 
   const minimumDateTime = useMemo(() => {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    return now.toISOString().slice(0, 16);
-  }, []);
+    const timeZone = context?.timezone || "UTC";
+    return `${getTodayIsoDateInTimeZone(timeZone)}T00:00`;
+  }, [context?.timezone]);
 
   useEffect(() => {
     let active = true;
@@ -90,8 +73,8 @@ function FollowUpBookingPageContent() {
         const bookingContext = payload as FollowUpBookingContext;
         setScheduledFor(
           bookingContext.suggested_slots[0]
-            ? toLocalDateTimeInput(bookingContext.suggested_slots[0])
-            : toLocalDateTimeInput(bookingContext.scheduled_for),
+            ? toDateTimeInputInTimeZone(bookingContext.suggested_slots[0], bookingContext.timezone)
+            : toDateTimeInputInTimeZone(bookingContext.scheduled_for, bookingContext.timezone),
         );
       } catch (loadError) {
         if (active) {
@@ -126,7 +109,7 @@ function FollowUpBookingPageContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token,
-          scheduled_for: new Date(scheduledFor).toISOString(),
+          scheduled_for: zonedDateTimeInputToUtcIso(scheduledFor, context?.timezone || "UTC"),
         }),
       });
       if (!response.ok) {
@@ -144,7 +127,7 @@ function FollowUpBookingPageContent() {
         current
           ? {
               ...current,
-              scheduled_for: new Date(scheduledFor).toISOString(),
+              scheduled_for: zonedDateTimeInputToUtcIso(scheduledFor, current.timezone),
             }
           : current,
       );
@@ -201,7 +184,7 @@ function FollowUpBookingPageContent() {
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Current time</p>
                 <p className="mt-2 inline-flex items-center gap-2 text-sm text-slate-700">
                   <Clock3 className="h-4 w-4 text-[#2a6fa8]" />
-                  {formatDateTime(context.scheduled_for)}
+                  {formatDateTimeInTimeZone(context.scheduled_for, context.timezone)}
                 </p>
               </div>
               <div>
@@ -221,19 +204,19 @@ function FollowUpBookingPageContent() {
                   <p className="mb-2 text-sm font-medium text-slate-700">Suggested open times</p>
                   <div className="flex flex-wrap gap-2">
                     {context.suggested_slots.map((slot) => {
-                      const active = scheduledFor === toLocalDateTimeInput(slot);
+                      const active = scheduledFor === toDateTimeInputInTimeZone(slot, context.timezone);
                       return (
                         <button
                           key={slot}
                           type="button"
-                          onClick={() => setScheduledFor(toLocalDateTimeInput(slot))}
+                          onClick={() => setScheduledFor(toDateTimeInputInTimeZone(slot, context.timezone))}
                           className={`rounded-xl border px-4 py-2 text-sm transition ${
                             active
                               ? "border-[#9fc7e1] bg-[#2f8fd3] text-white"
                               : "border-[#bfd7e8] bg-[#f3f8fb] text-slate-700 hover:bg-[#dbeaf4]"
                           }`}
                         >
-                          {formatDateTime(slot)}
+                          {formatDateTimeInTimeZone(slot, context.timezone)}
                         </button>
                       );
                     })}

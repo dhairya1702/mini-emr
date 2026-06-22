@@ -13,6 +13,7 @@ export type SpecialtyModuleKey =
 
 const SPECIALTY_MODULES: Record<Exclude<ClinicSpecialty, null>, SpecialtyModuleKey[]> = {
   general_physician: [],
+  dentistry: [],
   optometry: [
     "eye_exam",
     "contact_lens",

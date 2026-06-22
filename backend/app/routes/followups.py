@@ -1,11 +1,12 @@
 import hmac
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
+from app.clinic_timezone import clinic_today, utc_day_bounds_for_clinic
 from app.config import get_settings
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
@@ -15,14 +16,6 @@ from app.services.followup_workflow import create_follow_up_workflow, send_due_f
 
 
 router = APIRouter()
-
-
-def _utc_day_bounds(day: date) -> tuple[str, str]:
-    start = datetime(day.year, day.month, day.day, tzinfo=UTC)
-    end = start + timedelta(days=1)
-    return start.isoformat(), end.isoformat()
-
-
 def _system_user_for_org(org_id: str) -> UserOut:
     return UserOut.model_construct(
         id=UUID("00000000-0000-0000-0000-000000000001"),
@@ -58,8 +51,9 @@ async def list_follow_ups(
     repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[FollowUpOut]:
-    effective_date = scheduled_date or datetime.now(UTC).date()
-    scheduled_from, scheduled_to = _utc_day_bounds(effective_date)
+    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    effective_date = scheduled_date or clinic_today(clinic_settings)
+    scheduled_from, scheduled_to = utc_day_bounds_for_clinic(effective_date, clinic_settings)
     follow_ups = await repo.list_follow_ups(
         str(current_user.org_id),
         status=status,

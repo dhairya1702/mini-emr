@@ -13,6 +13,7 @@ def build_patient_timeline(
     follow_ups: list[dict],
     appointments: list[dict],
     clinic_specialty: str | None = None,
+    timezone_name: str | None = None,
 ) -> list[PatientTimelineEvent]:
     events: list[PatientTimelineEvent] = [
         PatientTimelineEvent(
@@ -194,7 +195,7 @@ def build_patient_timeline(
             )
 
     for appointment in appointments:
-        display_date = format_display_datetime(appointment["scheduled_for"])
+        display_date = format_display_datetime(appointment["scheduled_for"], timezone_name)
         events.append(
             PatientTimelineEvent(
                 id=f"appointment-booked-{appointment['id']}",
@@ -277,7 +278,7 @@ def build_patient_timeline(
             if invoice.get("completed_by_name"):
                 completion_bits.append(f"Completed by {invoice['completed_by_name']}.")
             if invoice.get("sent_at"):
-                completion_bits.append(f"Shared on {format_display_datetime(invoice['sent_at'])}.")
+                completion_bits.append(f"Shared on {format_display_datetime(invoice['sent_at'], timezone_name)}.")
             events.append(
                 PatientTimelineEvent(
                     id=f"invoice-sent-{invoice['id']}",
@@ -304,7 +305,7 @@ def build_patient_timeline(
 
     for follow_up in follow_ups:
         scheduled_for = follow_up["scheduled_for"]
-        display_date = format_display_datetime(scheduled_for)
+        display_date = format_display_datetime(scheduled_for, timezone_name)
         description = (
             f"Scheduled for {display_date}."
             if not str(follow_up.get("notes") or "").strip()
@@ -329,7 +330,7 @@ def build_patient_timeline(
         )
         if follow_up.get("completed_at"):
             completed_at = follow_up["completed_at"]
-            completed_display_date = format_display_datetime(completed_at)
+            completed_display_date = format_display_datetime(completed_at, timezone_name)
             events.append(
                 PatientTimelineEvent(
                     id=f"follow-up-completed-{follow_up['id']}",
