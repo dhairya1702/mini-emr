@@ -240,6 +240,63 @@ export WEB_URL='https://clinic-emr-web-388811826415.asia-south1.run.app'
 
 If `.env.deploy` is missing, the deploy script will refuse to run because `DB_PASSWORD` and `AUTH_SECRET` fall back to placeholders.
 
+If Cloud Scheduler follow-up reminders are enabled, `.env.deploy` should also include:
+
+```bash
+export INTERNAL_SCHEDULER_TOKEN='long random token used by Cloud Scheduler'
+```
+
+The backend deploy script only sets `INTERNAL_SCHEDULER_TOKEN` when this variable is non-empty, so keep it in `.env.deploy` after the scheduler is created.
+
+## Follow-Up Reminder Scheduler
+
+Production uses Cloud Scheduler rather than the in-process Cloud Run loop.
+
+Backend runtime setting:
+
+```bash
+FOLLOW_UP_REMINDER_RUNNER_ENABLED=false
+```
+
+Scheduler job:
+
+```text
+name: clinic-emr-follow-up-reminders
+region: asia-south1
+schedule: 0 8 * * *
+time zone: Asia/Kolkata
+target: POST https://clinic-emr-backend-388811826415.asia-south1.run.app/internal/run-follow-up-reminders
+auth: X-Internal-Token header matching backend INTERNAL_SCHEDULER_TOKEN
+```
+
+The endpoint performs follow-up maintenance for all orgs:
+
+- Cancels stale scheduled appointments before the clinic-local day start.
+- Cancels stale scheduled follow-ups before the clinic-local day start.
+- Sends due follow-up reminder emails for follow-ups that have not already been reminded.
+
+Inspect the scheduler job:
+
+```bash
+gcloud scheduler jobs describe clinic-emr-follow-up-reminders \
+  --location=asia-south1 \
+  --format='table(name,schedule,timeZone,state,httpTarget.uri)'
+```
+
+List scheduler jobs:
+
+```bash
+gcloud scheduler jobs list --location=asia-south1
+```
+
+Do not manually run the scheduler job unless a live reminder send is intended:
+
+```bash
+gcloud scheduler jobs run clinic-emr-follow-up-reminders --location=asia-south1
+```
+
+That command can send real patient reminder emails if due follow-ups exist.
+
 ## Deploy Verification
 
 After every deploy, verify:

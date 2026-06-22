@@ -24,6 +24,7 @@ PLACEHOLDER_AUTH_SECRET="some_long_random_secret_here"
 DEFAULT_DB_PASSWORD="$PLACEHOLDER_DB_PASSWORD"
 DEFAULT_AUTH_SECRET="$PLACEHOLDER_AUTH_SECRET"
 DEFAULT_SUPER_ADMIN_IDENTIFIERS="dhairya911@gmail.com"
+DEFAULT_INTERNAL_SCHEDULER_TOKEN=""
 
 # Load local deploy secrets before exporting defaults so shell vars still win when explicitly provided.
 if [[ -f "$(dirname "${BASH_SOURCE[0]}")/../.env.deploy" ]]; then
@@ -47,6 +48,7 @@ export WEB_URL="${WEB_URL:-$EXPECTED_WEB_URL}"
 export DB_PASSWORD="${DB_PASSWORD:-$DEFAULT_DB_PASSWORD}"
 export AUTH_SECRET="${AUTH_SECRET:-$DEFAULT_AUTH_SECRET}"
 export SUPER_ADMIN_IDENTIFIERS="${SUPER_ADMIN_IDENTIFIERS:-$DEFAULT_SUPER_ADMIN_IDENTIFIERS}"
+export INTERNAL_SCHEDULER_TOKEN="${INTERNAL_SCHEDULER_TOKEN:-$DEFAULT_INTERNAL_SCHEDULER_TOKEN}"
 
 deploy_root_dir() {
   cd "$(dirname "${BASH_SOURCE[0]}")/.."

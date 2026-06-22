@@ -11,6 +11,10 @@ require_non_placeholder_secrets
 
 IMAGE_TAG="$(resolve_image_tag)"
 WEB_ORIGINS="$(resolve_web_origin_list)"
+INTERNAL_SCHEDULER_ENV_ARGS=()
+if [[ -n "${INTERNAL_SCHEDULER_TOKEN:-}" ]]; then
+  INTERNAL_SCHEDULER_ENV_ARGS+=(--set-env-vars="INTERNAL_SCHEDULER_TOKEN=${INTERNAL_SCHEDULER_TOKEN}")
+fi
 
 echo "Building backend image with tag: $IMAGE_TAG"
 gcloud builds submit \
@@ -36,6 +40,7 @@ gcloud run deploy "$BACKEND_SERVICE" \
   --set-env-vars="APP_ORIGIN=${WEB_URL}" \
   --set-env-vars="^@^APP_ORIGINS=${WEB_ORIGINS}" \
   --set-env-vars="SUPER_ADMIN_IDENTIFIERS=${SUPER_ADMIN_IDENTIFIERS}" \
+  "${INTERNAL_SCHEDULER_ENV_ARGS[@]}" \
   --set-env-vars="FOLLOW_UP_REMINDER_RUNNER_ENABLED=false" \
   --set-env-vars="FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300"
 
