@@ -1,0 +1,23 @@
+import { useTransition } from "../transition";
+
+export default function Nav() {
+  const { go } = useTransition();
+  return (
+    <header className="nav">
+      <a className="nav__brand" href="#top">
+        <span className="nav__mark" aria-hidden>
+          <span className="nav__pulse" />
+        </span>
+        Clinic<span className="nav__brand-thin">EMR</span>
+      </a>
+      <nav className="nav__links">
+        <a href="#ai">Scribe</a>
+        <a href="#chart">Context</a>
+        <a href="#queue">Assistance</a>
+        <button className="nav__cta" onClick={() => go("/early-access")}>
+          Request access
+        </button>
+      </nav>
+    </header>
+  );
+}
