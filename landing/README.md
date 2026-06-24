@@ -1,32 +1,105 @@
-# React + TypeScript + Vite
+# Clinic EMR — Landing Teaser
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A standalone, cinematic single-page teaser for the Clinic EMR product. It is a
+**separate project** from the main product (`../web` frontend and `../backend`
+API) — it shares no code and has its own dependencies.
 
-Currently, two official plugins are available:
+The page is positioned around **AI-first clinical intelligence**: an AI scribe
+that expands shorthand into structured notes, a patient-context engine, and
+AI assistance across the clinic workflow — presented as a scroll-driven,
+GTA-VI-style experience with backgrounds that crossfade as you scroll.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Stack
 
-## React Compiler
+- **Vite** + **React 19** + **TypeScript**
+- **GSAP** + **ScrollTrigger** — scroll-driven animation, pinned reveals, parallax
+- **Lenis** — buttery smooth scroll, synced to the GSAP ticker
+- **react-router-dom** — real `/early-access` route + cinematic wipe transition
+- No UI framework; all visuals are generated with CSS (gradients, glow orbs, grain)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Run it
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+cd landing
+npm install      # first time only
+npm run dev      # http://localhost:5173
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Other scripts:
+
+```bash
+npm run build    # type-check + production build into dist/
+npm run preview  # serve the built dist/ locally
+npm run lint     # oxlint
+```
+
+## Project structure
+
+```text
+landing/
+├── index.html              # entry + fonts + meta
+├── src/
+│   ├── main.tsx            # router setup (Landing + EarlyAccess routes)
+│   ├── index.css           # global styles + design tokens (:root)
+│   ├── App.css             # all component/page styles
+│   ├── scenes.ts           # ALL landing copy + per-beat background gradients
+│   ├── access.ts           # ACCESS_ENDPOINT config for the form
+│   ├── transition.tsx      # cinematic route wipe (TransitionProvider / useTransition)
+│   ├── pages/
+│   │   ├── Landing.tsx      # the scrolling teaser (Lenis + ScrollTrigger setup)
+│   │   └── EarlyAccess.tsx  # /early-access split-screen page + form
+│   └── components/
+│       ├── Backdrop.tsx     # fixed crossfading gradient layers + glow orbs
+│       ├── Nav.tsx          # top nav
+│       ├── Hero.tsx         # opening hero
+│       ├── Scene.tsx        # a single scroll beat (text + visual)
+│       ├── SceneVisual.tsx  # generated abstract visuals per beat
+│       ├── Finale.tsx       # closing CTA section
+│       ├── Footer.tsx       # subtle DPDP compliance footer
+│       └── ScrollProgress.tsx
+```
+
+## How it works
+
+- **Backdrop crossfade:** `Backdrop` renders one fixed full-screen gradient
+  layer per scene. `Landing.tsx` creates a `ScrollTrigger` per section that
+  fades the matching layer in as it enters the viewport — that's the "background
+  changes as you scroll" effect.
+- **Smooth scroll:** a single `Lenis` instance is driven by the GSAP ticker, so
+  smooth scrolling and scroll-triggered animation stay perfectly in sync.
+- **Route wipe:** clicking a "Request early access" button calls
+  `useTransition().go("/early-access")`, which slides a panel over the screen,
+  swaps the route behind it, then reveals the new page.
+- **Reduced motion:** if the user prefers reduced motion, Lenis and scrubbed
+  animations are disabled automatically.
+
+## Editing common things
+
+- **Copy & section backgrounds:** `src/scenes.ts`
+- **Brand colors / fonts:** `:root` in `src/index.css`
+- **Hero / finale / footer text:** the matching component in `src/components/`
+- **Early-access perks & page copy:** `src/pages/EarlyAccess.tsx`
+- **Product name:** search for `Clinic<span className="nav__brand-thin">EMR`
+
+## Early-access form
+
+The form (`name`, `email`, `clinic`, `role`) is currently in **demo mode** —
+submissions are simulated locally with no network call.
+
+To go live, set `ACCESS_ENDPOINT` in `src/access.ts` to your form endpoint
+(e.g. a Formspree URL or your own API). The form will then `POST` the fields as
+JSON. No other changes needed.
+
+## Deployment note
+
+This is a multi-route SPA. Whatever hosts the built `dist/` must have an
+**SPA fallback** (rewrite all unknown paths to `index.html`) so `/early-access`
+works on a direct visit or refresh. The Vite dev server already does this.
+
+## Compliance
+
+The footer states the page is "designed to support India's DPDP Act, 2023" and
+notes patient data is encrypted in transit/at rest and not used to train
+third-party AI models. The wording is intentionally aspirational/accurate — it
+does **not** claim certifications. Update `src/components/Footer.tsx` if your
+compliance posture changes.
