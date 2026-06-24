@@ -127,6 +127,27 @@ def test_clinic_settings_can_store_specialty_for_existing_org(client):
     assert missing.status_code == 404
 
 
+def test_clinic_settings_normalizes_common_timezone_aliases(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="settings-timezone-alias@clinic.com", clinic_name="Timezone Alias Clinic")
+    headers = auth_headers_for_token(session["token"])
+
+    response = test_client.put(
+        "/settings/clinic",
+        headers=headers,
+        json={
+            "clinic_name": "Timezone Alias Clinic",
+            "timezone": "Asia/Calcutta",
+            "appointment_start_time": "09:00",
+            "appointment_end_time": "18:00",
+            "appointments_per_hour": 4,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["timezone"] == "Asia/Kolkata"
+
+
 def test_generate_letter_pdf_returns_error_when_template_is_enabled_but_missing(client):
     test_client, repo = client
     session = register_test_clinic(test_client, identifier="settings-letter-preview@clinic.com", clinic_name="Letter Preview Clinic")

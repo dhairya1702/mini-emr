@@ -37,8 +37,14 @@ PATIENT_COLUMNS = [
     "weight",
     "height",
     "temperature",
+    "profile_photo_storage_path",
+    "profile_photo_content_type",
+    "profile_photo_updated_at",
     "status",
     "billed",
+    "ai_summary",
+    "ai_summary_updated_at",
+    "ai_summary_stale",
     "created_at",
     "last_visit_at",
 ]
@@ -108,6 +114,14 @@ def _json_payload(value: Any) -> dict[str, Any]:
     return value or {}
 
 
+def _patient_with_profile_photo_url(patient: dict[str, Any]) -> dict[str, Any]:
+    storage_path = str(patient.get("profile_photo_storage_path") or "").strip()
+    return {
+        **patient,
+        "profile_photo_url": f"/patients/{patient['id']}/profile-photo/file" if storage_path else None,
+    }
+
+
 class PostgresPatientFlowRepository:
     def __init__(self, connection_manager: PostgresConnectionManager) -> None:
         self.connection_manager = connection_manager
@@ -125,7 +139,7 @@ class PostgresPatientFlowRepository:
                         """,
                         (org_id,),
                     )
-                    return [_row_to_dict(row, cursor) for row in cursor.fetchall()]
+                    return [_patient_with_profile_photo_url(_row_to_dict(row, cursor)) for row in cursor.fetchall()]
 
         return await asyncio.to_thread(_list)
 
@@ -163,7 +177,7 @@ class PostgresPatientFlowRepository:
                     row = cursor.fetchone()
                     if not row:
                         raise ValueError("Failed to create patient.")
-                    patient = _row_to_dict(row, cursor)
+                    patient = _patient_with_profile_photo_url(_row_to_dict(row, cursor))
                     cursor.execute(
                         """
                         insert into public.patient_visits (
@@ -485,7 +499,7 @@ class PostgresPatientFlowRepository:
                     """,
                     (org_id, normalized_phone),
                 )
-                return [_row_to_dict(row, cursor) for row in cursor.fetchall()]
+                return [_patient_with_profile_photo_url(_row_to_dict(row, cursor)) for row in cursor.fetchall()]
 
     async def check_in_appointment(
         self,
@@ -515,9 +529,60 @@ class PostgresPatientFlowRepository:
                     patient = payload_data.get("patient")
                     if not appointment or not patient:
                         raise ValueError("Failed to check in appointment.")
-                    return appointment, patient
+                    return appointment, _patient_with_profile_photo_url(patient)
 
         return await asyncio.to_thread(_check_in)
+
+    async def update_patient_profile_photo(
+        self,
+        org_id: str,
+        patient_id: str,
+        *,
+        storage_path: str,
+        content_type: str,
+    ) -> dict[str, Any]:
+        def _update() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        update public.patients
+                        set profile_photo_storage_path = %s,
+                          profile_photo_content_type = %s,
+                          profile_photo_updated_at = now()
+                        where org_id = %s and id = %s
+                        returning {_columns_sql(PATIENT_COLUMNS)}
+                        """,
+                        (storage_path, content_type, org_id, patient_id),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("Patient not found for this organization.")
+                    return _patient_with_profile_photo_url(_row_to_dict(row, cursor))
+
+        return await asyncio.to_thread(_update)
+
+    async def clear_patient_profile_photo(self, org_id: str, patient_id: str) -> dict[str, Any]:
+        def _clear() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        update public.patients
+                        set profile_photo_storage_path = null,
+                          profile_photo_content_type = null,
+                          profile_photo_updated_at = null
+                        where org_id = %s and id = %s
+                        returning {_columns_sql(PATIENT_COLUMNS)}
+                        """,
+                        (org_id, patient_id),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("Patient not found for this organization.")
+                    return _patient_with_profile_photo_url(_row_to_dict(row, cursor))
+
+        return await asyncio.to_thread(_clear)
 
     async def update_appointment(self, org_id: str, appointment_id: str, payload: AppointmentUpdate) -> dict[str, Any]:
         def _update() -> dict[str, Any]:
@@ -608,7 +673,7 @@ class PostgresPatientFlowRepository:
                     row = cursor.fetchone()
                     if not row:
                         raise ValueError("Failed to update patient.")
-                    return _row_to_dict(row, cursor)
+                    return _patient_with_profile_photo_url(_row_to_dict(row, cursor))
 
         return await asyncio.to_thread(_update)
 
@@ -630,7 +695,7 @@ class PostgresPatientFlowRepository:
                         """,
                         (org_id, normalized_phone, limit),
                     )
-                    return [_row_to_dict(row, cursor) for row in cursor.fetchall()]
+                    return [_patient_with_profile_photo_url(_row_to_dict(row, cursor)) for row in cursor.fetchall()]
 
         return await asyncio.to_thread(_list)
 
@@ -650,9 +715,43 @@ class PostgresPatientFlowRepository:
                     row = cursor.fetchone()
                     if not row:
                         raise ValueError("Patient not found for this organization.")
-                    return _row_to_dict(row, cursor)
+                    return _patient_with_profile_photo_url(_row_to_dict(row, cursor))
 
         return await asyncio.to_thread(_get)
+
+    async def save_patient_summary(
+        self, org_id: str, patient_id: str, summary: str, updated_at: datetime
+    ) -> None:
+        def _save() -> None:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        update public.patients
+                        set ai_summary = %s,
+                            ai_summary_updated_at = %s,
+                            ai_summary_stale = false
+                        where org_id = %s and id = %s
+                        """,
+                        (summary, updated_at, org_id, patient_id),
+                    )
+
+        await asyncio.to_thread(_save)
+
+    async def mark_patient_summary_stale(self, org_id: str, patient_id: str) -> None:
+        def _mark() -> None:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        update public.patients
+                        set ai_summary_stale = true
+                        where org_id = %s and id = %s
+                        """,
+                        (org_id, patient_id),
+                    )
+
+        await asyncio.to_thread(_mark)
 
     async def list_patients_by_ids(self, org_id: str, patient_ids: list[str]) -> list[dict[str, Any]]:
         unique_ids = sorted({str(patient_id) for patient_id in patient_ids if str(patient_id)})

@@ -1,4 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
@@ -15,6 +19,7 @@ from app.schema_domains.patients import (
     PatientVisitDetailOut,
     PatientMatchOut,
     PatientOut,
+    PatientSummaryOut,
     PatientTimelineEvent,
     PatientUpdate,
     PatientVisitCreate,
@@ -27,6 +32,7 @@ from app.schema_domains.specialty import (
     PediatricGrowthSummaryOut,
 )
 from app.services.case_study_workflow import build_case_study_source_view
+from app.services.patient_summary_workflow import generate_patient_summary_workflow
 from app.services.patient_views import (
     build_patient_visit_detail_view,
     build_patient_growth_history_view,
@@ -41,9 +47,41 @@ from app.services.patient_workflow import (
     record_patient_visit_workflow,
     update_patient_workflow,
 )
+from app.storage import PatientAttachmentStorage, get_patient_attachment_storage
 
 
 router = APIRouter()
+
+ALLOWED_PATIENT_PROFILE_PHOTO_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+}
+ALLOWED_PATIENT_PROFILE_PHOTO_EXTENSIONS = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
+MAX_PATIENT_PROFILE_PHOTO_BYTES = 5 * 1024 * 1024
+
+
+def _resolve_profile_photo_content_type(upload: UploadFile) -> str:
+    content_type = (upload.content_type or "").strip().lower()
+    if content_type in ALLOWED_PATIENT_PROFILE_PHOTO_TYPES:
+        return content_type
+    extension = Path(upload.filename or "").suffix.lower()
+    if extension in ALLOWED_PATIENT_PROFILE_PHOTO_EXTENSIONS:
+        return ALLOWED_PATIENT_PROFILE_PHOTO_EXTENSIONS[extension]
+    raise HTTPException(status_code=400, detail="Only JPG, PNG, and WEBP patient photos are supported.")
+
+
+def _profile_photo_extension(content_type: str) -> str:
+    return {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+    }.get(content_type, ".jpg")
 
 
 @router.get("/patients", response_model=list[PatientOut])
@@ -160,6 +198,110 @@ async def update_patient(
         raise internal_server_error(exc, context="update_patient") from exc
 
 
+@router.post("/patients/{patient_id}/profile-photo", response_model=PatientOut)
+async def upload_patient_profile_photo(
+    patient_id: str,
+    file: UploadFile = File(...),
+    repo: AppRepository = Depends(get_repository),
+    storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
+    current_user: UserOut = Depends(get_current_user),
+) -> PatientOut:
+    content_type = _resolve_profile_photo_content_type(file)
+    raw_bytes = await file.read()
+    if not raw_bytes:
+        raise HTTPException(status_code=400, detail="Patient photo file is empty.")
+    if len(raw_bytes) > MAX_PATIENT_PROFILE_PHOTO_BYTES:
+        raise HTTPException(status_code=400, detail="Patient photo must be 5 MB or smaller.")
+
+    try:
+        existing = await repo.get_patient(str(current_user.org_id), patient_id)
+        old_storage_path = str(existing.get("profile_photo_storage_path") or "").strip()
+        storage_path = (
+            f"{current_user.org_id}/{patient_id}/profile-photo/"
+            f"{uuid4()}{_profile_photo_extension(content_type)}"
+        )
+        await storage.upload(storage_path, raw_bytes, content_type)
+        updated = await repo.update_patient_profile_photo(
+            str(current_user.org_id),
+            patient_id,
+            storage_path=storage_path,
+            content_type=content_type,
+        )
+        if old_storage_path and old_storage_path != storage_path:
+            await storage.delete(old_storage_path)
+        await repo.create_audit_event(
+            org_id=str(current_user.org_id),
+            actor_user_id=str(current_user.id),
+            actor_name=current_user.name.strip() or current_user.identifier.strip() or "Clinic User",
+            entity_type="patient",
+            entity_id=patient_id,
+            action="patient_profile_photo_uploaded",
+            summary=f"Updated profile photo for patient {updated['name']}.",
+            metadata={"patient_name": updated.get("name"), "content_type": content_type},
+        )
+        return PatientOut(**updated)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="upload_patient_profile_photo") from exc
+
+
+@router.get("/patients/{patient_id}/profile-photo/file")
+async def download_patient_profile_photo(
+    patient_id: str,
+    repo: AppRepository = Depends(get_repository),
+    storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
+    current_user: UserOut = Depends(get_current_user),
+):
+    try:
+        patient = await repo.get_patient(str(current_user.org_id), patient_id)
+        storage_path = str(patient.get("profile_photo_storage_path") or "").strip()
+        if not storage_path:
+            raise ValueError("Patient photo not found.")
+        raw_bytes = await storage.download(storage_path)
+        content_type = str(patient.get("profile_photo_content_type") or "image/jpeg")
+        return StreamingResponse(
+            iter([raw_bytes]),
+            media_type=content_type,
+            headers={"Content-Length": str(len(raw_bytes)), "Cache-Control": "private, max-age=300"},
+        )
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="download_patient_profile_photo") from exc
+
+
+@router.delete("/patients/{patient_id}/profile-photo", response_model=PatientOut)
+async def delete_patient_profile_photo(
+    patient_id: str,
+    repo: AppRepository = Depends(get_repository),
+    storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
+    current_user: UserOut = Depends(get_current_user),
+) -> PatientOut:
+    try:
+        existing = await repo.get_patient(str(current_user.org_id), patient_id)
+        old_storage_path = str(existing.get("profile_photo_storage_path") or "").strip()
+        if not old_storage_path:
+            raise ValueError("Patient photo not found.")
+        updated = await repo.clear_patient_profile_photo(str(current_user.org_id), patient_id)
+        await storage.delete(old_storage_path)
+        await repo.create_audit_event(
+            org_id=str(current_user.org_id),
+            actor_user_id=str(current_user.id),
+            actor_name=current_user.name.strip() or current_user.identifier.strip() or "Clinic User",
+            entity_type="patient",
+            entity_id=patient_id,
+            action="patient_profile_photo_deleted",
+            summary=f"Removed profile photo for patient {updated['name']}.",
+            metadata={"patient_name": updated.get("name")},
+        )
+        return PatientOut(**updated)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="delete_patient_profile_photo") from exc
+
+
 @router.get("/patients/{patient_id}/timeline", response_model=list[PatientTimelineEvent])
 async def get_patient_timeline(
     patient_id: str,
@@ -172,6 +314,58 @@ async def get_patient_timeline(
         raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="get_patient_timeline") from exc
+
+
+@router.get("/patients/{patient_id}/summary", response_model=PatientSummaryOut)
+async def get_patient_summary(
+    patient_id: str,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> PatientSummaryOut:
+    try:
+        org_id = str(current_user.org_id)
+        patient = await repo.get_patient(org_id, patient_id)
+        cached = str(patient.get("ai_summary") or "").strip()
+        is_stale = bool(patient.get("ai_summary_stale", True))
+        if cached and not is_stale:
+            return PatientSummaryOut(
+                summary=cached,
+                updated_at=patient.get("ai_summary_updated_at"),
+                stale=False,
+                used_fallback=False,
+            )
+        result = await generate_patient_summary_workflow(repo, org_id, patient_id)
+        return PatientSummaryOut(
+            summary=result["summary"],
+            updated_at=result["updated_at"],
+            stale=False,
+            used_fallback=result["used_fallback"],
+        )
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="get_patient_summary") from exc
+
+
+@router.post("/patients/{patient_id}/summary/regenerate", response_model=PatientSummaryOut)
+async def regenerate_patient_summary(
+    patient_id: str,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> PatientSummaryOut:
+    try:
+        org_id = str(current_user.org_id)
+        result = await generate_patient_summary_workflow(repo, org_id, patient_id)
+        return PatientSummaryOut(
+            summary=result["summary"],
+            updated_at=result["updated_at"],
+            stale=False,
+            used_fallback=result["used_fallback"],
+        )
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="regenerate_patient_summary") from exc
 
 
 @router.get("/patients/{patient_id}/myopia-history", response_model=MyopiaHistoryOut)

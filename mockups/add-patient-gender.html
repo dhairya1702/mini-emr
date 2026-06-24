@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClinicOS · Add Patient (with Gender)</title>
+  <style>
+    :root {
+      --line: #dbe7ef;
+      --line-strong: #bfd7e8;
+      --soft: #f3f8fb;
+      --soft-strong: #edf5fa;
+      --ink: #1f2b3d;
+      --ink-soft: #5b6b80;
+      --ink-faint: #8595a8;
+      --accent: #2f8fd3;
+      --accent-strong: #287fc0;
+      --focus: #6daed8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(178,211,232,.28), transparent 26%),
+        radial-gradient(circle at top right, rgba(216,231,239,.55), transparent 26%),
+        linear-gradient(180deg,#fbfdff,#eef6fb);
+    }
+    h2,p,span { margin: 0; }
+
+    /* dimmed backdrop like the real modal */
+    .overlay {
+      position: fixed; inset: 0; z-index: 40;
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+      background: rgba(219,234,244,0.6);
+      backdrop-filter: blur(4px);
+    }
+
+    .modal {
+      width: 100%; max-width: 768px;
+      max-height: 92vh; display: flex; flex-direction: column;
+      overflow: hidden;
+      background: #fff;
+      border: 2px solid #9fc7e1;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(64,131,181,.18);
+    }
+
+    .modal-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 24px; border-bottom: 1px solid var(--line);
+    }
+    .modal-head h2 { font-size: 20px; font-weight: 700; color: #0f1b2d; }
+    .modal-head p { margin-top: 4px; font-size: 14px; color: var(--ink-soft); }
+    .x-btn {
+      border: 1px solid var(--line-strong); background: #fff;
+      border-radius: 12px; padding: 8px; color: var(--ink-soft);
+      cursor: pointer; line-height: 0; font-size: 16px;
+    }
+    .x-btn:hover { color: var(--ink); }
+
+    .modal-body { padding: 20px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+
+    /* search row */
+    .search-row { display: flex; gap: 12px; }
+    .search-row input {
+      flex: 1; min-width: 0;
+      border: 1px solid var(--line); border-radius: 12px;
+      padding: 12px 16px; font-size: 14px; color: var(--ink);
+      background: #fff; outline: none;
+    }
+    .search-row input:focus { border-color: var(--focus); }
+    .btn-primary {
+      border: none; border-radius: 12px; cursor: pointer;
+      background: var(--accent); color: #fff;
+      padding: 12px 18px; font-size: 14px; font-weight: 600;
+    }
+    .btn-primary:hover { background: var(--accent-strong); }
+
+    /* Add As toggle */
+    .seg-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .seg-label { font-size: 14px; font-weight: 600; color: var(--ink); }
+    .seg { display: inline-flex; gap: 8px; }
+    .seg button {
+      border: 1px solid var(--line-strong); background: #fff;
+      color: var(--ink-soft); border-radius: 12px;
+      padding: 8px 16px; font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: .15s ease;
+    }
+    .seg button:hover { border-color: #9fc7e1; background: var(--soft); }
+    .seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* field grid */
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    .field label { display: block; font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
+    .field input, .field textarea, .field select {
+      width: 100%; border: 1px solid var(--line); border-radius: 12px;
+      padding: 12px 16px; font-size: 14px; color: var(--ink);
+      background: rgba(243,248,251,.5); outline: none; font-family: inherit;
+    }
+    .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--focus); }
+    .field input::placeholder, .field textarea::placeholder { color: var(--ink-faint); }
+    .with-unit { display: flex; gap: 8px; }
+    .with-unit select { width: auto; padding: 12px 12px; }
+    textarea { resize: none; min-height: 88px; }
+
+    /* GENDER — the new field, highlighted for review */
+    .gender-field {
+      border: 1.5px dashed #9bd0a8;
+      background: #f1fbf4;
+      border-radius: 14px;
+      padding: 14px 16px;
+      position: relative;
+    }
+    .gender-field .new-tag {
+      position: absolute; top: -10px; left: 14px;
+      background: #16a34a; color: #fff;
+      font-size: 10px; font-weight: 800; letter-spacing: .08em;
+      padding: 3px 8px; border-radius: 6px;
+    }
+    .gender-field > label { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 10px; display:block; }
+    .gender-seg { display: flex; gap: 8px; flex-wrap: wrap; }
+    .gender-seg button {
+      flex: 1; min-width: 90px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      border: 1px solid var(--line-strong); background: #fff;
+      color: var(--ink-soft); border-radius: 12px;
+      padding: 11px 14px; font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: .15s ease;
+    }
+    .gender-seg button:hover { border-color: #9fc7e1; }
+    .gender-seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .gender-seg .ico { font-size: 15px; }
+    .gender-hint { margin-top: 9px; font-size: 12px; color: var(--ink-soft); }
+
+    .modal-foot {
+      display: flex; justify-content: flex-end; gap: 12px;
+      padding: 16px 24px; border-top: 1px solid var(--line);
+    }
+    .btn-ghost {
+      border: 1px solid var(--line-strong); background: #fff;
+      color: var(--ink); border-radius: 12px;
+      padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .btn-ghost:hover { background: var(--soft); }
+
+    @media (max-width: 620px) {
+      .grid2, .grid3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay">
+    <div class="modal">
+
+      <div class="modal-head">
+        <div>
+          <h2>Add Patient</h2>
+          <p>Quick intake for the live queue or a future booking.</p>
+        </div>
+        <button class="x-btn" title="Close">&#10005;</button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- search existing -->
+        <div class="search-row">
+          <input placeholder="Search by 10-digit phone number" />
+          <button class="btn-primary">Search</button>
+        </div>
+
+        <!-- Add As -->
+        <div class="seg-row">
+          <span class="seg-label">Add As:</span>
+          <div class="seg">
+            <button class="on">Queue</button>
+            <button>Appointment</button>
+          </div>
+        </div>
+
+        <!-- name / phone -->
+        <div class="grid2">
+          <div class="field">
+            <label>Name</label>
+            <input placeholder="Patient full name" value="Meera Anand" />
+          </div>
+          <div class="field">
+            <label>Phone</label>
+            <input placeholder="10-digit phone number" value="9876543210" />
+          </div>
+        </div>
+
+        <!-- email / dob -->
+        <div class="grid2">
+          <div class="field">
+            <label>Email</label>
+            <input placeholder="patient@example.com" />
+          </div>
+          <div class="field">
+            <label>DOB</label>
+            <input type="date" value="1991-04-12" />
+          </div>
+        </div>
+
+        <!-- ===== NEW: GENDER ===== -->
+        <div class="gender-field">
+          <span class="new-tag">NEW FIELD</span>
+          <label>Gender</label>
+          <div class="gender-seg">
+            <button class="on"><span class="ico">&#9792;</span> Female</button>
+            <button><span class="ico">&#9794;</span> Male</button>
+            <button><span class="ico">&#9893;</span> Other</button>
+            <button>Prefer not to say</button>
+          </div>
+          <p class="gender-hint">Optional · one tap · powers the queue avatar tint and demographic reports.</p>
+        </div>
+
+        <!-- vitals (queue only) -->
+        <div class="grid3">
+          <div class="field">
+            <label>Temperature</label>
+            <div class="with-unit">
+              <input placeholder="98.6" />
+              <select><option>F</option><option>C</option></select>
+            </div>
+          </div>
+          <div class="field">
+            <label>Weight</label>
+            <input placeholder="kg" />
+          </div>
+          <div class="field">
+            <label>Height</label>
+            <div class="with-unit">
+              <input placeholder="172" />
+              <select><option>cm</option><option>m</option></select>
+            </div>
+          </div>
+        </div>
+
+        <!-- reason -->
+        <div class="field">
+          <label>Reason for Visit</label>
+          <textarea placeholder="Short reason for visit">Cardiac follow-up review</textarea>
+        </div>
+
+      </div>
+
+      <div class="modal-foot">
+        <button class="btn-ghost">Cancel</button>
+        <button class="btn-primary">Add to Queue</button>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>

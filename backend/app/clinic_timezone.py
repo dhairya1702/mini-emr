@@ -5,10 +5,14 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 DEFAULT_TIMEZONE = "UTC"
+TIMEZONE_ALIASES = {
+    "Asia/Calcutta": "Asia/Kolkata",
+}
 
 
 def normalize_timezone_name(value: object) -> str:
     name = str(value or "").strip() or DEFAULT_TIMEZONE
+    name = TIMEZONE_ALIASES.get(name, name)
     try:
         ZoneInfo(name)
     except ZoneInfoNotFoundError as exc:

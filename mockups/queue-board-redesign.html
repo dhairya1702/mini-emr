@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClinicOS · Queue Board Redesign</title>
+  <style>
+    /* ============================================================
+       DESIGN TOKENS  (extends your existing globals.css palette)
+       ============================================================ */
+    :root {
+      --bg-start: #fbfdff;
+      --bg-end: #eef6fb;
+      --halo-left: rgba(178, 211, 232, 0.28);
+      --halo-right: rgba(216, 231, 239, 0.55);
+
+      --line: #dbe7ef;
+      --line-strong: #bfd7e8;
+      --surface: #ffffff;
+      --soft: #f3f8fb;
+      --soft-strong: #edf5fa;
+
+      --ink: #1f2b3d;
+      --ink-soft: #5b6b80;
+      --ink-faint: #8595a8;
+
+      --accent: #2f8fd3;
+      --accent-strong: #287fc0;
+      --accent-text: #2a6fa8;
+
+      /* per-stage accents */
+      --wait: #f59e0b;     --wait-soft: #fff7ea;   --wait-line: #fbe2b5;
+      --consult: #2f8fd3;  --consult-soft: #ecf6fd; --consult-line: #bfe0f5;
+      --bill: #16a34a;     --bill-soft: #ecfaf1;    --bill-line: #bce8cd;
+
+      --rose: #e11d48;     --rose-soft: #fff1f3;
+
+      --shadow-sm: 0 6px 16px rgba(64,131,181,0.07);
+      --shadow-md: 0 14px 38px rgba(64,131,181,0.10);
+      --shadow-lg: 0 22px 52px rgba(64,131,181,0.16);
+
+      --r-lg: 20px;
+      --r-md: 16px;
+      --r-sm: 12px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      color: var(--ink);
+      background-image:
+        radial-gradient(circle at top left, var(--halo-left), transparent 26%),
+        radial-gradient(circle at top right, var(--halo-right), transparent 26%),
+        linear-gradient(180deg, var(--bg-start) 0%, var(--bg-end) 100%);
+      background-attachment: fixed;
+    }
+    h1, h2, h3, p { margin: 0; }
+    button { font-family: inherit; cursor: pointer; border: none; background: none; }
+
+    .shell {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 22px 24px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      min-height: 100vh;
+    }
+
+    /* ============================================================
+       HEADER
+       ============================================================ */
+    .topbar {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 14px 18px;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-md);
+      backdrop-filter: blur(8px);
+    }
+    .topbar-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .icon-btn {
+      width: 42px; height: 42px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: var(--r-sm);
+      border: 1px solid var(--line-strong);
+      background: #fff;
+      color: var(--ink);
+      transition: .18s ease;
+    }
+    .icon-btn:hover { background: var(--soft-strong); border-color: #9fc7e1; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand .logo {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), #57b0e6);
+      display: grid; place-items: center;
+      color: #fff; font-weight: 700; font-size: 18px;
+      box-shadow: 0 8px 18px rgba(47,143,211,0.35);
+    }
+    .brand .name { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; }
+    .brand .sub { font-size: 12px; color: var(--ink-faint); margin-top: 1px; }
+
+    .search {
+      flex: 1;
+      max-width: 420px;
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px;
+      background: var(--soft);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--r-sm);
+      color: var(--ink-faint);
+      transition: .18s ease;
+    }
+    .search:focus-within { background: #fff; border-color: #6daed8; box-shadow: 0 0 0 4px rgba(109,174,216,.18); }
+    .search input { border: none; outline: none; background: none; flex: 1; font-size: 14px; color: var(--ink); }
+
+    .topbar .spacer { flex: 1; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 8px 14px; border-radius: var(--r-sm);
+      background: var(--soft-strong); color: var(--accent-text);
+      font-size: 13px; font-weight: 600;
+      border: 1px solid var(--consult-line);
+    }
+    .avatar-me {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: linear-gradient(135deg,#34557a,#5b86b3);
+      color: #fff; font-weight: 600; font-size: 13px;
+      display: grid; place-items: center;
+    }
+
+    /* ============================================================
+       NAV TABS  (matches app-header.tsx)
+       ============================================================ */
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .tab {
+      text-decoration: none;
+      padding: 9px 14px;
+      border-radius: var(--r-sm);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ink-soft);
+      transition: .15s ease;
+    }
+    .tab:hover { background: var(--soft-strong); color: var(--ink); }
+    .tab.active {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 8px 18px rgba(47,143,211,0.22);
+    }
+
+    /* ============================================================
+       BOARD
+       ============================================================ */
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      flex: 1;
+      min-height: 0;
+    }
+    .column {
+      display: flex; flex-direction: column;
+      background: rgba(255,255,255,0.78);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-md);
+      min-height: 0;
+      overflow: hidden;
+    }
+    .col-head {
+      display: flex; align-items: center; gap: 12px;
+      padding: 16px 18px 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--head-soft, #fff);
+    }
+    .col-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--head, var(--accent)); box-shadow: 0 0 0 4px var(--head-ring, rgba(47,143,211,.15)); }
+    .col-head .title { font-size: 15px; font-weight: 700; }
+    .col-head .count {
+      margin-left: auto;
+      min-width: 26px; height: 24px; padding: 0 9px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 999px; font-size: 13px; font-weight: 700;
+      background: var(--head-soft); color: var(--head);
+      border: 1px solid var(--head-line);
+    }
+    .col-add {
+      width: 30px; height: 30px; border-radius: 9px;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: var(--head); background: var(--head-soft); border: 1px solid var(--head-line);
+      font-size: 18px; line-height: 1; transition: .15s ease;
+    }
+    .col-add:hover { filter: brightness(.96); }
+
+    .col-body {
+      padding: 14px;
+      display: flex; flex-direction: column; gap: 12px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .col-body::-webkit-scrollbar { width: 8px; }
+    .col-body::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
+
+    /* ============================================================
+       PATIENT CARD
+       ============================================================ */
+    .card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--head, var(--accent));
+      border-radius: var(--r-md);
+      padding: 13px 14px;
+      box-shadow: var(--shadow-sm);
+      transition: .18s ease;
+      cursor: grab;
+      position: relative;
+    }
+    .card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); border-color: #9fc7e1; }
+    .card:active { cursor: grabbing; }
+
+    .card-top { display: flex; align-items: center; gap: 11px; }
+    .ava {
+      width: 40px; height: 40px; border-radius: 12px; flex: none;
+      display: grid; place-items: center;
+      font-weight: 700; font-size: 14px; color: #fff;
+    }
+    .card-id { min-width: 0; flex: 1; }
+    .card-name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-meta { font-size: 12.5px; color: var(--ink-soft); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .wait-badge {
+      flex: none;
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 12px; font-weight: 600;
+      padding: 5px 9px; border-radius: 9px;
+      background: var(--soft-strong); color: var(--ink-soft);
+    }
+    .wait-badge.warn { background: var(--wait-soft); color: #b45309; }
+    .wait-badge.live { background: var(--consult-soft); color: var(--accent-text); }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
+    .chip {
+      font-size: 11.5px; font-weight: 600;
+      padding: 4px 9px; border-radius: 8px;
+      background: var(--soft); color: var(--ink-soft);
+      border: 1px solid var(--line);
+    }
+    .chip.flag { background: var(--rose-soft); color: var(--rose); border-color: #f9c9d3; }
+
+    .card-foot {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 12px; padding-top: 11px; border-top: 1px dashed var(--line);
+    }
+    .reason { font-size: 12.5px; color: var(--ink-soft); display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .reason b { color: var(--ink); font-weight: 600; }
+    .card-actions { display: flex; gap: 7px; flex: none; }
+    .act {
+      width: 32px; height: 32px; border-radius: 10px;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: .15s ease;
+    }
+    .act.go { background: var(--accent); color: #fff; }
+    .act.go:hover { background: var(--accent-strong); }
+    .act.del { background: var(--rose-soft); color: var(--rose); border: 1px solid #f9c9d3; }
+    .act.del:hover { background: #ffe3e8; }
+    .act.next { background: var(--bill-soft); color: var(--bill); border: 1px solid var(--bill-line); }
+    .act.next:hover { filter: brightness(.96); }
+
+    /* priority left strip override */
+    .card.urgent { border-left-color: var(--rose); }
+    .card.urgent::after {
+      content: "PRIORITY"; position: absolute; top: 12px; right: 14px;
+      font-size: 9px; font-weight: 800; letter-spacing: .12em;
+      color: var(--rose); background: var(--rose-soft);
+      padding: 3px 7px; border-radius: 6px;
+    }
+
+    /* now-serving highlight in consultation */
+    .card.serving {
+      background: linear-gradient(180deg,#fff, var(--consult-soft));
+      border-color: var(--consult-line);
+      box-shadow: 0 0 0 3px rgba(47,143,211,.12), var(--shadow-md);
+    }
+    .serving-tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 10px; font-weight: 800; letter-spacing: .1em;
+      color: var(--accent-text); margin-bottom: 9px;
+    }
+    .serving-tag .blip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.7)} }
+
+    /* empty state */
+    .empty {
+      border: 1.5px dashed var(--line-strong);
+      border-radius: var(--r-md);
+      background: var(--soft);
+      padding: 34px 18px;
+      text-align: center;
+    }
+    .empty .e-icon { font-size: 26px; opacity: .5; }
+    .empty p { font-size: 13px; color: var(--ink-soft); font-weight: 600; margin-top: 6px; }
+    .empty span { font-size: 12px; color: var(--ink-faint); }
+
+    /* avatar palettes */
+    .a1{background:linear-gradient(135deg,#f59e0b,#fbbf24)}
+    .a2{background:linear-gradient(135deg,#2f8fd3,#57b0e6)}
+    .a3{background:linear-gradient(135deg,#8b5cf6,#a78bfa)}
+    .a4{background:linear-gradient(135deg,#16a34a,#4ade80)}
+    .a5{background:linear-gradient(135deg,#e11d48,#fb7185)}
+    .a6{background:linear-gradient(135deg,#0891b2,#22d3ee)}
+
+    .legend { font-size: 12px; color: var(--ink-faint); text-align: center; }
+
+    @media (max-width: 1080px) {
+      .board { grid-template-columns: 1fr; }
+      .search { max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+
+    <!-- ===== HEADER ===== -->
+    <header class="topbar">
+      <div class="topbar-row">
+        <button class="icon-btn" title="Menu">&#9776;</button>
+        <div class="brand">
+          <div class="logo">C</div>
+          <div>
+            <div class="name">ClinicOS</div>
+            <div class="sub">Bright Eye Clinic · Mon, Jun 24</div>
+          </div>
+        </div>
+        <div class="search">
+          <span>&#128269;</span>
+          <input placeholder="Search patient, phone, reason…" />
+        </div>
+        <div class="spacer"></div>
+        <div class="pill">&#9679; Live · auto-sync</div>
+        <div class="pill">Admin</div>
+        <div class="avatar-me">DR</div>
+      </div>
+
+      <!-- ===== NAV TABS ===== -->
+      <nav class="tabs" aria-label="Primary">
+        <a class="tab active" href="#">Queue</a>
+        <a class="tab" href="#">Appointments</a>
+        <a class="tab" href="#">Patients</a>
+        <a class="tab" href="#">Billing</a>
+        <a class="tab" href="#">Inventory</a>
+        <a class="tab" href="#">History</a>
+        <a class="tab" href="#">Earnings</a>
+      </nav>
+    </header>
+
+    <!-- ===== BOARD ===== -->
+    <section class="board">
+
+      <!-- WAITING -->
+      <div class="column" style="--head:var(--wait); --head-soft:var(--wait-soft); --head-line:var(--wait-line); --head-ring:rgba(245,158,11,.18)">
+        <div class="col-head" style="--head-soft:#fffaf0">
+          <span class="col-dot"></span>
+          <span class="title">Waiting</span>
+          <span class="count">4</span>
+          <button class="col-add" title="Add patient">+</button>
+        </div>
+        <div class="col-body">
+
+          <article class="card urgent">
+            <div class="card-top">
+              <div class="ava a5">MA</div>
+              <div class="card-id">
+                <div class="card-name">Meera Anand</div>
+                <div class="card-meta">34y · Female</div>
+              </div>
+              <span class="wait-badge warn">&#9201; 38m</span>
+            </div>
+            <div class="chips">
+              <span class="chip flag">Chest pain</span>
+              <span class="chip">BP 150/95</span>
+              <span class="chip">Temp 99.1°</span>
+            </div>
+            <div class="card-foot">
+              <span class="reason"><b>Follow-up</b> · cardiac review</span>
+              <div class="card-actions">
+                <button class="act del" title="Remove">&#128465;</button>
+                <button class="act go" title="Open chart">&#8594;</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-top">
+              <div class="ava a1">RK</div>
+              <div class="card-id">
+                <div class="card-name">Rahul Kapoor</div>
+                <div class="card-meta">28y · Male</div>
+              </div>
+              <span class="wait-badge">&#9201; 12m</span>
+            </div>
+            <div class="chips">
+              <span class="chip">Fever</span>
+              <span class="chip">Temp 101.4°</span>
+            </div>
+            <div class="card-foot">
+              <span class="reason"><b>New visit</b> · viral fever</span>
+              <div class="card-actions">
+                <button class="act del" title="Remove">&#128465;</button>
+                <button class="act go" title="Open chart">&#8594;</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-top">
+              <div class="ava a3">Sp</div>
+              <div class="card-id">
+                <div class="card-name">Sanya Patel</div>
+                <div class="card-meta">7y · Female</div>
+              </div>
+              <span class="wait-badge">&#9201; 6m</span>
+            </div>
+            <div class="chips">
+              <span class="chip">Vaccination</span>
+              <span class="chip">Wt 22 kg</span>
+            </div>
+            <div class="card-foot">
+              <span class="reason"><b>Scheduled</b> · 10:30 slot</span>
+              <div class="card-actions">
+                <button class="act del" title="Remove">&#128465;</button>
+                <button class="act go" title="Open chart">&#8594;</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-top">
+              <div class="ava a6">JT</div>
+              <div class="card-id">
+                <div class="card-name">Jacob Thomas</div>
+                <div class="card-meta">45y · Male</div>
+              </div>
+              <span class="wait-badge">&#9201; 3m</span>
+            </div>
+            <div class="chips">
+              <span class="chip">Routine check</span>
+            </div>
+            <div class="card-foot">
+              <span class="reason"><b>New visit</b> · general</span>
+              <div class="card-actions">
+                <button class="act del" title="Remove">&#128465;</button>
+                <button class="act go" title="Open chart">&#8594;</button>
+              </div>
+            </div>
+          </article>
+
+        </div>
+      </div>
+
+      <!-- CONSULTATION -->
+      <div class="column" style="--head:var(--consult); --head-soft:var(--consult-soft); --head-line:var(--consult-line); --head-ring:rgba(47,143,211,.18)">
+        <div class="col-head" style="--head-soft:#f3faff">
+          <span class="col-dot"></span>
+          <span class="title">Consultation</span>
+          <span class="count">2</span>
+        </div>
+        <div class="col-body">
+
+          <article class="card serving">
+            <span class="serving-tag"><span class="blip"></span>NOW SERVING</span>
+            <div class="card-top">
+              <div class="ava a2">DV</div>
+              <div class="card-id">
+                <div class="card-name">Deepa Verma</div>
+                <div class="card-meta">52y · Female</div>
+              </div>
+              <span class="wait-badge live">&#9201; 9m</span>
+            </div>
+            <div class="chips">
+              <span class="chip">Diabetes</span>
+              <span class="chip">HbA1c 7.8</span>
+              <span class="chip">BP 138/88</span>
+            </div>
+            <div class="card-foot">
+              <span class="reason"><b>Follow-up</b> · Dr. Rao</span>
+              <div class="card-actions">
+                <button class="act next" title="Send to billing">&#10003;</button>
+                <button class="act go" title="Open chart">&#8594;</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-top">
+              <div class="ava a4">NG</div>
+              <div class="card-id">
+                <div class="card-name">Nikhil Gupta</div>
+                <div class="card-meta">31y · Male</div>
+              </div>
+              <span class="wait-badge live">&#9201; 2m</span>
+            </div>
+            <div class="chips">
+              <span class="chip">Skin rash</span>
+              <span class="chip">Allergy</span>
+            </div>
+            <div class="card-foot">
+              <span class="reason"><b>New visit</b> · Dr. Rao</span>
+              <div class="card-actions">
+                <button class="act next" title="Send to billing">&#10003;</button>
+                <button class="act go" title="Open chart">&#8594;</button>
+              </div>
+            </div>
+          </article>
+
+        </div>
+      </div>
+
+      <!-- BILLING -->
+      <div class="column" style="--head:var(--bill); --head-soft:var(--bill-soft); --head-line:var(--bill-line); --head-ring:rgba(22,163,74,.18)">
+        <div class="col-head" style="--head-soft:#f1fbf5">
+          <span class="col-dot"></span>
+          <span class="title">Billing</span>
+          <span class="count">2</span>
+        </div>
+        <div class="col-body">
+
+          <article class="card">
+            <div class="card-top">
+              <div class="ava a1">AS</div>
+              <div class="card-id">
+                <div class="card-name">Arjun Sharma</div>
+                <div class="card-meta">40y · Male</div>
+              </div>
+              <span class="wait-badge">&#8377; 850</span>
+            </div>
+            <div class="chips">
+              <span class="chip">Consultation</span>
+              <span class="chip">2 medicines</span>
+              <span class="chip" style="background:var(--wait-soft);color:#b45309;border-color:var(--wait-line)">Unpaid</span>
+            </div>
+            <div class="card-foot">
+              <span class="reason"><b>Ready</b> · invoice drafted</span>
+              <div class="card-actions">
+                <button class="act del" title="Remove">&#128465;</button>
+                <button class="act next" title="Open billing">&#8377;</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-top">
+              <div class="ava a3">LM</div>
+              <div class="card-id">
+                <div class="card-name">Lina Mathew</div>
+                <div class="card-meta">25y · Female</div>
+              </div>
+              <span class="wait-badge">&#8377; 400</span>
+            </div>
+            <div class="chips">
+              <span class="chip">Consultation</span>
+              <span class="chip" style="background:var(--bill-soft);color:var(--bill);border-color:var(--bill-line)">Paid</span>
+            </div>
+            <div class="card-foot">
+              <span class="reason"><b>Done</b> · send receipt</span>
+              <div class="card-actions">
+                <button class="act del" title="Remove">&#128465;</button>
+                <button class="act next" title="Open billing">&#8377;</button>
+              </div>
+            </div>
+          </article>
+
+          <div class="empty">
+            <div class="e-icon">&#129534;</div>
+            <p>Drop completed patients here</p>
+            <span>Generate and share invoices in one tap</span>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+    <p class="legend">Mock redesign · drag cards between stages · colour-coded by stage · priority &amp; wait-time aware</p>
+  </div>
+</body>
+</html>

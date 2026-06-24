@@ -7,6 +7,7 @@ import { MobileAdminGate } from "@/components/mobile/mobile-admin-gate";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { LetterFormState, SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-panel";
 import { api } from "@/lib/api";
+import { printBlob } from "@/lib/print";
 import { hasUserSignature } from "@/lib/setup-checklist";
 
 const emptyLetterForm: LetterFormState = {
@@ -76,6 +77,26 @@ export default function MobileGenerateLetterPage() {
     }
   }
 
+  async function handlePrintPdf() {
+    const content = letterForm.generated.trim() || letterForm.content.trim();
+    if (!content) {
+      setLetterError("Generate or write letter content before printing.");
+      return;
+    }
+    setIsPreparingLetterPdf(true);
+    setLetterError("");
+    setLetterStatus("");
+    try {
+      const blob = await api.generateLetterPdf({ content });
+      printBlob(blob, "clinic_letter.pdf");
+      setLetterStatus("Print dialog opened.");
+    } catch (printError) {
+      setLetterError(printError instanceof Error ? printError.message : "Failed to print PDF.");
+    } finally {
+      setIsPreparingLetterPdf(false);
+    }
+  }
+
   async function handleSend() {
     const content = letterForm.generated.trim() || letterForm.content.trim();
     if (!letterForm.recipient_email.trim() || !letterForm.subject.trim() || !content) {
@@ -113,6 +134,7 @@ export default function MobileGenerateLetterPage() {
           onSubmit={handleSubmit}
           onChange={(patch) => setLetterForm((current) => ({ ...current, ...patch }))}
           onPreviewPdf={handlePreviewPdf}
+          onPrintPdf={handlePrintPdf}
           onSend={handleSend}
         />
       </MobileShell>

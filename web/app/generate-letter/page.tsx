@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { LetterFormState, SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-panel";
 import { api } from "@/lib/api";
+import { printBlob } from "@/lib/print";
 import { hasUserSignature } from "@/lib/setup-checklist";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 
@@ -112,6 +113,26 @@ export default function GenerateLetterPage() {
     }
   }
 
+  async function handlePrintPdf() {
+    const content = letterForm.generated.trim() || letterForm.content.trim();
+    if (!content) {
+      setLetterError("Generate or write letter content before printing.");
+      return;
+    }
+    setIsPreparingLetterPdf(true);
+    setLetterError("");
+    setLetterStatus("");
+    try {
+      const blob = await api.generateLetterPdf({ content });
+      printBlob(blob, "clinic_letter.pdf");
+      setLetterStatus("Print dialog opened.");
+    } catch (printError) {
+      setLetterError(printError instanceof Error ? printError.message : "Failed to print PDF.");
+    } finally {
+      setIsPreparingLetterPdf(false);
+    }
+  }
+
   async function handleSend() {
     const content = letterForm.generated.trim() || letterForm.content.trim();
     if (!letterForm.recipient_email.trim() || !letterForm.subject.trim() || !content) {
@@ -154,6 +175,7 @@ export default function GenerateLetterPage() {
           onSubmit={handleSubmit}
           onChange={(patch) => setLetterForm((current) => ({ ...current, ...patch }))}
           onPreviewPdf={handlePreviewPdf}
+          onPrintPdf={handlePrintPdf}
           onSend={handleSend}
         />
       </div>

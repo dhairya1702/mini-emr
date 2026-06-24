@@ -1,8 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Pencil, Upload, UserRound, X } from "lucide-react";
+import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Mail, Pencil, RefreshCw, Sparkles, Upload, UserRound, X } from "lucide-react";
 
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-myopia-modal";
@@ -19,6 +19,7 @@ import {
   Patient,
   PatientAttachment,
   PatientChartVisit,
+  PatientSummary,
   PatientVisitAttachmentRow,
   PatientVisitDetail,
   PatientTimelineEvent,
@@ -40,6 +41,7 @@ interface PatientDetailsDrawerProps {
   onLoadGrowthHistory?: (patientId: string) => Promise<PediatricGrowthSummary>;
   isTrainingMode?: boolean;
   readOnly?: boolean;
+  onPatientUpdated?: (patient: Patient) => void;
   onSave: (payloadPatientId: string, payload: {
     name: string;
     phone: string;
@@ -65,6 +67,26 @@ function formatDateTime(value: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+const PROFILE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+const PROFILE_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+function resolveApiAssetUrl(path: string | null | undefined) {
+  if (!path) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
+  return `${baseUrl.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function patientInitials(patient: Patient) {
+  const parts = patient.name.trim().split(/\s+/).filter(Boolean);
+  const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
+  return initials || "P";
 }
 
 function noteAttachmentKey(asset: NoteAsset) {
@@ -104,6 +126,7 @@ type AttachmentPanelNoteRow = {
   id: string;
   label: string;
   timestamp: string;
+  attachmentId?: string;
   open: () => void;
 };
 
@@ -478,21 +501,25 @@ function AttachmentsPanel({
   attachmentError,
   isLoading,
   isDeletingAttachmentId,
+  isSendingAttachmentId,
   isUploadingAttachment,
   noteAssets,
   onDeletePatientAttachment,
   onPatientAttachmentFileChange,
   onOpenPatientAttachment,
+  onStartSendAttachment,
   patientAttachments,
 }: {
   attachmentError: string;
   isLoading: boolean;
   isDeletingAttachmentId: string;
+  isSendingAttachmentId: string;
   isUploadingAttachment: boolean;
   noteAssets: Array<NoteAsset & { note_id: string; note_created_at: string }>;
   onDeletePatientAttachment: (attachment: PatientAttachment) => Promise<void>;
   onPatientAttachmentFileChange: (file: File | null) => Promise<void>;
   onOpenPatientAttachment: (attachment: PatientAttachment) => void;
+  onStartSendAttachment: (attachment: Pick<PatientAttachment, "id" | "file_name" | "content_type">) => void;
   patientAttachments: PatientAttachment[];
 }) {
   const noteRows: AttachmentPanelNoteRow[] = [
@@ -500,6 +527,7 @@ function AttachmentsPanel({
       id: `note-${asset.note_id}-${asset.id}`,
       label: asset.name,
       timestamp: asset.note_created_at,
+      attachmentId: asset.attachment_id,
       open: () => asset.attachment_id ? openPatientAttachmentViewer(asset.attachment_id) : openNoteAttachmentViewer(asset),
     })),
   ];
@@ -558,16 +586,37 @@ function AttachmentsPanel({
                   {isAttachmentPanelPatientRow(row) ? ` · ${formatFileSize(row.fileSize)}` : ""}
                 </p>
               </button>
-              {isAttachmentPanelPatientRow(row) ? (
-                <button
-                  type="button"
-                  disabled={isDeletingAttachmentId === row.attachment.id}
-                  onClick={() => void onDeletePatientAttachment(row.attachment)}
-                  className="shrink-0 rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
-                >
-                  {isDeletingAttachmentId === row.attachment.id ? "Deleting..." : "Delete"}
-                </button>
-              ) : null}
+              <div className="flex shrink-0 items-center gap-2">
+                {isAttachmentPanelPatientRow(row) || row.attachmentId ? (
+                  <button
+                    type="button"
+                    disabled={isSendingAttachmentId === (isAttachmentPanelPatientRow(row) ? row.attachment.id : row.attachmentId)}
+                    onClick={() => {
+                      const attachmentId = isAttachmentPanelPatientRow(row) ? row.attachment.id : row.attachmentId;
+                      if (!attachmentId) return;
+                      onStartSendAttachment({
+                        id: attachmentId,
+                        file_name: row.label,
+                        content_type: isAttachmentPanelPatientRow(row) ? row.attachment.content_type : "",
+                      });
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#9fc7e1] bg-white px-3 py-1.5 text-xs font-medium text-[#235f8e] transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                  >
+                    <Mail className="h-3.5 w-3.5" />
+                    {isSendingAttachmentId === (isAttachmentPanelPatientRow(row) ? row.attachment.id : row.attachmentId) ? "Sending..." : "Send"}
+                  </button>
+                ) : null}
+                {isAttachmentPanelPatientRow(row) ? (
+                  <button
+                    type="button"
+                    disabled={isDeletingAttachmentId === row.attachment.id}
+                    onClick={() => void onDeletePatientAttachment(row.attachment)}
+                    className="rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                  >
+                    {isDeletingAttachmentId === row.attachment.id ? "Deleting..." : "Delete"}
+                  </button>
+                ) : null}
+              </div>
             </div>
           ))
         ) : (
@@ -591,6 +640,7 @@ export function PatientDetailsDrawer({
   onLoadGrowthHistory,
   isTrainingMode = false,
   readOnly = false,
+  onPatientUpdated,
   onSave,
 }: PatientDetailsDrawerProps) {
   const isOptometryClinic = specialtyHasModule(clinicSpecialty, "myopia_management");
@@ -620,7 +670,17 @@ export function PatientDetailsDrawer({
   const [patientAttachments, setPatientAttachments] = useState<PatientAttachment[]>([]);
   const [isAttachmentsLoading, setIsAttachmentsLoading] = useState(false);
   const [isDeletingAttachmentId, setIsDeletingAttachmentId] = useState("");
+  const [isSendingAttachmentId, setIsSendingAttachmentId] = useState("");
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [isUploadingProfilePhoto, setIsUploadingProfilePhoto] = useState(false);
+  const [profilePhotoVersion, setProfilePhotoVersion] = useState(0);
+  const [attachmentSendDraft, setAttachmentSendDraft] = useState<{
+    attachmentId: string;
+    fileName: string;
+    recipientEmail: string;
+    subject: string;
+    message: string;
+  } | null>(null);
   const [attachmentError, setAttachmentError] = useState("");
   const [myopiaHistory, setMyopiaHistory] = useState<MyopiaHistory | null>(null);
   const [growthHistory, setGrowthHistory] = useState<PediatricGrowthSummary | null>(null);
@@ -636,6 +696,11 @@ export function PatientDetailsDrawer({
     other: false,
   });
   const [selectedVisitId, setSelectedVisitId] = useState("");
+  const [currentPatient, setCurrentPatient] = useState<Patient | null>(patient);
+  const [aiSummary, setAiSummary] = useState<PatientSummary | null>(null);
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
+  const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false);
 
   useEffect(() => {
     setOpenVisitSections({ note: false, attachments: false, other: false });
@@ -643,9 +708,12 @@ export function PatientDetailsDrawer({
 
   useEffect(() => {
     if (!patient) {
+      setCurrentPatient(null);
       return;
     }
 
+    setCurrentPatient(patient);
+    setProfilePhotoVersion(0);
     setForm({
       name: patient.name,
       phone: patient.phone,
@@ -669,6 +737,8 @@ export function PatientDetailsDrawer({
     setNotes([]);
     setPatientAttachments([]);
     setAttachmentError("");
+    setAttachmentSendDraft(null);
+    setIsSendingAttachmentId("");
     setIsAttachmentsLoading(false);
     setHasLoadedAttachmentsTab(false);
     setMyopiaHistory(null);
@@ -677,7 +747,43 @@ export function PatientDetailsDrawer({
     setIsMyopiaLoading(false);
     setHasLoadedTestsTab(false);
     setSelectedVisitId("");
+    setAiSummary(null);
+    setSummaryError("");
+    setIsSummaryLoading(false);
+    setIsRegeneratingSummary(false);
   }, [patient]);
+
+  useEffect(() => {
+    if (!patient || isTrainingMode) {
+      return;
+    }
+    const patientId = patient.id;
+    let active = true;
+    async function loadSummary() {
+      setIsSummaryLoading(true);
+      setSummaryError("");
+      try {
+        const result = await api.getPatientSummary(patientId);
+        if (active) {
+          setAiSummary(result);
+        }
+      } catch (loadError) {
+        if (active) {
+          const message =
+            loadError instanceof Error ? loadError.message : "Failed to load summary.";
+          setSummaryError(message);
+        }
+      } finally {
+        if (active) {
+          setIsSummaryLoading(false);
+        }
+      }
+    }
+    void loadSummary();
+    return () => {
+      active = false;
+    };
+  }, [patient, isTrainingMode]);
 
   useEffect(() => {
     if (!patient) {
@@ -884,8 +990,6 @@ export function PatientDetailsDrawer({
     return rows;
   }, [notes]);
 
-  const currentPatient = patient;
-
   if (!currentPatient) {
     return null;
   }
@@ -1026,8 +1130,127 @@ export function PatientDetailsDrawer({
     }
   }
 
+  function handleStartSendAttachment(attachment: Pick<PatientAttachment, "id" | "file_name" | "content_type">) {
+    if (!currentPatient) {
+      return;
+    }
+    const patientName = currentPatient.name.trim() || "Patient";
+    const patientEmail = (currentPatient.email || "").trim();
+    setAttachmentError("");
+    setAttachmentSendDraft({
+      attachmentId: attachment.id,
+      fileName: attachment.file_name,
+      recipientEmail: patientEmail,
+      subject: `${patientName} attachment: ${attachment.file_name}`,
+      message: `Please find attached ${attachment.file_name} for ${patientName}.`,
+    });
+  }
+
+  async function handleSendAttachment() {
+    if (!currentPatient || !attachmentSendDraft) {
+      return;
+    }
+    const recipientEmail = attachmentSendDraft.recipientEmail.trim();
+    const subject = attachmentSendDraft.subject.trim();
+    if (!recipientEmail) {
+      setAttachmentError("Confirm the recipient email before sending.");
+      return;
+    }
+    if (!recipientEmail.includes("@")) {
+      setAttachmentError("Enter a valid recipient email.");
+      return;
+    }
+    if (!subject) {
+      setAttachmentError("Enter an email subject before sending.");
+      return;
+    }
+
+    setIsSendingAttachmentId(attachmentSendDraft.attachmentId);
+    setAttachmentError("");
+    try {
+      const response = await api.sendPatientAttachment(currentPatient.id, attachmentSendDraft.attachmentId, {
+        recipient_email: recipientEmail,
+        subject,
+        message: attachmentSendDraft.message.trim(),
+      });
+      setAttachmentError(response.message);
+      setAttachmentSendDraft(null);
+    } catch (sendError) {
+      setAttachmentError(sendError instanceof Error ? sendError.message : "Failed to send attachment.");
+    } finally {
+      setIsSendingAttachmentId("");
+    }
+  }
+
+  async function handleProfilePhotoFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!currentPatient || !file) {
+      return;
+    }
+    if (!PROFILE_PHOTO_TYPES.has(file.type)) {
+      setError("Only JPG, PNG, and WEBP patient photos are supported.");
+      return;
+    }
+    if (file.size > PROFILE_PHOTO_MAX_BYTES) {
+      setError("Patient photo must be 5 MB or smaller.");
+      return;
+    }
+    setIsUploadingProfilePhoto(true);
+    setError("");
+    try {
+      const updated = await api.uploadPatientProfilePhoto(currentPatient.id, file);
+      setCurrentPatient(updated);
+      setProfilePhotoVersion((current) => current + 1);
+      onPatientUpdated?.(updated);
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Failed to upload patient photo.");
+    } finally {
+      setIsUploadingProfilePhoto(false);
+    }
+  }
+
+  async function handleRemoveProfilePhoto() {
+    if (!currentPatient?.profile_photo_url) {
+      return;
+    }
+    if (!window.confirm("Remove this patient photo?")) {
+      return;
+    }
+    setIsUploadingProfilePhoto(true);
+    setError("");
+    try {
+      const updated = await api.removePatientProfilePhoto(currentPatient.id);
+      setCurrentPatient(updated);
+      setProfilePhotoVersion((current) => current + 1);
+      onPatientUpdated?.(updated);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Failed to remove patient photo.");
+    } finally {
+      setIsUploadingProfilePhoto(false);
+    }
+  }
+
+  async function handleRegenerateSummary() {
+    if (!currentPatient || isTrainingMode || isRegeneratingSummary) {
+      return;
+    }
+    setIsRegeneratingSummary(true);
+    setSummaryError("");
+    try {
+      const result = await api.regeneratePatientSummary(currentPatient.id);
+      setAiSummary(result);
+    } catch (regenerateError) {
+      const message =
+        regenerateError instanceof Error ? regenerateError.message : "Failed to refresh summary.";
+      setSummaryError(message);
+    } finally {
+      setIsRegeneratingSummary(false);
+    }
+  }
+
   async function handleSave() {
-    if (readOnly || !patient) {
+    if (readOnly || !currentPatient) {
       return;
     }
 
@@ -1069,7 +1292,7 @@ export function PatientDetailsDrawer({
     setIsSaving(true);
     setError("");
     try {
-      await onSave(patient.id, {
+      await onSave(currentPatient.id, {
         name: form.name.trim(),
         phone: form.phone.trim(),
         email: normalizedEmail,
@@ -1089,15 +1312,65 @@ export function PatientDetailsDrawer({
     }
   }
 
+  const profilePhotoUrl = currentPatient.profile_photo_url
+    ? `${resolveApiAssetUrl(currentPatient.profile_photo_url)}?v=${encodeURIComponent(
+        currentPatient.profile_photo_updated_at || String(profilePhotoVersion),
+      )}`
+    : "";
+
   return (
     <div className="fixed inset-0 z-30 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5">
       <div className="mx-auto flex h-full max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-[20px] border border-[#dbe7ef] bg-white shadow-[0_35px_90px_rgba(15,23,42,0.18)]">
         <div className="border-b border-[#dbe7ef] px-5 py-4 sm:px-7">
           <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Patient Chart</p>
-              <h2 className="mt-2 truncate text-3xl font-semibold text-slate-900">{currentPatient.name}</h2>
-              <p className="mt-2 text-sm text-slate-500">{patientMetadataLine(currentPatient)}</p>
+            <div className="flex min-w-0 flex-1 items-start gap-4">
+              <div className="shrink-0">
+                <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-[#dbe7ef] bg-[#f3f8fb] text-2xl font-semibold text-[#2a6fa8] shadow-[0_10px_26px_rgba(64,131,181,0.08)]">
+                  {profilePhotoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={profilePhotoUrl}
+                      alt={`${currentPatient.name} profile photo`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span aria-hidden="true">{patientInitials(currentPatient)}</span>
+                  )}
+                </div>
+                {!readOnly && !isTrainingMode ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <label className="cursor-pointer rounded-lg border border-[#dbe7ef] px-2.5 py-1.5 text-xs font-medium text-[#2a6fa8] transition hover:border-[#9fc7e1] hover:bg-[#f3f8fb]">
+                      {isUploadingProfilePhoto
+                        ? "Uploading..."
+                        : currentPatient.profile_photo_url
+                          ? "Change"
+                          : "Add photo"}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                        className="sr-only"
+                        disabled={isUploadingProfilePhoto}
+                        onChange={handleProfilePhotoFileChange}
+                      />
+                    </label>
+                    {currentPatient.profile_photo_url ? (
+                      <button
+                        type="button"
+                        disabled={isUploadingProfilePhoto}
+                        onClick={handleRemoveProfilePhoto}
+                        className="rounded-lg border border-rose-100 px-2.5 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-60"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Patient Chart</p>
+                <h2 className="mt-2 truncate text-3xl font-semibold text-slate-900">{currentPatient.name}</h2>
+                <p className="mt-2 text-sm text-slate-500">{patientMetadataLine(currentPatient)}</p>
+              </div>
             </div>
             <div className="flex shrink-0 flex-col gap-2">
               <button
@@ -1175,6 +1448,61 @@ export function PatientDetailsDrawer({
 
         <section className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7">
           <div className="w-full">
+            {!isTrainingMode ? (
+              <div className="mb-5 rounded-xl border border-[#cfe3f3] bg-gradient-to-br from-[#f3f9fe] to-[#eaf4fc] p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#2f8fd3]/10 text-[#2f8fd3]">
+                      <Sparkles className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="text-sm font-semibold text-[#1d4d72]">AI summary</span>
+                    {aiSummary?.updated_at ? (
+                      <span className="text-xs text-slate-500">
+                        · generated {formatDateTime(aiSummary.updated_at)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRegenerateSummary}
+                    disabled={isRegeneratingSummary || isSummaryLoading}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#cfe3f3] bg-white px-2.5 py-1.5 text-xs font-medium text-[#2f6c98] transition hover:bg-[#f3f9fe] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${isRegeneratingSummary ? "animate-spin" : ""}`} />
+                    {isRegeneratingSummary ? "Refreshing" : "Refresh"}
+                  </button>
+                </div>
+
+                <div className="mt-3">
+                  {isSummaryLoading && !aiSummary ? (
+                    <div className="space-y-2">
+                      <div className="h-3 w-11/12 animate-pulse rounded bg-[#d7e9f7]" />
+                      <div className="h-3 w-9/12 animate-pulse rounded bg-[#d7e9f7]" />
+                      <div className="h-3 w-10/12 animate-pulse rounded bg-[#d7e9f7]" />
+                    </div>
+                  ) : summaryError ? (
+                    <p className="text-sm text-rose-600">{summaryError}</p>
+                  ) : aiSummary?.summary ? (
+                    <>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                        {aiSummary.summary}
+                      </p>
+                      {aiSummary.used_fallback ? (
+                        <p className="mt-2 text-xs text-amber-600">
+                          AI was unavailable — showing recent recorded activity.
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-xs text-slate-400">
+                          AI-generated overview. Verify against the record before relying on it.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-slate-500">No summary available yet.</p>
+                  )}
+                </div>
+              </div>
+            ) : null}
             {activeTab === "visits" ? (
               <div className="grid min-h-0 gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
                 <aside className="self-start rounded-xl border border-[#dbe7ef] bg-white p-3">
@@ -1247,13 +1575,85 @@ export function PatientDetailsDrawer({
                 onOpenPatientAttachment={handleOpenPatientAttachment}
                 onDeletePatientAttachment={handleDeletePatientAttachment}
                 onPatientAttachmentFileChange={handlePatientAttachmentFileChange}
+                onStartSendAttachment={handleStartSendAttachment}
                 patientAttachments={patientAttachments}
                 isDeletingAttachmentId={isDeletingAttachmentId}
+                isSendingAttachmentId={isSendingAttachmentId}
                 isUploadingAttachment={isUploadingAttachment}
               />
             ) : null}
           </div>
         </section>
+
+        {attachmentSendDraft ? (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/35 px-4">
+            <div className="w-full max-w-lg rounded-[20px] border border-[#bfd7e8] bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.25)]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900">Send attachment</h3>
+                  <p className="mt-1 text-sm text-slate-500">{attachmentSendDraft.fileName}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAttachmentSendDraft(null)}
+                  className="rounded-xl border border-[#dbe7ef] p-2 text-slate-500 transition hover:text-slate-800"
+                  aria-label="Close send attachment"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="mt-4 space-y-4">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Confirm patient email</span>
+                  <input
+                    type="email"
+                    value={attachmentSendDraft.recipientEmail}
+                    onChange={(event) => setAttachmentSendDraft((current) => current ? { ...current, recipientEmail: event.target.value } : current)}
+                    placeholder="patient@example.com"
+                    className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                  />
+                  {!attachmentSendDraft.recipientEmail.trim() ? (
+                    <span className="mt-2 block text-xs text-amber-700">This patient has no email saved. Enter one to send this attachment.</span>
+                  ) : null}
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Subject</span>
+                  <input
+                    value={attachmentSendDraft.subject}
+                    onChange={(event) => setAttachmentSendDraft((current) => current ? { ...current, subject: event.target.value } : current)}
+                    className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Message</span>
+                  <textarea
+                    rows={4}
+                    value={attachmentSendDraft.message}
+                    onChange={(event) => setAttachmentSendDraft((current) => current ? { ...current, message: event.target.value } : current)}
+                    className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                  />
+                </label>
+              </div>
+              <div className="mt-5 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAttachmentSendDraft(null)}
+                  className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isSendingAttachmentId === attachmentSendDraft.attachmentId}
+                  onClick={() => void handleSendAttachment()}
+                  className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+                >
+                  {isSendingAttachmentId === attachmentSendDraft.attachmentId ? "Sending..." : "Send attachment"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {error || (!readOnly && isEditingPatient) ? (
           <div className="border-t border-[#dbe7ef] px-5 py-4 sm:px-7">

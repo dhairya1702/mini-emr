@@ -33,6 +33,7 @@ import {
   reorderQueueColumn,
 } from "@/lib/queue-dnd";
 import { hasClinicDocumentTemplate, hasUserSignature } from "@/lib/setup-checklist";
+import { printBlob } from "@/lib/print";
 import {
   createTrainingNote,
   createTrainingPatient,
@@ -972,6 +973,13 @@ export default function HomePage() {
     }
   }
 
+  function handlePatientChartUpdated(updated: Patient) {
+    setPatients((current) =>
+      current.map((patient) => (patient.id === updated.id ? updated : patient)),
+    );
+    setSelectedPatient((current) => (current?.id === updated.id ? updated : current));
+  }
+
   function addCustomInvoiceItem() {
     const label = customItemLabel.trim();
     const quantity = Number(customItemQuantity);
@@ -1094,17 +1102,23 @@ export default function HomePage() {
     }
   }
 
-  async function handleInvoicePdf() {
+  async function handleInvoicePdf(action: "preview" | "print" = "preview") {
     setIsPreparingInvoicePdf(true);
     setBillingError("");
     setBillingStatus("");
     try {
       const invoice = await ensureSavedInvoice();
       const blob = await api.generateInvoicePdf(invoice.id);
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
-      setBillingStatus("Invoice PDF ready.");
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      if (action === "print") {
+        const patientLabel = selectedBillingPatient?.name.replace(/\s+/g, "_") || "patient";
+        printBlob(blob, `${patientLabel}_invoice.pdf`);
+        setBillingStatus("Print dialog opened.");
+      } else {
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank", "noopener,noreferrer");
+        setBillingStatus("Invoice PDF ready.");
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
     } catch (pdfError) {
       setBillingError(pdfError instanceof Error ? pdfError.message : "Failed to prepare invoice PDF.");
     } finally {
@@ -1515,6 +1529,7 @@ export default function HomePage() {
             : api.getPatientGrowthHistory(patientId)
         )}
         onSave={handleUpdatePatient}
+        onPatientUpdated={handlePatientChartUpdated}
         onClose={() => {
           setSelectedPatient(null);
           setDrawerMode(null);
@@ -1644,6 +1659,7 @@ export default function HomePage() {
                   setBillingError("");
                 }}
                 onPreviewPdf={handleInvoicePdf}
+                onPrintInvoice={() => handleInvoicePdf("print")}
                 onFinalizeInvoice={handleCompleteInvoice}
                 onSendInvoice={handleShareInvoice}
               />

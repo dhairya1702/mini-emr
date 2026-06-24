@@ -6,8 +6,15 @@ from fastapi.responses import Response, StreamingResponse
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
 from app.db import AppRepository, get_repository
-from app.schema_domains.attachments import PatientAttachmentOut
+from app.schema_domains.attachments import (
+    PatientAttachmentOut,
+    SendPatientAttachmentRequest,
+    SendPatientAttachmentResponse,
+)
 from app.schema_domains.auth_settings import UserOut
+from app.services.audit_service import write_audit_event
+from app.services.document_helpers import build_document_context_for_user
+from app.services.email_service import send_clinic_email_message
 from app.storage import PatientAttachmentStorage, get_patient_attachment_storage
 
 
@@ -163,3 +170,69 @@ async def delete_patient_attachment(
         raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="delete_patient_attachment") from exc
+
+
+@router.post(
+    "/patients/{patient_id}/attachments/{attachment_id}/send",
+    response_model=SendPatientAttachmentResponse,
+)
+async def send_patient_attachment(
+    patient_id: str,
+    attachment_id: str,
+    payload: SendPatientAttachmentRequest,
+    repo: AppRepository = Depends(get_repository),
+    storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
+    current_user: UserOut = Depends(get_current_user),
+) -> SendPatientAttachmentResponse:
+    recipient_email = payload.recipient_email.strip()
+    if "@" not in recipient_email:
+        raise HTTPException(status_code=400, detail="Enter a valid recipient email.")
+    try:
+        row = await repo.get_patient_attachment(str(current_user.org_id), attachment_id)
+        if str(row.get("patient_id") or "") != patient_id:
+            raise ValueError("Attachment not found for this patient.")
+        patient = await repo.get_patient(str(current_user.org_id), patient_id)
+        raw_bytes = await storage.download(str(row["storage_path"]))
+        clinic_settings = await build_document_context_for_user(repo, current_user)
+        clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
+        patient_name = str(patient.get("name") or "").strip() or "Patient"
+        filename = str(row.get("file_name") or "attachment").strip() or "attachment"
+        message = payload.message.strip() or (
+            f"Please find attached {filename} for {patient_name}.\n\n"
+            f"Sent from {clinic_name}."
+        )
+        await send_clinic_email_message(
+            clinic_settings=clinic_settings,
+            recipient=recipient_email,
+            subject=payload.subject.strip(),
+            text_content=message,
+            attachments=[(filename, raw_bytes, str(row.get("content_type") or "application/octet-stream"))],
+        )
+        await write_audit_event(
+            repo,
+            current_user,
+            entity_type="patient_attachment",
+            entity_id=attachment_id,
+            action="patient_attachment_sent",
+            summary=f"Sent attachment {filename} for {patient_name} to {recipient_email}.",
+            metadata={
+                "patient_id": patient_id,
+                "patient_name": patient_name,
+                "file_name": filename,
+                "content_type": row.get("content_type"),
+                "recipient_email": recipient_email,
+            },
+        )
+        return SendPatientAttachmentResponse(
+            success=True,
+            message=f"Attachment emailed to {recipient_email}.",
+            recipient_email=recipient_email,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="send_patient_attachment") from exc

@@ -33,7 +33,8 @@ import { PasswordInput } from "@/components/password-input";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
 import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
-import { listSupportedTimeZones } from "@/lib/timezone";
+import { printBlob } from "@/lib/print";
+import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
 import { Appointment, AuditEvent, AuthUser, CatalogItem, ClinicSettings, ClinicSettingsUpdatePayload, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
 import { hasUserSignature } from "@/lib/setup-checklist";
 
@@ -416,7 +417,7 @@ function createClinicFormState(settings?: ClinicSettings | null): ClinicFormStat
     clinic_address: settings?.clinic_address ?? "",
     clinic_phone: settings?.clinic_phone ?? "",
     clinic_specialty: settings?.clinic_specialty ?? "",
-    timezone: settings?.timezone ?? "UTC",
+    timezone: normalizeTimeZoneValue(settings?.timezone ?? DEFAULT_CLINIC_TIMEZONE),
     appointment_start_time: settings?.appointment_start_time ?? "09:00",
     appointment_end_time: settings?.appointment_end_time ?? "18:00",
     appointments_per_hour: String(settings?.appointments_per_hour ?? 4),
@@ -485,7 +486,7 @@ export function SettingsDrawer({
   const pathname = usePathname();
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialActiveTab);
   const [form, setForm] = useState<ClinicFormState>(() => createClinicFormState());
-  const timeZoneOptions = listSupportedTimeZones();
+  const timeZoneOptions = listSupportedTimeZones(form.timezone);
   const [error, setError] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -1206,7 +1207,7 @@ export function SettingsDrawer({
     }
   }
 
-  async function handleLetterPdf() {
+  async function handleLetterPdf(action: "preview" | "print" = "preview") {
     if (!letterForm.generated.trim()) {
       setLetterError("Generate the letter before creating a PDF.");
       return;
@@ -1217,9 +1218,14 @@ export function SettingsDrawer({
     setLetterStatus("");
     try {
       const blob = await onGenerateLetterPdf({ content: letterForm.generated });
-      const url = URL.createObjectURL(blob);
-      setLetterPdfPreviewUrl(url);
-      setLetterStatus("Letter PDF ready.");
+      if (action === "print") {
+        printBlob(blob, "clinic_letter.pdf");
+        setLetterStatus("Print dialog opened.");
+      } else {
+        const url = URL.createObjectURL(blob);
+        setLetterPdfPreviewUrl(url);
+        setLetterStatus("Letter PDF ready.");
+      }
     } catch (pdfError) {
       setLetterError(pdfError instanceof Error ? pdfError.message : "Failed to prepare letter PDF.");
     } finally {
@@ -1377,7 +1383,7 @@ export function SettingsDrawer({
     }
   }
 
-  async function handleInvoicePdf(action: "preview" | "download") {
+  async function handleInvoicePdf(action: "preview" | "download" | "print") {
     setIsPreparingInvoicePdf(true);
     setBillingError("");
     setBillingStatus("");
@@ -1388,6 +1394,9 @@ export function SettingsDrawer({
       const patientLabel = selectedBillingPatient?.name.replace(/\s+/g, "_") || "patient";
       if (action === "preview") {
         window.open(url, "_blank", "noopener,noreferrer");
+      } else if (action === "print") {
+        URL.revokeObjectURL(url);
+        printBlob(blob, `${patientLabel}_invoice.pdf`);
       } else {
         const link = document.createElement("a");
         link.href = url;
@@ -1396,8 +1405,10 @@ export function SettingsDrawer({
         link.click();
         link.remove();
       }
-      setBillingStatus("Invoice PDF ready.");
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setBillingStatus(action === "print" ? "Print dialog opened." : "Invoice PDF ready.");
+      if (action !== "print") {
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
     } catch (pdfError) {
       setBillingError(pdfError instanceof Error ? pdfError.message : "Failed to prepare invoice PDF.");
     } finally {
@@ -1570,7 +1581,7 @@ export function SettingsDrawer({
                       className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     >
                       {timeZoneOptions.map((timeZone) => (
-                        <option key={timeZone} value={timeZone}>{timeZone}</option>
+                        <option key={timeZone.value} value={timeZone.value}>{timeZone.label}</option>
                       ))}
                     </select>
                   </label>
@@ -1953,6 +1964,7 @@ export function SettingsDrawer({
           onSubmit={handleGenerateLetter}
           onChange={(patch) => setLetterForm((current) => ({ ...current, ...patch }))}
           onPreviewPdf={() => void handleLetterPdf()}
+          onPrintPdf={() => void handleLetterPdf("print")}
           onSend={() => void handleSendLetter()}
         />
 
@@ -2041,6 +2053,7 @@ export function SettingsDrawer({
           setBillingError("");
         }}
         onPreviewPdf={() => handleInvoicePdf("preview")}
+        onPrintInvoice={() => handleInvoicePdf("print")}
         onFinalizeInvoice={handleCompleteInvoice}
         onSendInvoice={handleSendInvoice}
       />

@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, Fragment, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarPlus2, Eye, Eraser, FileText, Image as ImageIcon, Mail, Paperclip, PenLine, Plus, Sparkles, Undo2, X } from "lucide-react";
+import { CalendarPlus2, Eye, Eraser, FileText, Image as ImageIcon, Mail, Paperclip, PenLine, Plus, Printer, Sparkles, Undo2, X } from "lucide-react";
 import NextImage from "next/image";
 import type { ReactNode } from "react";
 
@@ -30,6 +30,7 @@ import {
   WellChildVisitPayload,
 } from "@/lib/types";
 import { api } from "@/lib/api";
+import { printBlob } from "@/lib/print";
 import { BinocularVisionModal } from "@/components/optometry/binocular-vision-modal";
 import { ContactLensModal } from "@/components/optometry/contact-lens-modal";
 import { LowVisionModal } from "@/components/optometry/low-vision-modal";
@@ -948,7 +949,7 @@ export function ConsultationDrawer({
     }
   }
 
-  async function handlePdf(action: "preview" | "download") {
+  async function handlePdf(action: "preview" | "download" | "print") {
     if (!form.generatedNote.trim()) {
       setStatusMessage("Generate a note before creating the PDF.");
       return;
@@ -966,6 +967,9 @@ export function ConsultationDrawer({
 
       if (action === "preview") {
         window.open(url, "_blank", "noopener,noreferrer");
+      } else if (action === "print") {
+        URL.revokeObjectURL(url);
+        printBlob(blob, `${currentPatient.name.replace(/\s+/g, "_")}_note.pdf`);
       } else {
         const link = document.createElement("a");
         link.href = url;
@@ -975,8 +979,10 @@ export function ConsultationDrawer({
         link.remove();
       }
 
-      setStatusMessage("PDF ready.");
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setStatusMessage(action === "print" ? "Print dialog opened." : "PDF ready.");
+      if (action !== "print") {
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to prepare PDF.");
     } finally {
@@ -2559,6 +2565,15 @@ export function ConsultationDrawer({
                         >
                           <Eye className="h-4 w-4" />
                           {isGeneratingPdf ? "Preparing..." : "Preview"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isGeneratingPdf || !currentNoteId}
+                          onClick={() => handlePdf("print")}
+                          className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                        >
+                          <Printer className="h-4 w-4" />
+                          Print
                         </button>
                         <button
                           type="button"

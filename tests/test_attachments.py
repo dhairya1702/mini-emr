@@ -15,6 +15,7 @@ def _create_patient(test_client, headers, name="Attachment Patient"):
         json={
             "name": name,
             "phone": "5550104444",
+            "email": "patient@example.com",
             "reason": "Media review",
             "age": 42,
             "weight": 72,
@@ -124,6 +125,133 @@ def test_patient_attachment_delete_removes_metadata_and_storage(client):
     assert attachment["id"] == deleted.json()["id"]
     assert attachment["id"] not in repo.patient_attachments
     assert attachment["storage_path"] not in repo.patient_attachment_files
+
+
+def test_patient_attachment_send_emails_stored_file(client, monkeypatch):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="attachments-send@clinic.com",
+        clinic_name="Attachments Send Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    org_id = session["user"]["org_id"]
+    repo.clinic_settings[org_id].update(
+        {
+            "sender_name": "Attachments Send Clinic",
+            "sender_email": "clinic@example.com",
+            "sender_email_app_password": "abcd efgh ijkl mnop",
+        }
+    )
+    sent: dict = {}
+
+    async def fake_send_clinic_email_message(**kwargs):
+        sent.update(kwargs)
+
+    monkeypatch.setattr("app.routes.attachments.send_clinic_email_message", fake_send_clinic_email_message)
+    patient = _create_patient(test_client, headers)
+    upload = test_client.post(
+        f"/patients/{patient['id']}/attachments",
+        files={"file": ("scan.pdf", b"pdf-bytes", "application/pdf")},
+        headers=headers,
+    )
+    assert upload.status_code == 201
+    attachment = upload.json()
+
+    response = test_client.post(
+        f"/patients/{patient['id']}/attachments/{attachment['id']}/send",
+        json={
+            "recipient_email": "confirmed@example.com",
+            "subject": "Your scan",
+            "message": "Attached scan.",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Attachment emailed to confirmed@example.com."
+    assert sent["recipient"] == "confirmed@example.com"
+    assert sent["subject"] == "Your scan"
+    assert sent["text_content"] == "Attached scan."
+    assert sent["attachments"] == [("scan.pdf", b"pdf-bytes", "application/pdf")]
+    audit_events = [event for event in repo.audit_events.values() if event["action"] == "patient_attachment_sent"]
+    assert audit_events
+
+
+def test_patient_profile_photo_upload_download_replace_and_delete(client):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="patient-photo@clinic.com",
+        clinic_name="Patient Photo Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = _create_patient(test_client, headers, name="Photo Patient")
+
+    upload = test_client.post(
+        f"/patients/{patient['id']}/profile-photo",
+        files={"file": ("face.jpg", b"jpeg-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert upload.status_code == 200
+    updated = upload.json()
+    assert updated["profile_photo_url"] == f"/patients/{patient['id']}/profile-photo/file"
+    assert updated["profile_photo_content_type"] == "image/jpeg"
+    assert updated["profile_photo_updated_at"]
+    first_storage_path = repo.patients[patient["id"]]["profile_photo_storage_path"]
+    assert repo.patient_attachment_files[first_storage_path] == b"jpeg-bytes"
+
+    downloaded = test_client.get(updated["profile_photo_url"], headers=headers)
+    assert downloaded.status_code == 200
+    assert downloaded.content == b"jpeg-bytes"
+    assert downloaded.headers["content-type"].startswith("image/jpeg")
+
+    replaced = test_client.post(
+        f"/patients/{patient['id']}/profile-photo",
+        files={"file": ("face.webp", b"webp-bytes", "image/webp")},
+        headers=headers,
+    )
+
+    assert replaced.status_code == 200
+    assert replaced.json()["profile_photo_content_type"] == "image/webp"
+    second_storage_path = repo.patients[patient["id"]]["profile_photo_storage_path"]
+    assert second_storage_path != first_storage_path
+    assert first_storage_path not in repo.patient_attachment_files
+    assert repo.patient_attachment_files[second_storage_path] == b"webp-bytes"
+
+    deleted = test_client.delete(f"/patients/{patient['id']}/profile-photo", headers=headers)
+    assert deleted.status_code == 200
+    assert deleted.json()["profile_photo_url"] is None
+    assert second_storage_path not in repo.patient_attachment_files
+    assert repo.patients[patient["id"]]["profile_photo_storage_path"] is None
+
+
+def test_patient_profile_photo_rejects_non_images_and_oversized_files(client):
+    test_client, _repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="patient-photo-invalid@clinic.com",
+        clinic_name="Patient Photo Invalid Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = _create_patient(test_client, headers, name="Invalid Photo Patient")
+
+    invalid_type = test_client.post(
+        f"/patients/{patient['id']}/profile-photo",
+        files={"file": ("notes.pdf", b"pdf-bytes", "application/pdf")},
+        headers=headers,
+    )
+    assert invalid_type.status_code == 400
+    assert "Only JPG, PNG, and WEBP" in invalid_type.json()["detail"]
+
+    oversized = test_client.post(
+        f"/patients/{patient['id']}/profile-photo",
+        files={"file": ("large.jpg", b"x" * (5 * 1024 * 1024 + 1), "image/jpeg")},
+        headers=headers,
+    )
+    assert oversized.status_code == 400
+    assert oversized.json()["detail"] == "Patient photo must be 5 MB or smaller."
 
 
 def test_patient_attachment_rejects_unsupported_file_type(client):

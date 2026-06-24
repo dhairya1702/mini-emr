@@ -8,7 +8,7 @@ import { useClinicShell } from "@/components/clinic-shell-provider";
 import { PasswordInput } from "@/components/password-input";
 import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
-import { listSupportedTimeZones } from "@/lib/timezone";
+import { DEFAULT_CLINIC_TIMEZONE, getDefaultClinicTimeZone, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
 import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload } from "@/lib/types";
 
 type StepKey = "specialty" | "hours" | "signature" | "email" | "staff" | "template" | "patient" | "done";
@@ -94,8 +94,13 @@ export default function OnboardingSetupPage() {
   const [status, setStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [specialty, setSpecialty] = useState<ClinicSpecialty>("optometry");
-  const [hours, setHours] = useState({ timezone: "UTC", start: "09:00", end: "18:00", perHour: "4" });
-  const timeZoneOptions = listSupportedTimeZones();
+  const [hours, setHours] = useState({
+    timezone: DEFAULT_CLINIC_TIMEZONE,
+    start: "09:00",
+    end: "18:00",
+    perHour: "4",
+  });
+  const timeZoneOptions = listSupportedTimeZones(hours.timezone);
   const [email, setEmail] = useState({ sender_name: "", sender_email: "", app_password: "" });
   const [staff, setStaff] = useState({ identifier: "", password: "" });
   const [createdStaffUsers, setCreatedStaffUsers] = useState<AuthUser[]>([]);
@@ -117,7 +122,7 @@ export default function OnboardingSetupPage() {
       setCompletedSteps((current) => new Set(current).add("specialty"));
     }
     setHours({
-      timezone: clinicSettings.timezone || "UTC",
+      timezone: normalizeTimeZoneValue(clinicSettings.timezone || getDefaultClinicTimeZone()),
       start: clinicSettings.appointment_start_time || "09:00",
       end: clinicSettings.appointment_end_time || "18:00",
       perHour: String(clinicSettings.appointments_per_hour || 4),
@@ -399,9 +404,27 @@ export default function OnboardingSetupPage() {
   return (
     <main className="min-h-screen bg-[#f7fbfd] px-4 py-6 text-slate-800 sm:px-6 lg:px-8">
       <div className={`mx-auto ${isMobileSurface ? "max-w-md" : "max-w-6xl"}`}>
-        <div className="mb-5 rounded-[22px] border border-[#dbe7ef] bg-white/95 px-4 py-4 shadow-[0_14px_34px_rgba(64,131,181,0.08)] sm:px-6">
+        <div className="relative mb-5 rounded-[22px] border border-[#dbe7ef] bg-white/95 px-4 py-4 shadow-[0_14px_34px_rgba(64,131,181,0.08)] sm:px-6">
+          <button
+            type="button"
+            disabled={!canGoPreviousStep || isSaving}
+            onClick={goToPrevious}
+            className={`absolute left-4 top-1/2 z-10 hidden h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-[#bfd7e8] bg-white text-slate-600 shadow-[0_10px_24px_rgba(64,131,181,0.12)] transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-30 lg:grid ${isMobileSurface ? "hidden" : ""}`}
+            aria-label="Previous setup step"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            disabled={!canGoNextStep || isSaving}
+            onClick={navigateToNextStep}
+            className={`absolute right-4 top-1/2 z-10 hidden h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-[#bfd7e8] bg-white text-slate-600 shadow-[0_10px_24px_rgba(64,131,181,0.12)] transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-30 lg:grid ${isMobileSurface ? "hidden" : ""}`}
+            aria-label="Next setup step"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
           <nav className="overflow-x-auto pb-1">
-            <div className="mx-auto flex w-max items-center gap-3">
+            <div className={`mx-auto flex w-max items-center gap-3 ${isMobileSurface ? "" : "lg:px-16"}`}>
               {steps.map((step, index) => {
                 const StepIcon = iconByStep[step.key];
                 const isActive = index === activeIndex;
@@ -437,24 +460,6 @@ export default function OnboardingSetupPage() {
         </div>
 
         <section className="relative rounded-[22px] border border-[#dbe7ef] bg-white p-5 shadow-[0_14px_34px_rgba(64,131,181,0.10)] sm:p-7">
-          <button
-            type="button"
-            disabled={!canGoPreviousStep || isSaving}
-            onClick={goToPrevious}
-            className={`absolute left-0 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[#bfd7e8] bg-white text-slate-600 shadow-[0_10px_24px_rgba(64,131,181,0.12)] transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-30 ${isMobileSurface ? "hidden" : "hidden lg:grid"}`}
-            aria-label="Previous setup step"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            disabled={!canGoNextStep || isSaving}
-            onClick={navigateToNextStep}
-            className={`absolute right-0 top-1/2 h-12 w-12 -translate-y-1/2 translate-x-1/2 place-items-center rounded-full border border-[#bfd7e8] bg-white text-slate-600 shadow-[0_10px_24px_rgba(64,131,181,0.12)] transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-30 ${isMobileSurface ? "hidden" : "hidden lg:grid"}`}
-            aria-label="Next setup step"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
           <div className="mb-6 flex items-start gap-3">
             <div className="rounded-xl bg-[#f3f8fb] p-3 text-[#2a6fa8]">
               <Icon className="h-5 w-5" />
@@ -489,7 +494,7 @@ export default function OnboardingSetupPage() {
                   <span className="mb-2 block text-sm font-medium text-slate-700">Timezone</span>
                   <select value={hours.timezone} onChange={(event) => setHours((current) => ({ ...current, timezone: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none">
                     {timeZoneOptions.map((timeZone) => (
-                      <option key={timeZone} value={timeZone}>{timeZone}</option>
+                      <option key={timeZone.value} value={timeZone.value}>{timeZone.label}</option>
                     ))}
                   </select>
                 </label>

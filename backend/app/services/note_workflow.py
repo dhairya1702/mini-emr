@@ -476,6 +476,11 @@ async def finalize_note_workflow(
     note = await repo.finalize_note(str(current_user.org_id), str(payload.note_id))
     patient = await repo.get_patient(str(current_user.org_id), str(note["patient_id"]))
     patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
+    # New finalized info entered the record; mark the cached AI summary stale so
+    # it regenerates lazily next time the patient chart is opened.
+    await repo.mark_patient_summary_stale(
+        str(current_user.org_id), str(note["patient_id"])
+    )
     await write_audit_event(
         repo,
         current_user,
@@ -514,6 +519,10 @@ async def send_note_workflow(
         str(current_user.org_id),
         str(payload.note_id),
     )
+    if finalized_during_request:
+        await repo.mark_patient_summary_stale(
+            str(current_user.org_id), str(payload.patient_id)
+        )
     snapshot_content = str(finalized_note.get("snapshot_content") or finalized_note.get("content") or "").strip()
     if not snapshot_content:
         raise HTTPException(status_code=400, detail="Saved note content is empty.")

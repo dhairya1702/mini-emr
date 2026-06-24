@@ -521,6 +521,10 @@ class FakeRepo:
             "address": payload.address.strip(),
             "status": "waiting",
             "billed": False,
+            "profile_photo_storage_path": None,
+            "profile_photo_content_type": None,
+            "profile_photo_updated_at": None,
+            "profile_photo_url": None,
             "created_at": created_at,
             "last_visit_at": created_at,
         }
@@ -685,6 +689,10 @@ class FakeRepo:
                 "temperature": appointment["temperature"],
                 "status": "waiting",
                 "billed": False,
+                "profile_photo_storage_path": None,
+                "profile_photo_content_type": None,
+                "profile_photo_updated_at": None,
+                "profile_photo_url": None,
                 "created_at": created_at,
                 "last_visit_at": created_at,
             }
@@ -792,6 +800,39 @@ class FakeRepo:
         patient = self.patients[patient_id]
         if patient["org_id"] != org_id:
             raise ValueError("Patient not found for this organization.")
+        return patient
+
+    async def save_patient_summary(self, org_id: str, patient_id: str, summary: str, updated_at) -> None:
+        patient = await self.get_patient(org_id, patient_id)
+        patient["ai_summary"] = summary
+        patient["ai_summary_updated_at"] = updated_at
+        patient["ai_summary_stale"] = False
+
+    async def mark_patient_summary_stale(self, org_id: str, patient_id: str) -> None:
+        patient = await self.get_patient(org_id, patient_id)
+        patient["ai_summary_stale"] = True
+
+    async def update_patient_profile_photo(
+        self,
+        org_id: str,
+        patient_id: str,
+        *,
+        storage_path: str,
+        content_type: str,
+    ) -> dict:
+        patient = await self.get_patient(org_id, patient_id)
+        patient["profile_photo_storage_path"] = storage_path
+        patient["profile_photo_content_type"] = content_type
+        patient["profile_photo_updated_at"] = _now()
+        patient["profile_photo_url"] = f"/patients/{patient_id}/profile-photo/file"
+        return patient
+
+    async def clear_patient_profile_photo(self, org_id: str, patient_id: str) -> dict:
+        patient = await self.get_patient(org_id, patient_id)
+        patient["profile_photo_storage_path"] = None
+        patient["profile_photo_content_type"] = None
+        patient["profile_photo_updated_at"] = None
+        patient["profile_photo_url"] = None
         return patient
 
     async def prepare_patient_attachment_metadata(

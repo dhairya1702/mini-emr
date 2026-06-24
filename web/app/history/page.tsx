@@ -173,6 +173,17 @@ export default function HistoryPage() {
     setSelectedPatient(saved);
   }
 
+  function handlePatientChartUpdated(updated: Patient) {
+    setVisits((current) =>
+      current.map((visit) =>
+        visit.patient_id === updated.id
+          ? { ...visit, name: updated.name, phone: updated.phone, status: updated.status, billed: updated.billed, last_visit_at: updated.last_visit_at }
+          : visit,
+      ),
+    );
+    setSelectedPatient((current) => (current?.id === updated.id ? updated : current));
+  }
+
   async function handleLoadPatientVisits(patientId: string): Promise<PatientChartVisit[]> {
     return api.listPatientChartVisits(patientId);
   }
@@ -419,6 +430,7 @@ export default function HistoryPage() {
         onLoadGrowthHistory={(patientId) => api.getPatientGrowthHistory(patientId)}
         readOnly
         onSave={handleUpdatePatient}
+        onPatientUpdated={handlePatientChartUpdated}
         onClose={() => setSelectedPatient(null)}
       />
 

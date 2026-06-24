@@ -21,8 +21,14 @@ create table if not exists public.patients (
   weight double precision,
   height double precision,
   temperature double precision,
+  profile_photo_storage_path text,
+  profile_photo_content_type text,
+  profile_photo_updated_at timestamptz,
   status text not null default 'waiting' check (status in ('waiting', 'consultation', 'done')),
   billed boolean not null default false,
+  ai_summary text not null default '',
+  ai_summary_updated_at timestamptz,
+  ai_summary_stale boolean not null default true,
   created_at timestamptz not null default now(),
   last_visit_at timestamptz not null default now()
 );
@@ -315,6 +321,15 @@ create index if not exists case_studies_org_patient_updated_at_idx
 alter table public.patients
 add column if not exists date_of_birth date;
 
+alter table public.patients
+add column if not exists profile_photo_storage_path text;
+
+alter table public.patients
+add column if not exists profile_photo_content_type text;
+
+alter table public.patients
+add column if not exists profile_photo_updated_at timestamptz;
+
 alter table public.patient_visits
 add column if not exists date_of_birth date;
 
@@ -335,6 +350,15 @@ add column if not exists email text not null default '';
 
 alter table public.patients
 add column if not exists address text not null default '';
+
+alter table public.patients
+add column if not exists ai_summary text not null default '';
+
+alter table public.patients
+add column if not exists ai_summary_updated_at timestamptz;
+
+alter table public.patients
+add column if not exists ai_summary_stale boolean not null default true;
 
 update public.patients
 set last_visit_at = created_at

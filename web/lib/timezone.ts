@@ -1,18 +1,30 @@
-const FALLBACK_TIMEZONES = [
-  "UTC",
-  "Asia/Kolkata",
-  "Asia/Dubai",
-  "Asia/Singapore",
-  "Asia/Tokyo",
-  "Europe/London",
-  "Europe/Berlin",
-  "Europe/Paris",
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Los_Angeles",
-  "America/Toronto",
-  "Australia/Sydney",
+export const DEFAULT_CLINIC_TIMEZONE = "Asia/Kolkata";
+
+export type TimeZoneOption = {
+  value: string;
+  label: string;
+};
+
+const TIMEZONE_ALIASES: Record<string, string> = {
+  "Asia/Calcutta": "Asia/Kolkata",
+};
+
+const CURATED_TIMEZONE_OPTIONS: TimeZoneOption[] = [
+  { value: "Asia/Kolkata", label: "India Standard Time (IST)" },
+  { value: "Asia/Dubai", label: "Dubai (GST)" },
+  { value: "Asia/Singapore", label: "Singapore (SGT)" },
+  { value: "Asia/Tokyo", label: "Japan (JST)" },
+  { value: "Europe/London", label: "United Kingdom (GMT/BST)" },
+  { value: "Europe/Berlin", label: "Central Europe (CET/CEST)" },
+  { value: "Europe/Paris", label: "Paris (CET/CEST)" },
+  { value: "America/New_York", label: "US Eastern (ET)" },
+  { value: "America/Chicago", label: "US Central (CT)" },
+  { value: "America/Denver", label: "US Mountain (MT)" },
+  { value: "America/Los_Angeles", label: "US Pacific (PT)" },
+  { value: "America/Toronto", label: "Toronto (ET)" },
+  { value: "Australia/Sydney", label: "Sydney (AET)" },
+  { value: "Pacific/Auckland", label: "Auckland (NZST/NZDT)" },
+  { value: "UTC", label: "UTC" },
 ];
 
 type TimeZoneParts = {
@@ -73,11 +85,46 @@ function pad(value: number) {
   return String(value).padStart(2, "0");
 }
 
-export function listSupportedTimeZones() {
-  if (typeof Intl.supportedValuesOf === "function") {
-    return Intl.supportedValuesOf("timeZone");
+export function normalizeTimeZoneValue(value: string | null | undefined) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return DEFAULT_CLINIC_TIMEZONE;
   }
-  return FALLBACK_TIMEZONES;
+  return TIMEZONE_ALIASES[trimmed] ?? trimmed;
+}
+
+function buildTimeZoneLabel(value: string) {
+  const normalized = normalizeTimeZoneValue(value);
+  return normalized.replaceAll("_", " ");
+}
+
+export function getDefaultClinicTimeZone() {
+  if (typeof Intl === "undefined") {
+    return DEFAULT_CLINIC_TIMEZONE;
+  }
+  try {
+    return normalizeTimeZoneValue(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  } catch {
+    return DEFAULT_CLINIC_TIMEZONE;
+  }
+}
+
+export function listSupportedTimeZones(selectedTimeZone?: string): TimeZoneOption[] {
+  const normalizedSelected = normalizeTimeZoneValue(selectedTimeZone);
+  const options = new Map<string, TimeZoneOption>();
+
+  for (const option of CURATED_TIMEZONE_OPTIONS) {
+    options.set(option.value, option);
+  }
+
+  if (normalizedSelected && !options.has(normalizedSelected)) {
+    options.set(normalizedSelected, {
+      value: normalizedSelected,
+      label: buildTimeZoneLabel(normalizedSelected),
+    });
+  }
+
+  return Array.from(options.values());
 }
 
 export function formatIsoDateInTimeZone(value: string | Date, timeZone: string) {

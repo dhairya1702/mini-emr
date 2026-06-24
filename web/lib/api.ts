@@ -52,6 +52,7 @@ import {
   PatientChartVisit,
   PatientInput,
   PatientMatch,
+  PatientSummary,
   PatientVisitDetail,
   PatientUpdatePayload,
   PatientVisit,
@@ -64,6 +65,7 @@ import {
   SendInvoicePayload,
   SendLetterPayload,
   SendNotePayload,
+  SendPatientAttachmentPayload,
   StaffUserCreatePayload,
   SuperuserOrgDetail,
   SuperuserOrgSummary,
@@ -535,12 +537,29 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  uploadPatientProfilePhoto: (patientId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return requestForm<Patient>(`/patients/${patientId}/profile-photo`, formData, {
+      method: "POST",
+    });
+  },
+  removePatientProfilePhoto: (patientId: string) =>
+    request<Patient>(`/patients/${patientId}/profile-photo`, {
+      method: "DELETE",
+    }),
   listPatientChartVisits: (patientId: string) =>
     request<PatientChartVisit[]>(`/patients/${patientId}/visits`),
   getPatientVisitDetail: (patientId: string, visitId: string) =>
     request<PatientVisitDetail>(`/patients/${patientId}/visits/${visitId}/details`),
   getPatientTimeline: (patientId: string) =>
     request<PatientTimelineEvent[]>(`/patients/${patientId}/timeline`),
+  getPatientSummary: (patientId: string) =>
+    request<PatientSummary>(`/patients/${patientId}/summary`),
+  regeneratePatientSummary: (patientId: string) =>
+    request<PatientSummary>(`/patients/${patientId}/summary/regenerate`, {
+      method: "POST",
+    }),
   getPatientMyopiaHistory: (patientId: string) =>
     request<MyopiaHistory>(`/patients/${patientId}/myopia-history`),
   getPatientGrowthHistory: (patientId: string) =>
@@ -579,6 +598,11 @@ export const api = {
   deletePatientAttachment: (patientId: string, attachmentId: string) =>
     request<PatientAttachment>(`/patients/${patientId}/attachments/${attachmentId}`, {
       method: "DELETE",
+    }),
+  sendPatientAttachment: (patientId: string, attachmentId: string, payload: SendPatientAttachmentPayload) =>
+    request<OperationResult>(`/patients/${patientId}/attachments/${attachmentId}/send`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
   downloadPatientAttachment: (attachmentId: string) =>
     requestBlob(`/attachments/${attachmentId}/file`),

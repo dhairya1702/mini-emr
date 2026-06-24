@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, ChevronDown, FileText, Image as ImageIcon, UserRound } from "lucide-react";
+import { ArrowLeft, ChevronDown, FileText, Image as ImageIcon, RefreshCw, Sparkles, UserRound } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -14,6 +14,7 @@ import type {
   Patient,
   PatientAttachment,
   PatientChartVisit,
+  PatientSummary,
   PatientTimelineEvent,
   PatientVisitAttachmentRow,
   PatientVisitDetail,
@@ -219,6 +220,10 @@ export default function MobilePatientPage() {
   const [testsError, setTestsError] = useState("");
   const [hasLoadedTestsTab, setHasLoadedTestsTab] = useState(false);
   const [error, setError] = useState("");
+  const [aiSummary, setAiSummary] = useState<PatientSummary | null>(null);
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
+  const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false);
 
   useEffect(() => {
     setOpenSections({ note: false, attachments: false, timeline: false });
@@ -261,6 +266,55 @@ export default function MobilePatientPage() {
       active = false;
     };
   }, [currentUser, isAuthReady, isRedirectingToLogin, patientId]);
+
+  useEffect(() => {
+    if (!isAuthReady || isRedirectingToLogin || !currentUser || !patientId) {
+      return;
+    }
+    let active = true;
+    setIsSummaryLoading(true);
+    setSummaryError("");
+    api
+      .getPatientSummary(patientId)
+      .then((result) => {
+        if (active) {
+          setAiSummary(result);
+        }
+      })
+      .catch((loadError) => {
+        if (active) {
+          setSummaryError(
+            loadError instanceof Error ? loadError.message : "Failed to load summary."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsSummaryLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentUser, isAuthReady, isRedirectingToLogin, patientId]);
+
+  async function handleRegenerateSummary() {
+    if (!patientId || isRegeneratingSummary) {
+      return;
+    }
+    setIsRegeneratingSummary(true);
+    setSummaryError("");
+    try {
+      const result = await api.regeneratePatientSummary(patientId);
+      setAiSummary(result);
+    } catch (regenerateError) {
+      setSummaryError(
+        regenerateError instanceof Error ? regenerateError.message : "Failed to refresh summary."
+      );
+    } finally {
+      setIsRegeneratingSummary(false);
+    }
+  }
 
   useEffect(() => {
     if (!patientId || !selectedVisitId || visitDetailsById[selectedVisitId]) {
@@ -473,6 +527,51 @@ export default function MobilePatientPage() {
                 label="Attachments"
                 onClick={() => setActiveTab("attachments")}
               />
+            </div>
+          </section>
+
+          <section className="mt-4 rounded-[22px] border border-[#cfe3f3] bg-gradient-to-br from-[#f3f9fe] to-[#eaf4fc] p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#2f8fd3]/10 text-[#2f8fd3]">
+                  <Sparkles className="h-3.5 w-3.5" />
+                </span>
+                <span className="text-sm font-semibold text-[#1d4d72]">AI summary</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRegenerateSummary}
+                disabled={isRegeneratingSummary || isSummaryLoading}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#cfe3f3] bg-white px-2.5 py-1.5 text-xs font-medium text-[#2f6c98] disabled:opacity-60"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isRegeneratingSummary ? "animate-spin" : ""}`} />
+                {isRegeneratingSummary ? "Refreshing" : "Refresh"}
+              </button>
+            </div>
+            {aiSummary?.updated_at ? (
+              <p className="mt-1 text-xs text-slate-500">Generated {formatDate(aiSummary.updated_at)}</p>
+            ) : null}
+            <div className="mt-3">
+              {isSummaryLoading && !aiSummary ? (
+                <div className="space-y-2">
+                  <div className="h-3 w-11/12 animate-pulse rounded bg-[#d7e9f7]" />
+                  <div className="h-3 w-9/12 animate-pulse rounded bg-[#d7e9f7]" />
+                  <div className="h-3 w-10/12 animate-pulse rounded bg-[#d7e9f7]" />
+                </div>
+              ) : summaryError ? (
+                <p className="text-sm text-rose-600">{summaryError}</p>
+              ) : aiSummary?.summary ? (
+                <>
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{aiSummary.summary}</p>
+                  {aiSummary.used_fallback ? (
+                    <p className="mt-2 text-xs text-amber-600">AI was unavailable — showing recent recorded activity.</p>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-400">AI-generated overview. Verify against the record.</p>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-slate-500">No summary available yet.</p>
+              )}
             </div>
           </section>
 

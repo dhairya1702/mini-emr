@@ -17,6 +17,9 @@ export interface Patient {
   temperature: number | null;
   status: PatientStatus;
   billed: boolean;
+  profile_photo_url?: string | null;
+  profile_photo_content_type?: string | null;
+  profile_photo_updated_at?: string | null;
   created_at: string;
   last_visit_at: string;
 }
@@ -35,6 +38,9 @@ export interface PatientMatch {
   temperature: number | null;
   status: PatientStatus;
   billed: boolean;
+  profile_photo_url?: string | null;
+  profile_photo_content_type?: string | null;
+  profile_photo_updated_at?: string | null;
   created_at: string;
   last_visit_at: string;
 }
@@ -112,6 +118,13 @@ export interface PatientChartVisit {
   patient_id: string;
   reason: string;
   created_at: string;
+}
+
+export interface PatientSummary {
+  summary: string;
+  updated_at: string | null;
+  stale: boolean;
+  used_fallback: boolean;
 }
 
 export interface PatientVisitAttachmentRow {
@@ -978,6 +991,12 @@ export interface SendNotePayload {
   note_id: string;
   patient_id: string;
   recipient_email: string;
+}
+
+export interface SendPatientAttachmentPayload {
+  recipient_email: string;
+  subject: string;
+  message: string;
 }
 
 export interface ClinicSettingsUpdatePayload {

@@ -6,7 +6,7 @@ import { Clock, FileText, Mail, PenLine, Settings2, Stethoscope, Trash2, Upload,
 import { PasswordInput } from "@/components/password-input";
 import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
-import { listSupportedTimeZones } from "@/lib/timezone";
+import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
 import type { ClinicSetupStepKey } from "@/lib/setup-checklist";
 import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload } from "@/lib/types";
 
@@ -203,18 +203,18 @@ function HoursSetup({
   onComplete: () => void;
 }) {
   const [form, setForm] = useState({
-    timezone: settings?.timezone ?? "UTC",
+    timezone: normalizeTimeZoneValue(settings?.timezone ?? DEFAULT_CLINIC_TIMEZONE),
     appointment_start_time: settings?.appointment_start_time ?? "",
     appointment_end_time: settings?.appointment_end_time ?? "",
     appointments_per_hour: String(settings?.appointments_per_hour ?? 4),
   });
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const timeZoneOptions = listSupportedTimeZones();
+  const timeZoneOptions = listSupportedTimeZones(form.timezone);
 
   useEffect(() => {
     setForm({
-      timezone: settings?.timezone ?? "UTC",
+      timezone: normalizeTimeZoneValue(settings?.timezone ?? DEFAULT_CLINIC_TIMEZONE),
       appointment_start_time: settings?.appointment_start_time ?? "",
       appointment_end_time: settings?.appointment_end_time ?? "",
       appointments_per_hour: String(settings?.appointments_per_hour ?? 4),
@@ -283,7 +283,7 @@ function HoursSetup({
             className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
           >
             {timeZoneOptions.map((timeZone) => (
-              <option key={timeZone} value={timeZone}>{timeZone}</option>
+              <option key={timeZone.value} value={timeZone.value}>{timeZone.label}</option>
             ))}
           </select>
         </label>

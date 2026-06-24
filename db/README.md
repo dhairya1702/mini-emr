@@ -16,3 +16,15 @@ GCS_PATIENT_ATTACHMENTS_BUCKET=your-gcs-patient-attachments-bucket
 ```
 
 The app uses PostgreSQL for metadata and Google Cloud Storage for attachment bytes.
+
+## Migrations
+
+For databases that are already live, apply incremental changes from
+[`migrations/`](migrations/) instead of re-running the full schema. Each file is
+idempotent:
+
+```bash
+psql "$DATABASE_URL" -f db/migrations/<file>.sql
+```
+
+See [`migrations/README.md`](migrations/README.md) for the list.

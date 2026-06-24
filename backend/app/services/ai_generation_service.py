@@ -1328,6 +1328,110 @@ def _extract_json_object(text: str) -> dict[str, Any]:
     return parsed
 
 
+def build_fallback_patient_summary(history_context: str) -> str:
+    if str(history_context or "").strip():
+        return (
+            "AI summary is unavailable right now. Recent recorded activity:\n"
+            f"{history_context.strip()}"
+        )
+    return "No finalized consultation history is available to summarize yet."
+
+
+async def generate_patient_summary(
+    repo: AppRepository,
+    org_id: str,
+    patient_context: str = "",
+    history_context: str = "",
+) -> GeneratedNoteResult:
+    """Cheap pre-pass: condense recent finalized notes/visits into a short,
+    at-a-glance clinical summary for the patient chart. Mirrors the
+    deterministic-fallback pattern used by consultation note generation."""
+    settings = get_settings()
+    prompt = f"""
+Write a concise at-a-glance clinical summary of this patient for a clinician opening their chart.
+Return 3 to 5 short bullet points, each starting with "- ".
+Cover, when present in the input: active or recurring problems, ongoing medications,
+relevant history, and the gist of the most recent visit.
+Be specific but brief. Do not invent diagnoses, medications, vitals, or findings that are not in the input.
+If there is little or no history, say so plainly in a single bullet.
+Return plain text bullet points only, with no headings or preamble.
+
+Patient context:
+{patient_context or 'Not provided'}
+
+Recent finalized visits and notes:
+{history_context or 'Not provided'}
+""".strip()
+
+    if not str(settings.gemini_model or "").strip():
+        return {
+            "content": build_fallback_patient_summary(history_context),
+            "used_fallback": True,
+            "warning": "AI unavailable, used fallback summary.",
+            "error_message": "GEMINI_MODEL is not configured.",
+        }
+
+    try:
+        response = await _generate_vertex_content(
+            project_id=settings.google_cloud_project,
+            location=settings.google_cloud_location,
+            model=settings.gemini_model,
+            max_output_tokens=512,
+            temperature=0.3,
+            thinking_budget=0,
+            system_instruction=(
+                "You write short, factual patient overviews for busy clinicians. "
+                "Return only bullet points. "
+                "Do not invent any clinical facts that are not present in the input."
+            ),
+            prompt=prompt,
+        )
+    except Exception as exc:
+        logger.exception("Vertex AI patient summary generation failed")
+        return {
+            "content": build_fallback_patient_summary(history_context),
+            "used_fallback": True,
+            "warning": "AI unavailable, used fallback summary.",
+            "error_message": str(exc),
+        }
+
+    generated_text = _extract_text_from_vertex_response(response)
+    if _has_max_tokens_finish(response) or not generated_text:
+        warning = (
+            "AI returned incomplete content, used fallback summary."
+            if generated_text
+            else "AI returned no content, used fallback summary."
+        )
+        error_message = (
+            "Vertex AI returned MAX_TOKENS."
+            if generated_text
+            else "Vertex AI returned an empty response."
+        )
+        return {
+            "content": build_fallback_patient_summary(history_context),
+            "used_fallback": True,
+            "warning": warning,
+            "error_message": error_message,
+        }
+
+    await record_model_usage(
+        repo,
+        org_id=org_id,
+        provider="gemini",
+        model=settings.gemini_model,
+        feature="patient_summary",
+        response=response,
+        metadata={"has_history_context": bool(history_context)},
+    )
+
+    return {
+        "content": generated_text.strip(),
+        "used_fallback": False,
+        "warning": None,
+        "error_message": None,
+    }
+
+
 async def generate_soap_note(
     repo: AppRepository,
     org_id: str,

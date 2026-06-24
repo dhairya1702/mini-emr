@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import { CLINIC_SPECIALTY_OPTIONS } from "@/lib/clinic-specialty";
-import { listSupportedTimeZones } from "@/lib/timezone";
+import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
 import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload } from "@/lib/types";
 
 type ClinicSettingsPanelProps = {
@@ -28,7 +28,7 @@ function createForm(settings: ClinicSettings | null): ClinicSettingsForm {
     clinic_name: settings?.clinic_name ?? "",
     clinic_address: settings?.clinic_address ?? "",
     clinic_phone: settings?.clinic_phone ?? "",
-    timezone: settings?.timezone ?? "UTC",
+    timezone: normalizeTimeZoneValue(settings?.timezone ?? DEFAULT_CLINIC_TIMEZONE),
     appointment_start_time: settings?.appointment_start_time ?? "09:00",
     appointment_end_time: settings?.appointment_end_time ?? "18:00",
     appointments_per_hour: String(settings?.appointments_per_hour ?? 4),
@@ -45,7 +45,7 @@ export function ClinicSettingsPanel({
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const timeZoneOptions = listSupportedTimeZones();
+  const timeZoneOptions = listSupportedTimeZones(form.timezone);
   const canEdit = currentUser?.role === "admin";
   const specialtyLabel =
     CLINIC_SPECIALTY_OPTIONS.find((option) => option.value === settings?.clinic_specialty)?.label ??
@@ -160,7 +160,7 @@ export function ClinicSettingsPanel({
             className="h-11 rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8] disabled:text-slate-500"
           >
             {timeZoneOptions.map((timeZone) => (
-              <option key={timeZone} value={timeZone}>{timeZone}</option>
+              <option key={timeZone.value} value={timeZone.value}>{timeZone.label}</option>
             ))}
           </select>
         </label>

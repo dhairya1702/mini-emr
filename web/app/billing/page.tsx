@@ -7,6 +7,7 @@ import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
 import { api } from "@/lib/api";
+import { printBlob } from "@/lib/print";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
@@ -474,17 +475,23 @@ export default function BillingPage() {
     }
   }
 
-  async function handleInvoicePdf() {
+  async function handleInvoicePdf(action: "preview" | "print" = "preview") {
     setIsPreparingInvoicePdf(true);
     setBillingError("");
     setBillingStatus("");
     try {
       const invoice = await ensureSavedInvoice();
       const blob = await api.generateInvoicePdf(invoice.id);
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
-      setBillingStatus("Invoice PDF ready.");
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      if (action === "print") {
+        const patientLabel = selectedBillingPatient?.name.replace(/\s+/g, "_") || "patient";
+        printBlob(blob, `${patientLabel}_invoice.pdf`);
+        setBillingStatus("Print dialog opened.");
+      } else {
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank", "noopener,noreferrer");
+        setBillingStatus("Invoice PDF ready.");
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
     } catch (pdfError) {
       setBillingError(pdfError instanceof Error ? pdfError.message : "Failed to prepare invoice PDF.");
     } finally {
@@ -607,6 +614,7 @@ export default function BillingPage() {
             setBillingError("");
           }}
           onPreviewPdf={handleInvoicePdf}
+          onPrintInvoice={() => handleInvoicePdf("print")}
           onFinalizeInvoice={handleCompleteInvoice}
           onSendInvoice={handleShareInvoice}
         />

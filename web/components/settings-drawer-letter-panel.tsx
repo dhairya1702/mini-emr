@@ -21,6 +21,7 @@ interface SettingsDrawerLetterPanelProps {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
   onChange: (patch: Partial<LetterFormState>) => void;
   onPreviewPdf: () => void | Promise<void>;
+  onPrintPdf: () => void | Promise<void>;
   onSend: () => void | Promise<void>;
 }
 
@@ -35,6 +36,7 @@ export function SettingsDrawerLetterPanel({
   onSubmit,
   onChange,
   onPreviewPdf,
+  onPrintPdf,
   onSend,
 }: SettingsDrawerLetterPanelProps) {
   return (
@@ -110,6 +112,14 @@ export function SettingsDrawerLetterPanel({
             className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
           >
             Preview
+          </button>
+          <button
+            type="button"
+            disabled={isPreparingLetterPdf}
+            onClick={onPrintPdf}
+            className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+          >
+            Print
           </button>
           <button
             type="button"

@@ -1,12 +1,11 @@
 from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field
 from pydantic import field_validator, model_validator
 
-from app.clinic_timezone import DEFAULT_TIMEZONE
+from app.clinic_timezone import DEFAULT_TIMEZONE, normalize_timezone_name
 from app.schema_domains.common import ClinicSpecialty, UserRole
 
 
@@ -56,12 +55,7 @@ class ClinicSettingsUpdate(BaseModel):
     def validate_timezone(cls, value: str | None) -> str | None:
         if value is None:
             return value
-        normalized = value.strip() or DEFAULT_TIMEZONE
-        try:
-            ZoneInfo(normalized)
-        except ZoneInfoNotFoundError as exc:
-            raise ValueError("Enter a valid IANA timezone.") from exc
-        return normalized
+        return normalize_timezone_name(value)
 
     @field_validator("appointments_per_hour")
     @classmethod

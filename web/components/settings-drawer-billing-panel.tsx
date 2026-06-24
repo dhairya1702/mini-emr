@@ -1,6 +1,6 @@
 "use client";
 
-import { ReceiptIndianRupee, Trash2 } from "lucide-react";
+import { Printer, ReceiptIndianRupee, Trash2 } from "lucide-react";
 
 import { CatalogItem, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
@@ -49,6 +49,7 @@ interface SettingsDrawerBillingPanelProps {
   onPaymentStatusChange: (status: PaymentStatus) => void;
   onAmountPaidChange: (value: string) => void;
   onPreviewPdf: () => void | Promise<void>;
+  onPrintInvoice: () => void | Promise<void>;
   onFinalizeInvoice: () => void | Promise<void>;
   onSendInvoice: () => void | Promise<void>;
 }
@@ -86,6 +87,7 @@ export function SettingsDrawerBillingPanel({
   onPaymentStatusChange,
   onAmountPaidChange,
   onPreviewPdf,
+  onPrintInvoice,
   onFinalizeInvoice,
   onSendInvoice,
 }: SettingsDrawerBillingPanelProps) {
@@ -295,6 +297,15 @@ export function SettingsDrawerBillingPanel({
               className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
             >
               Preview
+            </button>
+            <button
+              type="button"
+              onClick={onPrintInvoice}
+              disabled={isPreparingInvoicePdf}
+              className="inline-flex items-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+            >
+              <Printer className="h-4 w-4" />
+              Print
             </button>
             <button
               type="button"

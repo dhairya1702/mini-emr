@@ -43,6 +43,13 @@ class PatientUpdate(BaseModel):
     height: float | None = Field(default=None, gt=0, le=300)
 
 
+class PatientSummaryOut(BaseModel):
+    summary: str = ""
+    updated_at: datetime | None = None
+    stale: bool = False
+    used_fallback: bool = False
+
+
 class PatientOut(BaseModel):
     id: UUID
     name: str
@@ -57,6 +64,9 @@ class PatientOut(BaseModel):
     height: float | None = None
     status: PatientStatus
     billed: bool = False
+    profile_photo_url: str | None = None
+    profile_photo_content_type: str | None = None
+    profile_photo_updated_at: datetime | None = None
     created_at: datetime
     last_visit_at: datetime
 
@@ -171,6 +181,9 @@ class PatientMatchOut(BaseModel):
     temperature: float | None = None
     status: PatientStatus
     billed: bool = False
+    profile_photo_url: str | None = None
+    profile_photo_content_type: str | None = None
+    profile_photo_updated_at: datetime | None = None
     created_at: datetime
     last_visit_at: datetime
 

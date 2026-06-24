@@ -131,6 +131,12 @@ export default function PatientsPage() {
     rememberRecentPatient(saved);
   }
 
+  function handlePatientChartUpdated(updated: Patient) {
+    setPatients((current) => current.map((patient) => (patient.id === updated.id ? updated : patient)));
+    setSelectedPatient((current) => (current?.id === updated.id ? updated : current));
+    rememberRecentPatient(updated);
+  }
+
   async function handleLoadPatientVisits(patientId: string): Promise<PatientChartVisit[]> {
     return api.listPatientChartVisits(patientId);
   }
@@ -358,6 +364,7 @@ export default function PatientsPage() {
         onLoadMyopiaHistory={(patientId) => api.getPatientMyopiaHistory(patientId)}
         onLoadGrowthHistory={(patientId) => api.getPatientGrowthHistory(patientId)}
         onSave={handleUpdatePatient}
+        onPatientUpdated={handlePatientChartUpdated}
         onClose={() => setSelectedPatient(null)}
       />
 
