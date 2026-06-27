@@ -21,6 +21,29 @@ function getSessionStorage() {
   }
 }
 
+const SENSITIVE_STORAGE_PREFIXES = [
+  "consultation-workspace:",
+  "consultation-workspace:v2:",
+  "mobile-consultation:",
+  "mobile-consultation:v1:",
+  "clinic_recent_patients",
+  "clinic_queue_order_",
+];
+
+function removeKeysWithPrefixes(storage: Storage | null, prefixes: string[]) {
+  if (!storage) {
+    return;
+  }
+  const keys: string[] = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (key && prefixes.some((prefix) => key.startsWith(prefix))) {
+      keys.push(key);
+    }
+  }
+  keys.forEach((key) => storage.removeItem(key));
+}
+
 export const authStorage = {
   getToken(): string {
     return getSessionStorage()?.getItem(TOKEN_KEY) || "";
@@ -29,7 +52,7 @@ export const authStorage = {
     if (!isBrowser()) {
       return null;
     }
-    const raw = window.localStorage.getItem(USER_KEY);
+    const raw = getSessionStorage()?.getItem(USER_KEY);
     if (!raw) {
       return null;
     }
@@ -44,7 +67,7 @@ export const authStorage = {
     if (!isBrowser()) {
       return null;
     }
-    const raw = window.localStorage.getItem(SESSION_EXPIRY_KEY);
+    const raw = getSessionStorage()?.getItem(SESSION_EXPIRY_KEY);
     if (!raw) {
       return null;
     }
@@ -65,9 +88,9 @@ export const authStorage = {
     if (session.token) {
       getSessionStorage()?.setItem(TOKEN_KEY, session.token);
     }
-    window.localStorage.setItem(USER_KEY, JSON.stringify(session.user));
+    getSessionStorage()?.setItem(USER_KEY, JSON.stringify(session.user));
     if (expiresAtMs && Number.isFinite(expiresAtMs)) {
-      window.localStorage.setItem(SESSION_EXPIRY_KEY, String(expiresAtMs));
+      getSessionStorage()?.setItem(SESSION_EXPIRY_KEY, String(expiresAtMs));
     }
   },
   setToken(token: string) {
@@ -86,20 +109,20 @@ export const authStorage = {
       return;
     }
     if (user) {
-      window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+      getSessionStorage()?.setItem(USER_KEY, JSON.stringify(user));
       return;
     }
-    window.localStorage.removeItem(USER_KEY);
+    getSessionStorage()?.removeItem(USER_KEY);
   },
   setSessionExpiry(expiresAtSeconds: number | null) {
     if (!isBrowser()) {
       return;
     }
     if (expiresAtSeconds && Number.isFinite(expiresAtSeconds)) {
-      window.localStorage.setItem(SESSION_EXPIRY_KEY, String(expiresAtSeconds * 1000));
+      getSessionStorage()?.setItem(SESSION_EXPIRY_KEY, String(expiresAtSeconds * 1000));
       return;
     }
-    window.localStorage.removeItem(SESSION_EXPIRY_KEY);
+    getSessionStorage()?.removeItem(SESSION_EXPIRY_KEY);
   },
   clearExpiredSession(): boolean {
     if (!this.getTokenExpiryMs()) {
@@ -115,7 +138,14 @@ export const authStorage = {
     if (!isBrowser()) {
       return;
     }
-    getSessionStorage()?.removeItem(TOKEN_KEY);
+    const sessionStorage = getSessionStorage();
+    sessionStorage?.removeItem(TOKEN_KEY);
+    sessionStorage?.removeItem(USER_KEY);
+    sessionStorage?.removeItem(SESSION_EXPIRY_KEY);
+    sessionStorage?.removeItem(SPECIALTY_ONBOARDING_KEY);
+    removeKeysWithPrefixes(sessionStorage, SENSITIVE_STORAGE_PREFIXES);
+    removeKeysWithPrefixes(window.localStorage, SENSITIVE_STORAGE_PREFIXES);
+    // Remove auth values left by versions that persisted them across browser sessions.
     window.localStorage.removeItem(USER_KEY);
     window.localStorage.removeItem(SESSION_EXPIRY_KEY);
     window.localStorage.removeItem(SPECIALTY_ONBOARDING_KEY);
@@ -124,16 +154,16 @@ export const authStorage = {
     if (!isBrowser()) {
       return false;
     }
-    return window.localStorage.getItem(SPECIALTY_ONBOARDING_KEY) === "1";
+    return getSessionStorage()?.getItem(SPECIALTY_ONBOARDING_KEY) === "1";
   },
   setSpecialtyOnboardingPending(isPending: boolean) {
     if (!isBrowser()) {
       return;
     }
     if (isPending) {
-      window.localStorage.setItem(SPECIALTY_ONBOARDING_KEY, "1");
+      getSessionStorage()?.setItem(SPECIALTY_ONBOARDING_KEY, "1");
       return;
     }
-    window.localStorage.removeItem(SPECIALTY_ONBOARDING_KEY);
+    getSessionStorage()?.removeItem(SPECIALTY_ONBOARDING_KEY);
   },
 };

@@ -79,15 +79,17 @@ Before first use:
 cp .env.deploy.example .env.deploy
 ```
 
-Then fill in `.env.deploy` with the real values for:
+Create the referenced Google Secret Manager secrets, then configure `.env.deploy`
+with their resource names:
 
-- `DB_PASSWORD`
-- `AUTH_SECRET`
+- `DATABASE_URL_SECRET_NAME`
+- `AUTH_SECRET_NAME`
+- `SUPER_ADMIN_TOTP_SECRET_NAME`
 - `SUPER_ADMIN_IDENTIFIERS`
 
 Notes:
 
-- `.env.deploy` is gitignored and is the intended place for local deploy secrets.
+- `.env.deploy` contains secret resource names only; secret values are injected by Cloud Run.
 - The scripts refuse to run unless `gcloud` is pointed at:
   - account `dhairya911@gmail.com`
   - project `project-e8d0eb79-8682-4bd9-b31`
@@ -110,6 +112,7 @@ Backend:
 - `INTERNAL_SCHEDULER_TOKEN=...` used by Cloud Scheduler to trigger follow-up reminders over HTTP
 - `APP_ORIGIN=http://127.0.0.1:3000`
 - `SUPER_ADMIN_IDENTIFIERS=you@example.com` optional, comma-separated allowlist for the hidden `/superuser` dashboard
+- `SUPER_ADMIN_TOTP_SECRETS={"you@example.com":"BASE32SECRET"}` required for every configured superadmin
 - `FOLLOW_UP_REMINDER_RUNNER_ENABLED=false`
 - `FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300`
 

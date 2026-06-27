@@ -52,6 +52,7 @@ Enable at least:
 - `APP_ORIGIN=https://WEB_RUN_URL`
 - `APP_ORIGINS=https://WEB_RUN_URL`
 - `SUPER_ADMIN_IDENTIFIERS=...`
+- `SUPER_ADMIN_TOTP_SECRETS={"admin@example.com":"BASE32SECRET"}`
 - `FOLLOW_UP_REMINDER_RUNNER_ENABLED=false`
 - `FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300`
 
@@ -81,13 +82,16 @@ First-time local setup:
 cp .env.deploy.example .env.deploy
 ```
 
-Then edit `.env.deploy` and fill in:
+Then edit `.env.deploy` with Secret Manager resource names and the non-secret
+superadmin allowlist:
 
-- `DB_PASSWORD`
-- `AUTH_SECRET`
+- `DATABASE_URL_SECRET_NAME`
+- `AUTH_SECRET_NAME`
+- `SUPER_ADMIN_TOTP_SECRET_NAME`
 - `SUPER_ADMIN_IDENTIFIERS`
 
-`.env.deploy` is gitignored and should never be committed.
+The secret values themselves must remain in Google Secret Manager. The Cloud Run
+runtime service account needs `roles/secretmanager.secretAccessor`.
 
 ## Cloud Run URL Note
 
@@ -179,7 +183,8 @@ gcloud run deploy clinic-emr-backend \
   --platform=managed \
   --allow-unauthenticated \
   --add-cloudsql-instances=PROJECT:REGION:INSTANCE \
-  --set-env-vars=GCS_PATIENT_ATTACHMENTS_BUCKET=clinic-emr-patient-attachments-prod,FOLLOW_UP_REMINDER_RUNNER_ENABLED=false,FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300,APP_ORIGIN=https://WEB_RUN_URL,APP_ORIGINS=https://WEB_RUN_URL,DATABASE_URL='postgresql://DB_USER:DB_PASSWORD@/DB_NAME?host=/cloudsql/PROJECT:REGION:INSTANCE',AUTH_SECRET=REPLACE_ME,GOOGLE_CLOUD_PROJECT=project-e8d0eb79-8682-4bd9-b31,GOOGLE_CLOUD_LOCATION=global,GEMINI_MODEL=gemini-2.5-flash,SUPER_ADMIN_IDENTIFIERS=REPLACE_ME
+  --set-secrets=DATABASE_URL=clinic-emr-database-url:latest,AUTH_SECRET=clinic-emr-auth-secret:latest,SUPER_ADMIN_TOTP_SECRETS=clinic-emr-super-admin-totp-secrets:latest \
+  --set-env-vars=GCS_PATIENT_ATTACHMENTS_BUCKET=clinic-emr-patient-attachments-prod,FOLLOW_UP_REMINDER_RUNNER_ENABLED=false,FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300,APP_ORIGIN=https://WEB_RUN_URL,APP_ORIGINS=https://WEB_RUN_URL,GOOGLE_CLOUD_PROJECT=project-e8d0eb79-8682-4bd9-b31,GOOGLE_CLOUD_LOCATION=global,GEMINI_MODEL=gemini-2.5-flash,SUPER_ADMIN_IDENTIFIERS=REPLACE_ME
 ```
 
 ## Deploy Web
@@ -241,12 +246,8 @@ Run these checks against the Cloud Run deployment:
 9. create a follow-up
 10. open `/superuser` if enabled
 
-## What Is Still Not Done
-
-- Secret Manager wiring is not yet in place
-
 ## Recommended Next Steps
 
 1. Stand up Cloud SQL and run the backend against [db/schema.sql](/Users/dhairyalalwani/PycharmProjects/mr/db/schema.sql).
 2. Validate GCS attachment upload/download.
-3. Move env secrets into Secret Manager when you are ready.
+3. Validate that the deployed revision resolves every configured Secret Manager binding.

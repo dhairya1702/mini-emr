@@ -238,12 +238,12 @@ export default function MobilePatientPage() {
     setIsVisitsLoading(true);
     setVisitsError("");
 
-    Promise.all([api.listPatients(), api.listPatientChartVisits(patientId)])
-      .then(([patientRows, visitRows]) => {
+    Promise.all([api.getPatient(patientId), api.listPatientChartVisits(patientId)])
+      .then(([patientRow, visitRows]) => {
         if (!active) {
           return;
         }
-        setPatients(patientRows);
+        setPatients([patientRow]);
         setVisits(visitRows);
         setSelectedVisitId(visitRows[0]?.id ?? "");
         setError("");
@@ -563,7 +563,9 @@ export default function MobilePatientPage() {
               ) : aiSummary?.summary ? (
                 <>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{aiSummary.summary}</p>
-                  {aiSummary.used_fallback ? (
+                  {aiSummary.stale ? (
+                    <p className="mt-2 text-xs text-amber-600">This summary is out of date. Refresh it before relying on it.</p>
+                  ) : aiSummary.used_fallback ? (
                     <p className="mt-2 text-xs text-amber-600">AI was unavailable — showing recent recorded activity.</p>
                   ) : (
                     <p className="mt-2 text-xs text-slate-400">AI-generated overview. Verify against the record.</p>

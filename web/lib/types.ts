@@ -783,6 +783,7 @@ export interface SuperuserOrgSummary {
   follow_up_count: number;
   total_tokens: number;
   media_storage_bytes: number;
+  recent_error_count: number;
   last_activity_at: string | null;
 }
 
@@ -824,6 +825,85 @@ export interface SuperuserOrgDetail {
   recent_audit_events: AuditEvent[];
 }
 
+export interface SuperdashboardMetricPoint {
+  date: string;
+  value: number;
+}
+
+export interface SuperdashboardDashboard {
+  org_count: number;
+  active_org_count: number;
+  user_count: number;
+  patient_count: number;
+  note_count: number;
+  invoice_count: number;
+  follow_up_count: number;
+  ai_tokens_7d: number;
+  ai_requests_7d: number;
+  media_storage_bytes: number;
+  error_count_7d: number;
+  error_rate_7d: number;
+  top_error_context: string;
+}
+
+export interface SuperdashboardTrends {
+  requests: SuperdashboardMetricPoint[];
+  tokens: SuperdashboardMetricPoint[];
+  storage: SuperdashboardMetricPoint[];
+  errors: SuperdashboardMetricPoint[];
+}
+
+export interface SuperdashboardOrgUsageRow {
+  org_id: string;
+  clinic_name: string;
+  total_tokens: number;
+  media_storage_bytes: number;
+}
+
+export interface SuperdashboardUsageByOrg {
+  ai_usage: SuperdashboardOrgUsageRow[];
+  media_storage: SuperdashboardOrgUsageRow[];
+}
+
+export interface CustomerOnboarding {
+  id: string;
+  customer_id: string;
+  customer_name: string;
+  phone: string;
+  users_allowed: number;
+  users_used: number;
+  status: "pending" | "claimed" | "disabled";
+  claimed_org_id: string | null;
+  claimed_org_name: string | null;
+  claimed_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerOnboardingCreatePayload {
+  customer_name: string;
+  phone: string;
+  users_allowed: number;
+}
+
+export interface CustomerOnboardingUpdatePayload {
+  customer_name?: string;
+  phone?: string;
+  users_allowed?: number;
+  status?: "pending" | "claimed" | "disabled";
+}
+
+export interface SuperdashboardOnboarding {
+  summary: {
+    pending_count: number;
+    claimed_count: number;
+    disabled_count: number;
+    default_users_allowed: number;
+  };
+  customers: CustomerOnboarding[];
+}
+
 export interface AccountUpdatePayload {
   name: string;
   doctor_dob?: string | null;
@@ -838,6 +918,7 @@ export interface PasswordUpdatePayload {
 export interface RegisterPayload {
   identifier: string;
   password: string;
+  customer_id: string;
   admin_name: string;
   clinic_name: string;
   clinic_address: string;

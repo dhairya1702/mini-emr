@@ -19,6 +19,7 @@ class PatientSummaryResult(TypedDict):
     updated_at: datetime
     used_fallback: bool
     warning: str | None
+    stale: bool
 
 
 def _truncate(value: str, limit: int) -> str:
@@ -81,6 +82,7 @@ async def generate_patient_summary_workflow(
     patient_id: str,
 ) -> PatientSummaryResult:
     patient = await repo.get_patient(org_id, patient_id)
+    expected_revision = int(patient.get("ai_summary_revision") or 0)
     visits = await repo.list_patient_visits_for_patient(org_id, patient_id)
     notes = await repo.list_notes_for_patient(org_id, patient_id)
 
@@ -96,11 +98,27 @@ async def generate_patient_summary_workflow(
 
     updated_at = datetime.now(UTC)
     summary = generation["content"]
-    await repo.save_patient_summary(org_id, patient_id, summary, updated_at)
+    saved = await repo.save_patient_summary(
+        org_id,
+        patient_id,
+        summary,
+        updated_at,
+        expected_revision,
+    )
+    if not saved:
+        latest = await repo.get_patient(org_id, patient_id)
+        return {
+            "summary": str(latest.get("ai_summary") or ""),
+            "updated_at": latest.get("ai_summary_updated_at") or updated_at,
+            "used_fallback": False,
+            "warning": "The patient record changed while the summary was generated. Refresh it again.",
+            "stale": True,
+        }
 
     return {
         "summary": summary,
         "updated_at": updated_at,
         "used_fallback": generation["used_fallback"],
         "warning": generation.get("warning"),
+        "stale": not saved,
     }

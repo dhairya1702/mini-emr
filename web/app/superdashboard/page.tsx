@@ -1,0 +1,520 @@
+"use client";
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, ArrowRight, Copy, ExternalLink, LogOut, RefreshCw, Zap } from "lucide-react";
+
+import { api } from "@/lib/api";
+import { authStorage } from "@/lib/auth";
+import {
+  CustomerOnboarding,
+  PlatformError,
+  SuperdashboardDashboard,
+  SuperdashboardOnboarding,
+  SuperdashboardTrends,
+  SuperdashboardUsageByOrg,
+  SuperuserOrgSummary,
+} from "@/lib/types";
+
+type Tab = "dashboard" | "onboard" | "errors";
+
+const emptyDashboard: SuperdashboardDashboard = {
+  org_count: 0,
+  active_org_count: 0,
+  user_count: 0,
+  patient_count: 0,
+  note_count: 0,
+  invoice_count: 0,
+  follow_up_count: 0,
+  ai_tokens_7d: 0,
+  ai_requests_7d: 0,
+  media_storage_bytes: 0,
+  error_count_7d: 0,
+  error_rate_7d: 0,
+  top_error_context: "",
+};
+
+const emptyTrends: SuperdashboardTrends = {
+  requests: [],
+  tokens: [],
+  storage: [],
+  errors: [],
+};
+
+const emptyUsage: SuperdashboardUsageByOrg = {
+  ai_usage: [],
+  media_storage: [],
+};
+
+const emptyOnboarding: SuperdashboardOnboarding = {
+  summary: {
+    pending_count: 0,
+    claimed_count: 0,
+    disabled_count: 0,
+    default_users_allowed: 2,
+  },
+  customers: [],
+};
+
+function formatCompact(value: number) {
+  return new Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: value >= 1000 ? 1 : 0,
+  }).format(value || 0);
+}
+
+function formatBytes(value: number) {
+  if (!value) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  return `${(value / 1024 ** exponent).toFixed(exponent === 0 ? 0 : 1)} ${units[exponent]}`;
+}
+
+function formatDate(value: string | null) {
+  if (!value) {
+    return "—";
+  }
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(value));
+}
+
+function sparkline(points: { value: number }[]) {
+  if (!points.length) {
+    return "0,28 100,28";
+  }
+  const values = points.map((point) => Number(point.value) || 0);
+  const max = Math.max(...values, 1);
+  return values
+    .map((value, index) => {
+      const x = values.length === 1 ? 100 : (index / (values.length - 1)) * 100;
+      const y = 32 - (value / max) * 28;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function statusClass(status: CustomerOnboarding["status"]) {
+  if (status === "claimed") {
+    return "bg-emerald-50 text-emerald-700";
+  }
+  if (status === "disabled") {
+    return "bg-slate-100 text-slate-600";
+  }
+  return "bg-amber-50 text-amber-700";
+}
+
+function StatCard({
+  label,
+  value,
+  caption,
+  color,
+  points,
+}: {
+  label: string;
+  value: string;
+  caption: string;
+  color: string;
+  points: { value: number }[];
+}) {
+  return (
+    <div className="rounded-[22px] border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
+          <p className="mt-5 text-4xl font-black tracking-[-0.05em] text-slate-950">{value}</p>
+          <p className="mt-2 text-sm font-semibold text-slate-500">{caption}</p>
+        </div>
+        <div className={`rounded-2xl p-3 ${color}`}>
+          <Zap className="h-5 w-5" />
+        </div>
+      </div>
+      <svg className="mt-7 h-10 w-full overflow-visible" viewBox="0 0 100 36" preserveAspectRatio="none">
+        <polyline
+          fill="none"
+          points={sparkline(points)}
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2.6"
+          className={color.includes("rose") || color.includes("amber") ? "text-amber-500" : color.includes("violet") ? "text-violet-500" : color.includes("emerald") ? "text-emerald-500" : "text-blue-500"}
+        />
+      </svg>
+    </div>
+  );
+}
+
+function Header({ tab, setTab, onRefresh }: { tab: Tab; setTab: (tab: Tab) => void; onRefresh: () => void }) {
+  return (
+    <header className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50/95 backdrop-blur">
+      <div className="flex h-24 items-center justify-between px-8">
+        <div className="flex items-center gap-5">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-700">
+            <Zap className="h-5 w-5" />
+          </div>
+          <p className="text-xl font-black tracking-[-0.04em] text-slate-950">ClinicOS Ops</p>
+        </div>
+        <div className="absolute left-1/2 flex -translate-x-1/2 rounded-[22px] border border-slate-200 bg-slate-100 p-2 shadow-sm">
+          {(["dashboard", "onboard", "errors"] as Tab[]).map((item) => (
+            <button
+              key={item}
+              onClick={() => setTab(item)}
+              className={`min-w-40 rounded-2xl px-7 py-3 text-xl font-black capitalize transition ${
+                tab === item ? "bg-white text-slate-950 shadow-sm ring-4 ring-blue-600/90" : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={onRefresh}
+            className="rounded-2xl border border-slate-200 bg-white p-3 text-slate-500 transition hover:text-slate-950"
+            title="Refresh"
+          >
+            <RefreshCw className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => {
+              authStorage.clear();
+              window.location.href = "/login";
+            }}
+            className="inline-flex items-center gap-2 text-lg font-black text-slate-500 transition hover:text-slate-950"
+          >
+            <LogOut className="h-5 w-5" />
+            Logout
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+export default function SuperdashboardPage() {
+  const [tab, setTab] = useState<Tab>("dashboard");
+  const [dashboard, setDashboard] = useState(emptyDashboard);
+  const [trends, setTrends] = useState(emptyTrends);
+  const [usage, setUsage] = useState(emptyUsage);
+  const [orgs, setOrgs] = useState<SuperuserOrgSummary[]>([]);
+  const [onboarding, setOnboarding] = useState(emptyOnboarding);
+  const [errors, setErrors] = useState<PlatformError[]>([]);
+  const [clinicName, setClinicName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [usersAllowed, setUsersAllowed] = useState("2");
+  const [lastCreatedCid, setLastCreatedCid] = useState("");
+  const [message, setMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
+
+  const totalRemaining = useMemo(
+    () => Math.max(onboarding.summary.pending_count + onboarding.summary.claimed_count + onboarding.summary.disabled_count, 1),
+    [onboarding.summary],
+  );
+
+  async function load() {
+    setIsLoading(true);
+    setMessage("");
+    try {
+      const [dashboardData, trendsData, usageData, orgData, onboardingData, errorData] = await Promise.all([
+        api.getSuperdashboardDashboard(),
+        api.getSuperdashboardTrends(),
+        api.getSuperdashboardUsageByOrg(),
+        api.listSuperdashboardOrgs(),
+        api.getSuperdashboardOnboarding(),
+        api.listPlatformErrors(100),
+      ]);
+      setDashboard(dashboardData);
+      setTrends(trendsData);
+      setUsage(usageData);
+      setOrgs(orgData);
+      setOnboarding(onboardingData);
+      setErrors(errorData);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to load Superdashboard.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function createCid(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsCreating(true);
+    setMessage("");
+    setLastCreatedCid("");
+    try {
+      const created = await api.createSuperdashboardCustomer({
+        customer_name: clinicName.trim(),
+        phone: phone.trim(),
+        users_allowed: Number(usersAllowed || 2),
+      });
+      setLastCreatedCid(created.customer_id);
+      setClinicName("");
+      setPhone("");
+      setUsersAllowed("2");
+      const updated = await api.getSuperdashboardOnboarding();
+      setOnboarding(updated);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to create CID.");
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  async function updateUsersAllowed(row: CustomerOnboarding, value: string) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      return;
+    }
+    const updated = await api.updateSuperdashboardCustomer(row.id, { users_allowed: parsed });
+    setOnboarding((current) => ({
+      ...current,
+      customers: current.customers.map((customer) => (customer.id === updated.id ? { ...customer, ...updated } : customer)),
+    }));
+  }
+
+  function copyText(value: string) {
+    navigator.clipboard?.writeText(value);
+    setMessage(`Copied ${value}`);
+  }
+
+  return (
+    <main className="min-h-screen bg-slate-50 pb-20 text-slate-950">
+      <Header tab={tab} setTab={setTab} onRefresh={load} />
+      <section className="px-8 py-12">
+        {message ? (
+          <div className="mb-8 rounded-2xl border border-blue-100 bg-white px-5 py-4 text-sm font-bold text-slate-600 shadow-sm">
+            {message}
+          </div>
+        ) : null}
+
+        {tab === "dashboard" ? (
+          <div className="space-y-10">
+            <div className="grid gap-5 xl:grid-cols-4">
+              <StatCard label="Requests (7d)" value={formatCompact(dashboard.ai_requests_7d)} caption={`${dashboard.active_org_count} active orgs`} color="bg-blue-50 text-blue-600" points={trends.requests} />
+              <StatCard label="Tokens (7d)" value={formatCompact(dashboard.ai_tokens_7d)} caption={`${formatCompact(dashboard.note_count)} notes all time`} color="bg-violet-50 text-violet-600" points={trends.tokens} />
+              <StatCard label="Storage" value={formatBytes(dashboard.media_storage_bytes)} caption={`${formatCompact(dashboard.patient_count)} patients`} color="bg-emerald-50 text-emerald-600" points={trends.storage} />
+              <StatCard label="Error rate" value={`${dashboard.error_rate_7d}%`} caption={dashboard.top_error_context || "No current errors"} color="bg-amber-50 text-amber-600" points={trends.errors} />
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-2">
+              {[
+                ["AI usage by org", usage.ai_usage.map((row) => [row.clinic_name, formatCompact(row.total_tokens)])],
+                ["Media storage by org", usage.media_storage.map((row) => [row.clinic_name, formatBytes(row.media_storage_bytes)])],
+              ].map(([title, rows]) => (
+                <div key={String(title)} className="rounded-[24px] border border-slate-200 bg-white p-7 shadow-sm">
+                  <h2 className="text-xl font-black tracking-[-0.04em]">{title}</h2>
+                  <div className="mt-6 space-y-4">
+                    {(rows as string[][]).slice(0, 6).map(([name, value]) => (
+                      <div key={name} className="flex items-center justify-between border-b border-slate-100 pb-4 last:border-0">
+                        <span className="font-bold text-slate-700">{name}</span>
+                        <span className="font-black text-slate-950">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-[24px] border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center gap-4 border-b border-slate-200 px-7 py-5">
+                <h2 className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">Organizations</h2>
+                <div className="h-px flex-1 bg-slate-200" />
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] text-left">
+                  <thead className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    <tr>
+                      <th className="px-7 py-4">Org</th>
+                      <th className="px-7 py-4">Users</th>
+                      <th className="px-7 py-4">Patients</th>
+                      <th className="px-7 py-4">Notes</th>
+                      <th className="px-7 py-4">Invoices</th>
+                      <th className="px-7 py-4">Tokens</th>
+                      <th className="px-7 py-4">Storage</th>
+                      <th className="px-7 py-4">Errors</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orgs.map((org) => (
+                      <tr key={org.org_id} className="border-t border-slate-100 text-base">
+                        <td className="px-7 py-5 font-black">{org.clinic_name}</td>
+                        <td className="px-7 py-5">{org.user_count}</td>
+                        <td className="px-7 py-5">{org.patient_count}</td>
+                        <td className="px-7 py-5">{org.note_count}</td>
+                        <td className="px-7 py-5">{org.invoice_count}</td>
+                        <td className="px-7 py-5">{formatCompact(org.total_tokens)}</td>
+                        <td className="px-7 py-5">{formatBytes(org.media_storage_bytes)}</td>
+                        <td className="px-7 py-5">{org.recent_error_count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {tab === "onboard" ? (
+          <div className="space-y-10">
+            <div className="grid gap-6 lg:grid-cols-[1fr_580px]">
+              <div className="rounded-[24px] border border-slate-200 bg-white p-7 shadow-sm">
+                <form onSubmit={createCid} className="grid items-end gap-6 xl:grid-cols-[1.5fr_1fr_160px_190px]">
+                  <label>
+                    <span className="mb-3 block text-lg font-black text-slate-700">Clinic name</span>
+                    <input value={clinicName} onChange={(event) => setClinicName(event.target.value)} required placeholder="Bluebird Clinic" className="h-20 w-full rounded-2xl border border-slate-200 bg-slate-50 px-7 text-2xl font-black outline-none transition focus:border-blue-500" />
+                  </label>
+                  <label>
+                    <span className="mb-3 block text-lg font-black text-slate-700">Phone</span>
+                    <input value={phone} onChange={(event) => setPhone(event.target.value)} required placeholder="+91 98765 43210" className="h-20 w-full rounded-2xl border border-slate-200 bg-slate-50 px-7 text-2xl font-black outline-none transition focus:border-blue-500" />
+                  </label>
+                  <label>
+                    <span className="mb-3 block text-lg font-black text-slate-700">Users</span>
+                    <input value={usersAllowed} onChange={(event) => setUsersAllowed(event.target.value)} required type="number" min={1} className="h-20 w-full rounded-2xl border border-slate-200 bg-slate-50 px-7 text-2xl font-black outline-none transition focus:border-blue-500" />
+                  </label>
+                  <button disabled={isCreating} className="h-20 rounded-2xl bg-blue-500 px-8 text-2xl font-black text-white shadow-sm transition hover:bg-blue-600 disabled:opacity-60">
+                    Create CID <ArrowRight className="ml-2 inline h-6 w-6" />
+                  </button>
+                </form>
+                {lastCreatedCid ? (
+                  <button onClick={() => copyText(lastCreatedCid)} className="mt-5 inline-flex items-center gap-2 rounded-full bg-blue-50 px-5 py-3 text-lg font-black text-blue-700">
+                    {lastCreatedCid} <Copy className="h-5 w-5" />
+                  </button>
+                ) : null}
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="rounded-[22px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Pending</p>
+                  <p className="mt-3 text-4xl font-black">{onboarding.summary.pending_count}</p>
+                </div>
+                <div className="rounded-[22px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Claimed</p>
+                  <p className="mt-3 text-4xl font-black">{onboarding.summary.claimed_count}</p>
+                </div>
+                <div className="rounded-[22px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Default users</p>
+                  <p className="mt-3 text-4xl font-black">{onboarding.summary.default_users_allowed}</p>
+                </div>
+                <div className="col-span-3 rounded-[22px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="flex h-4 overflow-hidden rounded-full bg-slate-100">
+                    <div className="bg-amber-400" style={{ width: `${(onboarding.summary.pending_count / totalRemaining) * 100}%` }} />
+                    <div className="bg-emerald-400" style={{ width: `${(onboarding.summary.claimed_count / totalRemaining) * 100}%` }} />
+                    <div className="bg-slate-300" style={{ width: `${(onboarding.summary.disabled_count / totalRemaining) * 100}%` }} />
+                  </div>
+                  <p className="mt-4 text-sm font-bold text-slate-500">Signup IDs split by pending, claimed, and disabled status.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center gap-4 border-b border-slate-200 px-7 py-5">
+                <h2 className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">Onboarded customers</h2>
+                <div className="h-px flex-1 bg-slate-200" />
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1120px] text-left">
+                  <thead className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    <tr>
+                      <th className="px-7 py-4">Customer</th>
+                      <th className="px-7 py-4">CID</th>
+                      <th className="px-7 py-4">Phone</th>
+                      <th className="px-7 py-4">Status</th>
+                      <th className="px-7 py-4">Users allowed</th>
+                      <th className="px-7 py-4">Users used</th>
+                      <th className="px-7 py-4">Created</th>
+                      <th className="px-7 py-4">Claimed by org</th>
+                      <th className="px-7 py-4" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {onboarding.customers.map((customer) => (
+                      <tr key={customer.id} className="border-t border-slate-100 text-base">
+                        <td className="px-7 py-5 font-black">{customer.customer_name}</td>
+                        <td className="px-7 py-5">
+                          <button onClick={() => copyText(customer.customer_id)} className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 font-black text-blue-700">
+                            {customer.customer_id} <Copy className="h-4 w-4" />
+                          </button>
+                        </td>
+                        <td className="px-7 py-5">{customer.phone}</td>
+                        <td className="px-7 py-5">
+                          <span className={`rounded-full px-4 py-2 text-sm font-black capitalize ${statusClass(customer.status)}`}>{customer.status}</span>
+                        </td>
+                        <td className="px-7 py-5">
+                          <input defaultValue={customer.users_allowed} type="number" min={1} onBlur={(event) => updateUsersAllowed(customer, event.target.value)} className="h-12 w-28 rounded-xl border border-slate-200 bg-slate-50 px-4 text-center font-black outline-none focus:border-blue-500" />
+                        </td>
+                        <td className="px-7 py-5">{customer.users_used} / {customer.users_allowed}</td>
+                        <td className="px-7 py-5">{formatDate(customer.created_at)}</td>
+                        <td className="px-7 py-5">{customer.claimed_org_name || customer.claimed_org_id || "—"}</td>
+                        <td className="px-7 py-5">
+                          {customer.status === "pending" ? (
+                            <button onClick={() => api.disableSuperdashboardCustomer(customer.id).then(() => load())} className="rounded-xl border border-slate-200 px-4 py-2 font-black text-slate-500">
+                              Disable
+                            </button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {tab === "errors" ? (
+          <div className="rounded-[24px] border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 px-7 py-5">
+              <h2 className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">Platform errors</h2>
+              <span className="rounded-full bg-amber-50 px-4 py-2 text-sm font-black text-amber-700">{errors.length} rows</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1080px] text-left">
+                <thead className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                  <tr>
+                    <th className="px-7 py-4">Time</th>
+                    <th className="px-7 py-4">Method</th>
+                    <th className="px-7 py-4">Path</th>
+                    <th className="px-7 py-4">Status</th>
+                    <th className="px-7 py-4">Type</th>
+                    <th className="px-7 py-4">Identifier</th>
+                    <th className="px-7 py-4">Message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(errors.length ? errors : []).map((error) => (
+                    <tr key={error.id} className="border-t border-slate-100 text-base">
+                      <td className="px-7 py-5 font-bold text-slate-600">{new Date(error.created_at).toLocaleString()}</td>
+                      <td className="px-7 py-5 font-black">{error.method}</td>
+                      <td className="px-7 py-5">
+                        <span className="inline-flex items-center gap-2 font-bold text-blue-700">
+                          {error.path} <ExternalLink className="h-4 w-4" />
+                        </span>
+                      </td>
+                      <td className="px-7 py-5">
+                        <span className="rounded-full bg-rose-50 px-3 py-1 font-black text-rose-700">{error.status_code || "—"}</span>
+                      </td>
+                      <td className="px-7 py-5 font-bold">{error.error_type}</td>
+                      <td className="px-7 py-5 text-slate-600">{error.identifier || "—"}</td>
+                      <td className="px-7 py-5 max-w-xl truncate text-slate-600">{error.message}</td>
+                    </tr>
+                  ))}
+                  {!errors.length && !isLoading ? (
+                    <tr>
+                      <td colSpan={7} className="px-7 py-16 text-center text-lg font-black text-slate-400">
+                        <AlertTriangle className="mx-auto mb-3 h-8 w-8" />
+                        No platform errors recorded.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+      </section>
+    </main>
+  );
+}

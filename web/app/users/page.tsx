@@ -22,7 +22,7 @@ export default function UsersPage() {
   const loadPageData = useCallback(async () => null, []);
   const onPageData = useCallback(() => undefined, []);
   const loadBillablePatients = useCallback(async () => {
-    const patients = await api.listPatients();
+    const patients = await api.listAllPatients();
     return patients.filter((patient) => patient.status === "done" && !patient.billed);
   }, []);
   const {
@@ -98,8 +98,8 @@ export default function UsersPage() {
       setUserError("Email or phone number is required.");
       return;
     }
-    if (userForm.password.length < 4) {
-      setUserError("Password must be at least 4 characters.");
+    if (userForm.password.length < 12) {
+      setUserError("Password must be at least 12 characters.");
       return;
     }
     setIsAddingUser(true);

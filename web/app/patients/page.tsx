@@ -41,7 +41,7 @@ export default function PatientsPage() {
   const [exportError, setExportError] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const loadPageData = useCallback(async () => {
-    const records = await api.listPatients();
+    const records = await api.listAllPatients();
     return records.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at));
   }, []);
   const onPageData = useCallback((data: Patient[]) => {

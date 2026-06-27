@@ -256,7 +256,7 @@ def test_follow_up_listing_uses_clinic_local_date_boundaries(client):
     create_follow_up = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
         json={
-            "scheduled_for": "2026-06-10T19:00:00+00:00",
+            "scheduled_for": "2026-07-10T19:00:00+00:00",
             "notes": "Midnight boundary review",
         },
         headers=headers,
@@ -264,7 +264,7 @@ def test_follow_up_listing_uses_clinic_local_date_boundaries(client):
     assert create_follow_up.status_code == 201
 
     list_follow_ups = test_client.get(
-        "/follow-ups?scheduled_date=2026-06-11",
+        "/follow-ups?scheduled_date=2026-07-11",
         headers=headers,
     )
     assert list_follow_ups.status_code == 200

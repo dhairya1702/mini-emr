@@ -88,7 +88,13 @@ def _follow_up_email_parts(
     return subject, body
 
 
-async def _suggest_follow_up_slots(repo: AppRepository, org_id: str, clinic_settings: dict) -> list[datetime]:
+async def _suggest_follow_up_slots(
+    repo: AppRepository,
+    org_id: str,
+    clinic_settings: dict,
+    *,
+    earliest_at: datetime | None = None,
+) -> list[datetime]:
     scheduled_appointments = await repo.list_appointments(org_id, status="scheduled", limit=500)
     occupied = [_as_utc_minute(appointment["scheduled_for"]) for appointment in scheduled_appointments]
     occupied_exact = set(occupied)
@@ -103,14 +109,17 @@ async def _suggest_follow_up_slots(repo: AppRepository, org_id: str, clinic_sett
     suggestions: list[datetime] = []
     timezone = get_clinic_timezone(clinic_settings)
     now_local = clinic_now(clinic_settings).replace(second=0, microsecond=0)
+    earliest_local = now_local
+    if earliest_at is not None:
+        earliest_local = max(earliest_local, as_clinic_time(earliest_at, clinic_settings).replace(second=0, microsecond=0))
     for day_offset in range(FOLLOW_UP_SUGGESTION_DAYS):
-        day = (now_local + timedelta(days=day_offset)).date()
+        day = (earliest_local + timedelta(days=day_offset)).date()
         if day.weekday() == 6:
             continue
         for minute_of_day in range(start_minutes, end_minutes, slot_interval_minutes):
             hour, minute = divmod(minute_of_day, 60)
             candidate_local = datetime(day.year, day.month, day.day, hour, minute, tzinfo=timezone)
-            if candidate_local <= now_local:
+            if candidate_local <= earliest_local:
                 continue
             candidate = candidate_local.astimezone(UTC)
             hour_bucket = _hour_bucket(candidate, clinic_settings)
@@ -171,7 +180,16 @@ async def send_due_follow_up_emails_workflow(
     current_user: UserOut,
 ) -> None:
     await expire_stale_schedule_workflow(repo, str(current_user.org_id))
-    due_follow_ups = await repo.list_due_follow_ups(str(current_user.org_id), datetime.now(UTC).isoformat())
+    now = datetime.now(UTC)
+    lead_hours = max(
+        1,
+        min(int(getattr(get_settings(), "follow_up_reminder_lead_hours", 24)), 168),
+    )
+    due_follow_ups = await repo.list_due_follow_ups(
+        str(current_user.org_id),
+        now.isoformat(),
+        (now + timedelta(hours=lead_hours)).isoformat(),
+    )
     for follow_up in due_follow_ups:
         await _send_follow_up_email_if_needed(repo, current_user, follow_up)
 
@@ -192,7 +210,7 @@ async def get_follow_up_booking_context_workflow(
         raise HTTPException(status_code=400, detail="This follow-up is no longer available for booking.")
     patient = await repo.get_patient(org_id, patient_id)
     clinic_settings = await repo.get_clinic_settings(org_id)
-    suggested_slots = await _suggest_follow_up_slots(repo, org_id, clinic_settings)
+    suggested_slots = await _suggest_follow_up_slots(repo, org_id, clinic_settings, earliest_at=_as_utc_minute(follow_up["scheduled_for"]))
     return follow_up, patient, clinic_settings, token, suggested_slots
 
 
@@ -243,6 +261,9 @@ async def create_follow_up_workflow(
     patient_id: str,
     payload: FollowUpCreate,
 ) -> FollowUpOut:
+    scheduled_for = _as_utc_minute(payload.scheduled_for)
+    if scheduled_for <= datetime.now(UTC):
+        raise ValueError("Follow-up time must be in the future.")
     created = await repo.create_follow_up(
         str(current_user.org_id),
         patient_id,
@@ -259,8 +280,11 @@ async def create_follow_up_workflow(
         patient_name,
         format_display_datetime(created["scheduled_for"], str(clinic_settings.get("timezone") or "UTC")),
     )
-    scheduled_date = as_clinic_time(payload.scheduled_for, clinic_settings).date()
-    if scheduled_date <= clinic_today(clinic_settings):
+    lead_hours = max(
+        1,
+        min(int(getattr(get_settings(), "follow_up_reminder_lead_hours", 24)), 168),
+    )
+    if scheduled_for <= datetime.now(UTC) + timedelta(hours=lead_hours):
         await _send_follow_up_email_if_needed(repo, current_user, created)
     return FollowUpOut(**created)
 
@@ -272,13 +296,18 @@ async def update_follow_up_workflow(
     payload: FollowUpUpdate,
 ) -> FollowUpOut:
     await expire_stale_schedule_workflow(repo, str(current_user.org_id))
+    if payload.scheduled_for is not None and _as_utc_minute(payload.scheduled_for) <= datetime.now(UTC):
+        raise ValueError("Follow-up time must be in the future.")
     updated = await repo.update_follow_up(str(current_user.org_id), follow_up_id, payload)
     changed_fields = sorted(payload.model_dump(exclude_none=True).keys())
     await record_follow_up_updated(repo, current_user, updated, changed_fields)
     if updated.get("status") == "scheduled":
         clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
         scheduled_at = updated["scheduled_for"]
-        scheduled_date = as_clinic_time(scheduled_at, clinic_settings).date()
-        if scheduled_date <= clinic_today(clinic_settings):
+        lead_hours = max(
+            1,
+            min(int(getattr(get_settings(), "follow_up_reminder_lead_hours", 24)), 168),
+        )
+        if _as_utc_minute(scheduled_at) <= datetime.now(UTC) + timedelta(hours=lead_hours):
             await _send_follow_up_email_if_needed(repo, current_user, updated)
     return FollowUpOut(**updated)

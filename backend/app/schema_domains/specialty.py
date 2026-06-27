@@ -1,12 +1,21 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class StructuredModuleInput(BaseModel):
     module_type: str = Field(min_length=1, max_length=120)
     payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("payload")
+    @classmethod
+    def validate_payload_size(cls, value: dict[str, Any]) -> dict[str, Any]:
+        import json
+
+        if len(json.dumps(value, separators=(",", ":"), default=str)) > 100_000:
+            raise ValueError("Structured module payload must be 100 KB or smaller.")
+        return value
 
 
 class LongitudinalTrackRecordOut(BaseModel):

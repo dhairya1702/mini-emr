@@ -29,6 +29,7 @@ create table if not exists public.patients (
   ai_summary text not null default '',
   ai_summary_updated_at timestamptz,
   ai_summary_stale boolean not null default true,
+  ai_summary_revision integer not null default 0,
   created_at timestamptz not null default now(),
   last_visit_at timestamptz not null default now()
 );
@@ -45,6 +46,7 @@ create table if not exists public.clinic_users (
   doctor_signature_data_base64 text,
   updated_at timestamptz not null default now(),
   password_hash text not null,
+  session_version integer not null default 1,
   role text not null check (role in ('admin', 'staff')),
   created_at timestamptz not null default now()
 );
@@ -115,15 +117,38 @@ create table if not exists public.clinic_settings (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.customer_onboarding (
+  id uuid primary key default gen_random_uuid(),
+  customer_id text not null unique,
+  customer_name text not null,
+  phone text not null,
+  users_allowed integer not null default 2 check (users_allowed > 0),
+  status text not null default 'pending' check (status in ('pending', 'claimed', 'disabled')),
+  claimed_org_id uuid references public.organizations(id) on delete set null,
+  claimed_at timestamptz,
+  created_by uuid references public.clinic_users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists customer_onboarding_phone_idx
+  on public.customer_onboarding(phone);
+
+create index if not exists customer_onboarding_status_idx
+  on public.customer_onboarding(status);
+
+create index if not exists customer_onboarding_claimed_org_id_idx
+  on public.customer_onboarding(claimed_org_id);
+
 create table if not exists public.catalog_items (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
   name text not null,
   item_type text not null check (item_type in ('service', 'medicine')),
-  default_price double precision not null default 0,
+  default_price numeric(14,2) not null default 0,
   track_inventory boolean not null default false,
-  stock_quantity double precision not null default 0,
-  low_stock_threshold double precision not null default 0,
+  stock_quantity numeric(14,3) not null default 0,
+  low_stock_threshold numeric(14,3) not null default 0,
   unit text not null default '',
   created_at timestamptz not null default now()
 );
@@ -132,10 +157,10 @@ create table if not exists public.invoices (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
   patient_id uuid not null references public.patients(id) on delete cascade,
-  subtotal double precision not null default 0,
-  total double precision not null default 0,
+  subtotal numeric(14,2) not null default 0,
+  total numeric(14,2) not null default 0,
   payment_status text not null default 'unpaid' check (payment_status in ('unpaid', 'paid', 'partial')),
-  amount_paid double precision not null default 0,
+  amount_paid numeric(14,2) not null default 0,
   paid_at timestamptz,
   completed_at timestamptz,
   completed_by uuid references public.clinic_users(id) on delete set null,
@@ -149,9 +174,9 @@ create table if not exists public.invoice_items (
   catalog_item_id uuid references public.catalog_items(id) on delete set null,
   item_type text not null check (item_type in ('service', 'medicine')),
   label text not null,
-  quantity double precision not null,
-  unit_price double precision not null,
-  line_total double precision not null,
+  quantity numeric(14,3) not null,
+  unit_price numeric(14,2) not null,
+  line_total numeric(14,2) not null,
   created_at timestamptz not null default now()
 );
 
@@ -182,6 +207,30 @@ create table if not exists public.ai_usage_events (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
+
+create table if not exists public.api_rate_limits (
+  scope text not null,
+  key_hash text not null,
+  window_started_at timestamptz not null default now(),
+  request_count integer not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (scope, key_hash)
+);
+
+create index if not exists api_rate_limits_updated_at_idx
+  on public.api_rate_limits(updated_at);
+
+create table if not exists public.api_request_metrics (
+  metric_date date not null,
+  org_id uuid not null,
+  request_count bigint not null default 0 check (request_count >= 0),
+  error_response_count bigint not null default 0 check (error_response_count >= 0),
+  updated_at timestamptz not null default now(),
+  primary key (metric_date, org_id)
+);
+
+create index if not exists api_request_metrics_metric_date_idx
+  on public.api_request_metrics(metric_date desc);
 
 create index if not exists ai_usage_events_org_id_created_at_idx
   on public.ai_usage_events(org_id, created_at desc);
@@ -318,6 +367,58 @@ create index if not exists case_studies_org_created_at_idx
 create index if not exists case_studies_org_patient_updated_at_idx
   on public.case_studies(org_id, patient_id, updated_at desc);
 
+-- Composite tenant keys prevent a child row from pairing one organization with
+-- a patient or parent record owned by another organization.
+create unique index if not exists patients_org_id_id_uidx
+  on public.patients(org_id, id);
+create unique index if not exists clinic_users_org_id_id_uidx
+  on public.clinic_users(org_id, id);
+create unique index if not exists notes_org_id_id_uidx
+  on public.notes(org_id, id);
+create unique index if not exists appointments_org_id_id_uidx
+  on public.appointments(org_id, id);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'notes_org_patient_fk') then
+    alter table public.notes add constraint notes_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'notes_org_root_fk') then
+    alter table public.notes add constraint notes_org_root_fk foreign key (org_id, root_note_id) references public.notes(org_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'notes_org_amended_from_fk') then
+    alter table public.notes add constraint notes_org_amended_from_fk foreign key (org_id, amended_from_note_id) references public.notes(org_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'patient_attachments_org_patient_fk') then
+    alter table public.patient_attachments add constraint patient_attachments_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'invoices_org_patient_fk') then
+    alter table public.invoices add constraint invoices_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'follow_ups_org_patient_fk') then
+    alter table public.follow_ups add constraint follow_ups_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'appointments_org_checked_in_patient_fk') then
+    alter table public.appointments add constraint appointments_org_checked_in_patient_fk foreign key (org_id, checked_in_patient_id) references public.patients(org_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'patient_visits_org_patient_fk') then
+    alter table public.patient_visits add constraint patient_visits_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'patient_visits_org_appointment_fk') then
+    alter table public.patient_visits add constraint patient_visits_org_appointment_fk foreign key (org_id, appointment_id) references public.appointments(org_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'myopia_measurements_org_patient_fk') then
+    alter table public.myopia_measurements add constraint myopia_measurements_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'longitudinal_tracks_org_patient_fk') then
+    alter table public.longitudinal_tracks add constraint longitudinal_tracks_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'case_studies_org_patient_fk') then
+    alter table public.case_studies add constraint case_studies_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
+  end if;
+end
+$$;
+
 alter table public.patients
 add column if not exists date_of_birth date;
 
@@ -359,6 +460,9 @@ add column if not exists ai_summary_updated_at timestamptz;
 
 alter table public.patients
 add column if not exists ai_summary_stale boolean not null default true;
+
+alter table public.patients
+add column if not exists ai_summary_revision integer not null default 0;
 
 update public.patients
 set last_visit_at = created_at
@@ -408,6 +512,9 @@ add column if not exists reminder_sent_at timestamptz;
 
 alter table public.clinic_users
 add column if not exists name text not null default '';
+
+alter table public.clinic_users
+add column if not exists session_version integer not null default 1;
 
 alter table public.clinic_users
 add column if not exists doctor_dob date;

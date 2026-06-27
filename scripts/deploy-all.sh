@@ -6,8 +6,7 @@ source "$(dirname "$0")/deploy-common.sh"
 
 deploy_root_dir
 ensure_expected_gcloud_target
-require_env_vars DB_PASSWORD AUTH_SECRET SUPER_ADMIN_IDENTIFIERS
-require_non_placeholder_secrets
+require_env_vars DATABASE_URL_SECRET_NAME AUTH_SECRET_NAME SUPER_ADMIN_IDENTIFIERS SUPER_ADMIN_TOTP_SECRET_NAME
 
 export IMAGE_TAG="${IMAGE_TAG:-$(git rev-parse --short HEAD)-$(date +%H%M)}"
 

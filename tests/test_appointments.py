@@ -377,7 +377,7 @@ def test_appointment_listing_uses_clinic_local_date_boundaries(client):
         headers=headers,
         json={
             "clinic_name": "Appointments Timezone Clinic",
-            "timezone": "Asia/Kolkata",
+            "timezone": "America/Los_Angeles",
             "appointment_start_time": "09:00",
             "appointment_end_time": "18:00",
             "appointments_per_hour": 4,
@@ -391,14 +391,14 @@ def test_appointment_listing_uses_clinic_local_date_boundaries(client):
             "name": "Midnight Boundary Patient",
             "phone": "5550111111",
             "reason": "Boundary review",
-            "scheduled_for": "2026-06-10T19:00:00+00:00",
+            "scheduled_for": "2026-07-11T00:00:00+00:00",
         },
         headers=headers,
     )
     assert create_appointment.status_code == 201
 
     list_appointments = test_client.get(
-        "/appointments?scheduled_date=2026-06-11",
+        "/appointments?scheduled_date=2026-07-10",
         headers=headers,
     )
     assert list_appointments.status_code == 200

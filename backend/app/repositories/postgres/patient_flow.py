@@ -45,6 +45,7 @@ PATIENT_COLUMNS = [
     "ai_summary",
     "ai_summary_updated_at",
     "ai_summary_stale",
+    "ai_summary_revision",
     "created_at",
     "last_visit_at",
 ]
@@ -126,18 +127,38 @@ class PostgresPatientFlowRepository:
     def __init__(self, connection_manager: PostgresConnectionManager) -> None:
         self.connection_manager = connection_manager
 
-    async def list_patients(self, org_id: str) -> list[dict[str, Any]]:
+    async def list_patients(
+        self,
+        org_id: str,
+        *,
+        active_only: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
+                    active_clause = (
+                        "and (status in ('waiting', 'consultation') or (status = 'done' and billed = false))"
+                        if active_only
+                        else ""
+                    )
+                    paging_clause = "limit %s offset %s" if limit is not None else ""
+                    params: tuple[Any, ...] = (
+                        (org_id, limit, offset)
+                        if limit is not None
+                        else (org_id,)
+                    )
                     cursor.execute(
                         f"""
                         select {_columns_sql(PATIENT_COLUMNS)}
                         from public.patients
                         where org_id = %s
+                        {active_clause}
                         order by last_visit_at desc
+                        {paging_clause}
                         """,
-                        (org_id,),
+                        params,
                     )
                     return [_patient_with_profile_photo_url(_row_to_dict(row, cursor)) for row in cursor.fetchall()]
 
@@ -223,7 +244,9 @@ class PostgresPatientFlowRepository:
                         update public.patients
                         set name = %s, phone = %s, email = %s, address = %s, reason = %s,
                           date_of_birth = %s, age = %s, weight = %s, height = %s, temperature = %s,
-                          status = 'waiting', billed = false, last_visit_at = %s
+                          status = 'waiting', billed = false, last_visit_at = %s,
+                          ai_summary_stale = true,
+                          ai_summary_revision = ai_summary_revision + 1
                         where org_id = %s and id = %s
                         returning {_columns_sql(PATIENT_COLUMNS)}
                         """,
@@ -274,7 +297,14 @@ class PostgresPatientFlowRepository:
 
         return await asyncio.to_thread(_create)
 
-    async def create_appointment(self, org_id: str, payload: AppointmentCreate) -> dict[str, Any]:
+    async def create_appointment(
+        self,
+        org_id: str,
+        payload: AppointmentCreate,
+        *,
+        appointments_per_hour: int = 4,
+        timezone: str = "UTC",
+    ) -> dict[str, Any]:
         values = {
             **payload.model_dump(),
             "phone": normalize_phone_number(payload.phone),
@@ -286,6 +316,39 @@ class PostgresPatientFlowRepository:
         def _create() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select pg_advisory_xact_lock(
+                          hashtext(%s),
+                          hashtext(date_trunc('hour', %s::timestamptz at time zone %s)::text)
+                        )
+                        """,
+                        (org_id, values["scheduled_for"], timezone),
+                    )
+                    cursor.execute(
+                        """
+                        select
+                          count(*)::integer,
+                          count(*) filter (where scheduled_for = %s::timestamptz)::integer
+                        from public.appointments
+                        where org_id = %s
+                          and status = 'scheduled'
+                          and date_trunc('hour', scheduled_for at time zone %s)
+                            = date_trunc('hour', %s::timestamptz at time zone %s)
+                        """,
+                        (
+                            values["scheduled_for"],
+                            org_id,
+                            timezone,
+                            values["scheduled_for"],
+                            timezone,
+                        ),
+                    )
+                    capacity_row = cursor.fetchone() or (0, 0)
+                    if int(capacity_row[1]) > 0:
+                        raise ValueError("That appointment slot is already booked.")
+                    if int(capacity_row[0]) >= appointments_per_hour:
+                        raise ValueError("That hour is fully booked.")
                     cursor.execute(
                         f"""
                         insert into public.appointments (
@@ -584,7 +647,15 @@ class PostgresPatientFlowRepository:
 
         return await asyncio.to_thread(_clear)
 
-    async def update_appointment(self, org_id: str, appointment_id: str, payload: AppointmentUpdate) -> dict[str, Any]:
+    async def update_appointment(
+        self,
+        org_id: str,
+        appointment_id: str,
+        payload: AppointmentUpdate,
+        *,
+        appointments_per_hour: int = 4,
+        timezone: str = "UTC",
+    ) -> dict[str, Any]:
         def _update() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
@@ -610,6 +681,41 @@ class PostgresPatientFlowRepository:
                         if current_status != "scheduled":
                             raise ValueError("Only scheduled appointments can be rescheduled.")
                         update_payload["scheduled_for"] = payload.scheduled_for.isoformat()
+                        cursor.execute(
+                            """
+                            select pg_advisory_xact_lock(
+                              hashtext(%s),
+                              hashtext(date_trunc('hour', %s::timestamptz at time zone %s)::text)
+                            )
+                            """,
+                            (org_id, update_payload["scheduled_for"], timezone),
+                        )
+                        cursor.execute(
+                            """
+                            select
+                              count(*)::integer,
+                              count(*) filter (where scheduled_for = %s::timestamptz)::integer
+                            from public.appointments
+                            where org_id = %s
+                              and id <> %s
+                              and status = 'scheduled'
+                              and date_trunc('hour', scheduled_for at time zone %s)
+                                = date_trunc('hour', %s::timestamptz at time zone %s)
+                            """,
+                            (
+                                update_payload["scheduled_for"],
+                                org_id,
+                                appointment_id,
+                                timezone,
+                                update_payload["scheduled_for"],
+                                timezone,
+                            ),
+                        )
+                        capacity_row = cursor.fetchone() or (0, 0)
+                        if int(capacity_row[1]) > 0:
+                            raise ValueError("That appointment slot is already booked.")
+                        if int(capacity_row[0]) >= appointments_per_hour:
+                            raise ValueError("That hour is fully booked.")
                     if payload.status is not None:
                         if payload.status == "checked_in":
                             raise ValueError("Use check-in to move appointments into the queue.")
@@ -720,9 +826,14 @@ class PostgresPatientFlowRepository:
         return await asyncio.to_thread(_get)
 
     async def save_patient_summary(
-        self, org_id: str, patient_id: str, summary: str, updated_at: datetime
-    ) -> None:
-        def _save() -> None:
+        self,
+        org_id: str,
+        patient_id: str,
+        summary: str,
+        updated_at: datetime,
+        expected_revision: int,
+    ) -> bool:
+        def _save() -> bool:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
@@ -732,11 +843,14 @@ class PostgresPatientFlowRepository:
                             ai_summary_updated_at = %s,
                             ai_summary_stale = false
                         where org_id = %s and id = %s
+                          and ai_summary_revision = %s
+                        returning id
                         """,
-                        (summary, updated_at, org_id, patient_id),
+                        (summary, updated_at, org_id, patient_id, expected_revision),
                     )
+                    return cursor.fetchone() is not None
 
-        await asyncio.to_thread(_save)
+        return await asyncio.to_thread(_save)
 
     async def mark_patient_summary_stale(self, org_id: str, patient_id: str) -> None:
         def _mark() -> None:
@@ -745,7 +859,8 @@ class PostgresPatientFlowRepository:
                     cursor.execute(
                         """
                         update public.patients
-                        set ai_summary_stale = true
+                        set ai_summary_stale = true,
+                            ai_summary_revision = ai_summary_revision + 1
                         where org_id = %s and id = %s
                         """,
                         (org_id, patient_id),

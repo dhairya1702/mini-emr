@@ -6,10 +6,11 @@ from typing import Any
 from uuid import UUID
 
 from app.postgres import PostgresConnectionManager
-from app.repositories.base import display_name
+from app.repositories.base import display_name, normalize_phone_number
 from app.repositories.postgres.ai_usage import _row_to_dict
 from app.schema_domains.auth_settings import ClinicSettingsOut, ClinicSettingsUpdate, UserAccountUpdate, UserRoleUpdate
 from app.schema_domains.common import UserRole
+from app.secret_crypto import decrypt_stored_secret, encrypt_stored_secret
 
 
 CLINIC_SETTINGS_COLUMNS = [
@@ -175,6 +176,9 @@ def _settings_values(payload: ClinicSettingsUpdate, current: dict[str, Any] | No
         **(current or {}),
         **payload_values,
     }
+    values["sender_email_app_password"] = encrypt_stored_secret(
+        values.get("sender_email_app_password")
+    )
     return {column: values.get(column) for column in CLINIC_SETTINGS_MUTABLE_COLUMNS}
 
 
@@ -251,6 +255,7 @@ class PostgresAuthSettingsRepository:
                           coalesce(follow_ups.follow_up_count, 0)::int as follow_up_count,
                           coalesce(usage.total_tokens, 0)::int as total_tokens,
                           coalesce(patient_attachments.media_storage_bytes, 0)::bigint as media_storage_bytes,
+                          coalesce(platform_errors.recent_error_count, 0)::int as recent_error_count,
                           greatest(
                             o.created_at,
                             coalesce(users.last_activity_at, o.created_at),
@@ -302,6 +307,12 @@ class PostgresAuthSettingsRepository:
                           from public.patient_attachments
                           where org_id = o.id
                         ) patient_attachments on true
+                        left join lateral (
+                          select count(*)::int as recent_error_count
+                          from public.platform_errors
+                          where org_id = o.id
+                            and created_at >= now() - interval '7 days'
+                        ) platform_errors on true
                         order by o.created_at desc
                         """,
                         (),
@@ -309,6 +320,298 @@ class PostgresAuthSettingsRepository:
                     return [_row_to_dict(row, cursor) for row in cursor.fetchall()]
 
         return await asyncio.to_thread(_list)
+
+    async def create_customer_onboarding(
+        self,
+        *,
+        customer_id: str,
+        customer_name: str,
+        phone: str,
+        users_allowed: int,
+        created_by: str | None,
+    ) -> dict[str, Any]:
+        def _create() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        insert into public.customer_onboarding (
+                          customer_id,
+                          customer_name,
+                          phone,
+                          users_allowed,
+                          created_by
+                        )
+                        values (%s, %s, %s, %s, %s)
+                        returning id, customer_id, customer_name, phone, users_allowed, status,
+                          claimed_org_id, claimed_at, created_by, created_at, updated_at
+                        """,
+                        (customer_id, customer_name, phone, users_allowed, created_by),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("Failed to create customer onboarding record.")
+                    return _row_to_dict(row, cursor)
+
+        return await asyncio.to_thread(_create)
+
+    async def list_customer_onboarding(self) -> list[dict[str, Any]]:
+        def _list() -> list[dict[str, Any]]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select
+                          co.id,
+                          co.customer_id,
+                          co.customer_name,
+                          co.phone,
+                          co.users_allowed,
+                          co.status,
+                          co.claimed_org_id,
+                          co.claimed_at,
+                          co.created_by,
+                          co.created_at,
+                          co.updated_at,
+                          coalesce(nullif(trim(cs.clinic_name), ''), o.name) as claimed_org_name,
+                          coalesce(users.users_used, 0)::int as users_used
+                        from public.customer_onboarding co
+                        left join public.organizations o on o.id = co.claimed_org_id
+                        left join public.clinic_settings cs on cs.org_id = co.claimed_org_id
+                        left join lateral (
+                          select count(*) as users_used
+                          from public.clinic_users cu
+                          where cu.org_id = co.claimed_org_id
+                        ) users on true
+                        order by co.created_at desc
+                        """
+                    )
+                    return [_row_to_dict(row, cursor) for row in cursor.fetchall()]
+
+        return await asyncio.to_thread(_list)
+
+    async def get_customer_onboarding_by_customer_id(self, customer_id: str) -> dict[str, Any] | None:
+        def _get() -> dict[str, Any] | None:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select id, customer_id, customer_name, phone, users_allowed, status,
+                          claimed_org_id, claimed_at, created_by, created_at, updated_at
+                        from public.customer_onboarding
+                        where customer_id = %s
+                        limit 1
+                        """,
+                        (customer_id,),
+                    )
+                    row = cursor.fetchone()
+                    return _row_to_dict(row, cursor) if row else None
+
+        return await asyncio.to_thread(_get)
+
+    async def provision_customer_organization(
+        self,
+        *,
+        customer_id: str,
+        expected_phone: str,
+        clinic_settings: ClinicSettingsUpdate,
+        identifier: str,
+        name: str,
+        password_hash: str,
+    ) -> dict[str, Any]:
+        settings_values = _settings_values(clinic_settings)
+        settings_columns = list(CLINIC_SETTINGS_MUTABLE_COLUMNS)
+
+        def _provision() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select id, phone, status
+                        from public.customer_onboarding
+                        where customer_id = %s
+                        for update
+                        """,
+                        (customer_id,),
+                    )
+                    onboarding = cursor.fetchone()
+                    if (
+                        not onboarding
+                        or str(onboarding[2]) != "pending"
+                        or normalize_phone_number(onboarding[1]) != normalize_phone_number(expected_phone)
+                    ):
+                        raise ValueError("Invalid customer ID or phone number.")
+
+                    cursor.execute(
+                        "select 1 from public.clinic_users where identifier = %s limit 1",
+                        (identifier,),
+                    )
+                    if cursor.fetchone():
+                        raise ValueError("An account with that email or phone already exists.")
+
+                    cursor.execute(
+                        """
+                        insert into public.organizations (name)
+                        values (%s)
+                        returning id
+                        """,
+                        (str(clinic_settings.clinic_name or "").strip(),),
+                    )
+                    organization = cursor.fetchone()
+                    if not organization:
+                        raise ValueError("Failed to create organization.")
+                    org_id = str(organization[0])
+
+                    cursor.execute(
+                        f"""
+                        insert into public.clinic_settings (org_id, {", ".join(settings_columns)})
+                        values ({", ".join(["%s"] * (len(settings_columns) + 1))})
+                        returning {_settings_returning_clause()}
+                        """,
+                        (org_id, *(settings_values[column] for column in settings_columns)),
+                    )
+                    if not cursor.fetchone():
+                        raise ValueError("Failed to create clinic settings.")
+
+                    cursor.execute(
+                        """
+                        insert into public.clinic_users (
+                          org_id, identifier, name, password_hash, role, doctor_dob,
+                          doctor_address, session_version
+                        )
+                        values (%s, %s, %s, %s, 'admin', null, '', 1)
+                        returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                          doctor_signature_name, doctor_signature_content_type,
+                          doctor_signature_data_base64, created_at, session_version
+                        """,
+                        (org_id, identifier, name.strip(), password_hash),
+                    )
+                    user_row = cursor.fetchone()
+                    if not user_row:
+                        raise ValueError("Failed to create user.")
+                    user = _row_to_dict(user_row, cursor)
+                    user["name"] = display_name(user)
+
+                    cursor.execute(
+                        """
+                        update public.customer_onboarding
+                        set status = 'claimed',
+                          claimed_org_id = %s,
+                          claimed_at = now(),
+                          updated_at = now()
+                        where customer_id = %s and status = 'pending'
+                        returning id
+                        """,
+                        (org_id, customer_id),
+                    )
+                    if not cursor.fetchone():
+                        raise ValueError("Invalid customer ID or phone number.")
+                    return user
+
+        return await asyncio.to_thread(_provision)
+
+    async def get_customer_onboarding_for_org(self, org_id: str) -> dict[str, Any] | None:
+        def _get() -> dict[str, Any] | None:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select id, customer_id, customer_name, phone, users_allowed, status,
+                          claimed_org_id, claimed_at, created_by, created_at, updated_at
+                        from public.customer_onboarding
+                        where claimed_org_id = %s
+                        limit 1
+                        """,
+                        (org_id,),
+                    )
+                    row = cursor.fetchone()
+                    return _row_to_dict(row, cursor) if row else None
+
+        return await asyncio.to_thread(_get)
+
+    async def claim_customer_onboarding(self, customer_id: str, org_id: str) -> dict[str, Any]:
+        timestamp = datetime.now(UTC).isoformat()
+
+        def _claim() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        update public.customer_onboarding
+                        set status = 'claimed',
+                          claimed_org_id = %s,
+                          claimed_at = %s,
+                          updated_at = %s
+                        where customer_id = %s and status = 'pending'
+                        returning id, customer_id, customer_name, phone, users_allowed, status,
+                          claimed_org_id, claimed_at, created_by, created_at, updated_at
+                        """,
+                        (org_id, timestamp, timestamp, customer_id),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("Invalid customer ID or phone number.")
+                    return _row_to_dict(row, cursor)
+
+        return await asyncio.to_thread(_claim)
+
+    async def update_customer_onboarding(self, onboarding_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        allowed = {"customer_name", "phone", "users_allowed", "status"}
+        updates = {key: value for key, value in payload.items() if key in allowed and value is not None}
+        if not updates:
+            raise ValueError("No updates provided.")
+        updates["updated_at"] = datetime.now(UTC).isoformat()
+        assignments = ", ".join(f"{key} = %s" for key in updates)
+
+        def _update() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        update public.customer_onboarding
+                        set {assignments}
+                        where id = %s
+                        returning id, customer_id, customer_name, phone, users_allowed, status,
+                          claimed_org_id, claimed_at, created_by, created_at, updated_at
+                        """,
+                        (*updates.values(), onboarding_id),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("Customer onboarding record not found.")
+                    return _row_to_dict(row, cursor)
+
+        return await asyncio.to_thread(_update)
+
+    async def disable_customer_onboarding(self, onboarding_id: str) -> dict[str, Any]:
+        return await self.update_customer_onboarding(onboarding_id, {"status": "disabled"})
+
+    async def count_users_for_org(self, org_id: str) -> int:
+        def _count() -> int:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("select count(*) from public.clinic_users where org_id = %s", (org_id,))
+                    row = cursor.fetchone()
+                    return int(row[0] if row else 0)
+
+        return await asyncio.to_thread(_count)
+
+    async def count_admins_for_org(self, org_id: str) -> int:
+        def _count() -> int:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select count(*)
+                        from public.clinic_users
+                        where org_id = %s and role = 'admin'
+                        """,
+                        (org_id,),
+                    )
+                    row = cursor.fetchone()
+                    return int(row[0] if row else 0)
+
+        return await asyncio.to_thread(_count)
 
     async def create_clinic_settings(self, org_id: str, payload: ClinicSettingsUpdate) -> dict[str, Any]:
         values = _settings_values(payload)
@@ -349,7 +652,12 @@ class PostgresAuthSettingsRepository:
                     (org_id,),
                 )
                 row = cursor.fetchone()
-                return _row_to_dict(row, cursor) if row else {}
+                settings = _row_to_dict(row, cursor) if row else {}
+                if settings:
+                    settings["sender_email_app_password"] = decrypt_stored_secret(
+                        settings.get("sender_email_app_password")
+                    )
+                return settings
 
     async def upsert_clinic_settings(self, org_id: str, payload: ClinicSettingsUpdate) -> dict[str, Any]:
         timestamp = datetime.now(UTC).isoformat()
@@ -477,7 +785,7 @@ class PostgresAuthSettingsRepository:
                         values (%s, %s, %s, %s, %s, null, '')
                         returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
-                          doctor_signature_data_base64, created_at
+                          doctor_signature_data_base64, created_at, session_version
                         """,
                         (org_id, identifier, name.strip(), password_hash, role),
                     )
@@ -496,7 +804,7 @@ class PostgresAuthSettingsRepository:
                         """
                         select id, org_id, identifier, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
-                          doctor_signature_data_base64, password_hash, created_at
+                          doctor_signature_data_base64, password_hash, created_at, session_version
                         from public.clinic_users
                         where identifier = %s
                         limit 1
@@ -541,7 +849,8 @@ class PostgresAuthSettingsRepository:
                     cursor.execute(
                         """
                         select id, org_id, identifier, name, role, doctor_dob, doctor_address,
-                          doctor_signature_name, doctor_signature_content_type, created_at
+                          doctor_signature_name, doctor_signature_content_type, created_at,
+                          session_version
                         from public.clinic_users
                         where id = %s
                         limit 1
@@ -683,11 +992,13 @@ class PostgresAuthSettingsRepository:
                     cursor.execute(
                         """
                         update public.clinic_users
-                        set password_hash = %s, updated_at = %s
+                        set password_hash = %s,
+                          session_version = session_version + 1,
+                          updated_at = %s
                         where id = %s
                         returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
-                          doctor_signature_data_base64, password_hash, created_at
+                          doctor_signature_data_base64, password_hash, created_at, session_version
                         """,
                         (password_hash, timestamp, user_id),
                     )
@@ -699,6 +1010,24 @@ class PostgresAuthSettingsRepository:
                     return user
 
         return await asyncio.to_thread(_update)
+
+    async def revoke_user_sessions(self, user_id: str) -> None:
+        def _revoke() -> None:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        update public.clinic_users
+                        set session_version = session_version + 1,
+                          updated_at = now()
+                        where id = %s
+                        """,
+                        (user_id,),
+                    )
+                    if cursor.rowcount != 1:
+                        raise IndexError(user_id)
+
+        await asyncio.to_thread(_revoke)
 
     async def set_user_signature(
         self,

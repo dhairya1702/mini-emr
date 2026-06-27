@@ -1,5 +1,7 @@
 from pathlib import Path
+from io import BytesIO
 from uuid import uuid4
+from PIL import Image
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
@@ -47,6 +49,8 @@ from app.services.patient_workflow import (
     record_patient_visit_workflow,
     update_patient_workflow,
 )
+from app.services.auth_flow import enforce_repository_rate_limit
+from app.services.audit_service import write_audit_event_best_effort
 from app.storage import PatientAttachmentStorage, get_patient_attachment_storage
 
 
@@ -86,11 +90,19 @@ def _profile_photo_extension(content_type: str) -> str:
 
 @router.get("/patients", response_model=list[PatientOut])
 async def get_patients(
+    active_only: bool = Query(default=False),
+    limit: int = Query(default=500, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[PatientOut]:
     try:
-        rows = await repo.list_patients(str(current_user.org_id))
+        rows = await repo.list_patients(
+            str(current_user.org_id),
+            active_only=active_only,
+            limit=limit,
+            offset=offset,
+        )
         return [PatientOut(**row) for row in rows]
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="get_patients") from exc
@@ -135,6 +147,30 @@ async def create_patient(
         raise internal_server_error(exc, context="create_patient") from exc
 
 
+@router.get("/patients/{patient_id}", response_model=PatientOut)
+async def get_patient(
+    patient_id: str,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> PatientOut:
+    try:
+        patient = await repo.get_patient(str(current_user.org_id), patient_id)
+        await write_audit_event_best_effort(
+            repo,
+            current_user,
+            entity_type="patient",
+            entity_id=patient_id,
+            action="patient_record_viewed",
+            summary="Viewed a patient record.",
+            metadata={},
+        )
+        return PatientOut(**patient)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="get_patient") from exc
+
+
 @router.post("/patients/{patient_id}/visits", response_model=PatientOut)
 async def create_patient_visit(
     patient_id: str,
@@ -172,7 +208,17 @@ async def get_patient_visit_detail(
     current_user: UserOut = Depends(get_current_user),
 ) -> PatientVisitDetailOut:
     try:
-        return await build_patient_visit_detail_view(repo, str(current_user.org_id), patient_id, visit_id)
+        detail = await build_patient_visit_detail_view(repo, str(current_user.org_id), patient_id, visit_id)
+        await write_audit_event_best_effort(
+            repo,
+            current_user,
+            entity_type="patient_visit",
+            entity_id=visit_id,
+            action="patient_visit_viewed",
+            summary="Viewed detailed patient visit information.",
+            metadata={"patient_id": patient_id},
+        )
+        return detail
     except ValueError as exc:
         raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
@@ -212,7 +258,14 @@ async def upload_patient_profile_photo(
         raise HTTPException(status_code=400, detail="Patient photo file is empty.")
     if len(raw_bytes) > MAX_PATIENT_PROFILE_PHOTO_BYTES:
         raise HTTPException(status_code=400, detail="Patient photo must be 5 MB or smaller.")
+    try:
+        image = Image.open(BytesIO(raw_bytes))
+        image.verify()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Patient photo is not a valid image.") from exc
 
+    storage_path = ""
+    metadata_updated = False
     try:
         existing = await repo.get_patient(str(current_user.org_id), patient_id)
         old_storage_path = str(existing.get("profile_photo_storage_path") or "").strip()
@@ -227,8 +280,12 @@ async def upload_patient_profile_photo(
             storage_path=storage_path,
             content_type=content_type,
         )
+        metadata_updated = True
         if old_storage_path and old_storage_path != storage_path:
-            await storage.delete(old_storage_path)
+            try:
+                await storage.delete(old_storage_path)
+            except Exception:
+                pass
         await repo.create_audit_event(
             org_id=str(current_user.org_id),
             actor_user_id=str(current_user.id),
@@ -243,6 +300,11 @@ async def upload_patient_profile_photo(
     except ValueError as exc:
         raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
+        if storage_path and not metadata_updated:
+            try:
+                await storage.delete(storage_path)
+            except Exception:
+                pass
         raise internal_server_error(exc, context="upload_patient_profile_photo") from exc
 
 
@@ -259,6 +321,15 @@ async def download_patient_profile_photo(
         if not storage_path:
             raise ValueError("Patient photo not found.")
         raw_bytes = await storage.download(storage_path)
+        await write_audit_event_best_effort(
+            repo,
+            current_user,
+            entity_type="patient",
+            entity_id=patient_id,
+            action="patient_profile_photo_viewed",
+            summary="Viewed a patient profile photo.",
+            metadata={},
+        )
         content_type = str(patient.get("profile_photo_content_type") or "image/jpeg")
         return StreamingResponse(
             iter([raw_bytes]),
@@ -334,12 +405,11 @@ async def get_patient_summary(
                 stale=False,
                 used_fallback=False,
             )
-        result = await generate_patient_summary_workflow(repo, org_id, patient_id)
         return PatientSummaryOut(
-            summary=result["summary"],
-            updated_at=result["updated_at"],
-            stale=False,
-            used_fallback=result["used_fallback"],
+            summary=cached,
+            updated_at=patient.get("ai_summary_updated_at"),
+            stale=True,
+            used_fallback=False,
         )
     except ValueError as exc:
         raise bad_request_error(exc) from exc
@@ -355,11 +425,12 @@ async def regenerate_patient_summary(
 ) -> PatientSummaryOut:
     try:
         org_id = str(current_user.org_id)
+        await enforce_repository_rate_limit(repo, "patient_summary", str(current_user.id))
         result = await generate_patient_summary_workflow(repo, org_id, patient_id)
         return PatientSummaryOut(
             summary=result["summary"],
             updated_at=result["updated_at"],
-            stale=False,
+            stale=result["stale"],
             used_fallback=result["used_fallback"],
         )
     except ValueError as exc:
@@ -517,7 +588,17 @@ async def get_patient_case_study_source(
     current_user: UserOut = Depends(get_current_user),
 ) -> PatientCaseStudySourceOut:
     try:
-        return await build_case_study_source_view(repo, str(current_user.org_id), patient_id, anonymized=False)
+        source = await build_case_study_source_view(repo, str(current_user.org_id), patient_id, anonymized=False)
+        await write_audit_event_best_effort(
+            repo,
+            current_user,
+            entity_type="patient",
+            entity_id=patient_id,
+            action="case_study_source_viewed",
+            summary="Viewed patient data prepared for a case study.",
+            metadata={},
+        )
+        return source
     except ValueError as exc:
         raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover

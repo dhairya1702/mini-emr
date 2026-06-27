@@ -51,7 +51,8 @@ test("mobile queue only includes active consultation statuses", async () => {
 
 test("mobile consultation drafts are scoped and clearable", async () => {
   const localStorage = createStorage();
-  globalThis.window = { localStorage };
+  const sessionStorage = createStorage();
+  globalThis.window = { localStorage, sessionStorage };
   const {
     clearMobileConsultationDraft,
     readMobileConsultationDraft,
@@ -67,6 +68,7 @@ test("mobile consultation drafts are scoped and clearable", async () => {
     notes: "Review if worse",
     generatedNote: "SOAP",
     noteId: "n1",
+    assets: [],
   });
 
   assert.equal(readMobileConsultationDraft(scope).noteId, "n1");

@@ -46,12 +46,12 @@ export default function EarningsPage() {
   const [hoveredChartPointKey, setHoveredChartPointKey] = useState<string | null>(null);
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadBillablePatients = useCallback(async () => {
-    const patients = await api.listPatients();
+    const patients = await api.listAllPatients();
     return patients.filter((patient) => patient.status === "done" && !patient.billed);
   }, []);
   const loadPageData = useCallback(async () => {
     return {
-      invoices: await api.listInvoices(),
+      invoices: await api.listAllInvoices(),
     };
   }, []);
   const onPageData = useCallback((data: { invoices: Invoice[] }) => {

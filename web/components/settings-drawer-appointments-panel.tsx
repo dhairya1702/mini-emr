@@ -134,7 +134,7 @@ export function SettingsDrawerAppointmentsPanel({
       return;
     }
     let active = true;
-    void api.listPatients()
+    void api.listAllPatients()
       .then((rows) => {
         if (!active) {
           return;

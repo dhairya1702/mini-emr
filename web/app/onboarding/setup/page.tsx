@@ -297,8 +297,8 @@ export default function OnboardingSetupPage() {
 
   async function saveStaff(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!staff.identifier.trim() || staff.password.length < 4) {
-      setError("Enter a staff login and a password of at least 4 characters, or continue without adding another user.");
+    if (!staff.identifier.trim() || staff.password.length < 12) {
+      setError("Enter a staff login and a password of at least 12 characters, or continue without adding another user.");
       return;
     }
     setIsSaving(true);
@@ -552,7 +552,7 @@ export default function OnboardingSetupPage() {
                 <span className="mb-2 block text-sm font-medium text-slate-700">Staff email or phone</span>
                 <input value={staff.identifier} onChange={(event) => setStaff((current) => ({ ...current, identifier: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none" />
               </label>
-              <PasswordInput label="Temporary password" value={staff.password} onChange={(event) => setStaff((current) => ({ ...current, password: event.target.value }))} placeholder="Minimum 4 characters" />
+              <PasswordInput label="Temporary password" value={staff.password} onChange={(event) => setStaff((current) => ({ ...current, password: event.target.value }))} placeholder="Minimum 12 characters" />
               {createdStaffUsers.length ? (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
                   <p className="text-sm font-semibold text-emerald-900">Added in this setup</p>

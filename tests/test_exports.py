@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from test_app import auth_headers_for_token, client, register_test_clinic
+from app.exports import _csv_safe_value
 
 
 def test_admin_can_export_patients_visits_and_invoices_csv(client):
@@ -57,3 +58,8 @@ def test_admin_can_export_patients_visits_and_invoices_csv(client):
     assert "amount_paid" in invoices_csv.text
     assert "balance_due" in invoices_csv.text
     assert "unpaid" in invoices_csv.text
+
+
+def test_csv_exports_neutralize_spreadsheet_formulas():
+    assert _csv_safe_value('=HYPERLINK("https://example.invalid")').startswith("'=")
+    assert _csv_safe_value("+123") == "'+123"

@@ -6,14 +6,13 @@ source "$(dirname "$0")/deploy-common.sh"
 
 deploy_root_dir
 ensure_expected_gcloud_target
-require_env_vars DB_PASSWORD AUTH_SECRET SUPER_ADMIN_IDENTIFIERS
-require_non_placeholder_secrets
+require_env_vars DATABASE_URL_SECRET_NAME AUTH_SECRET_NAME SUPER_ADMIN_IDENTIFIERS SUPER_ADMIN_TOTP_SECRET_NAME
 
 IMAGE_TAG="$(resolve_image_tag)"
 WEB_ORIGINS="$(resolve_web_origin_list)"
-INTERNAL_SCHEDULER_ENV_ARGS=()
-if [[ -n "${INTERNAL_SCHEDULER_TOKEN:-}" ]]; then
-  INTERNAL_SCHEDULER_ENV_ARGS+=(--set-env-vars="INTERNAL_SCHEDULER_TOKEN=${INTERNAL_SCHEDULER_TOKEN}")
+SECRET_BINDINGS="DATABASE_URL=${DATABASE_URL_SECRET_NAME}:latest,AUTH_SECRET=${AUTH_SECRET_NAME}:latest,SUPER_ADMIN_TOTP_SECRETS=${SUPER_ADMIN_TOTP_SECRET_NAME}:latest"
+if [[ -n "${INTERNAL_SCHEDULER_SECRET_NAME:-}" ]]; then
+  SECRET_BINDINGS+=",INTERNAL_SCHEDULER_TOKEN=${INTERNAL_SCHEDULER_SECRET_NAME}:latest"
 fi
 
 echo "Building backend image with tag: $IMAGE_TAG"
@@ -31,16 +30,14 @@ gcloud run deploy "$BACKEND_SERVICE" \
   --service-account="$BACKEND_SA" \
   --allow-unauthenticated \
   --add-cloudsql-instances="$SQL_CONNECTION_NAME" \
-  --set-env-vars="DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@/${DB_NAME}?host=/cloudsql/${SQL_CONNECTION_NAME}" \
+  --set-secrets="$SECRET_BINDINGS" \
   --set-env-vars="GCS_PATIENT_ATTACHMENTS_BUCKET=${GCS_BUCKET}" \
-  --set-env-vars="AUTH_SECRET=${AUTH_SECRET}" \
   --set-env-vars="GOOGLE_CLOUD_PROJECT=${PROJECT_ID}" \
   --set-env-vars="GOOGLE_CLOUD_LOCATION=global" \
   --set-env-vars="GEMINI_MODEL=gemini-2.5-flash" \
   --set-env-vars="APP_ORIGIN=${WEB_URL}" \
   --set-env-vars="^@^APP_ORIGINS=${WEB_ORIGINS}" \
   --set-env-vars="SUPER_ADMIN_IDENTIFIERS=${SUPER_ADMIN_IDENTIFIERS}" \
-  "${INTERNAL_SCHEDULER_ENV_ARGS[@]}" \
   --set-env-vars="FOLLOW_UP_REMINDER_RUNNER_ENABLED=false" \
   --set-env-vars="FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300"
 

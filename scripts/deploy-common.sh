@@ -18,13 +18,11 @@ EXPECTED_BACKEND_URL="https://clinic-emr-backend-388811826415.asia-south1.run.ap
 EXPECTED_WEB_URL="https://clinic-emr-web-388811826415.asia-south1.run.app"
 
 # These literal placeholder strings are only used for validation messages.
-PLACEHOLDER_DB_PASSWORD="actual_database_password_here"
-PLACEHOLDER_AUTH_SECRET="some_long_random_secret_here"
-# Keep tracked defaults non-secret. Real values belong in .env.deploy, which is gitignored.
-DEFAULT_DB_PASSWORD="$PLACEHOLDER_DB_PASSWORD"
-DEFAULT_AUTH_SECRET="$PLACEHOLDER_AUTH_SECRET"
 DEFAULT_SUPER_ADMIN_IDENTIFIERS="dhairya911@gmail.com"
-DEFAULT_INTERNAL_SCHEDULER_TOKEN=""
+DEFAULT_DATABASE_URL_SECRET_NAME="clinic-emr-database-url"
+DEFAULT_AUTH_SECRET_NAME="clinic-emr-auth-secret"
+DEFAULT_SUPER_ADMIN_TOTP_SECRET_NAME="clinic-emr-super-admin-totp-secrets"
+DEFAULT_INTERNAL_SCHEDULER_SECRET_NAME=""
 
 # Load local deploy secrets before exporting defaults so shell vars still win when explicitly provided.
 if [[ -f "$(dirname "${BASH_SOURCE[0]}")/../.env.deploy" ]]; then
@@ -45,10 +43,11 @@ export GCS_BUCKET="${GCS_BUCKET:-$EXPECTED_GCS_BUCKET}"
 export BACKEND_SA="${BACKEND_SA:-$EXPECTED_BACKEND_SA}"
 export BACKEND_PUBLIC_URL="${BACKEND_PUBLIC_URL:-$EXPECTED_BACKEND_URL}"
 export WEB_URL="${WEB_URL:-$EXPECTED_WEB_URL}"
-export DB_PASSWORD="${DB_PASSWORD:-$DEFAULT_DB_PASSWORD}"
-export AUTH_SECRET="${AUTH_SECRET:-$DEFAULT_AUTH_SECRET}"
 export SUPER_ADMIN_IDENTIFIERS="${SUPER_ADMIN_IDENTIFIERS:-$DEFAULT_SUPER_ADMIN_IDENTIFIERS}"
-export INTERNAL_SCHEDULER_TOKEN="${INTERNAL_SCHEDULER_TOKEN:-$DEFAULT_INTERNAL_SCHEDULER_TOKEN}"
+export DATABASE_URL_SECRET_NAME="${DATABASE_URL_SECRET_NAME:-$DEFAULT_DATABASE_URL_SECRET_NAME}"
+export AUTH_SECRET_NAME="${AUTH_SECRET_NAME:-$DEFAULT_AUTH_SECRET_NAME}"
+export SUPER_ADMIN_TOTP_SECRET_NAME="${SUPER_ADMIN_TOTP_SECRET_NAME:-$DEFAULT_SUPER_ADMIN_TOTP_SECRET_NAME}"
+export INTERNAL_SCHEDULER_SECRET_NAME="${INTERNAL_SCHEDULER_SECRET_NAME:-$DEFAULT_INTERNAL_SCHEDULER_SECRET_NAME}"
 
 deploy_root_dir() {
   cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -91,24 +90,6 @@ require_env_vars() {
 
   if (( ${#missing[@]} > 0 )); then
     echo "Missing required environment variables: ${missing[*]}" >&2
-    exit 1
-  fi
-}
-
-require_non_placeholder_secrets() {
-  local placeholders=()
-
-  if [[ "${DB_PASSWORD:-}" == "$PLACEHOLDER_DB_PASSWORD" ]]; then
-    placeholders+=("DB_PASSWORD")
-  fi
-
-  if [[ "${AUTH_SECRET:-}" == "$PLACEHOLDER_AUTH_SECRET" ]]; then
-    placeholders+=("AUTH_SECRET")
-  fi
-
-  if (( ${#placeholders[@]} > 0 )); then
-    echo "Refusing to deploy with placeholder values: ${placeholders[*]}" >&2
-    echo "Edit scripts/deploy-common.sh once and replace the default placeholder values." >&2
     exit 1
   fi
 }

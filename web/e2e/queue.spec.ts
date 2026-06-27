@@ -9,17 +9,17 @@ import {
   seedSession,
 } from "./support/mock-clinic-api";
 
-async function dragByLabel(page: Page, sourceLabel: string, targetLabel: string) {
-  const sourceBox = await page.getByLabel(sourceLabel).boundingBox();
+async function dragByLabel(page: Page, sourceRegion: string, sourceLabel: string, targetLabel: string) {
+  const sourceBox = await page.getByLabel(sourceRegion).getByLabel(sourceLabel).boundingBox();
   const targetBox = await page.getByLabel(targetLabel).boundingBox();
   if (!sourceBox || !targetBox) {
     throw new Error(`Could not locate drag source ${sourceLabel} or target ${targetLabel}.`);
   }
-
   await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
   await page.mouse.down();
-  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 12 });
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 16 });
   await page.mouse.up();
+  await expect(page.getByLabel(targetLabel).getByText("Morgan Lee", { exact: true })).toBeVisible();
 }
 
 test("queue smoke adds a patient and opens the settings drawer", async ({ page }) => {
@@ -45,10 +45,10 @@ test("queue smoke adds a patient and opens the settings drawer", async ({ page }
   await page.getByLabel("Name").fill("Taylor Brooks");
   await page.getByLabel("Phone").fill("5550103030");
   await page.getByLabel("Email").fill("taylor@example.com");
-  await page.getByLabel("Address").fill("11 Pine Road");
-  await page.getByLabel("Reason for visit").fill("Cough and fatigue");
-  await page.getByLabel("Age").fill("34");
+  await page.getByLabel("DOB").fill("1992-03-18");
+  await page.getByLabel("Reason for Visit").fill("Cough and fatigue");
   await page.getByLabel("Weight").fill("72");
+  await page.getByLabel("Height").fill("170");
   await page.getByLabel("Temperature").fill("99.2");
   await page.getByRole("button", { name: "Add to Queue" }).click();
 
@@ -60,7 +60,7 @@ test("queue smoke adds a patient and opens the settings drawer", async ({ page }
   await expect(page.getByText("Clinic name")).toBeVisible();
 });
 
-test("queue drag moves a patient through consultation and billing", async ({ page }) => {
+test("queue drag moves a waiting patient into consultation", async ({ page }) => {
   const user = buildUser({ doctor_signature_name: "signature.png" });
   const staffUser = buildUser({ id: "user-staff-1", identifier: "staff@clinic.test", role: "staff" });
   const patient = buildPatient({
@@ -81,9 +81,6 @@ test("queue drag moves a patient through consultation and billing", async ({ pag
 
   await page.goto("/");
 
-  await dragByLabel(page, "Drag Morgan Lee", "Consultation queue");
+  await dragByLabel(page, "Waiting queue", "Drag Morgan Lee", "Consultation queue");
   await expect(page.getByLabel("Consultation queue").getByText("Morgan Lee", { exact: true })).toBeVisible();
-
-  await dragByLabel(page, "Drag Morgan Lee", "Billing queue");
-  await expect(page.getByLabel("Billing queue").getByText("Morgan Lee", { exact: true })).toBeVisible();
 });

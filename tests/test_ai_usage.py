@@ -136,7 +136,9 @@ async def test_generate_soap_note_discards_truncated_vertex_output(monkeypatch):
     assert result["warning"] == "AI returned incomplete content, used fallback template."
     assert "Presenting Complaint:" in result["content"]
     assert "Fever" in result["content"]
-    assert repo.events == []
+    assert len(repo.events) == 1
+    assert repo.events[0]["feature"] == "consultation_note"
+    assert repo.events[0]["output_tokens"] == 8
 
 
 @pytest.mark.anyio
@@ -227,7 +229,9 @@ async def test_generate_clinic_letter_discards_truncated_vertex_output(monkeypat
         "Sincerely,\n"
         "Dr. Demo"
     )
-    assert repo.events == []
+    assert len(repo.events) == 1
+    assert repo.events[0]["feature"] == "clinic_letter"
+    assert repo.events[0]["output_tokens"] == 8
 
 
 @pytest.mark.anyio
@@ -411,7 +415,9 @@ async def test_generate_optometry_clinical_analysis_falls_back_on_truncated_outp
     assert result.used_fallback is True
     assert "fallback optometry analysis" in (result.warning or "")
     assert result.possibilities
-    assert repo.events == []
+    assert len(repo.events) == 1
+    assert repo.events[0]["feature"] == "clinical_analysis_optometry"
+    assert repo.events[0]["output_tokens"] == 5
 
 
 @pytest.mark.anyio

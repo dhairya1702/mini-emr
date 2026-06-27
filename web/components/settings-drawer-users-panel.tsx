@@ -143,7 +143,7 @@ export function SettingsDrawerUsersPanel({
               label="Password"
               value={userForm.password}
               onChange={(event) => onUserFormChange({ password: event.target.value })}
-              placeholder="Minimum 4 characters"
+              placeholder="Minimum 12 characters"
               inputClassName="w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 pr-12 text-slate-800 outline-none transition focus:border-[#6daed8]"
             />
             {userError ? <p className="text-sm font-medium text-rose-600">{userError}</p> : null}

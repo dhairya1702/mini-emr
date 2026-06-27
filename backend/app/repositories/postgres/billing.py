@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+from decimal import Decimal
 from typing import Any
 
 from app.postgres import PostgresConnectionManager
-from app.repositories.base import attach_invoice_balances, normalize_invoice_amount_paid, round_money
+from app.repositories.base import (
+    attach_invoice_balances,
+    decimal_money,
+    decimal_quantity,
+    normalize_invoice_amount_paid,
+    round_money,
+)
 from app.repositories.postgres.ai_usage import _row_to_dict
 from app.schema_domains.billing import CatalogItemCreate, CatalogStockUpdate, InvoiceCreate
 
@@ -69,7 +76,9 @@ def _invoice_item_payload(payload: InvoiceCreate) -> list[dict[str, Any]]:
             "label": item.label,
             "quantity": item.quantity,
             "unit_price": item.unit_price,
-            "line_total": round_money(item.quantity * item.unit_price),
+            "line_total": decimal_money(
+                decimal_quantity(item.quantity) * decimal_money(item.unit_price)
+            ),
         }
         for item in payload.items
     ]
@@ -151,7 +160,8 @@ class PostgresBillingRepository:
 
     async def update_catalog_stock(self, org_id: str, item_id: str, payload: CatalogStockUpdate) -> dict[str, Any]:
         def _update() -> dict[str, Any]:
-            if payload.delta == 0:
+            normalized_delta = decimal_quantity(payload.delta)
+            if normalized_delta == 0:
                 raise ValueError("Stock adjustment must be non-zero.")
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
@@ -161,6 +171,7 @@ class PostgresBillingRepository:
                         from public.catalog_items
                         where org_id = %s and id = %s
                         limit 1
+                        for update
                         """,
                         (org_id, item_id),
                     )
@@ -168,7 +179,7 @@ class PostgresBillingRepository:
                     if not row:
                         raise ValueError("Catalog item not found for this organization.")
                     item = _row_to_dict(row, cursor)
-                    next_quantity = float(item.get("stock_quantity", 0)) + payload.delta
+                    next_quantity = decimal_quantity(item.get("stock_quantity", 0)) + normalized_delta
                     if next_quantity < 0:
                         raise ValueError("Stock cannot go below zero.")
                     cursor.execute(
@@ -196,7 +207,15 @@ class PostgresBillingRepository:
         await asyncio.to_thread(_delete)
 
     async def create_invoice(self, org_id: str, payload: InvoiceCreate) -> dict[str, Any]:
-        invoice_total = round_money(sum(item.quantity * item.unit_price for item in payload.items))
+        invoice_total = decimal_money(
+            sum(
+                (
+                    decimal_quantity(item.quantity) * decimal_money(item.unit_price)
+                    for item in payload.items
+                ),
+                start=decimal_money(0),
+            )
+        )
         normalized_amount_paid = normalize_invoice_amount_paid(
             payload.payment_status,
             payload.amount_paid,
@@ -388,12 +407,15 @@ class PostgresBillingRepository:
                     stock_deductions: list[dict[str, Any]] = []
 
                     if not already_completed:
-                        required_by_item: dict[str, float] = {}
+                        required_by_item: dict[str, Decimal] = {}
                         for item in items:
                             catalog_item_id = item.get("catalog_item_id")
                             if not catalog_item_id:
                                 continue
-                            required_by_item[str(catalog_item_id)] = required_by_item.get(str(catalog_item_id), 0) + float(item.get("quantity") or 0)
+                            required_by_item[str(catalog_item_id)] = (
+                                required_by_item.get(str(catalog_item_id), 0)
+                                + decimal_quantity(item.get("quantity"))
+                            )
 
                         if required_by_item:
                             cursor.execute(
@@ -412,7 +434,7 @@ class PostgresBillingRepository:
                                 row = catalog_rows[catalog_item_id]
                                 if not row[3]:
                                     continue
-                                if float(row[2] or 0) < quantity:
+                                if decimal_quantity(row[2]) < quantity:
                                     raise ValueError(f"Insufficient stock for {row[1]}.")
                             for catalog_item_id, quantity in required_by_item.items():
                                 row = catalog_rows[catalog_item_id]
@@ -523,13 +545,93 @@ class PostgresBillingRepository:
 
         return await asyncio.to_thread(_get)
 
-    async def list_invoices(self, org_id: str) -> list[dict[str, Any]]:
+    async def mark_invoice_sent(self, org_id: str, invoice_id: str) -> dict[str, Any]:
+        def _mark() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        update public.invoices
+                        set sent_at = coalesce(sent_at, now())
+                        where org_id = %s and id = %s and completed_at is not null
+                        returning {_columns_sql(INVOICE_COLUMNS)}
+                        """,
+                        (org_id, invoice_id),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("Completed invoice not found for this organization.")
+                    return _row_to_dict(row, cursor)
+
+        return await asyncio.to_thread(_mark)
+
+    async def list_invoices(
+        self,
+        org_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute("select public.list_invoices_with_details(%s)", (org_id,))
-                    row = cursor.fetchone()
-                    invoices = _json_payload(row[0] if row else []) or []
+                    clauses = ["org_id = %s"]
+                    params: list[Any] = [org_id]
+                    pagination_sql = ""
+                    if limit is not None:
+                        pagination_sql = " limit %s offset %s"
+                        params.extend([limit, offset])
+                    cursor.execute(
+                        f"""
+                        select {_columns_sql(INVOICE_COLUMNS)}
+                        from public.invoices
+                        where {' and '.join(clauses)}
+                        order by created_at desc
+                        {pagination_sql}
+                        """,
+                        tuple(params),
+                    )
+                    invoices = [_row_to_dict(row, cursor) for row in cursor.fetchall()]
+                    invoice_ids = [str(invoice["id"]) for invoice in invoices]
+                    patient_ids = list({str(invoice["patient_id"]) for invoice in invoices})
+                    patient_names: dict[str, str] = {}
+                    if patient_ids:
+                        cursor.execute(
+                            "select id, name from public.patients where org_id = %s and id = any(%s::uuid[])",
+                            (org_id, patient_ids),
+                        )
+                        patient_names = {str(row[0]): str(row[1] or "") for row in cursor.fetchall()}
+                    user_ids = list({
+                        str(invoice["completed_by"])
+                        for invoice in invoices
+                        if invoice.get("completed_by")
+                    })
+                    user_names: dict[str, str] = {}
+                    if user_ids:
+                        cursor.execute(
+                            "select id, name from public.clinic_users where org_id = %s and id = any(%s::uuid[])",
+                            (org_id, user_ids),
+                        )
+                        user_names = {str(row[0]): str(row[1] or "") for row in cursor.fetchall()}
+                    items_by_invoice_id: dict[str, list[dict[str, Any]]] = {
+                        invoice_id: [] for invoice_id in invoice_ids
+                    }
+                    if invoice_ids:
+                        cursor.execute(
+                            f"""
+                            select {_columns_sql(INVOICE_ITEM_COLUMNS)}
+                            from public.invoice_items
+                            where invoice_id = any(%s::uuid[])
+                            order by created_at asc
+                            """,
+                            (invoice_ids,),
+                        )
+                        for item_row in cursor.fetchall():
+                            item = _row_to_dict(item_row, cursor)
+                            items_by_invoice_id.setdefault(str(item["invoice_id"]), []).append(item)
+                    for invoice in invoices:
+                        invoice["items"] = items_by_invoice_id.get(str(invoice["id"]), [])
+                        invoice["patient_name"] = patient_names.get(str(invoice["patient_id"]))
+                        invoice["completed_by_name"] = user_names.get(str(invoice.get("completed_by") or ""))
                     return [attach_invoice_balances(invoice) for invoice in invoices]
 
         return await asyncio.to_thread(_list)

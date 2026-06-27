@@ -5,7 +5,7 @@ from io import BytesIO
 
 from pypdf import PdfWriter
 
-from test_app import auth_headers_for_token, client, register_test_clinic
+from test_app import auth_headers_for_token, client, register_test_clinic, signature_png_bytes
 from app.services.pdf_service import _page_size_for_template
 from app.services import note_workflow
 
@@ -393,7 +393,7 @@ def test_user_signature_can_be_uploaded_and_removed(client):
         headers=headers,
         json={
             "identifier": "signature-user@clinic.com",
-            "password": "password123",
+            "password": "password123!",
         },
     )
     assert created.status_code == 201
@@ -402,7 +402,7 @@ def test_user_signature_can_be_uploaded_and_removed(client):
     signature = test_client.post(
         f"/users/{user_id}/signature",
         headers=headers,
-        files={"file": ("signature.png", b"\x89PNG\r\n\x1a\nfake", "image/png")},
+        files={"file": ("signature.png", signature_png_bytes(), "image/png")},
     )
     assert signature.status_code == 200
     signature_body = signature.json()
@@ -422,7 +422,7 @@ def test_admin_can_change_user_role(client):
     created = test_client.post(
         "/users/staff",
         headers=headers,
-        json={"identifier": "staff-role@clinic.com", "password": "password123"},
+        json={"identifier": "staff-role@clinic.com", "password": "password123!"},
     )
     assert created.status_code == 201
     user_id = created.json()["id"]
@@ -448,7 +448,7 @@ def test_staff_creation_upgrades_workspace_mode_to_team(client):
     created = test_client.post(
         "/users/staff",
         headers=headers,
-        json={"identifier": "workspace-staff@clinic.com", "password": "password123"},
+        json={"identifier": "workspace-staff@clinic.com", "password": "password123!"},
     )
     assert created.status_code == 201
 
@@ -479,7 +479,7 @@ def test_onboarding_completion_sets_team_mode_when_staff_exists(client):
     created = test_client.post(
         "/users/staff",
         headers=headers,
-        json={"identifier": "workspace-team@clinic.com", "password": "password123"},
+        json={"identifier": "workspace-team@clinic.com", "password": "password123!"},
     )
     assert created.status_code == 201
 
@@ -496,7 +496,7 @@ def test_admin_can_remove_user_but_not_self(client):
     created = test_client.post(
         "/users/staff",
         headers=headers,
-        json={"identifier": "remove-staff@clinic.com", "password": "password123"},
+        json={"identifier": "remove-staff@clinic.com", "password": "password123!"},
     )
     assert created.status_code == 201
     user_id = created.json()["id"]

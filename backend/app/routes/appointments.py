@@ -32,6 +32,8 @@ async def create_appointment(
 ) -> AppointmentOut:
     try:
         return await create_appointment_workflow(repo, current_user, payload)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="create_appointment") from exc
 

@@ -1487,7 +1487,11 @@ export function PatientDetailsDrawer({
                       <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
                         {aiSummary.summary}
                       </p>
-                      {aiSummary.used_fallback ? (
+                      {aiSummary.stale ? (
+                        <p className="mt-2 text-xs text-amber-600">
+                          This summary is out of date. Refresh it before relying on it.
+                        </p>
+                      ) : aiSummary.used_fallback ? (
                         <p className="mt-2 text-xs text-amber-600">
                           AI was unavailable — showing recent recorded activity.
                         </p>

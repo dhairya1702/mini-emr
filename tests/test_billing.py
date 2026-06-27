@@ -269,7 +269,7 @@ def test_invoice_delivery_failure_reports_finalized_state(client, monkeypatch):
     session = register_test_clinic(test_client, identifier="billing-failure@clinic.com", clinic_name="Billing Failure Clinic")
 
     async def failing_send_clinic_email_message(**_kwargs):
-        raise RuntimeError("SMTP unavailable")
+        raise billing_workflow.EmailDeliveryError("SMTP unavailable")
 
     monkeypatch.setattr(billing_workflow, "send_clinic_email_message", failing_send_clinic_email_message)
 

@@ -1,4 +1,4 @@
-import { useTransition } from "../transition";
+import { useTransition } from "../transition-context";
 
 export default function Nav() {
   const { go } = useTransition();

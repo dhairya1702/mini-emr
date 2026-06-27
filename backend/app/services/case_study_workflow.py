@@ -18,7 +18,7 @@ from app.schema_domains.case_studies import (
 )
 from app.schema_domains.patients import NoteOut, PatientOut, PatientVisitOut
 from app.services.ai_generation_service import generate_case_study_document
-from app.services.auth_flow import enforce_rate_limit
+from app.services.auth_flow import enforce_repository_rate_limit
 from app.services.audit_service import write_audit_event
 from app.services.case_study_specialty import apply_case_study_specialty_enrichment
 from app.services.document_helpers import normalize_structured_document_content
@@ -262,7 +262,7 @@ async def generate_case_study_workflow(
     current_user: UserOut,
     payload: GenerateCaseStudyRequest,
 ) -> GenerateCaseStudyResponse:
-    enforce_rate_limit("case_study_generation", str(current_user.id))
+    await enforce_repository_rate_limit(repo, "case_study_generation", str(current_user.id))
     source = await build_case_study_source_view(
         repo,
         str(current_user.org_id),

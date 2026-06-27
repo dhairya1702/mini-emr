@@ -46,16 +46,16 @@ import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { CatalogItem, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientVisitDetail, PaymentStatus } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
-const liveQueueOrderStorageKey = "clinic_queue_order_v1";
 const QUEUE_REFRESH_INTERVAL_MS = 5000;
 
-function loadQueueOrder(storageKey: string): QueueOrder {
+function loadQueueOrder(storageKey: string, persistent: boolean): QueueOrder {
   if (typeof window === "undefined") {
     return createEmptyQueueOrder();
   }
 
   try {
-    const raw = window.localStorage.getItem(storageKey);
+    const storage = persistent ? window.localStorage : window.sessionStorage;
+    const raw = storage.getItem(storageKey);
     if (!raw) {
       return createEmptyQueueOrder();
     }
@@ -281,7 +281,7 @@ export default function HomePage() {
     if (context.isTrainingMode) {
       return Promise.resolve(readTrainingPatients(context.trainingScope));
     }
-    return api.listPatients();
+    return api.listQueuePatients();
   }, []);
   const onPageData = useCallback((data: Patient[]) => {
     setPatients(data);
@@ -331,15 +331,17 @@ export default function HomePage() {
   const queueOrderStorageKey = useMemo(() => (
     isTrainingMode && trainingScope
       ? trainingQueueOrderStorageKey(trainingScope)
-      : liveQueueOrderStorageKey
-  ), [isTrainingMode, trainingScope]);
+      : currentUser
+        ? `clinic_queue_order_v2:${currentUser.org_id}:${currentUser.id}`
+        : "clinic_queue_order_v2:anonymous"
+  ), [currentUser, isTrainingMode, trainingScope]);
 
   useEffect(() => {
-    const nextQueueOrder = loadQueueOrder(queueOrderStorageKey);
+    const nextQueueOrder = loadQueueOrder(queueOrderStorageKey, isTrainingMode);
     hydratingQueueOrderRef.current = JSON.stringify(nextQueueOrder);
     loadedQueueOrderKeyRef.current = queueOrderStorageKey;
     setQueueOrder(nextQueueOrder);
-  }, [queueOrderStorageKey]);
+  }, [isTrainingMode, queueOrderStorageKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -357,8 +359,9 @@ export default function HomePage() {
       hydratingQueueOrderRef.current = "";
       return;
     }
-    window.localStorage.setItem(queueOrderStorageKey, serializedQueueOrder);
-  }, [queueOrder, queueOrderStorageKey]);
+    const storage = isTrainingMode ? window.localStorage : window.sessionStorage;
+    storage.setItem(queueOrderStorageKey, serializedQueueOrder);
+  }, [isTrainingMode, queueOrder, queueOrderStorageKey]);
 
   useEffect(() => {
     if (!isAuthReady || isRedirectingToLogin || isTrainingMode) {
@@ -369,7 +372,7 @@ export default function HomePage() {
 
     async function refreshPatients() {
       try {
-        const nextPatients = await api.listPatients();
+        const nextPatients = await api.listQueuePatients();
         if (active) {
           setPatients(nextPatients);
         }

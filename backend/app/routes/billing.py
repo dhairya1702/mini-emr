@@ -1,7 +1,7 @@
 from datetime import datetime
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.api_errors import bad_request_error, internal_server_error
@@ -41,10 +41,17 @@ async def create_invoice(
 
 @router.get("/invoices", response_model=list[InvoiceOut])
 async def list_invoices(
+    limit: int = Query(default=500, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     current_user: UserOut = Depends(require_admin),
     repo: AppRepository = Depends(get_repository),
 ) -> list[InvoiceOut]:
-    return await list_invoices_with_user_names(repo, str(current_user.org_id))
+    return await list_invoices_with_user_names(
+        repo,
+        str(current_user.org_id),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("/invoices/finalize", response_model=InvoiceActionResponse)

@@ -13,7 +13,7 @@ export default function ClinicPage() {
   const loadPageData = useCallback(async () => null, []);
   const onPageData = useCallback(() => undefined, []);
   const loadBillablePatients = useCallback(async () => {
-    const patients = await api.listPatients();
+    const patients = await api.listAllPatients();
     return patients.filter((patient) => patient.status === "done" && !patient.billed);
   }, []);
   const {

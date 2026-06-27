@@ -145,9 +145,9 @@ This is shared by all deploy scripts. It:
 - Expected account: `dhairya911@gmail.com`.
 - Expected project: `project-e8d0eb79-8682-4bd9-b31`.
 - Expected region: `asia-south1`.
-- Loads local deploy secrets from `.env.deploy` if present.
+- Loads deploy configuration from `.env.deploy` if present.
 - Exports stable service names, Artifact Registry repo, Cloud SQL connection name, GCS bucket, backend service account, and public Cloud Run URLs.
-- Refuses to deploy if `DB_PASSWORD` or `AUTH_SECRET` are still placeholder values.
+- Refuses to deploy unless the required Secret Manager names and superadmin allowlist are configured.
 
 `scripts/deploy-backend.sh`
 
@@ -158,7 +158,8 @@ This builds and deploys only the backend. It:
   `asia-south1-docker.pkg.dev/project-e8d0eb79-8682-4bd9-b31/clinic-emr/clinic-emr-backend:<IMAGE_TAG>`
 - Deploys Cloud Run service `clinic-emr-backend`.
 - Attaches Cloud SQL instance `project-e8d0eb79-8682-4bd9-b31:asia-south1:clinic-emr-prod`.
-- Sets backend runtime env vars, including `DATABASE_URL`, `AUTH_SECRET`, `APP_ORIGIN`, `APP_ORIGINS`, Vertex AI settings, GCS bucket, and follow-up reminder settings.
+- Injects `DATABASE_URL`, `AUTH_SECRET`, and `SUPER_ADMIN_TOTP_SECRETS` from Secret Manager.
+- Sets non-secret backend runtime env vars, including `APP_ORIGIN`, `APP_ORIGINS`, Vertex AI settings, GCS bucket, and follow-up reminder settings.
 - Runs a backend `/health` check after deploy.
 
 `scripts/deploy-web.sh`
@@ -211,13 +212,14 @@ gcloud config configurations activate clinic-emr
 
 ## `.env.deploy`
 
-`.env.deploy` is gitignored and should stay local only. It contains production deploy secrets and overrides for the scripts.
+`.env.deploy` is gitignored and should stay local only. It contains deploy configuration and Secret Manager resource names, not raw production secret values.
 
-Required secret values:
+Required values:
 
 ```bash
-export DB_PASSWORD='actual database password'
-export AUTH_SECRET='stable auth secret used by production'
+export DATABASE_URL_SECRET_NAME='clinic-emr-database-url'
+export AUTH_SECRET_NAME='clinic-emr-auth-secret'
+export SUPER_ADMIN_TOTP_SECRET_NAME='clinic-emr-super-admin-totp-secrets'
 export SUPER_ADMIN_IDENTIFIERS='dhairya911@gmail.com'
 ```
 
@@ -238,15 +240,15 @@ export BACKEND_PUBLIC_URL='https://clinic-emr-backend-388811826415.asia-south1.r
 export WEB_URL='https://clinic-emr-web-388811826415.asia-south1.run.app'
 ```
 
-If `.env.deploy` is missing, the deploy script will refuse to run because `DB_PASSWORD` and `AUTH_SECRET` fall back to placeholders.
+If `.env.deploy` is missing, the deploy script will refuse to run because required Secret Manager names are unset.
 
-If Cloud Scheduler follow-up reminders are enabled, `.env.deploy` should also include:
+If Cloud Scheduler follow-up reminders are enabled, store the raw scheduler token in Secret Manager and configure:
 
 ```bash
-export INTERNAL_SCHEDULER_TOKEN='long random token used by Cloud Scheduler'
+export INTERNAL_SCHEDULER_SECRET_NAME='clinic-emr-internal-scheduler-token'
 ```
 
-The backend deploy script only sets `INTERNAL_SCHEDULER_TOKEN` when this variable is non-empty, so keep it in `.env.deploy` after the scheduler is created.
+The backend deploy script only injects `INTERNAL_SCHEDULER_TOKEN` when this secret name is non-empty, so keep it in `.env.deploy` after the scheduler is created.
 
 ## Follow-Up Reminder Scheduler
 

@@ -1,12 +1,27 @@
 from __future__ import annotations
 
 import asyncio
+from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
+from PIL import Image
 
 from test_app import auth_headers_for_token, client, register_test_clinic
 from app import storage as storage_module
+
+
+def _image_bytes(image_format: str) -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (8, 8), "blue").save(output, format=image_format)
+    return output.getvalue()
+
+
+MP4_BYTES = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 20
+WEBM_BYTES = b"\x1aE\xdf\xa3" + b"\x00" * 20
+PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n"
+JPEG_BYTES = _image_bytes("JPEG")
+WEBP_BYTES = _image_bytes("WEBP")
 
 
 def _create_patient(test_client, headers, name="Attachment Patient"):
@@ -40,7 +55,7 @@ def test_patient_video_attachment_upload_list_and_download(client):
 
     upload = test_client.post(
         f"/patients/{patient['id']}/attachments",
-        files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
+        files={"file": ("clip.mp4", MP4_BYTES, "video/mp4")},
         headers=headers,
     )
 
@@ -48,7 +63,7 @@ def test_patient_video_attachment_upload_list_and_download(client):
     attachment = upload.json()
     assert attachment["file_name"] == "clip.mp4"
     assert attachment["content_type"] == "video/mp4"
-    assert attachment["file_size"] == len(b"video-bytes")
+    assert attachment["file_size"] == len(MP4_BYTES)
     assert attachment["patient_id"] == patient["id"]
 
     listed = test_client.get(f"/patients/{patient['id']}/attachments", headers=headers)
@@ -57,17 +72,31 @@ def test_patient_video_attachment_upload_list_and_download(client):
 
     downloaded = test_client.get(f"/attachments/{attachment['id']}/file", headers=headers)
     assert downloaded.status_code == 200
-    assert downloaded.content == b"video-bytes"
+    assert downloaded.content == MP4_BYTES
     assert downloaded.headers["accept-ranges"] == "bytes"
-    assert repo.patient_attachment_files[attachment["storage_path"]] == b"video-bytes"
+    assert repo.patient_attachment_files[attachment["storage_path"]] == MP4_BYTES
 
     ranged = test_client.get(
         f"/attachments/{attachment['id']}/file",
         headers={**headers, "Range": "bytes=0-4"},
     )
     assert ranged.status_code == 206
-    assert ranged.content == b"video"
-    assert ranged.headers["content-range"] == "bytes 0-4/11"
+    assert ranged.content == MP4_BYTES[:5]
+    assert ranged.headers["content-range"] == f"bytes 0-4/{len(MP4_BYTES)}"
+
+    suffix = test_client.get(
+        f"/attachments/{attachment['id']}/file",
+        headers={**headers, "Range": "bytes=-4"},
+    )
+    assert suffix.status_code == 206
+    assert suffix.content == MP4_BYTES[-4:]
+
+    unsatisfiable = test_client.get(
+        f"/attachments/{attachment['id']}/file",
+        headers={**headers, "Range": f"bytes={len(MP4_BYTES)}-"},
+    )
+    assert unsatisfiable.status_code == 416
+    assert unsatisfiable.headers["content-range"] == f"bytes */{len(MP4_BYTES)}"
 
 
 def test_patient_document_attachment_upload_list_and_download(client):
@@ -82,7 +111,7 @@ def test_patient_document_attachment_upload_list_and_download(client):
 
     upload = test_client.post(
         f"/patients/{patient['id']}/attachments",
-        files={"file": ("scan.pdf", b"pdf-bytes", "application/pdf")},
+        files={"file": ("scan.pdf", PDF_BYTES, "application/pdf")},
         headers=headers,
     )
 
@@ -90,12 +119,12 @@ def test_patient_document_attachment_upload_list_and_download(client):
     attachment = upload.json()
     assert attachment["file_name"] == "scan.pdf"
     assert attachment["content_type"] == "application/pdf"
-    assert attachment["file_size"] == len(b"pdf-bytes")
+    assert attachment["file_size"] == len(PDF_BYTES)
 
     downloaded = test_client.get(f"/attachments/{attachment['id']}/file", headers=headers)
     assert downloaded.status_code == 200
-    assert downloaded.content == b"pdf-bytes"
-    assert repo.patient_attachment_files[attachment["storage_path"]] == b"pdf-bytes"
+    assert downloaded.content == PDF_BYTES
+    assert repo.patient_attachment_files[attachment["storage_path"]] == PDF_BYTES
 
 
 def test_patient_attachment_delete_removes_metadata_and_storage(client):
@@ -110,7 +139,7 @@ def test_patient_attachment_delete_removes_metadata_and_storage(client):
 
     upload = test_client.post(
         f"/patients/{patient['id']}/attachments",
-        files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
+        files={"file": ("clip.mp4", MP4_BYTES, "video/mp4")},
         headers=headers,
     )
     assert upload.status_code == 201
@@ -152,7 +181,7 @@ def test_patient_attachment_send_emails_stored_file(client, monkeypatch):
     patient = _create_patient(test_client, headers)
     upload = test_client.post(
         f"/patients/{patient['id']}/attachments",
-        files={"file": ("scan.pdf", b"pdf-bytes", "application/pdf")},
+        files={"file": ("scan.pdf", PDF_BYTES, "application/pdf")},
         headers=headers,
     )
     assert upload.status_code == 201
@@ -173,7 +202,7 @@ def test_patient_attachment_send_emails_stored_file(client, monkeypatch):
     assert sent["recipient"] == "confirmed@example.com"
     assert sent["subject"] == "Your scan"
     assert sent["text_content"] == "Attached scan."
-    assert sent["attachments"] == [("scan.pdf", b"pdf-bytes", "application/pdf")]
+    assert sent["attachments"] == [("scan.pdf", PDF_BYTES, "application/pdf")]
     audit_events = [event for event in repo.audit_events.values() if event["action"] == "patient_attachment_sent"]
     assert audit_events
 
@@ -190,7 +219,7 @@ def test_patient_profile_photo_upload_download_replace_and_delete(client):
 
     upload = test_client.post(
         f"/patients/{patient['id']}/profile-photo",
-        files={"file": ("face.jpg", b"jpeg-bytes", "image/jpeg")},
+        files={"file": ("face.jpg", JPEG_BYTES, "image/jpeg")},
         headers=headers,
     )
 
@@ -200,16 +229,16 @@ def test_patient_profile_photo_upload_download_replace_and_delete(client):
     assert updated["profile_photo_content_type"] == "image/jpeg"
     assert updated["profile_photo_updated_at"]
     first_storage_path = repo.patients[patient["id"]]["profile_photo_storage_path"]
-    assert repo.patient_attachment_files[first_storage_path] == b"jpeg-bytes"
+    assert repo.patient_attachment_files[first_storage_path] == JPEG_BYTES
 
     downloaded = test_client.get(updated["profile_photo_url"], headers=headers)
     assert downloaded.status_code == 200
-    assert downloaded.content == b"jpeg-bytes"
+    assert downloaded.content == JPEG_BYTES
     assert downloaded.headers["content-type"].startswith("image/jpeg")
 
     replaced = test_client.post(
         f"/patients/{patient['id']}/profile-photo",
-        files={"file": ("face.webp", b"webp-bytes", "image/webp")},
+        files={"file": ("face.webp", WEBP_BYTES, "image/webp")},
         headers=headers,
     )
 
@@ -218,7 +247,7 @@ def test_patient_profile_photo_upload_download_replace_and_delete(client):
     second_storage_path = repo.patients[patient["id"]]["profile_photo_storage_path"]
     assert second_storage_path != first_storage_path
     assert first_storage_path not in repo.patient_attachment_files
-    assert repo.patient_attachment_files[second_storage_path] == b"webp-bytes"
+    assert repo.patient_attachment_files[second_storage_path] == WEBP_BYTES
 
     deleted = test_client.delete(f"/patients/{patient['id']}/profile-photo", headers=headers)
     assert deleted.status_code == 200
@@ -297,7 +326,7 @@ def test_patient_attachment_download_is_org_scoped(client):
     patient = _create_patient(test_client, first_headers)
     upload = test_client.post(
         f"/patients/{patient['id']}/attachments",
-        files={"file": ("clip.webm", b"webm-bytes", "video/webm")},
+        files={"file": ("clip.webm", WEBM_BYTES, "video/webm")},
         headers=first_headers,
     )
     assert upload.status_code == 201

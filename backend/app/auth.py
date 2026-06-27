@@ -4,6 +4,8 @@ import hashlib
 import hmac
 import json
 import secrets
+import struct
+import time
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Cookie, Depends, Header, HTTPException, Request, Response, status
@@ -13,7 +15,8 @@ from app.db import get_repository
 from app.schema_domains.auth_settings import UserOut
 
 
-TOKEN_TTL_DAYS = 30
+LEGACY_PASSWORD_ITERATIONS = 120_000
+PASSWORD_ITERATIONS = 600_000
 SESSION_TOKEN_HEADER = "X-Session-Token"
 SESSION_EXPIRES_AT_HEADER = "X-Session-Expires-At"
 SESSION_COOKIE_NAME = "clinic_session"
@@ -30,20 +33,43 @@ def _b64decode(value: str) -> bytes:
 
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
-    password_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 120_000)
-    return f"{_b64encode(salt)}:{_b64encode(password_hash)}"
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PASSWORD_ITERATIONS,
+    )
+    return f"pbkdf2_sha256${PASSWORD_ITERATIONS}${_b64encode(salt)}${_b64encode(password_hash)}"
 
 
 def verify_password(password: str, stored_value: str) -> bool:
     try:
-        salt_raw, hash_raw = stored_value.split(":", 1)
+        if stored_value.startswith("pbkdf2_sha256$"):
+            algorithm, iterations_raw, salt_raw, hash_raw = stored_value.split("$", 3)
+            if algorithm != "pbkdf2_sha256":
+                return False
+            iterations = int(iterations_raw)
+            if iterations < LEGACY_PASSWORD_ITERATIONS or iterations > 2_000_000:
+                return False
+        else:
+            salt_raw, hash_raw = stored_value.split(":", 1)
+            iterations = LEGACY_PASSWORD_ITERATIONS
         salt = _b64decode(salt_raw)
         expected_hash = _b64decode(hash_raw)
-    except ValueError:
+    except (TypeError, ValueError):
         return False
 
-    candidate_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 120_000)
+    candidate_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
     return hmac.compare_digest(candidate_hash, expected_hash)
+
+
+def password_hash_needs_upgrade(stored_value: str) -> bool:
+    if not stored_value.startswith("pbkdf2_sha256$"):
+        return True
+    try:
+        return int(stored_value.split("$", 3)[1]) < PASSWORD_ITERATIONS
+    except (IndexError, ValueError):
+        return True
 
 
 def _get_token_secret() -> bytes:
@@ -53,18 +79,23 @@ def _get_token_secret() -> bytes:
     return settings.auth_secret.encode("utf-8")
 
 
-def _build_access_token_payload(user: dict[str, str]) -> dict[str, str | int]:
+def _build_access_token_payload(user: dict[str, str | int]) -> dict[str, str | int]:
     issued_at = datetime.now(UTC)
-    expires_at = issued_at + timedelta(days=TOKEN_TTL_DAYS)
-    return {
+    ttl_hours = max(1, min(int(getattr(get_settings(), "session_ttl_hours", 12)), 168))
+    expires_at = issued_at + timedelta(hours=ttl_hours)
+    payload: dict[str, str | int] = {
         "sub": user["id"],
         "org_id": user["org_id"],
         "role": user["role"],
         "identifier": user["identifier"],
+        "session_version": int(user.get("session_version") or 1),
         "iat": int(issued_at.timestamp()),
         "exp": int(expires_at.timestamp()),
         "jti": secrets.token_hex(8),
     }
+    if int(user.get("mfa_verified_until") or 0) > int(issued_at.timestamp()):
+        payload["mfa_verified_until"] = int(user["mfa_verified_until"])
+    return payload
 
 
 def _encode_access_token(payload: dict[str, str | int]) -> str:
@@ -74,11 +105,11 @@ def _encode_access_token(payload: dict[str, str | int]) -> str:
     return f"{payload_segment}.{_b64encode(signature)}"
 
 
-def create_access_token(user: dict[str, str]) -> str:
+def create_access_token(user: dict[str, str | int]) -> str:
     return _encode_access_token(_build_access_token_payload(user))
 
 
-def issue_session_headers(response: Response, user: dict[str, str], *, secure: bool | None = None) -> str:
+def issue_session_headers(response: Response, user: dict[str, str | int], *, secure: bool | None = None) -> str:
     payload = _build_access_token_payload(user)
     token = _encode_access_token(payload)
     settings = get_settings()
@@ -129,6 +160,27 @@ def decode_access_token(token: str) -> dict[str, str | int]:
     return payload
 
 
+def request_mfa_verified_until(request: Request) -> int:
+    tokens: list[str] = []
+    authorization = request.headers.get("authorization", "")
+    if authorization.startswith("Bearer "):
+        tokens.append(authorization.split(" ", 1)[1].strip())
+    cookie_token = request.cookies.get(SESSION_COOKIE_NAME, "").strip()
+    if cookie_token:
+        tokens.append(cookie_token)
+    verified_until = 0
+    for token in tokens:
+        try:
+            payload = decode_access_token(token)
+        except HTTPException:
+            continue
+        verified_until = max(
+            verified_until,
+            int(payload.get("mfa_verified_until") or 0),
+        )
+    return verified_until
+
+
 async def get_current_user(
     request: Request,
     authorization: str | None = Header(default=None),
@@ -143,15 +195,21 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
 
     payload = None
+    valid_payloads: list[dict[str, str | int]] = []
     last_error: HTTPException | None = None
     for token in [bearer_token, cookie_token]:
         if not token:
             continue
         try:
-            payload = decode_access_token(token)
-            break
+            valid_payloads.append(decode_access_token(token))
         except HTTPException as exc:
             last_error = exc
+
+    if valid_payloads:
+        payload = max(
+            valid_payloads,
+            key=lambda candidate: int(candidate.get("mfa_verified_until") or 0),
+        )
 
     if payload is None:
         raise last_error or HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
@@ -166,8 +224,16 @@ async def get_current_user(
         user = await repo.get_auth_user(user_id)
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.") from exc
-    current_user = UserOut(**user)
+    token_session_version = payload.get("session_version")
+    current_session_version = int(user.get("session_version") or 1)
+    if not isinstance(token_session_version, int) or token_session_version != current_session_version:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired.")
+    current_user = UserOut(
+        **user,
+        mfa_verified_until=int(payload.get("mfa_verified_until") or 0),
+    )
     request.state.current_user = current_user
+    request.state.mfa_verified_until = int(payload.get("mfa_verified_until") or 0)
     return current_user
 
 
@@ -179,15 +245,63 @@ async def require_admin(current_user: UserOut = Depends(get_current_user)) -> Us
 
 def _super_admin_identifiers() -> set[str]:
     settings = get_settings()
-    raw = str(settings.super_admin_identifiers or "")
+    raw = str(getattr(settings, "super_admin_identifiers", "") or "")
     return {
         identifier.strip().lower()
         for identifier in raw.split(",")
         if identifier.strip()
     }
 
+def is_super_admin_identifier(identifier: str) -> bool:
+    return identifier.strip().lower() in _super_admin_identifiers()
 
-async def require_super_admin(current_user: UserOut = Depends(get_current_user)) -> UserOut:
-    if current_user.identifier.strip().lower() not in _super_admin_identifiers():
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superuser access required.")
+
+def _super_admin_totp_secrets() -> dict[str, str]:
+    raw = str(getattr(get_settings(), "super_admin_totp_secrets", "") or "")
+    try:
+        parsed = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {
+        str(identifier).strip().lower(): str(secret).strip().replace(" ", "").upper()
+        for identifier, secret in parsed.items()
+        if str(identifier).strip() and str(secret).strip()
+    }
+
+
+def verify_super_admin_totp(identifier: str, code: str, *, now: int | None = None) -> bool:
+    normalized_identifier = identifier.strip().lower()
+    if not is_super_admin_identifier(normalized_identifier):
+        return True
+    secret = _super_admin_totp_secrets().get(normalized_identifier, "")
+    normalized_code = "".join(char for char in str(code or "") if char.isdigit())
+    if not secret or len(normalized_code) != 6:
+        return False
+    try:
+        key = base64.b32decode(secret, casefold=True)
+    except (binascii.Error, ValueError):
+        return False
+    current_counter = int(now if now is not None else time.time()) // 30
+    for counter in range(current_counter - 1, current_counter + 2):
+        digest = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
+        offset = digest[-1] & 0x0F
+        value = (int.from_bytes(digest[offset:offset + 4], "big") & 0x7FFFFFFF) % 1_000_000
+        if hmac.compare_digest(f"{value:06d}", normalized_code):
+            return True
+    return False
+
+
+async def require_super_admin(
+    request: Request,
+    current_user: UserOut = Depends(get_current_user),
+) -> UserOut:
+    if (
+        current_user.role != "admin"
+        or not is_super_admin_identifier(current_user.identifier)
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superdashboard access required.")
+    if request_mfa_verified_until(request) < int(time.time()):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superdashboard MFA required.")
     return current_user

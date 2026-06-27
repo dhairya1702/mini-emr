@@ -20,6 +20,9 @@ import {
   ClinicalAnalysisResponse,
   ClinicalQuestionsPayload,
   ClinicalQuestionsResponse,
+  CustomerOnboarding,
+  CustomerOnboardingCreatePayload,
+  CustomerOnboardingUpdatePayload,
   FinalizeNotePayload,
   FinalizeInvoicePayload,
   FollowUp,
@@ -67,6 +70,10 @@ import {
   SendNotePayload,
   SendPatientAttachmentPayload,
   StaffUserCreatePayload,
+  SuperdashboardDashboard,
+  SuperdashboardOnboarding,
+  SuperdashboardTrends,
+  SuperdashboardUsageByOrg,
   SuperuserOrgDetail,
   SuperuserOrgSummary,
   PlatformError,
@@ -270,7 +277,7 @@ async function request<T>(path: string, init?: RequestInit, options?: { timeoutM
           firstError.type === "string_too_short" &&
           ["password", "current_password", "new_password"].includes(fieldName)
         ) {
-          message = "Password must be at least 4 characters.";
+          message = "Password must be at least 12 characters.";
         } else {
           message = firstError.msg as string;
         }
@@ -354,7 +361,7 @@ async function requestForm<T>(path: string, formData: FormData, init?: RequestIn
 }
 
 export const api = {
-  login: (payload: { identifier: string; password: string }) =>
+  login: (payload: { identifier: string; password: string; totp_code?: string }) =>
     request<AuthResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -433,16 +440,46 @@ export const api = {
     request<void>(`/catalog/${itemId}`, {
       method: "DELETE",
     }),
-  listInvoices: () => request<Invoice[]>("/invoices"),
-  listSuperuserOrgs: () => request<SuperuserOrgSummary[]>("/superuser/orgs"),
-  getSuperuserOrgDetail: (orgId: string) => request<SuperuserOrgDetail>(`/superuser/orgs/${orgId}`),
-  listPlatformErrors: (limit = 100) => request<PlatformError[]>(withQuery("/superuser/errors", { limit })),
+  listInvoices: (options?: { limit?: number; offset?: number }) =>
+    request<Invoice[]>(withQuery("/invoices", options ?? {})),
+  listAllInvoices: async () => {
+    const rows: Invoice[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const page = await request<Invoice[]>(withQuery("/invoices", { limit: 500, offset }));
+      rows.push(...page);
+      if (page.length < 500) return rows;
+    }
+  },
+  getSuperdashboardDashboard: () => request<SuperdashboardDashboard>("/superdashboard/dashboard"),
+  getSuperdashboardTrends: () => request<SuperdashboardTrends>("/superdashboard/dashboard/trends"),
+  getSuperdashboardUsageByOrg: () =>
+    request<SuperdashboardUsageByOrg>("/superdashboard/dashboard/usage-by-org"),
+  getSuperdashboardOnboarding: () => request<SuperdashboardOnboarding>("/superdashboard/onboarding"),
+  createSuperdashboardCustomer: (payload: CustomerOnboardingCreatePayload) =>
+    request<CustomerOnboarding>("/superdashboard/onboarding/customers", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateSuperdashboardCustomer: (customerId: string, payload: CustomerOnboardingUpdatePayload) =>
+    request<CustomerOnboarding>(`/superdashboard/onboarding/customers/${customerId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  disableSuperdashboardCustomer: (customerId: string) =>
+    request<CustomerOnboarding>(`/superdashboard/onboarding/customers/${customerId}/disable`, {
+      method: "POST",
+    }),
+  listSuperdashboardOrgs: () => request<SuperuserOrgSummary[]>("/superdashboard/orgs"),
+  getSuperdashboardOrgDetail: (orgId: string) => request<SuperuserOrgDetail>(`/superdashboard/orgs/${orgId}`),
+  listPlatformErrors: (limit = 100) => request<PlatformError[]>(withQuery("/superdashboard/errors", { limit })),
+  listSuperuserOrgs: () => request<SuperuserOrgSummary[]>("/superdashboard/orgs"),
+  getSuperuserOrgDetail: (orgId: string) => request<SuperuserOrgDetail>(`/superdashboard/orgs/${orgId}`),
   deleteSuperuserUser: (userId: string) =>
-    request<void>(`/superuser/users/${userId}`, {
+    request<void>(`/superdashboard/users/${userId}`, {
       method: "DELETE",
     }),
   deleteSuperuserOrg: (orgId: string) =>
-    request<void>(`/superuser/orgs/${orgId}`, {
+    request<void>(`/superdashboard/orgs/${orgId}`, {
       method: "DELETE",
     }),
   createInvoice: (payload: InvoiceCreatePayload) =>
@@ -510,7 +547,23 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  listPatients: () => request<Patient[]>("/patients"),
+  listPatients: (options?: { activeOnly?: boolean; limit?: number; offset?: number }) =>
+    request<Patient[]>(withQuery("/patients", {
+      active_only: options?.activeOnly ? "true" : undefined,
+      limit: options?.limit,
+      offset: options?.offset,
+    })),
+  listAllPatients: async () => {
+    const rows: Patient[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const page = await request<Patient[]>(withQuery("/patients", { limit: 500, offset }));
+      rows.push(...page);
+      if (page.length < 500) return rows;
+    }
+  },
+  listQueuePatients: () =>
+    request<Patient[]>(withQuery("/patients", { active_only: "true", limit: 500 })),
+  getPatient: (patientId: string) => request<Patient>(`/patients/${patientId}`),
   createPatient: (payload: PatientInput) =>
     request<Patient>("/patients", {
       method: "POST",
@@ -555,11 +608,13 @@ export const api = {
   getPatientTimeline: (patientId: string) =>
     request<PatientTimelineEvent[]>(`/patients/${patientId}/timeline`),
   getPatientSummary: (patientId: string) =>
-    request<PatientSummary>(`/patients/${patientId}/summary`),
+    request<PatientSummary>(`/patients/${patientId}/summary`, undefined, {
+      timeoutMs: LONG_REQUEST_TIMEOUT_MS,
+    }),
   regeneratePatientSummary: (patientId: string) =>
     request<PatientSummary>(`/patients/${patientId}/summary/regenerate`, {
       method: "POST",
-    }),
+    }, { timeoutMs: LONG_REQUEST_TIMEOUT_MS }),
   getPatientMyopiaHistory: (patientId: string) =>
     request<MyopiaHistory>(`/patients/${patientId}/myopia-history`),
   getPatientGrowthHistory: (patientId: string) =>
@@ -635,7 +690,7 @@ export const api = {
     request<GenerateNoteResponse>("/generate-note", {
       method: "POST",
       body: JSON.stringify(payload),
-    }),
+    }, { timeoutMs: LONG_REQUEST_TIMEOUT_MS }),
   generateClinicalQuestions: (payload: ClinicalQuestionsPayload) =>
     request<ClinicalQuestionsResponse>("/ai/clinical-questions", {
       method: "POST",
@@ -660,7 +715,7 @@ export const api = {
     request<GenerateLetterResponse>("/generate-letter", {
       method: "POST",
       body: JSON.stringify(payload),
-    }),
+    }, { timeoutMs: LONG_REQUEST_TIMEOUT_MS }),
   generateParentHandout: (payload: GenerateParentHandoutPayload) =>
     request<GenerateParentHandoutResponse>("/generate-parent-handout", {
       method: "POST",

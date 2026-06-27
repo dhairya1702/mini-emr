@@ -43,18 +43,20 @@ function patient(id, name = `Patient ${id}`) {
 
 test("recent patients returns empty for missing or malformed storage", async () => {
   const localStorage = createStorage();
-  globalThis.window = { localStorage };
+  const sessionStorage = createStorage();
+  globalThis.window = { localStorage, sessionStorage };
 
   const { loadRecentPatients } = await importWebModule("lib/recent-patients.ts");
   assert.deepEqual(loadRecentPatients({ orgId: "org-1", userId: "user-1" }), []);
 
-  localStorage.setItem("clinic_recent_patients:v2:org-1:user-1", "{bad json");
+  sessionStorage.setItem("clinic_recent_patients:v4:org-1:user-1", "{bad json");
   assert.deepEqual(loadRecentPatients({ orgId: "org-1", userId: "user-1" }), []);
 });
 
 test("recent patients are deduped and scoped by org and user", async () => {
   const localStorage = createStorage();
-  globalThis.window = { localStorage };
+  const sessionStorage = createStorage();
+  globalThis.window = { localStorage, sessionStorage };
 
   const { loadRecentPatients, saveRecentPatient } = await importWebModule("lib/recent-patients.ts");
   const scope = { orgId: "org-1", userId: "user-1" };
@@ -70,14 +72,15 @@ test("recent patients are deduped and scoped by org and user", async () => {
   assert.deepEqual(loadRecentPatients({ orgId: "org-1", userId: "user-2" }), []);
 });
 
-test("recent patients migrate legacy storage into the scoped key", async () => {
+test("recent patients delete legacy persistent PHI instead of migrating it", async () => {
   const localStorage = createStorage();
-  globalThis.window = { localStorage };
+  const sessionStorage = createStorage();
+  globalThis.window = { localStorage, sessionStorage };
   localStorage.setItem("clinic_recent_patients", JSON.stringify([patient("legacy")]));
 
   const { loadRecentPatients } = await importWebModule("lib/recent-patients.ts");
-  const migrated = loadRecentPatients({ orgId: "org-1", userId: "user-1" });
+  const loaded = loadRecentPatients({ orgId: "org-1", userId: "user-1" });
 
-  assert.deepEqual(migrated.map((entry) => entry.id), ["legacy"]);
-  assert.ok(localStorage.getItem("clinic_recent_patients:v2:org-1:user-1"));
+  assert.deepEqual(loaded, []);
+  assert.equal(localStorage.getItem("clinic_recent_patients"), null);
 });

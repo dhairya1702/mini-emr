@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { useTransition } from "../transition";
+import { useTransition } from "../transition-context";
 
 export default function Finale() {
   const root = useRef<HTMLDivElement>(null);

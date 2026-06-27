@@ -26,7 +26,7 @@ export default function MobileQueuePage() {
     setError("");
     setIsLoading(true);
     try {
-      setPatients(await api.listPatients());
+      setPatients(await api.listQueuePatients());
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load queue.");
     } finally {

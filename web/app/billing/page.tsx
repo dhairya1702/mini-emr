@@ -177,7 +177,7 @@ export default function BillingPage() {
   const [historyStatusFilter, setHistoryStatusFilter] = useState<PaymentStatus | "all">("all");
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(async () => {
-    const [loadedPatients, loadedInvoices] = await Promise.all([api.listPatients(), api.listInvoices()]);
+    const [loadedPatients, loadedInvoices] = await Promise.all([api.listQueuePatients(), api.listInvoices()]);
     return { patients: loadedPatients, invoices: loadedInvoices };
   }, []);
   const onPageData = useCallback((data: { patients: Patient[]; invoices: Invoice[] }) => {
@@ -255,7 +255,7 @@ export default function BillingPage() {
     async function refreshBillingData() {
       try {
         const [nextPatients, nextInvoices] = await Promise.all([
-          api.listPatients(),
+          api.listQueuePatients(),
           api.listInvoices(),
         ]);
         if (!active) {

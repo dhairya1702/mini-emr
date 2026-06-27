@@ -432,7 +432,12 @@ class PostgresRecordsRepository:
 
         return await asyncio.to_thread(_cancel)
 
-    async def list_due_follow_ups(self, org_id: str, due_before_iso: str) -> list[dict[str, Any]]:
+    async def list_due_follow_ups(
+        self,
+        org_id: str,
+        due_after_iso: str,
+        due_before_iso: str,
+    ) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
@@ -443,10 +448,11 @@ class PostgresRecordsRepository:
                         where org_id = %s
                           and status = 'scheduled'
                           and reminder_sent_at is null
+                          and scheduled_for > %s
                           and scheduled_for <= %s
                         order by scheduled_for asc
                         """,
-                        (org_id, due_before_iso),
+                        (org_id, due_after_iso, due_before_iso),
                     )
                     return [_row_to_dict(row, cursor) for row in cursor.fetchall()]
 

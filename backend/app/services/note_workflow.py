@@ -23,9 +23,9 @@ from app.schema_domains.patients import (
 )
 from app.services.ai_generation_service import generate_clinic_letter, generate_soap_note
 from app.services.audit_service import get_actor_name, write_audit_event
-from app.services.auth_flow import enforce_rate_limit
+from app.services.auth_flow import enforce_repository_rate_limit
 from app.services.document_helpers import build_document_context_for_user, serialize_note_assets
-from app.services.email_service import send_clinic_email_message
+from app.services.email_service import EmailDeliveryError, send_clinic_email_message
 from app.services.pdf_service import build_letter_pdf, build_note_pdf
 from app.storage import PatientAttachmentStorage
 
@@ -35,6 +35,7 @@ PEDIATRIC_HANDOUT_TITLES = {
     "well_visit_summary": "Well-Visit Summary",
     "hydration_uri_home_care": "Hydration and Cold Care",
 }
+MAX_NOTE_ASSET_BYTES = 25 * 1024 * 1024
 
 
 def _decode_note_asset_bytes(asset: dict[str, Any]) -> bytes:
@@ -66,11 +67,15 @@ async def persist_note_attachments(
     assets: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     stored_assets: list[dict[str, Any]] = []
+    total_bytes = 0
     for asset in assets:
         if asset.get("kind") != "attachment" or asset.get("attachment_id"):
             stored_assets.append(asset)
             continue
         raw_bytes = _decode_note_asset_bytes(asset)
+        total_bytes += len(raw_bytes)
+        if total_bytes > MAX_NOTE_ASSET_BYTES:
+            raise HTTPException(status_code=400, detail="Consultation attachments must total 25 MB or less.")
         content_type = str(asset.get("content_type") or "application/octet-stream").strip() or "application/octet-stream"
         row = await repo.prepare_patient_attachment_metadata(
             str(current_user.org_id),
@@ -147,7 +152,7 @@ async def generate_note_workflow(
     current_user: UserOut,
     payload: GenerateNoteRequest,
 ) -> GenerateNoteResponse:
-    enforce_rate_limit("note_generation", str(current_user.id))
+    await enforce_repository_rate_limit(repo, "note_generation", str(current_user.id))
     clinic_context = build_clinic_context(await build_document_context_for_user(repo, current_user))
     patient = None
     if payload.patient_id:
@@ -291,6 +296,7 @@ async def generate_letter_content(
     subject: str,
     content: str,
 ) -> str:
+    await enforce_repository_rate_limit(repo, "letter_generation", str(current_user.id))
     clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
     doctor_profile = await repo.get_user(str(current_user.id))
     clinic_context = build_clinic_context(
@@ -460,6 +466,8 @@ async def send_letter_workflow(
             text_content=content.strip(),
             attachments=[("clinic_letter.pdf", pdf_bytes, "application/pdf")],
         )
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return SendNoteResponse(
@@ -555,7 +563,7 @@ async def send_note_workflow(
                 (f"{patient_name.replace(' ', '_') or 'patient'}_consultation_note.pdf", pdf_bytes, "application/pdf"),
             ],
         )
-    except RuntimeError as exc:
+    except EmailDeliveryError as exc:
         if finalized_during_request:
             failure_message = (
                 f"Consultation note finalized for {patient_name}, but email delivery to {recipient_email} failed: {exc}"
@@ -582,6 +590,8 @@ async def send_note_workflow(
                 "finalized": finalized_during_request or finalized_note.get("status") in {"final", "sent"},
             },
         ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     sent_note = await repo.mark_note_sent(
         str(current_user.org_id),
         str(payload.note_id),

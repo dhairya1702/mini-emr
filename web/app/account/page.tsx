@@ -153,8 +153,8 @@ export default function AccountPage() {
     setPasswordError("");
     setPasswordStatus("");
 
-    if (passwordForm.new_password.length < 4) {
-      setPasswordError("Password must be at least 4 characters.");
+    if (passwordForm.new_password.length < 12) {
+      setPasswordError("Password must be at least 12 characters.");
       return;
     }
     if (passwordForm.new_password !== passwordForm.confirm_password) {

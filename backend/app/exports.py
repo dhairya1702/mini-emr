@@ -25,7 +25,11 @@ def build_csv_response(filename: str, rows: list[dict], fieldnames: list[str]) -
     for row in rows:
         writer.writerow(
             {
-                key: format_export_datetime(row.get(key)) if key in datetime_fields else row.get(key)
+                key: (
+                    format_export_datetime(row.get(key))
+                    if key in datetime_fields
+                    else _csv_safe_value(row.get(key))
+                )
                 for key in fieldnames
             }
         )
@@ -34,6 +38,12 @@ def build_csv_response(filename: str, rows: list[dict], fieldnames: list[str]) -
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def _csv_safe_value(value):
+    if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+        return f"'{value}"
+    return value
 
 
 def build_history_visit_rows(visits: list[dict], patients: list[dict]) -> list[PatientVisitOut]:

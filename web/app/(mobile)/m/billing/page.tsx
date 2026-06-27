@@ -25,7 +25,7 @@ export default function MobileBillingPage() {
     }
     let active = true;
     setIsLoading(true);
-    Promise.all([api.listPatients(), api.listInvoices()])
+    Promise.all([api.listQueuePatients(), api.listInvoices()])
       .then(([patientRows, invoiceRows]) => {
         if (!active) return;
         setPatients(patientRows);

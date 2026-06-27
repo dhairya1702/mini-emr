@@ -1,5 +1,9 @@
+import logging
+
 from app.db import AppRepository
 from app.schema_domains.auth_settings import UserOut
+
+logger = logging.getLogger(__name__)
 
 
 def get_actor_name(current_user: UserOut) -> str:
@@ -30,6 +34,21 @@ async def write_audit_event(
         summary=summary,
         metadata=metadata,
     )
+
+
+async def write_audit_event_best_effort(
+    repo: AppRepository,
+    current_user: UserOut,
+    **event,
+) -> None:
+    try:
+        await write_audit_event(repo, current_user, **event)
+    except Exception:
+        logger.exception(
+            "Failed to persist audit event %s for %s",
+            event.get("action"),
+            event.get("entity_id"),
+        )
 
 
 async def record_patient_created(repo: AppRepository, current_user: UserOut, patient: dict) -> None:
@@ -311,3 +330,4 @@ async def record_catalog_item_deleted(
             "stock_quantity": item.get("stock_quantity"),
         },
     )
+logger = logging.getLogger(__name__)

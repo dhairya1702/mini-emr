@@ -26,7 +26,9 @@ export default function LoginPage() {
   const [registerStep, setRegisterStep] = useState<1 | 2>(1);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [customerId, setCustomerId] = useState("");
   const [adminName, setAdminName] = useState("");
   const [clinicName, setClinicName] = useState("");
   const [clinicAddress, setClinicAddress] = useState("");
@@ -99,6 +101,7 @@ export default function LoginPage() {
     setIdentifier("");
     setPassword("");
     setConfirmPassword("");
+    setCustomerId("");
     setAdminName("");
     setClinicName("");
     setClinicAddress("");
@@ -118,6 +121,10 @@ export default function LoginPage() {
   }
 
   function handleContinueRegistration() {
+    if (!customerId.trim()) {
+      setError("Customer ID is required.");
+      return;
+    }
     if (!adminName.trim()) {
       setError("Admin name is required.");
       return;
@@ -159,10 +166,14 @@ export default function LoginPage() {
         session = await api.login({
           identifier: identifier.trim(),
           password,
+          totp_code: totpCode.trim(),
         });
       } else {
         if (!adminName.trim()) {
           throw new Error("Admin name is required.");
+        }
+        if (!customerId.trim()) {
+          throw new Error("Customer ID is required.");
         }
         if (!clinicName.trim()) {
           throw new Error("Clinic name is required.");
@@ -176,8 +187,8 @@ export default function LoginPage() {
         if (!identifier.trim()) {
           throw new Error("Username, email, or phone number is required.");
         }
-        if (password.length < 4) {
-          throw new Error("Password must be at least 4 characters.");
+        if (password.length < 12) {
+          throw new Error("Password must be at least 12 characters.");
         }
         if (password !== confirmPassword) {
           throw new Error("Passwords do not match.");
@@ -186,6 +197,7 @@ export default function LoginPage() {
         session = await api.register({
           identifier: identifier.trim(),
           password,
+          customer_id: customerId.trim().toUpperCase(),
           admin_name: adminName.trim(),
           clinic_name: clinicName.trim(),
           clinic_address: clinicAddress.trim(),
@@ -285,11 +297,36 @@ export default function LoginPage() {
                     label="Password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Minimum 4 characters"
+                    placeholder="Minimum 12 characters"
                   />
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Authenticator code <span className="font-normal text-slate-500">(superadmins only)</span>
+                    </span>
+                    <input
+                      value={totpCode}
+                      onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="6-digit code"
+                      className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                    />
+                  </label>
                 </>
               ) : registerStep === 1 ? (
                 <>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Customer ID
+                    </span>
+                    <input
+                      value={customerId}
+                      onChange={(event) => setCustomerId(event.target.value)}
+                      placeholder="Paste the secure customer invitation ID"
+                      className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 uppercase text-slate-800 outline-none transition focus:border-[#6daed8]"
+                    />
+                  </label>
+
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-slate-700">Admin name</span>
                     <input
@@ -370,7 +407,7 @@ export default function LoginPage() {
                     label="Password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Minimum 4 characters"
+                    placeholder="Minimum 12 characters"
                   />
 
                   <PasswordInput

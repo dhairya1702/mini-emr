@@ -35,10 +35,12 @@ test("consultation smoke generates a note and completes the patient flow", async
 
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Start consultation for Avery Stone" }).click();
   await page.getByRole("button", { name: "Open chart for Avery Stone" }).click();
+  await page.getByRole("button", { name: "Start consultation" }).click();
 
-  await expect(page.getByRole("heading", { name: "Avery Stone" })).toBeVisible();
+  await expect(
+    page.getByRole("complementary").getByRole("heading", { name: "Avery Stone" }),
+  ).toBeVisible();
   await expect(page.getByRole("complementary").getByText("Consultation", { exact: true })).toBeVisible();
 
   await page.getByLabel("Symptoms").fill("Headache for three days");
@@ -51,5 +53,7 @@ test("consultation smoke generates a note and completes the patient flow", async
   await page.getByRole("button", { name: "Done" }).click();
 
   await expect(page.getByRole("heading", { name: "Avery Stone" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Start consultation for Avery Stone" })).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Billing queue" }).getByText("Avery Stone", { exact: true }),
+  ).toBeVisible();
 });

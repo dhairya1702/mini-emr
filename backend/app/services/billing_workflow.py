@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import HTTPException
 
 from app.db import AppRepository
-from app.services.email_service import send_clinic_email_message
+from app.services.email_service import EmailDeliveryError, send_clinic_email_message
 from app.services.pdf_service import build_invoice_pdf
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import (
@@ -78,8 +78,14 @@ async def create_invoice_workflow(
     return InvoiceOut(**{**created, "patient_name": patient_name})
 
 
-async def list_invoices_with_user_names(repo: AppRepository, org_id: str) -> list[InvoiceOut]:
-    invoices = await repo.list_invoices(org_id)
+async def list_invoices_with_user_names(
+    repo: AppRepository,
+    org_id: str,
+    *,
+    limit: int = 500,
+    offset: int = 0,
+) -> list[InvoiceOut]:
+    invoices = await repo.list_invoices(org_id, limit=limit, offset=offset)
     return [InvoiceOut(**invoice) for invoice in invoices]
 
 
@@ -146,7 +152,7 @@ async def send_invoice_workflow(
         str(current_user.org_id),
         str(payload.invoice_id),
         completed_by=str(current_user.id),
-        mark_sent=True,
+        mark_sent=False,
     )
     refreshed_invoice = await repo.get_invoice(str(current_user.org_id), str(payload.invoice_id))
     generated_on = datetime.now().strftime("%b %d, %Y %I:%M %p")
@@ -170,7 +176,7 @@ async def send_invoice_workflow(
                 (f"{patient_name.replace(' ', '_') or 'patient'}_invoice.pdf", pdf_bytes, "application/pdf"),
             ],
         )
-    except RuntimeError as exc:
+    except EmailDeliveryError as exc:
         failure_message = (
             f"Invoice finalized for {patient_name}, but email delivery to {recipient_email} failed: {exc}"
         )
@@ -190,6 +196,16 @@ async def send_invoice_workflow(
                 "finalized": True,
             },
         ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    sent_invoice = await repo.mark_invoice_sent(
+        str(current_user.org_id),
+        str(payload.invoice_id),
+    )
+    refreshed_invoice = {
+        **refreshed_invoice,
+        "sent_at": sent_invoice.get("sent_at"),
+    }
     output_invoice = InvoiceOut(**{**refreshed_invoice, "patient_name": patient_name})
     if not finalized.get("already_completed"):
         await record_invoice_completed(

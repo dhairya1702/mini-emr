@@ -1,4 +1,5 @@
 from typing import Any
+from decimal import Decimal, ROUND_HALF_UP
 
 from app.schema_domains.patients import PatientCreate, PatientVisitCreate, calculate_age_from_dob
 
@@ -36,7 +37,17 @@ def normalize_phone_number(value: str | None) -> str:
 
 
 def round_money(value: float) -> float:
-    return round(float(value), 2)
+    return float(
+        Decimal(str(value or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    )
+
+
+def decimal_quantity(value: Any) -> Decimal:
+    return Decimal(str(value or 0)).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+
+
+def decimal_money(value: Any) -> Decimal:
+    return Decimal(str(value or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def normalize_invoice_amount_paid(payment_status: str, amount_paid: float | None, total: float) -> float:

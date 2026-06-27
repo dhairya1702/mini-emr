@@ -48,6 +48,8 @@ export type MockClinicSettings = {
   document_template_margin_right: number;
   document_template_margin_bottom: number;
   document_template_margin_left: number;
+  onboarding_required: boolean;
+  onboarding_completed_at: string | null;
   workspace_mode: WorkspaceMode;
   updated_at: string | null;
 };
@@ -160,6 +162,8 @@ export function buildClinicSettings(overrides: Partial<MockClinicSettings> = {})
     document_template_margin_right: 54,
     document_template_margin_bottom: 54,
     document_template_margin_left: 54,
+    onboarding_required: false,
+    onboarding_completed_at: nowIso(),
     workspace_mode: "team",
     updated_at: nowIso(),
     ...overrides,
@@ -260,13 +264,13 @@ export async function seedSession(
 
   await page.addInitScript(
     ({ sessionUser, sessionToken, sessionExpiry, onboardingPending }) => {
-      window.localStorage.setItem("clinic_auth_token", sessionToken);
-      window.localStorage.setItem("clinic_auth_user", JSON.stringify(sessionUser));
-      window.localStorage.setItem("clinic_session_expires_at", String(sessionExpiry));
+      window.sessionStorage.setItem("clinic_auth_token", sessionToken);
+      window.sessionStorage.setItem("clinic_auth_user", JSON.stringify(sessionUser));
+      window.sessionStorage.setItem("clinic_session_expires_at", String(sessionExpiry));
       if (onboardingPending) {
-        window.localStorage.setItem("clinic_specialty_onboarding_pending", "1");
+        window.sessionStorage.setItem("clinic_specialty_onboarding_pending", "1");
       } else {
-        window.localStorage.removeItem("clinic_specialty_onboarding_pending");
+        window.sessionStorage.removeItem("clinic_specialty_onboarding_pending");
       }
     },
     {
@@ -308,7 +312,15 @@ export async function mockClinicBootstrap(
     }
     await fulfillJson(route, clinicSettings);
   });
-  await page.route(`${API_ORIGIN}/patients`, async (route) => {
+  await page.route(`${API_ORIGIN}/settings/clinic/onboarding/complete`, async (route) => {
+    clinicSettings = {
+      ...clinicSettings,
+      onboarding_required: false,
+      onboarding_completed_at: nowIso(),
+    };
+    await fulfillJson(route, clinicSettings);
+  });
+  await page.route(new RegExp(`${API_ORIGIN}/patients(?:\\?.*)?$`), async (route) => {
     await fulfillJson(route, patients);
   });
   await page.route(new RegExp(`${API_ORIGIN}/patients/[^/]+$`), async (route) => {
@@ -346,6 +358,44 @@ export async function mockClinicBootstrap(
         },
       },
     ]);
+  });
+  await page.route(new RegExp(`${API_ORIGIN}/patients/[^/]+/visits$`), async (route) => {
+    const patientId = route.request().url().split("/").slice(-2)[0] || "";
+    const patient = patients.find((entry) => entry.id === patientId) ?? buildPatient({ id: patientId });
+    await fulfillJson(route, [{
+      id: "visit-1",
+      patient_id: patientId,
+      reason: patient.reason,
+      created_at: nowIso(),
+    }]);
+  });
+  await page.route(new RegExp(`${API_ORIGIN}/patients/[^/]+/visits/[^/]+/details$`), async (route) => {
+    const segments = new URL(route.request().url()).pathname.split("/");
+    const patientId = segments[segments.indexOf("patients") + 1] || "";
+    const visitId = segments[segments.indexOf("visits") + 1] || "";
+    const patient = patients.find((entry) => entry.id === patientId) ?? buildPatient({ id: patientId });
+    await fulfillJson(route, {
+      visit_id: visitId,
+      reason: patient.reason,
+      timestamp: nowIso(),
+      consultation_note: null,
+      attachments: [],
+      timeline: [{
+        id: "visit-evt-1",
+        type: "visit_recorded",
+        title: "Visit recorded",
+        timestamp: nowIso(),
+        description: `${patient.reason} visit recorded.`,
+      }],
+    });
+  });
+  await page.route(new RegExp(`${API_ORIGIN}/patients/[^/]+/summary$`), async (route) => {
+    await fulfillJson(route, {
+      summary: "",
+      updated_at: null,
+      stale: true,
+      used_fallback: false,
+    });
   });
   await page.route(new RegExp(`${API_ORIGIN}/patients/[^/]+/myopia-history$`), async (route) => {
     const patientId = route.request().url().split("/").slice(-2)[0] || "";
@@ -466,7 +516,7 @@ export async function mockQueueIntake(page: Page, initialPatients: MockPatient[]
     await fulfillJson(route, []);
   });
 
-  await page.route(`${API_ORIGIN}/patients`, async (route) => {
+  await page.route(new RegExp(`${API_ORIGIN}/patients(?:\\?.*)?$`), async (route) => {
     if (route.request().method() === "POST") {
       const payload = JSON.parse(route.request().postData() || "{}");
       const created = buildPatient({
@@ -512,7 +562,7 @@ export async function mockConsultationFlow(page: Page) {
 }
 
 export async function mockPublicFollowUpBooking(page: Page) {
-  let scheduledFor = "2026-05-28T14:00:00.000Z";
+  let scheduledFor = "2030-05-28T14:00:00.000Z";
 
   await page.route(`${API_ORIGIN}/public/follow-up-booking?token=valid-token`, async (route) => {
     await fulfillJson(route, {
@@ -524,8 +574,8 @@ export async function mockPublicFollowUpBooking(page: Page) {
       notes: "Review symptoms and blood pressure",
       booking_token: "valid-token",
       suggested_slots: [
-        "2026-05-28T14:30:00.000Z",
-        "2026-05-28T15:00:00.000Z",
+        "2030-05-28T14:30:00.000Z",
+        "2030-05-28T15:00:00.000Z",
       ],
     });
   });

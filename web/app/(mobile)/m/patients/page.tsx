@@ -55,7 +55,7 @@ export default function MobilePatientsPage() {
     }
     setIsLoading(true);
     try {
-      const rows = await api.listPatients();
+      const rows = await api.listAllPatients();
       setPatients(rows.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at)));
       setError("");
     } catch (loadError) {

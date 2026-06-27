@@ -9,6 +9,10 @@ GMAIL_SMTP_HOST = "smtp.gmail.com"
 GMAIL_SMTP_PORT = 587
 
 
+class EmailDeliveryError(RuntimeError):
+    pass
+
+
 def _build_sender(clinic_settings: dict) -> str:
     sender_email = str(clinic_settings.get("sender_email") or "").strip()
     sender_name = str(clinic_settings.get("sender_name") or "").strip()
@@ -52,4 +56,12 @@ async def send_clinic_email_message(
         maintype, subtype = mime_type.split("/", 1)
         message.add_attachment(content, maintype=maintype, subtype=subtype, filename=filename)
 
-    await asyncio.to_thread(_send_email_sync, message, sender_email=sender_email, app_password=app_password)
+    try:
+        await asyncio.to_thread(
+            _send_email_sync,
+            message,
+            sender_email=sender_email,
+            app_password=app_password,
+        )
+    except (smtplib.SMTPException, OSError, TimeoutError) as exc:
+        raise EmailDeliveryError("Email delivery failed. Verify the sender credentials and try again.") from exc

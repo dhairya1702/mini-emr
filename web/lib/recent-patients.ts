@@ -3,7 +3,7 @@
 import type { Patient } from "@/lib/types";
 
 const LEGACY_STORAGE_KEY = "clinic_recent_patients";
-const STORAGE_KEY_PREFIX = "clinic_recent_patients:v3";
+const STORAGE_KEY_PREFIX = "clinic_recent_patients:v4";
 const MAX_RECENT_PATIENTS = 8;
 
 export type RecentPatientsScope = {
@@ -16,7 +16,7 @@ function storageKey({ orgId, userId }: RecentPatientsScope) {
 }
 
 function readPatientList(key: string): Patient[] {
-  const raw = window.localStorage.getItem(key);
+  const raw = window.sessionStorage.getItem(key);
   if (!raw) {
     return [];
   }
@@ -32,6 +32,9 @@ export function loadRecentPatients(scope: RecentPatientsScope): Patient[] {
   try {
     const scopedPatients = readPatientList(scopedKey).slice(0, MAX_RECENT_PATIENTS);
     window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    const encodedScope = `${encodeURIComponent(scope.orgId)}:${encodeURIComponent(scope.userId)}`;
+    window.localStorage.removeItem(`clinic_recent_patients:v2:${encodedScope}`);
+    window.localStorage.removeItem(`clinic_recent_patients:v3:${encodedScope}`);
     return scopedPatients;
   } catch {
     return [];
@@ -45,6 +48,6 @@ export function saveRecentPatient({ orgId, userId, patient }: RecentPatientsScop
   const scopedKey = storageKey({ orgId, userId });
   const current = loadRecentPatients({ orgId, userId }).filter((entry) => entry.id !== patient.id);
   const next = [patient, ...current].slice(0, MAX_RECENT_PATIENTS);
-  window.localStorage.setItem(scopedKey, JSON.stringify(next));
+  window.sessionStorage.setItem(scopedKey, JSON.stringify(next));
   return next;
 }

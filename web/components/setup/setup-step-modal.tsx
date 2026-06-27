@@ -531,8 +531,8 @@ function StaffUserSetup({
       setError("Email or phone number is required.");
       return;
     }
-    if (form.password.length < 4) {
-      setError("Password must be at least 4 characters.");
+    if (form.password.length < 12) {
+      setError("Password must be at least 12 characters.");
       return;
     }
 
@@ -563,7 +563,7 @@ function StaffUserSetup({
         label="Password"
         value={form.password}
         onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-        placeholder="Minimum 4 characters"
+        placeholder="Minimum 12 characters"
       />
       {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
       <div className="flex justify-end">

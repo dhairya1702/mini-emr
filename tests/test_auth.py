@@ -8,7 +8,14 @@ import pytest
 from starlette.requests import Request
 from PIL import Image, ImageDraw
 
-from test_app import auth_headers_for_token, auth_module, client, main_module, register_test_clinic
+from test_app import (
+    auth_headers_for_token,
+    auth_module,
+    client,
+    main_module,
+    register_test_clinic,
+    signature_png_bytes,
+)
 from app.services.signature_service import normalize_signature_image
 
 
@@ -40,6 +47,91 @@ def test_register_creates_clinic_settings_with_empty_specialty(client):
     assert response.json()["clinic_specialty"] is None
 
 
+def test_register_requires_valid_onboarded_customer_id(client):
+    test_client, _repo = client
+
+    response = test_client.post(
+        "/auth/register",
+        json={
+            "identifier": "blocked-register@clinic.com",
+            "password": "password123!",
+            "customer_id": "CID-MISSING-0000",
+            "admin_name": "Clinic Admin",
+            "clinic_name": "Blocked Clinic",
+            "clinic_address": "123 Main Street",
+            "clinic_phone": "5550109999",
+            "doctor_name": "Dr Test",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid customer ID or phone number."
+
+
+def test_register_requires_onboarded_phone_match(client):
+    test_client, repo = client
+    customer_id = f"CID-PHN-{uuid4().hex[:4].upper()}"
+    asyncio.run(
+        repo.create_customer_onboarding(
+            customer_id=customer_id,
+            customer_name="Phone Match Clinic",
+            phone="5550101111",
+            users_allowed=2,
+            created_by=None,
+        )
+    )
+
+    response = test_client.post(
+        "/auth/register",
+        json={
+            "identifier": "phone-mismatch@clinic.com",
+            "password": "password123!",
+            "customer_id": customer_id,
+            "admin_name": "Clinic Admin",
+            "clinic_name": "Phone Match Clinic",
+            "clinic_address": "123 Main Street",
+            "clinic_phone": "5550102222",
+            "doctor_name": "Dr Test",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid customer ID or phone number."
+
+
+def test_valid_registration_claims_onboarded_customer_id(client):
+    test_client, repo = client
+    customer_id = f"CID-CLM-{uuid4().hex[:4].upper()}"
+    asyncio.run(
+        repo.create_customer_onboarding(
+            customer_id=customer_id,
+            customer_name="Claim Clinic",
+            phone="5550103333",
+            users_allowed=2,
+            created_by=None,
+        )
+    )
+
+    response = test_client.post(
+        "/auth/register",
+        json={
+            "identifier": "claimed-register@clinic.com",
+            "password": "password123!",
+            "customer_id": customer_id,
+            "admin_name": "Clinic Admin",
+            "clinic_name": "Claim Clinic",
+            "clinic_address": "123 Main Street",
+            "clinic_phone": "5550103333",
+            "doctor_name": "Dr Test",
+        },
+    )
+
+    assert response.status_code == 201
+    row = asyncio.run(repo.get_customer_onboarding_by_customer_id(customer_id))
+    assert row["status"] == "claimed"
+    assert row["claimed_org_id"] == response.json()["user"]["org_id"]
+
+
 def test_authenticated_non_auth_routes_reissue_session_headers(client):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="session-refresh@clinic.com", clinic_name="Session Refresh Clinic")
@@ -59,7 +151,7 @@ def test_authenticated_non_auth_routes_reissue_session_headers(client):
 
 def test_auth_cookie_session_and_logout(client):
     test_client, _repo = client
-    register_test_clinic(test_client, identifier="cookie@clinic.com", clinic_name="Cookie Clinic")
+    session = register_test_clinic(test_client, identifier="cookie@clinic.com", clinic_name="Cookie Clinic")
 
     cookie_response = test_client.get("/auth/me")
     assert cookie_response.status_code == 200
@@ -71,6 +163,11 @@ def test_auth_cookie_session_and_logout(client):
 
     after_logout = test_client.get("/auth/me")
     assert after_logout.status_code == 401
+    old_bearer = test_client.get(
+        "/auth/me",
+        headers=auth_headers_for_token(session["token"]),
+    )
+    assert old_bearer.status_code == 401
 
 
 def test_get_current_user_skips_repository_when_session_is_missing(monkeypatch: pytest.MonkeyPatch):
@@ -115,15 +212,21 @@ def test_login_rate_limit_returns_429(client, monkeypatch: pytest.MonkeyPatch):
 
     first = test_client.post(
         "/auth/login",
-        json={"identifier": "ratelimit-login@clinic.com", "password": "password123"},
+        json={"identifier": "ratelimit-login@clinic.com", "password": "wrong-password"},
     )
-    assert first.status_code == 200
+    assert first.status_code == 401
 
     second = test_client.post(
         "/auth/login",
-        json={"identifier": "ratelimit-login@clinic.com", "password": "password123"},
+        json={"identifier": "ratelimit-login@clinic.com", "password": "wrong-password"},
     )
     assert second.status_code == 429
+
+    valid = test_client.post(
+        "/auth/login",
+        json={"identifier": "ratelimit-login@clinic.com", "password": "password123!"},
+    )
+    assert valid.status_code == 200
 
 
 def test_auth_me_can_update_account_details(client):
@@ -157,12 +260,14 @@ def test_auth_me_can_change_password(client):
         "/auth/me/password",
         headers=headers,
         json={
-            "current_password": "password123",
+            "current_password": "password123!",
             "new_password": "newpassword456",
         },
     )
 
     assert response.status_code == 204
+    old_session = test_client.get("/auth/me", headers=headers)
+    assert old_session.status_code == 401
 
     login = test_client.post(
         "/auth/login",
@@ -179,7 +284,7 @@ def test_auth_me_can_manage_own_signature(client):
     uploaded = test_client.post(
         "/auth/me/signature",
         headers=headers,
-        files={"file": ("signature.png", b"\x89PNG\r\n\x1a\nfake", "image/png")},
+        files={"file": ("signature.png", signature_png_bytes(), "image/png")},
     )
     assert uploaded.status_code == 200
     assert uploaded.json()["doctor_signature_name"] == "signature.png"

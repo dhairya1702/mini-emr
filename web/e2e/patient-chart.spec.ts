@@ -36,11 +36,11 @@ test("patient chart smoke opens biodata and timeline details", async ({ page }) 
   await page.getByRole("button", { name: "Open chart for Jordan Miles" }).click();
 
   await expect(page.getByText("Patient Chart", { exact: true })).toBeVisible();
-  await expect(page.getByText("Bio Data", { exact: true })).toBeVisible();
-  await expect(page.getByText("Timeline", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Visits" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Visit 1" })).toBeVisible();
 
-  await page.getByRole("complementary").getByRole("button", { name: /Visit/ }).click();
-  const selectedEventDetails = page.getByRole("region", { name: "Selected event details" });
-  await expect(selectedEventDetails.getByText("Selected Event", { exact: true })).toBeVisible();
-  await expect(selectedEventDetails.getByText("Review visit visit recorded.")).toBeVisible();
+  await page.getByRole("button", { name: "Visit 1" }).click();
+  await expect(page.getByText("Review visit", { exact: true }).last()).toBeVisible();
+  await page.getByRole("button", { name: /Timeline 1/ }).click();
+  await expect(page.getByText("Review visit visit recorded.")).toBeVisible();
 });

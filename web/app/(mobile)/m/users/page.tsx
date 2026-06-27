@@ -52,8 +52,8 @@ export default function MobileUsersPage() {
       setUserError("Email or phone number is required.");
       return;
     }
-    if (userForm.password.length < 4) {
-      setUserError("Password must be at least 4 characters.");
+    if (userForm.password.length < 12) {
+      setUserError("Password must be at least 12 characters.");
       return;
     }
     setIsAddingUser(true);

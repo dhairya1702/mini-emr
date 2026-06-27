@@ -18,6 +18,7 @@ from app.services.ai_generation_service import (
     generate_clinical_questions,
 )
 from app.services.document_helpers import build_document_context_for_user
+from app.services.auth_flow import enforce_repository_rate_limit
 
 
 router = APIRouter()
@@ -57,6 +58,7 @@ async def create_clinical_questions(
     current_user: UserOut = Depends(require_admin),
 ) -> ClinicalQuestionsResponse:
     try:
+        await enforce_repository_rate_limit(repo, "clinical_questions", str(current_user.id))
         clinic_specialty, patient_context, clinic_context, consultation_context, measurement_context = await _build_common_context(
             repo,
             current_user,
@@ -84,6 +86,7 @@ async def create_clinical_analysis(
     current_user: UserOut = Depends(require_admin),
 ) -> ClinicalAnalysisResponse:
     try:
+        await enforce_repository_rate_limit(repo, "clinical_analysis", str(current_user.id))
         clinic_specialty, patient_context, clinic_context, consultation_context, measurement_context = await _build_common_context(
             repo,
             current_user,

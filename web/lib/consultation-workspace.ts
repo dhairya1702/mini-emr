@@ -58,7 +58,9 @@ export function readConsultationWorkspace<TSnapshot>(
   }
 
   const primaryKey = consultationWorkspaceKey(scope);
-  const raw = window.localStorage.getItem(primaryKey);
+  const sessionRaw = window.sessionStorage.getItem(primaryKey);
+  const localPrimaryRaw = window.localStorage.getItem(primaryKey);
+  const raw = sessionRaw || localPrimaryRaw;
   if (!raw) {
     const legacyPatientId = options?.legacyPatientId?.trim() || "";
     if (!legacyPatientId) {
@@ -66,7 +68,9 @@ export function readConsultationWorkspace<TSnapshot>(
     }
 
     const legacyKey = `consultation-workspace:${legacyPatientId}`;
-    const legacyRaw = window.localStorage.getItem(legacyKey);
+    const legacyRaw =
+      window.sessionStorage.getItem(legacyKey) ||
+      window.localStorage.getItem(legacyKey);
     if (!legacyRaw) {
       return null;
     }
@@ -74,7 +78,9 @@ export function readConsultationWorkspace<TSnapshot>(
     try {
       const legacySnapshot = JSON.parse(legacyRaw) as TSnapshot;
       writeConsultationWorkspace(scope, legacySnapshot);
+      window.sessionStorage.removeItem(legacyKey);
       window.localStorage.removeItem(legacyKey);
+      window.localStorage.removeItem(primaryKey);
       return legacySnapshot;
     } catch {
       window.localStorage.removeItem(legacyKey);
@@ -91,16 +97,23 @@ export function readConsultationWorkspace<TSnapshot>(
       "snapshot" in parsed
     ) {
       if (parsed.version !== WORKSPACE_VERSION) {
+        window.sessionStorage.removeItem(primaryKey);
         window.localStorage.removeItem(primaryKey);
         return null;
+      }
+      if (!sessionRaw && localPrimaryRaw) {
+        writeConsultationWorkspace(scope, parsed.snapshot);
+        window.localStorage.removeItem(primaryKey);
       }
       return parsed.snapshot;
     }
 
     // Drop legacy or malformed snapshots instead of trying to coerce them.
+    window.sessionStorage.removeItem(primaryKey);
     window.localStorage.removeItem(primaryKey);
     return null;
   } catch {
+    window.sessionStorage.removeItem(primaryKey);
     window.localStorage.removeItem(primaryKey);
     return null;
   }
@@ -119,12 +132,13 @@ export function writeConsultationWorkspace<TSnapshot>(
     saved_at: new Date().toISOString(),
     snapshot,
   };
-  window.localStorage.setItem(consultationWorkspaceKey(scope), JSON.stringify(persisted));
+  window.sessionStorage.setItem(consultationWorkspaceKey(scope), JSON.stringify(persisted));
 }
 
 export function clearConsultationWorkspace(scope: WorkspaceScope) {
   if (!isBrowser()) {
     return;
   }
+  window.sessionStorage.removeItem(consultationWorkspaceKey(scope));
   window.localStorage.removeItem(consultationWorkspaceKey(scope));
 }

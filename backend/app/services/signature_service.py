@@ -11,6 +11,8 @@ except Exception:  # pragma: no cover
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 JPEG_SIGNATURES = (b"\xff\xd8\xff",)
+MAX_SIGNATURE_UPLOAD_BYTES = 2 * 1024 * 1024
+MAX_SIGNATURE_PIXELS = 4_000_000
 BACKGROUND_SAMPLE_SIZE = 4
 BACKGROUND_DISTANCE_THRESHOLD = 22.0
 BACKGROUND_ALPHA_THRESHOLD = 28
@@ -70,10 +72,14 @@ def normalize_signature_image(raw_bytes: bytes, content_type: str) -> tuple[byte
         return raw_bytes, content_type
 
     try:
+        source_image = Image.open(BytesIO(raw_bytes))
+        if source_image.width * source_image.height > MAX_SIGNATURE_PIXELS:
+            raise ValueError("Signature image dimensions are too large.")
+        source_image.verify()
         image = Image.open(BytesIO(raw_bytes)).convert("RGBA")
-    except Exception as exc:  # pragma: no cover
-        if _looks_like_supported_image(raw_bytes, content_type):
-            return raw_bytes, content_type
+    except ValueError:
+        raise
+    except Exception as exc:
         raise ValueError("Signature image could not be processed.") from exc
 
     background = _average_background_rgba(image)

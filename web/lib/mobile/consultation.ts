@@ -44,13 +44,15 @@ export function readMobileConsultationDraft(scope: MobileConsultationScope): Mob
   if (!isBrowser()) {
     return null;
   }
-  const raw = window.localStorage.getItem(mobileConsultationKey(scope));
+  const key = mobileConsultationKey(scope);
+  const sessionRaw = window.sessionStorage.getItem(key);
+  const raw = sessionRaw || window.localStorage.getItem(key);
   if (!raw) {
     return null;
   }
   try {
     const parsed = JSON.parse(raw) as Partial<MobileConsultationDraft>;
-    return {
+    const draft = {
       symptoms: String(parsed.symptoms || ""),
       diagnosis: String(parsed.diagnosis || ""),
       medications: String(parsed.medications || ""),
@@ -60,8 +62,14 @@ export function readMobileConsultationDraft(scope: MobileConsultationScope): Mob
       assets: Array.isArray(parsed.assets) ? parsed.assets as NoteAsset[] : [],
       savedAt: String(parsed.savedAt || ""),
     };
+    if (!sessionRaw) {
+      window.sessionStorage.setItem(key, JSON.stringify(draft));
+      window.localStorage.removeItem(key);
+    }
+    return draft;
   } catch {
-    window.localStorage.removeItem(mobileConsultationKey(scope));
+    window.sessionStorage.removeItem(key);
+    window.localStorage.removeItem(key);
     return null;
   }
 }
@@ -73,7 +81,7 @@ export function writeMobileConsultationDraft(
   if (!isBrowser()) {
     return;
   }
-  window.localStorage.setItem(
+  window.sessionStorage.setItem(
     mobileConsultationKey(scope),
     JSON.stringify({ ...draft, savedAt: new Date().toISOString() }),
   );
@@ -83,5 +91,6 @@ export function clearMobileConsultationDraft(scope: MobileConsultationScope) {
   if (!isBrowser()) {
     return;
   }
+  window.sessionStorage.removeItem(mobileConsultationKey(scope));
   window.localStorage.removeItem(mobileConsultationKey(scope));
 }

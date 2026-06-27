@@ -38,7 +38,8 @@ test("authStorage does not persist raw session tokens", async () => {
   assert.equal(localStorage.getItem("clinic_auth_token"), null);
   assert.equal(sessionStorage.getItem("clinic_auth_token"), "secret-token");
   assert.equal(authStorage.getToken(), "secret-token");
-  assert.equal(JSON.parse(localStorage.getItem("clinic_auth_user")).identifier, "owner@clinic.com");
+  assert.equal(localStorage.getItem("clinic_auth_user"), null);
+  assert.equal(JSON.parse(sessionStorage.getItem("clinic_auth_user")).identifier, "owner@clinic.com");
 });
 
 test("api browser requests attach sessionStorage bearer fallback", async () => {

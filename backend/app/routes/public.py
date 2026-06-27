@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.api_errors import bad_request_error
 from app.db import AppRepository, get_repository
 from app.schema_domains.patients import FollowUpBookingContextOut, FollowUpBookingRequest
-from app.services.auth_flow import enforce_rate_limit
+from app.services.auth_flow import enforce_repository_rate_limit
 from app.services.followup_workflow import get_follow_up_booking_context_workflow, self_book_follow_up_workflow
 
 
@@ -16,7 +16,7 @@ async def get_follow_up_booking_context(
     repo: AppRepository = Depends(get_repository),
 ) -> FollowUpBookingContextOut:
     try:
-        enforce_rate_limit("public_follow_up_booking_get", token)
+        await enforce_repository_rate_limit(repo, "public_follow_up_booking_get", token)
         follow_up, patient, clinic_settings, _token, suggested_slots = await get_follow_up_booking_context_workflow(repo, token)
         return FollowUpBookingContextOut(
             follow_up_id=follow_up["id"],
@@ -40,7 +40,7 @@ async def book_follow_up(
     repo: AppRepository = Depends(get_repository),
 ) -> None:
     try:
-        enforce_rate_limit("public_follow_up_booking_post", payload.token)
+        await enforce_repository_rate_limit(repo, "public_follow_up_booking_post", payload.token)
         await self_book_follow_up_workflow(repo, payload.token, payload.scheduled_for)
     except HTTPException:
         raise

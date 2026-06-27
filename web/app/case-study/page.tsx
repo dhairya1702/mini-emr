@@ -65,7 +65,7 @@ export default function CaseStudyPage() {
 
   const loadPageData = useCallback(async () => {
     const [loadedPatients, loadedCaseStudies] = await Promise.all([
-      api.listPatients(),
+      api.listAllPatients(),
       api.listCaseStudies(),
     ]);
     return {
@@ -594,7 +594,7 @@ export default function CaseStudyPage() {
           auditEvents={auditEvents}
           onLoadAuditEvents={loadAuditEvents}
           patients={patients}
-          onLoadBillingPatients={() => api.listPatients()}
+          onLoadBillingPatients={() => api.listAllPatients()}
           catalogItems={catalogItems}
           onLoadCatalogItems={loadCatalogItems}
           onClose={() => setIsSettingsOpen(false)}

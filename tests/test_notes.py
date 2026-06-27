@@ -183,7 +183,7 @@ def test_note_delivery_failure_reports_finalized_state(client, monkeypatch):
     headers = auth_headers_for_token(session["token"])
 
     async def failing_send_clinic_email_message(**_kwargs):
-        raise RuntimeError("SMTP unavailable")
+        raise note_workflow.EmailDeliveryError("SMTP unavailable")
 
     monkeypatch.setattr(note_workflow, "send_clinic_email_message", failing_send_clinic_email_message)
 

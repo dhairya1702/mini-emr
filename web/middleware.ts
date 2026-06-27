@@ -25,6 +25,7 @@ const excludedPrefixes = [
   "/attachment-view",
   "/follow-up",
   "/onboarding",
+  "/superdashboard",
   "/superuser",
 ];
 

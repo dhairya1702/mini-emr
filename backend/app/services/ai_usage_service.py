@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from typing import Any
+import logging
 
 from app.db import AppRepository
+
+
+logger = logging.getLogger(__name__)
 
 
 def _read_int(container: Any, *keys: str) -> int:
@@ -75,14 +79,17 @@ async def record_model_usage(
     if not any(usage.values()):
         return
 
-    await repo.create_ai_usage_event(
-        org_id=org_id,
-        provider=provider,
-        model=model,
-        feature=feature,
-        input_tokens=usage["input_tokens"],
-        output_tokens=usage["output_tokens"],
-        cache_creation_input_tokens=usage["cache_creation_input_tokens"],
-        cache_read_input_tokens=usage["cache_read_input_tokens"],
-        metadata=metadata,
-    )
+    try:
+        await repo.create_ai_usage_event(
+            org_id=org_id,
+            provider=provider,
+            model=model,
+            feature=feature,
+            input_tokens=usage["input_tokens"],
+            output_tokens=usage["output_tokens"],
+            cache_creation_input_tokens=usage["cache_creation_input_tokens"],
+            cache_read_input_tokens=usage["cache_read_input_tokens"],
+            metadata=metadata,
+        )
+    except Exception:
+        logger.exception("Failed to persist AI usage for feature %s.", feature)

@@ -59,7 +59,7 @@ class ContactLensInput(BaseModel):
     vendor_name: str = Field(default="", max_length=160)
     quantity: str = Field(default="", max_length=80)
     special_instructions: str = Field(default="", max_length=500)
-    eyes: list[ContactLensEyeInput] = Field(default_factory=list)
+    eyes: list[ContactLensEyeInput] = Field(default_factory=list, max_length=2)
 
 
 class BinocularVisionInput(BaseModel):

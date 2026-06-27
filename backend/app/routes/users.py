@@ -7,7 +7,7 @@ from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user, require_admin
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import StaffUserCreate, UserOut, UserRoleUpdate
-from app.services.signature_service import normalize_signature_image
+from app.services.signature_service import MAX_SIGNATURE_UPLOAD_BYTES, normalize_signature_image
 from app.services.user_workflow import create_staff_user_workflow
 
 
@@ -40,9 +40,17 @@ async def update_user_role(
     repo: AppRepository = Depends(get_repository),
 ) -> UserOut:
     try:
-        await repo.get_user_for_org(str(current_user.org_id), user_id)
+        target = await repo.get_user_for_org(str(current_user.org_id), user_id)
+        if (
+            target.get("role") == "admin"
+            and payload.role == "staff"
+            and await repo.count_admins_for_org(str(current_user.org_id)) <= 1
+        ):
+            raise HTTPException(status_code=400, detail="Every clinic must retain at least one admin.")
         updated = await repo.update_user_role(user_id, payload)
         return UserOut(**updated)
+    except HTTPException:
+        raise
     except (IndexError, KeyError) as exc:
         raise HTTPException(status_code=404, detail="User not found.") from exc
 
@@ -56,9 +64,14 @@ async def delete_user(
     if str(current_user.id) == user_id:
         raise HTTPException(status_code=400, detail="You cannot remove your own account.")
     try:
-        await repo.get_user_for_org(str(current_user.org_id), user_id)
+        target = await repo.get_user_for_org(str(current_user.org_id), user_id)
     except (IndexError, KeyError) as exc:
         raise HTTPException(status_code=404, detail="User not found.") from exc
+    if (
+        target.get("role") == "admin"
+        and await repo.count_admins_for_org(str(current_user.org_id)) <= 1
+    ):
+        raise HTTPException(status_code=400, detail="Every clinic must retain at least one admin.")
 
     await repo.delete_user(user_id)
 
@@ -73,7 +86,9 @@ async def upload_user_signature(
     content_type = (file.content_type or "").strip().lower()
     if content_type not in {"image/jpeg", "image/png"}:
         raise HTTPException(status_code=400, detail="Signature must be a JPG or PNG file.")
-    raw_bytes = await file.read()
+    raw_bytes = await file.read(MAX_SIGNATURE_UPLOAD_BYTES + 1)
+    if len(raw_bytes) > MAX_SIGNATURE_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="Signature must be 2 MB or smaller.")
     try:
         raw_bytes, content_type = normalize_signature_image(raw_bytes, content_type)
     except ValueError as exc:

@@ -11,6 +11,7 @@ from app.exports import (
     get_export_range_start,
 )
 from app.schema_domains.auth_settings import UserOut
+from app.services.audit_service import write_audit_event_best_effort
 
 
 router = APIRouter()
@@ -22,6 +23,15 @@ async def export_patients_csv(
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     patients = await repo.list_patients(str(current_user.org_id))
+    await write_audit_event_best_effort(
+        repo,
+        current_user,
+        entity_type="export",
+        entity_id=str(current_user.org_id),
+        action="patients_exported",
+        summary="Exported the patient registry as CSV.",
+        metadata={"row_count": len(patients), "format": "csv"},
+    )
     return build_csv_response(
         "patients.csv",
         patients,
@@ -52,6 +62,15 @@ async def export_visits_csv(
     except ValueError as exc:
         raise bad_request_error(exc) from exc
     filtered_rows = filter_rows_by_created_at([row.model_dump() for row in history_rows], start_at)
+    await write_audit_event_best_effort(
+        repo,
+        current_user,
+        entity_type="export",
+        entity_id=str(current_user.org_id),
+        action="visits_exported",
+        summary="Exported patient visits as CSV.",
+        metadata={"row_count": len(filtered_rows), "range": range, "format": "csv"},
+    )
     return build_csv_response(
         "patient_visits.csv",
         filtered_rows,
@@ -94,6 +113,15 @@ async def export_invoices_csv(
                 "item_count": len(invoice.get("items", [])),
             }
         )
+    await write_audit_event_best_effort(
+        repo,
+        current_user,
+        entity_type="export",
+        entity_id=str(current_user.org_id),
+        action="invoices_exported",
+        summary="Exported invoices as CSV.",
+        metadata={"row_count": len(rows), "format": "csv"},
+    )
     return build_csv_response(
         "invoices.csv",
         rows,

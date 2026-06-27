@@ -31,7 +31,7 @@ def test_audit_events_list_tracks_core_changes(client):
 
     create_follow_up = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
-        json={"scheduled_for": "2026-04-10T10:30:00+00:00", "notes": "Audit trail check"},
+        json={"scheduled_for": "2026-07-10T10:30:00+00:00", "notes": "Audit trail check"},
         headers=headers,
     )
     assert create_follow_up.status_code == 201
@@ -52,7 +52,7 @@ def test_audit_events_include_catalog_and_staff_changes(client):
 
     create_staff = test_client.post(
         "/users/staff",
-        json={"identifier": "staff-audit@clinic.com", "password": "password123"},
+        json={"identifier": "staff-audit@clinic.com", "password": "password123!"},
         headers=headers,
     )
     assert create_staff.status_code == 201

@@ -294,7 +294,13 @@ def test_patient_chart_visit_endpoints_split_visit_list_and_detail(client):
     )
     upload = test_client.post(
         f"/patients/{patient['id']}/attachments",
-        files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
+        files={
+            "file": (
+                "clip.mp4",
+                b"\x00\x00\x00\x18ftypisom" + b"\x00" * 20,
+                "video/mp4",
+            )
+        },
         headers=headers,
     )
     assert upload.status_code == 201

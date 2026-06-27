@@ -83,12 +83,12 @@ export default function MobileConsultationPage() {
     }
     let active = true;
     setIsLoading(true);
-    Promise.all([api.listPatients(), api.listPatientAttachments(patientId)])
-      .then(([patientRows, attachmentRows]) => {
+    Promise.all([api.getPatient(patientId), api.listPatientAttachments(patientId)])
+      .then(([patientRow, attachmentRows]) => {
         if (!active) {
           return;
         }
-        setPatients(patientRows);
+        setPatients([patientRow]);
         setPatientAttachments(attachmentRows);
         const localDraft = scope ? readMobileConsultationDraft(scope) : null;
         setForm({

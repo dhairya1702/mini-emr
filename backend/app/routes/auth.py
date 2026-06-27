@@ -1,6 +1,6 @@
 from base64 import b64decode, b64encode
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.api_errors import bad_request_error
@@ -14,7 +14,7 @@ from app.schema_domains.auth_settings import (
     UserOut,
     UserPasswordUpdate,
 )
-from app.services.signature_service import normalize_signature_image
+from app.services.signature_service import MAX_SIGNATURE_UPLOAD_BYTES, normalize_signature_image
 from app.services.user_workflow import login_user_workflow, register_user_workflow
 from app.services.user_workflow import build_user_out
 
@@ -25,19 +25,31 @@ router = APIRouter()
 @router.post("/auth/register", response_model=AuthResponse, status_code=201)
 async def register_user(
     payload: UserCreate,
+    request: Request,
     response: Response,
     repo: AppRepository = Depends(get_repository),
 ) -> AuthResponse:
-    return await register_user_workflow(repo, response, payload)
+    return await register_user_workflow(
+        repo,
+        response,
+        payload,
+        client_ip=request.client.host if request.client else "unknown",
+    )
 
 
 @router.post("/auth/login", response_model=AuthResponse)
 async def login_user(
     payload: LoginRequest,
+    request: Request,
     response: Response,
     repo: AppRepository = Depends(get_repository),
 ) -> AuthResponse:
-    return await login_user_workflow(repo, response, payload)
+    return await login_user_workflow(
+        repo,
+        response,
+        payload,
+        client_ip=request.client.host if request.client else "unknown",
+    )
 
 
 @router.get("/auth/me", response_model=UserOut)
@@ -47,6 +59,7 @@ async def get_me(response: Response, current_user: UserOut = Depends(get_current
         "org_id": str(current_user.org_id),
         "role": current_user.role,
         "identifier": current_user.identifier,
+        "session_version": current_user.session_version,
     })
     return current_user
 
@@ -64,6 +77,7 @@ async def update_me(
         "org_id": str(updated["org_id"]),
         "role": updated["role"],
         "identifier": updated["identifier"],
+        "session_version": int(updated.get("session_version") or current_user.session_version),
     })
     return build_user_out(updated)
 
@@ -82,12 +96,13 @@ async def update_my_password(
     if not existing or not verify_password(payload.current_password, existing["password_hash"]):
         raise HTTPException(status_code=400, detail="Current password is incorrect.")
 
-    await repo.update_user_password_hash(str(current_user.id), hash_password(payload.new_password))
+    updated = await repo.update_user_password_hash(str(current_user.id), hash_password(payload.new_password))
     issue_session_headers(response, {
         "id": str(current_user.id),
         "org_id": str(current_user.org_id),
         "role": current_user.role,
         "identifier": current_user.identifier,
+        "session_version": int(updated.get("session_version") or current_user.session_version),
     })
 
 
@@ -100,7 +115,9 @@ async def upload_my_signature(
     content_type = (file.content_type or "").strip().lower()
     if content_type not in {"image/jpeg", "image/png"}:
         raise HTTPException(status_code=400, detail="Signature must be a JPG or PNG file.")
-    raw_bytes = await file.read()
+    raw_bytes = await file.read(MAX_SIGNATURE_UPLOAD_BYTES + 1)
+    if len(raw_bytes) > MAX_SIGNATURE_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="Signature must be 2 MB or smaller.")
     try:
         raw_bytes, content_type = normalize_signature_image(raw_bytes, content_type)
     except ValueError as exc:
@@ -146,5 +163,12 @@ async def download_my_signature(
 
 
 @router.post("/auth/logout", status_code=204)
-async def logout_user(response: Response) -> None:
+async def logout_user(
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(get_current_user),
+    repo: AppRepository = Depends(get_repository),
+) -> None:
+    await repo.revoke_user_sessions(str(current_user.id))
+    request.state.suppress_session_refresh = True
     clear_session(response)

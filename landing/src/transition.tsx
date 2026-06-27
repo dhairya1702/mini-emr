@@ -1,18 +1,11 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useRef,
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { gsap } from "gsap";
-
-const TransitionContext = createContext<{ go: (path: string) => void }>({
-  go: () => {},
-});
-
-export const useTransition = () => useContext(TransitionContext);
+import { TransitionContext } from "./transition-context";
 
 /**
  * Cinematic vertical wipe between routes.

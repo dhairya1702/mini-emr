@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from test_app import auth_headers_for_token, client, register_test_clinic
+from test_app import auth_headers_for_token, client, register_test_clinic, signature_png_bytes
 
 
 def test_auth_org_isolation_and_admin_staff_rules(client):
@@ -30,20 +30,20 @@ def test_auth_org_isolation_and_admin_staff_rules(client):
 
     create_staff = test_client.post(
         "/users/staff",
-        json={"identifier": "staff-a@clinic.com", "password": "password123"},
+        json={"identifier": "staff-a@clinic.com", "password": "password123!"},
         headers=auth_headers_for_token(session_a["token"]),
     )
     assert create_staff.status_code == 201
 
     staff_login = test_client.post(
         "/auth/login",
-        json={"identifier": "staff-a@clinic.com", "password": "password123"},
+        json={"identifier": "staff-a@clinic.com", "password": "password123!"},
     )
     assert staff_login.status_code == 200
 
     forbidden = test_client.post(
         "/users/staff",
-        json={"identifier": "blocked@clinic.com", "password": "password123"},
+        json={"identifier": "blocked@clinic.com", "password": "password123!"},
         headers=auth_headers_for_token(staff_login.json()["token"]),
     )
     assert forbidden.status_code == 403
@@ -55,14 +55,14 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
 
     create_staff = test_client.post(
         "/users/staff",
-        json={"identifier": "staff-perms@clinic.com", "password": "password123"},
+        json={"identifier": "staff-perms@clinic.com", "password": "password123!"},
         headers=auth_headers_for_token(session["token"]),
     )
     assert create_staff.status_code == 201
 
     staff_login = test_client.post(
         "/auth/login",
-        json={"identifier": "staff-perms@clinic.com", "password": "password123"},
+        json={"identifier": "staff-perms@clinic.com", "password": "password123!"},
     )
     assert staff_login.status_code == 200
     staff_headers = auth_headers_for_token(staff_login.json()["token"])
@@ -206,7 +206,7 @@ def test_admin_cannot_manage_users_across_organizations(client):
 
     create_staff_b = test_client.post(
         "/users/staff",
-        json={"identifier": "staff-users-b@clinic.com", "password": "password123"},
+        json={"identifier": "staff-users-b@clinic.com", "password": "password123!"},
         headers=auth_headers_for_token(session_b["token"]),
     )
     assert create_staff_b.status_code == 201
@@ -222,7 +222,7 @@ def test_admin_cannot_manage_users_across_organizations(client):
     upload_signature = test_client.post(
         f"/users/{foreign_user_id}/signature",
         headers=auth_headers_for_token(session_a["token"]),
-        files={"file": ("signature.png", b"\x89PNG\r\n\x1a\nfake", "image/png")},
+        files={"file": ("signature.png", signature_png_bytes(), "image/png")},
     )
     assert upload_signature.status_code == 404
 

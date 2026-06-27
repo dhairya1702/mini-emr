@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import HTTPException
 
 from app.db import DuplicateCheckInCandidateError, AppRepository
@@ -15,7 +17,12 @@ from app.services.audit_service import (
     record_appointment_created,
     record_appointment_updated,
 )
-from app.services.followup_workflow import expire_stale_schedule_workflow
+from app.services.followup_workflow import (
+    _appointments_per_hour,
+    _as_utc_minute,
+    _is_within_booking_window,
+    expire_stale_schedule_workflow,
+)
 
 
 async def create_appointment_workflow(
@@ -23,7 +30,18 @@ async def create_appointment_workflow(
     current_user: UserOut,
     payload: AppointmentCreate,
 ) -> AppointmentOut:
-    created = await repo.create_appointment(str(current_user.org_id), payload)
+    scheduled_for = _as_utc_minute(payload.scheduled_for)
+    if scheduled_for <= datetime.now(UTC):
+        raise ValueError("Appointment time must be in the future.")
+    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    if not _is_within_booking_window(scheduled_for, clinic_settings):
+        raise ValueError("Appointment time must be within clinic booking hours.")
+    created = await repo.create_appointment(
+        str(current_user.org_id),
+        payload,
+        appointments_per_hour=_appointments_per_hour(clinic_settings),
+        timezone=str(clinic_settings.get("timezone") or "UTC"),
+    )
     await record_appointment_created(repo, current_user, created)
     return AppointmentOut(**created)
 
@@ -61,7 +79,20 @@ async def update_appointment_workflow(
     payload: AppointmentUpdate,
 ) -> AppointmentOut:
     await expire_stale_schedule_workflow(repo, str(current_user.org_id))
-    updated = await repo.update_appointment(str(current_user.org_id), appointment_id, payload)
+    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    if payload.scheduled_for is not None:
+        scheduled_for = _as_utc_minute(payload.scheduled_for)
+        if scheduled_for <= datetime.now(UTC):
+            raise ValueError("Appointment time must be in the future.")
+        if not _is_within_booking_window(scheduled_for, clinic_settings):
+            raise ValueError("Appointment time must be within clinic booking hours.")
+    updated = await repo.update_appointment(
+        str(current_user.org_id),
+        appointment_id,
+        payload,
+        appointments_per_hour=_appointments_per_hour(clinic_settings),
+        timezone=str(clinic_settings.get("timezone") or "UTC"),
+    )
     changed_fields = sorted(payload.model_dump(exclude_none=True).keys())
     await record_appointment_updated(repo, current_user, updated, changed_fields)
     return AppointmentOut(**updated)

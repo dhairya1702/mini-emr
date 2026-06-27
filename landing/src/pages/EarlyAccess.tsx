@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
 import { ACCESS_ENDPOINT } from "../access";
-import { useTransition } from "../transition";
+import { useTransition } from "../transition-context";
 import "../App.css";
 
 type Status = "idle" | "submitting" | "done";

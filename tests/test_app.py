@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import ModuleType
@@ -13,6 +14,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
@@ -108,6 +110,17 @@ def _normalize_phone(phone: str) -> str:
     return f"+{digits}" if phone.startswith("+") and digits else digits
 
 
+def signature_png_bytes() -> bytes:
+    from io import BytesIO
+
+    image = Image.new("RGB", (120, 48), "white")
+    draw = ImageDraw.Draw(image)
+    draw.line((10, 30, 48, 12, 82, 31, 110, 15), fill="black", width=4)
+    output = BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
+
+
 class FakeRepo:
     def __init__(self) -> None:
         self.organizations: dict[str, dict] = {}
@@ -129,6 +142,26 @@ class FakeRepo:
         self.audit_events: dict[str, dict] = {}
         self.ai_usage_events: dict[str, dict] = {}
         self.platform_errors: dict[str, dict] = {}
+        self.api_request_metrics: list[dict] = []
+        self.customer_onboarding: dict[str, dict] = {}
+        self.rate_limits: dict[tuple[str, str], tuple[float, int]] = {}
+
+    async def consume_rate_limit(
+        self,
+        *,
+        scope: str,
+        key_hash: str,
+        max_window_seconds: int,
+    ) -> int:
+        from time import monotonic
+
+        now = monotonic()
+        started_at, count = self.rate_limits.get((scope, key_hash), (now, 0))
+        if now - started_at > max_window_seconds:
+            started_at, count = now, 0
+        count += 1
+        self.rate_limits[(scope, key_hash)] = (started_at, count)
+        return count
 
     async def create_organization(self, clinic_name: str) -> dict:
         org_id = str(uuid4())
@@ -218,6 +251,7 @@ class FakeRepo:
             audit_events = [row for row in self.audit_events.values() if row["org_id"] == org_id]
             usage_events = [row for row in self.ai_usage_events.values() if row["org_id"] == org_id]
             attachments = [row for row in self.patient_attachments.values() if row["org_id"] == org_id]
+            recent_errors = [row for row in self.platform_errors.values() if row.get("org_id") == org_id]
             last_activity = org["created_at"]
             for collection in (users, patients, notes, invoices, follow_ups, audit_events):
                 for row in collection:
@@ -236,10 +270,143 @@ class FakeRepo:
                     "follow_up_count": len(follow_ups),
                     "total_tokens": sum(int(event.get("total_tokens") or 0) for event in usage_events),
                     "media_storage_bytes": sum(int(row.get("file_size") or 0) for row in attachments),
+                    "recent_error_count": len(recent_errors),
                     "last_activity_at": last_activity,
                 }
             )
         return summaries
+
+    async def create_customer_onboarding(
+        self,
+        *,
+        customer_id: str,
+        customer_name: str,
+        phone: str,
+        users_allowed: int,
+        created_by: str | None,
+    ) -> dict:
+        if customer_id in self.customer_onboarding:
+            raise ValueError("Customer onboarding record already exists.")
+        onboarding_id = str(uuid4())
+        row = {
+            "id": onboarding_id,
+            "customer_id": customer_id,
+            "customer_name": customer_name,
+            "phone": _normalize_phone(phone),
+            "users_allowed": users_allowed,
+            "status": "pending",
+            "claimed_org_id": None,
+            "claimed_at": None,
+            "created_by": created_by,
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+        self.customer_onboarding[customer_id] = row
+        return dict(row)
+
+    async def list_customer_onboarding(self) -> list[dict]:
+        rows = []
+        for row in self.customer_onboarding.values():
+            claimed_org_id = row.get("claimed_org_id")
+            settings = self.clinic_settings.get(claimed_org_id or "", {})
+            org = self.organizations.get(claimed_org_id or "", {})
+            users_used = sum(1 for user in self.users.values() if user["org_id"] == claimed_org_id)
+            rows.append(
+                {
+                    **row,
+                    "claimed_org_name": settings.get("clinic_name") or org.get("name"),
+                    "users_used": users_used,
+                }
+            )
+        rows.sort(key=lambda item: item["created_at"], reverse=True)
+        return rows
+
+    async def get_customer_onboarding_by_customer_id(self, customer_id: str) -> dict | None:
+        row = self.customer_onboarding.get(customer_id)
+        return dict(row) if row else None
+
+    async def get_customer_onboarding_for_org(self, org_id: str) -> dict | None:
+        for row in self.customer_onboarding.values():
+            if row.get("claimed_org_id") == org_id:
+                return dict(row)
+        return None
+
+    async def claim_customer_onboarding(self, customer_id: str, org_id: str) -> dict:
+        row = self.customer_onboarding.get(customer_id)
+        if not row or row.get("status") != "pending":
+            raise ValueError("Invalid customer ID or phone number.")
+        row["status"] = "claimed"
+        row["claimed_org_id"] = org_id
+        row["claimed_at"] = _now()
+        row["updated_at"] = _now()
+        return dict(row)
+
+    async def provision_customer_organization(
+        self,
+        *,
+        customer_id: str,
+        expected_phone: str,
+        clinic_settings,
+        identifier: str,
+        name: str,
+        password_hash: str,
+    ) -> dict:
+        onboarding = self.customer_onboarding.get(customer_id)
+        if (
+            not onboarding
+            or onboarding.get("status") != "pending"
+            or _normalize_phone(onboarding.get("phone", "")) != _normalize_phone(expected_phone)
+        ):
+            raise ValueError("Invalid customer ID or phone number.")
+        if any(user["identifier"] == identifier for user in self.users.values()):
+            raise ValueError("An account with that email or phone already exists.")
+
+        organization = await self.create_organization(str(clinic_settings.clinic_name or ""))
+        org_id = str(organization["id"])
+        try:
+            await self.create_clinic_settings(org_id, clinic_settings)
+            created = await self.create_user(
+                org_id=org_id,
+                identifier=identifier,
+                name=name,
+                password_hash=password_hash,
+                role="admin",
+            )
+            await self.claim_customer_onboarding(customer_id, org_id)
+            return created
+        except Exception:
+            self.organizations.pop(org_id, None)
+            self.clinic_settings.pop(org_id, None)
+            self.users = {
+                user_id: user
+                for user_id, user in self.users.items()
+                if user["org_id"] != org_id
+            }
+            raise
+
+    async def update_customer_onboarding(self, onboarding_id: str, payload: dict) -> dict:
+        for row in self.customer_onboarding.values():
+            if row["id"] != onboarding_id:
+                continue
+            for key in ("customer_name", "phone", "users_allowed", "status"):
+                if key in payload and payload[key] is not None:
+                    row[key] = _normalize_phone(payload[key]) if key == "phone" else payload[key]
+            row["updated_at"] = _now()
+            return dict(row)
+        raise ValueError("Customer onboarding record not found.")
+
+    async def disable_customer_onboarding(self, onboarding_id: str) -> dict:
+        return await self.update_customer_onboarding(onboarding_id, {"status": "disabled"})
+
+    async def count_users_for_org(self, org_id: str) -> int:
+        return sum(1 for user in self.users.values() if user["org_id"] == org_id)
+
+    async def count_admins_for_org(self, org_id: str) -> int:
+        return sum(
+            1
+            for user in self.users.values()
+            if user["org_id"] == org_id and user["role"] == "admin"
+        )
 
     async def list_users_for_org_any(self, org_id: str) -> list[dict]:
         rows = [row for row in self.users.values() if row["org_id"] == org_id]
@@ -250,6 +417,24 @@ class FakeRepo:
         rows = [row for row in self.ai_usage_events.values() if row["org_id"] == org_id]
         rows.sort(key=lambda row: row["created_at"], reverse=True)
         return rows[:limit]
+
+    async def get_superdashboard_ai_metrics(self, days: int = 7) -> dict:
+        since = _now().date() - timedelta(days=max(days, 1) - 1)
+        rows = [
+            row for row in self.ai_usage_events.values()
+            if row["created_at"].date() >= since
+        ]
+        daily: dict[str, dict] = {}
+        for row in rows:
+            key = row["created_at"].date().isoformat()
+            metric = daily.setdefault(key, {"date": key, "request_count": 0, "total_tokens": 0})
+            metric["request_count"] += 1
+            metric["total_tokens"] += int(row.get("total_tokens") or 0)
+        return {
+            "request_count": len(rows),
+            "total_tokens": sum(int(row.get("total_tokens") or 0) for row in rows),
+            "daily": list(daily.values()),
+        }
 
     async def create_platform_error(
         self,
@@ -291,6 +476,43 @@ class FakeRepo:
             rows = [row for row in rows if row["org_id"] == org_id]
         rows.sort(key=lambda row: row["created_at"], reverse=True)
         return rows[:limit]
+
+    async def record_api_request(self, *, org_id: str | None, status_code: int) -> None:
+        self.api_request_metrics.append(
+            {
+                "org_id": org_id,
+                "status_code": status_code,
+                "created_at": _now(),
+            }
+        )
+
+    async def get_superdashboard_request_metrics(self, days: int = 7) -> dict:
+        since = _now().date() - timedelta(days=max(days, 1) - 1)
+        requests = [
+            row for row in self.api_request_metrics
+            if row["created_at"].date() >= since
+        ]
+        errors = [
+            row for row in self.platform_errors.values()
+            if row["created_at"].date() >= since
+        ]
+        daily: dict[str, dict] = {}
+        for row in requests:
+            key = row["created_at"].date().isoformat()
+            metric = daily.setdefault(
+                key,
+                {"date": key, "request_count": 0, "error_response_count": 0},
+            )
+            metric["request_count"] += 1
+            metric["error_response_count"] += int(row["status_code"] >= 500)
+        contexts = Counter(str(row.get("path") or row.get("error_type") or "unknown") for row in errors)
+        return {
+            "request_count": len(requests),
+            "error_response_count": sum(int(row["status_code"] >= 500) for row in requests),
+            "error_count": len(errors),
+            "top_error_context": contexts.most_common(1)[0][0] if contexts else "",
+            "daily": list(daily.values()),
+        }
 
     async def delete_user_any(self, user_id: str) -> None:
         self.users.pop(user_id, None)
@@ -396,6 +618,7 @@ class FakeRepo:
             "doctor_signature_name": None,
             "doctor_signature_content_type": None,
             "doctor_signature_data_base64": None,
+            "session_version": 1,
             "created_at": _now(),
         }
         self.users[user_id] = user
@@ -423,6 +646,7 @@ class FakeRepo:
             "doctor_signature_url": (
                 f"/users/{user_id}/signature/file" if user.get("doctor_signature_name") else None
             ),
+            "session_version": user.get("session_version", 1),
             "created_at": user["created_at"],
         }
 
@@ -441,6 +665,7 @@ class FakeRepo:
             "doctor_signature_url": (
                 f"/users/{user_id}/signature/file" if user.get("doctor_signature_name") else None
             ),
+            "session_version": user.get("session_version", 1),
             "created_at": user["created_at"],
         }
 
@@ -486,7 +711,12 @@ class FakeRepo:
     async def update_user_password_hash(self, user_id: str, password_hash: str) -> dict:
         user = self.users[user_id]
         user["password_hash"] = password_hash
+        user["session_version"] = int(user.get("session_version", 1)) + 1
         return dict(user)
+
+    async def revoke_user_sessions(self, user_id: str) -> None:
+        user = self.users[user_id]
+        user["session_version"] = int(user.get("session_version", 1)) + 1
 
     async def delete_user(self, user_id: str) -> None:
         self.users.pop(user_id, None)
@@ -525,6 +755,10 @@ class FakeRepo:
             "profile_photo_content_type": None,
             "profile_photo_updated_at": None,
             "profile_photo_url": None,
+            "ai_summary": None,
+            "ai_summary_updated_at": None,
+            "ai_summary_stale": True,
+            "ai_summary_revision": 0,
             "created_at": created_at,
             "last_visit_at": created_at,
         }
@@ -564,7 +798,27 @@ class FakeRepo:
         rows.sort(key=lambda patient: patient["last_visit_at"], reverse=True)
         return rows[:limit]
 
-    async def create_appointment(self, org_id: str, payload) -> dict:
+    async def create_appointment(
+        self,
+        org_id: str,
+        payload,
+        *,
+        appointments_per_hour: int = 4,
+        timezone: str = "UTC",
+    ) -> dict:
+        scheduled_for = _as_utc_minute(payload.scheduled_for)
+        same_hour = [
+            appointment
+            for appointment in self.appointments.values()
+            if appointment["org_id"] == org_id
+            and appointment["status"] == "scheduled"
+            and _as_utc_minute(appointment["scheduled_for"]).replace(minute=0)
+            == scheduled_for.replace(minute=0)
+        ]
+        if any(_as_utc_minute(item["scheduled_for"]) == scheduled_for for item in same_hour):
+            raise ValueError("That appointment slot is already booked.")
+        if len(same_hour) >= appointments_per_hour:
+            raise ValueError("That hour is fully booked.")
         appointment_id = str(uuid4())
         appointment = {
             "id": appointment_id,
@@ -724,7 +978,15 @@ class FakeRepo:
         appointment["checked_in_at"] = _now()
         return appointment, patient
 
-    async def update_appointment(self, org_id: str, appointment_id: str, payload) -> dict:
+    async def update_appointment(
+        self,
+        org_id: str,
+        appointment_id: str,
+        payload,
+        *,
+        appointments_per_hour: int = 4,
+        timezone: str = "UTC",
+    ) -> dict:
         appointment = self.appointments[appointment_id]
         if appointment["org_id"] != org_id:
             raise ValueError("Appointment not found for this organization.")
@@ -737,6 +999,20 @@ class FakeRepo:
         if "scheduled_for" in updates:
             if appointment["status"] != "scheduled":
                 raise ValueError("Only scheduled appointments can be rescheduled.")
+            scheduled_for = _as_utc_minute(updates["scheduled_for"])
+            same_hour = [
+                item
+                for item_id, item in self.appointments.items()
+                if item_id != appointment_id
+                and item["org_id"] == org_id
+                and item["status"] == "scheduled"
+                and _as_utc_minute(item["scheduled_for"]).replace(minute=0)
+                == scheduled_for.replace(minute=0)
+            ]
+            if any(_as_utc_minute(item["scheduled_for"]) == scheduled_for for item in same_hour):
+                raise ValueError("That appointment slot is already booked.")
+            if len(same_hour) >= appointments_per_hour:
+                raise ValueError("That hour is fully booked.")
             appointment["scheduled_for"] = updates["scheduled_for"]
         if "status" in updates:
             if updates["status"] == "checked_in":
@@ -746,12 +1022,29 @@ class FakeRepo:
             appointment["status"] = updates["status"]
         return appointment
 
-    async def list_patients(self, org_id: str) -> list[dict]:
-        return sorted(
-            [patient for patient in self.patients.values() if patient["org_id"] == org_id],
+    async def list_patients(
+        self,
+        org_id: str,
+        *,
+        active_only: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict]:
+        rows = sorted(
+            [
+                patient
+                for patient in self.patients.values()
+                if patient["org_id"] == org_id
+                and (
+                    not active_only
+                    or patient["status"] in {"waiting", "consultation"}
+                    or (patient["status"] == "done" and not patient["billed"])
+                )
+            ],
             key=lambda patient: patient["last_visit_at"],
             reverse=True,
         )
+        return rows[offset : offset + limit if limit is not None else None]
 
     async def list_patients_by_ids(self, org_id: str, patient_ids: list[str]) -> list[dict]:
         allowed = {str(patient_id) for patient_id in patient_ids}
@@ -781,6 +1074,8 @@ class FakeRepo:
                 "status": "waiting",
                 "billed": False,
                 "last_visit_at": updated_at,
+                "ai_summary_stale": True,
+                "ai_summary_revision": int(patient.get("ai_summary_revision") or 0) + 1,
             }
         )
         await self._record_patient_visit(org_id, patient_id, payload, source="queue")
@@ -802,15 +1097,26 @@ class FakeRepo:
             raise ValueError("Patient not found for this organization.")
         return patient
 
-    async def save_patient_summary(self, org_id: str, patient_id: str, summary: str, updated_at) -> None:
+    async def save_patient_summary(
+        self,
+        org_id: str,
+        patient_id: str,
+        summary: str,
+        updated_at,
+        expected_revision: int,
+    ) -> bool:
         patient = await self.get_patient(org_id, patient_id)
+        if int(patient.get("ai_summary_revision") or 0) != expected_revision:
+            return False
         patient["ai_summary"] = summary
         patient["ai_summary_updated_at"] = updated_at
         patient["ai_summary_stale"] = False
+        return True
 
     async def mark_patient_summary_stale(self, org_id: str, patient_id: str) -> None:
         patient = await self.get_patient(org_id, patient_id)
         patient["ai_summary_stale"] = True
+        patient["ai_summary_revision"] = int(patient.get("ai_summary_revision") or 0) + 1
 
     async def update_patient_profile_photo(
         self,
@@ -1240,7 +1546,12 @@ class FakeRepo:
             if invoice["org_id"] == org_id and invoice["patient_id"] == patient_id
         ]
 
-    async def list_invoices(self, org_id: str) -> list[dict]:
+    async def list_invoices(
+        self,
+        org_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict]:
         rows = []
         for invoice in self.invoices.values():
             if invoice["org_id"] != org_id:
@@ -1257,7 +1568,7 @@ class FakeRepo:
                 }
             )
         rows.sort(key=lambda row: row["created_at"], reverse=True)
-        return rows
+        return rows[offset:offset + limit] if limit is not None else rows[offset:]
 
     async def get_patient_timeline_source(self, org_id: str, patient_id: str) -> dict:
         patient = await self.get_patient(org_id, patient_id)
@@ -1352,6 +1663,13 @@ class FakeRepo:
             "already_sent": already_sent,
             "stock_deductions": stock_deductions,
         }
+
+    async def mark_invoice_sent(self, org_id: str, invoice_id: str) -> dict:
+        invoice = self.invoices[invoice_id]
+        if invoice["org_id"] != org_id or invoice["completed_at"] is None:
+            raise ValueError("Completed invoice not found for this organization.")
+        invoice["sent_at"] = invoice["sent_at"] or _now()
+        return dict(invoice)
 
     async def create_follow_up(self, org_id: str, patient_id: str, created_by: str, payload) -> dict:
         patient = self.patients.get(patient_id)
@@ -1502,13 +1820,20 @@ class FakeRepo:
         self.appointments[appointment_id] = appointment
         return follow_up, appointment
 
-    async def list_due_follow_ups(self, org_id: str, due_before_iso: str) -> list[dict]:
+    async def list_due_follow_ups(
+        self,
+        org_id: str,
+        due_after_iso: str,
+        due_before_iso: str,
+    ) -> list[dict]:
+        due_after = _as_utc_minute(due_after_iso)
+        due_before = _as_utc_minute(due_before_iso)
         return [
             follow_up for follow_up in self.follow_ups.values()
             if follow_up["org_id"] == org_id
             and follow_up["status"] == "scheduled"
             and follow_up["reminder_sent_at"] is None
-            and str(follow_up["scheduled_for"]) <= due_before_iso
+            and due_after < _as_utc_minute(follow_up["scheduled_for"]) <= due_before
         ]
 
     async def mark_follow_up_reminder_sent(self, org_id: str, follow_up_id: str) -> dict:
@@ -1569,11 +1894,23 @@ def client(monkeypatch: pytest.MonkeyPatch):
 
 
 def register_test_clinic(client: TestClient, *, identifier: str, clinic_name: str) -> dict:
+    repo = client.app.dependency_overrides[get_repository]()
+    customer_id = f"CID-TST-{uuid4().hex[:4].upper()}"
+    asyncio.run(
+        repo.create_customer_onboarding(
+            customer_id=customer_id,
+            customer_name=clinic_name,
+            phone="5550100000",
+            users_allowed=2,
+            created_by=None,
+        )
+    )
     response = client.post(
         "/auth/register",
         json={
             "identifier": identifier,
-            "password": "password123",
+            "password": "password123!",
+            "customer_id": customer_id,
             "admin_name": "Clinic Admin",
             "clinic_name": clinic_name,
             "clinic_address": "123 Main Street",
@@ -1822,8 +2159,8 @@ def test_schedule_lists_filter_by_requested_date_without_mutating_expired_items(
     assert patient_response.status_code == 201
     patient = patient_response.json()
 
-    yesterday = datetime.now(UTC).replace(microsecond=0) - timedelta(days=1)
-    tomorrow = datetime.now(UTC).replace(microsecond=0) + timedelta(days=1)
+    yesterday = datetime.now(UTC).replace(hour=10, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    tomorrow = datetime.now(UTC).replace(hour=10, minute=0, second=0, microsecond=0) + timedelta(days=1)
 
     old_appointment = test_client.post(
         "/appointments",
@@ -1838,11 +2175,12 @@ def test_schedule_lists_filter_by_requested_date_without_mutating_expired_items(
             "weight": 72,
             "height": 168,
             "temperature": 98.4,
-            "scheduled_for": yesterday.isoformat(),
+            "scheduled_for": tomorrow.isoformat(),
         },
     )
     assert old_appointment.status_code == 201
     old_appointment_body = old_appointment.json()
+    repo.appointments[old_appointment_body["id"]]["scheduled_for"] = yesterday
 
     future_appointment = test_client.post(
         "/appointments",
@@ -1866,10 +2204,11 @@ def test_schedule_lists_filter_by_requested_date_without_mutating_expired_items(
     old_follow_up = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
         headers=auth_headers_for_token(token),
-        json={"scheduled_for": yesterday.isoformat(), "notes": "Old follow-up"},
+        json={"scheduled_for": tomorrow.isoformat(), "notes": "Old follow-up"},
     )
     assert old_follow_up.status_code == 201
     old_follow_up_body = old_follow_up.json()
+    repo.follow_ups[old_follow_up_body["id"]]["scheduled_for"] = yesterday
 
     future_follow_up = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
