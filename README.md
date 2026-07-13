@@ -84,7 +84,6 @@ with their resource names:
 
 - `DATABASE_URL_SECRET_NAME`
 - `AUTH_SECRET_NAME`
-- `SUPER_ADMIN_TOTP_SECRET_NAME`
 - `SUPER_ADMIN_IDENTIFIERS`
 
 Notes:
@@ -112,7 +111,6 @@ Backend:
 - `INTERNAL_SCHEDULER_TOKEN=...` used by Cloud Scheduler to trigger follow-up reminders over HTTP
 - `APP_ORIGIN=http://127.0.0.1:3000`
 - `SUPER_ADMIN_IDENTIFIERS=you@example.com` optional, comma-separated allowlist for the hidden `/superuser` dashboard
-- `SUPER_ADMIN_TOTP_SECRETS={"you@example.com":"BASE32SECRET"}` required for every configured superadmin
 - `FOLLOW_UP_REMINDER_RUNNER_ENABLED=false`
 - `FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300`
 

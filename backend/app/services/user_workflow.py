@@ -2,13 +2,10 @@ from fastapi import HTTPException, Response
 
 from app.auth import (
     hash_password,
-    is_super_admin_identifier,
     issue_session_headers,
     password_hash_needs_upgrade,
     verify_password,
-    verify_super_admin_totp,
 )
-from datetime import UTC, datetime, timedelta
 from app.db import AppRepository
 from app.repositories.base import normalize_phone_number
 from app.schema_domains.auth_settings import (
@@ -23,7 +20,7 @@ from app.services.audit_service import write_audit_event
 from app.services.auth_flow import enforce_repository_rate_limit, normalize_identifier
 
 
-def _session_identity(row: dict, *, mfa_verified_until: int = 0) -> dict[str, str | int]:
+def _session_identity(row: dict) -> dict[str, str | int]:
     identity: dict[str, str | int] = {
         "id": str(row["id"]),
         "org_id": str(row["org_id"]),
@@ -31,8 +28,6 @@ def _session_identity(row: dict, *, mfa_verified_until: int = 0) -> dict[str, st
         "identifier": str(row["identifier"]),
         "session_version": int(row.get("session_version") or 1),
     }
-    if mfa_verified_until:
-        identity["mfa_verified_until"] = mfa_verified_until
     return identity
 
 
@@ -113,17 +108,10 @@ async def login_user_workflow(
             str(existing["id"]),
             hash_password(payload.password),
         )
-    mfa_verified_until = 0
-    if not verify_super_admin_totp(identifier, payload.totp_code):
-        await enforce_repository_rate_limit(repo, "auth_login", identifier)
-        await enforce_repository_rate_limit(repo, "auth_login_ip", client_ip or "unknown")
-        raise HTTPException(status_code=401, detail="Invalid or missing authenticator code.")
-    if is_super_admin_identifier(identifier):
-        mfa_verified_until = int((datetime.now(UTC) + timedelta(hours=12)).timestamp())
     return AuthResponse(
         token=issue_session_headers(
             response,
-            _session_identity(existing, mfa_verified_until=mfa_verified_until),
+            _session_identity(existing),
         ),
         user=build_user_out(existing),
     )

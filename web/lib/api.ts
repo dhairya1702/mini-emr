@@ -361,7 +361,7 @@ async function requestForm<T>(path: string, formData: FormData, init?: RequestIn
 }
 
 export const api = {
-  login: (payload: { identifier: string; password: string; totp_code?: string }) =>
+  login: (payload: { identifier: string; password: string }) =>
     request<AuthResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify(payload),

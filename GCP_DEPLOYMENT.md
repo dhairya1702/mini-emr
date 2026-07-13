@@ -52,7 +52,6 @@ Enable at least:
 - `APP_ORIGIN=https://WEB_RUN_URL`
 - `APP_ORIGINS=https://WEB_RUN_URL`
 - `SUPER_ADMIN_IDENTIFIERS=...`
-- `SUPER_ADMIN_TOTP_SECRETS={"admin@example.com":"BASE32SECRET"}`
 - `FOLLOW_UP_REMINDER_RUNNER_ENABLED=false`
 - `FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300`
 
@@ -87,7 +86,6 @@ superadmin allowlist:
 
 - `DATABASE_URL_SECRET_NAME`
 - `AUTH_SECRET_NAME`
-- `SUPER_ADMIN_TOTP_SECRET_NAME`
 - `SUPER_ADMIN_IDENTIFIERS`
 
 The secret values themselves must remain in Google Secret Manager. The Cloud Run
@@ -183,7 +181,7 @@ gcloud run deploy clinic-emr-backend \
   --platform=managed \
   --allow-unauthenticated \
   --add-cloudsql-instances=PROJECT:REGION:INSTANCE \
-  --set-secrets=DATABASE_URL=clinic-emr-database-url:latest,AUTH_SECRET=clinic-emr-auth-secret:latest,SUPER_ADMIN_TOTP_SECRETS=clinic-emr-super-admin-totp-secrets:latest \
+  --set-secrets=DATABASE_URL=clinic-emr-database-url:latest,AUTH_SECRET=clinic-emr-auth-secret:latest \
   --set-env-vars=GCS_PATIENT_ATTACHMENTS_BUCKET=clinic-emr-patient-attachments-prod,FOLLOW_UP_REMINDER_RUNNER_ENABLED=false,FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300,APP_ORIGIN=https://WEB_RUN_URL,APP_ORIGINS=https://WEB_RUN_URL,GOOGLE_CLOUD_PROJECT=project-e8d0eb79-8682-4bd9-b31,GOOGLE_CLOUD_LOCATION=global,GEMINI_MODEL=gemini-2.5-flash,SUPER_ADMIN_IDENTIFIERS=REPLACE_ME
 ```
 

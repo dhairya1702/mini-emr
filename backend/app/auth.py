@@ -4,8 +4,6 @@ import hashlib
 import hmac
 import json
 import secrets
-import struct
-import time
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Cookie, Depends, Header, HTTPException, Request, Response, status
@@ -93,8 +91,6 @@ def _build_access_token_payload(user: dict[str, str | int]) -> dict[str, str | i
         "exp": int(expires_at.timestamp()),
         "jti": secrets.token_hex(8),
     }
-    if int(user.get("mfa_verified_until") or 0) > int(issued_at.timestamp()):
-        payload["mfa_verified_until"] = int(user["mfa_verified_until"])
     return payload
 
 
@@ -160,27 +156,6 @@ def decode_access_token(token: str) -> dict[str, str | int]:
     return payload
 
 
-def request_mfa_verified_until(request: Request) -> int:
-    tokens: list[str] = []
-    authorization = request.headers.get("authorization", "")
-    if authorization.startswith("Bearer "):
-        tokens.append(authorization.split(" ", 1)[1].strip())
-    cookie_token = request.cookies.get(SESSION_COOKIE_NAME, "").strip()
-    if cookie_token:
-        tokens.append(cookie_token)
-    verified_until = 0
-    for token in tokens:
-        try:
-            payload = decode_access_token(token)
-        except HTTPException:
-            continue
-        verified_until = max(
-            verified_until,
-            int(payload.get("mfa_verified_until") or 0),
-        )
-    return verified_until
-
-
 async def get_current_user(
     request: Request,
     authorization: str | None = Header(default=None),
@@ -208,7 +183,7 @@ async def get_current_user(
     if valid_payloads:
         payload = max(
             valid_payloads,
-            key=lambda candidate: int(candidate.get("mfa_verified_until") or 0),
+            key=lambda candidate: int(candidate.get("iat") or 0),
         )
 
     if payload is None:
@@ -230,10 +205,8 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired.")
     current_user = UserOut(
         **user,
-        mfa_verified_until=int(payload.get("mfa_verified_until") or 0),
     )
     request.state.current_user = current_user
-    request.state.mfa_verified_until = int(payload.get("mfa_verified_until") or 0)
     return current_user
 
 
@@ -256,45 +229,7 @@ def is_super_admin_identifier(identifier: str) -> bool:
     return identifier.strip().lower() in _super_admin_identifiers()
 
 
-def _super_admin_totp_secrets() -> dict[str, str]:
-    raw = str(getattr(get_settings(), "super_admin_totp_secrets", "") or "")
-    try:
-        parsed = json.loads(raw or "{}")
-    except json.JSONDecodeError:
-        return {}
-    if not isinstance(parsed, dict):
-        return {}
-    return {
-        str(identifier).strip().lower(): str(secret).strip().replace(" ", "").upper()
-        for identifier, secret in parsed.items()
-        if str(identifier).strip() and str(secret).strip()
-    }
-
-
-def verify_super_admin_totp(identifier: str, code: str, *, now: int | None = None) -> bool:
-    normalized_identifier = identifier.strip().lower()
-    if not is_super_admin_identifier(normalized_identifier):
-        return True
-    secret = _super_admin_totp_secrets().get(normalized_identifier, "")
-    normalized_code = "".join(char for char in str(code or "") if char.isdigit())
-    if not secret or len(normalized_code) != 6:
-        return False
-    try:
-        key = base64.b32decode(secret, casefold=True)
-    except (binascii.Error, ValueError):
-        return False
-    current_counter = int(now if now is not None else time.time()) // 30
-    for counter in range(current_counter - 1, current_counter + 2):
-        digest = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
-        offset = digest[-1] & 0x0F
-        value = (int.from_bytes(digest[offset:offset + 4], "big") & 0x7FFFFFFF) % 1_000_000
-        if hmac.compare_digest(f"{value:06d}", normalized_code):
-            return True
-    return False
-
-
 async def require_super_admin(
-    request: Request,
     current_user: UserOut = Depends(get_current_user),
 ) -> UserOut:
     if (
@@ -302,6 +237,4 @@ async def require_super_admin(
         or not is_super_admin_identifier(current_user.identifier)
     ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superdashboard access required.")
-    if request_mfa_verified_until(request) < int(time.time()):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superdashboard MFA required.")
     return current_user

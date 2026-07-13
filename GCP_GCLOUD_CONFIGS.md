@@ -158,7 +158,7 @@ This builds and deploys only the backend. It:
   `asia-south1-docker.pkg.dev/project-e8d0eb79-8682-4bd9-b31/clinic-emr/clinic-emr-backend:<IMAGE_TAG>`
 - Deploys Cloud Run service `clinic-emr-backend`.
 - Attaches Cloud SQL instance `project-e8d0eb79-8682-4bd9-b31:asia-south1:clinic-emr-prod`.
-- Injects `DATABASE_URL`, `AUTH_SECRET`, and `SUPER_ADMIN_TOTP_SECRETS` from Secret Manager.
+- Injects `DATABASE_URL` and `AUTH_SECRET` from Secret Manager.
 - Sets non-secret backend runtime env vars, including `APP_ORIGIN`, `APP_ORIGINS`, Vertex AI settings, GCS bucket, and follow-up reminder settings.
 - Runs a backend `/health` check after deploy.
 
@@ -219,7 +219,6 @@ Required values:
 ```bash
 export DATABASE_URL_SECRET_NAME='clinic-emr-database-url'
 export AUTH_SECRET_NAME='clinic-emr-auth-secret'
-export SUPER_ADMIN_TOTP_SECRET_NAME='clinic-emr-super-admin-totp-secrets'
 export SUPER_ADMIN_IDENTIFIERS='dhairya911@gmail.com'
 ```
 

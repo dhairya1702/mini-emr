@@ -26,7 +26,6 @@ export default function LoginPage() {
   const [registerStep, setRegisterStep] = useState<1 | 2>(1);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  const [totpCode, setTotpCode] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [adminName, setAdminName] = useState("");
@@ -166,7 +165,6 @@ export default function LoginPage() {
         session = await api.login({
           identifier: identifier.trim(),
           password,
-          totp_code: totpCode.trim(),
         });
       } else {
         if (!adminName.trim()) {
@@ -299,19 +297,6 @@ export default function LoginPage() {
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="Minimum 12 characters"
                   />
-                  <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">
-                      Authenticator code <span className="font-normal text-slate-500">(superadmins only)</span>
-                    </span>
-                    <input
-                      value={totpCode}
-                      onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      placeholder="6-digit code"
-                      className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
-                    />
-                  </label>
                 </>
               ) : registerStep === 1 ? (
                 <>

@@ -15,7 +15,6 @@ from app.auth import (
     SESSION_EXPIRES_AT_HEADER,
     SESSION_TOKEN_HEADER,
     issue_session_headers,
-    request_mfa_verified_until,
 )
 from app.db import get_repository
 from app.postgres import get_postgres_connection_manager
@@ -163,10 +162,6 @@ async def refresh_authenticated_session(request: Request, call_next):
                 "role": current_user.role,
                 "identifier": current_user.identifier,
                 "session_version": current_user.session_version,
-                "mfa_verified_until": max(
-                    int(current_user.mfa_verified_until or 0),
-                    request_mfa_verified_until(request),
-                ),
             },
         )
     return response

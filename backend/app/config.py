@@ -14,7 +14,6 @@ class Settings(BaseSettings):
     app_origin: str = "http://127.0.0.1:3000"
     app_origins: str = ""
     super_admin_identifiers: str = ""
-    super_admin_totp_secrets: str = ""
     follow_up_reminder_runner_enabled: bool = False
     follow_up_reminder_interval_seconds: int = 300
     follow_up_reminder_lead_hours: int = 24
@@ -51,27 +50,6 @@ class Settings(BaseSettings):
                 + ", ".join(missing)
                 + ". Copy backend/.env.example to backend/.env and fill in the required values."
             )
-        super_admins = {
-            value.strip().lower()
-            for value in str(self.super_admin_identifiers or "").split(",")
-            if value.strip()
-        }
-        if super_admins:
-            import json
-
-            try:
-                configured = json.loads(self.super_admin_totp_secrets or "{}")
-            except json.JSONDecodeError as exc:
-                raise RuntimeError("SUPER_ADMIN_TOTP_SECRETS must be a JSON object.") from exc
-            if not isinstance(configured, dict) or any(
-                not str(configured.get(identifier) or "").strip()
-                for identifier in super_admins
-            ):
-                raise RuntimeError(
-                    "Every SUPER_ADMIN_IDENTIFIERS entry must have a base32 secret in "
-                    "SUPER_ADMIN_TOTP_SECRETS."
-                )
-
 
 @lru_cache
 def get_settings() -> Settings:

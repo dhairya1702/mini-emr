@@ -132,7 +132,6 @@ class UserRoleUpdate(BaseModel):
 
 class LoginRequest(UserBase):
     password: str = Field(min_length=1, max_length=128)
-    totp_code: str = Field(default="", max_length=8)
 
 
 class UserAccountUpdate(BaseModel):
@@ -158,7 +157,6 @@ class UserOut(UserBase):
     doctor_signature_content_type: str | None = None
     created_at: datetime
     session_version: int = Field(default=1, exclude=True)
-    mfa_verified_until: int = Field(default=0, exclude=True)
 
 
 class AuthResponse(BaseModel):

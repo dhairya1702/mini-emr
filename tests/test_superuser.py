@@ -1,11 +1,6 @@
 from __future__ import annotations
 
 import io
-import base64
-import hashlib
-import hmac
-import struct
-import time
 
 import pytest
 
@@ -17,29 +12,17 @@ def _restore_settings_cache():
     config_module.get_settings.cache_clear()
 
 
-def _totp_code(secret: str) -> str:
-    key = base64.b32decode(secret)
-    digest = hmac.new(key, struct.pack(">Q", int(time.time()) // 30), hashlib.sha1).digest()
-    offset = digest[-1] & 0x0F
-    value = (int.from_bytes(digest[offset:offset + 4], "big") & 0x7FFFFFFF) % 1_000_000
-    return f"{value:06d}"
-
-
 def _superadmin_headers(test_client, session: dict) -> dict[str, str]:
     login = test_client.post(
         "/auth/login",
         json={
             "identifier": session["user"]["identifier"],
             "password": "password123!",
-            "totp_code": _totp_code("JBSWY3DPEHPK3PXP"),
         },
     )
     assert login.status_code == 200, login.json()
     token = login.json()["token"]
-    assert int(auth_module.decode_access_token(token)["mfa_verified_until"]) > int(time.time())
     return auth_headers_for_token(token)
-    yield
-    config_module.get_settings.cache_clear()
 
 
 def test_superuser_orgs_requires_allowlisted_identifier(client, monkeypatch: pytest.MonkeyPatch):
@@ -54,26 +37,13 @@ def test_superuser_orgs_requires_allowlisted_identifier(client, monkeypatch: pyt
             {
                 "auth_secret": "test-secret",
                 "super_admin_identifiers": "owner@clinic.com",
-                "super_admin_totp_secrets": '{"owner@clinic.com":"JBSWY3DPEHPK3PXP"}',
             },
         )(),
     )
 
-    without_mfa = test_client.get("/superuser/orgs", headers=auth_headers_for_token(session["token"]))
-    assert without_mfa.status_code == 403
-    login_without_mfa = test_client.post(
-        "/auth/login",
-        json={
-            "identifier": session["user"]["identifier"],
-            "password": "password123!",
-        },
-    )
-    assert login_without_mfa.status_code == 401
-
     response = test_client.get("/superuser/orgs", headers=_superadmin_headers(test_client, session))
     refreshed = response.headers.get("x-session-token")
     assert refreshed
-    assert int(auth_module.decode_access_token(refreshed).get("mfa_verified_until") or 0) > int(time.time())
 
     assert response.status_code == 200, response.json()
     rows = response.json()
@@ -94,7 +64,6 @@ def test_superdashboard_can_create_and_list_customer_onboarding(client, monkeypa
             {
                 "auth_secret": "test-secret",
                 "super_admin_identifiers": "ops@clinic.com",
-                "super_admin_totp_secrets": '{"ops@clinic.com":"JBSWY3DPEHPK3PXP"}',
             },
         )(),
     )
@@ -151,7 +120,6 @@ def test_superuser_orgs_include_media_storage_usage(client, monkeypatch: pytest.
             {
                 "auth_secret": "test-secret",
                 "super_admin_identifiers": "owner-storage@clinic.com",
-                "super_admin_totp_secrets": '{"owner-storage@clinic.com":"JBSWY3DPEHPK3PXP"}',
             },
         )(),
     )
@@ -202,7 +170,6 @@ def test_superuser_orgs_denies_non_allowlisted_identifier(client, monkeypatch: p
             {
                 "auth_secret": "test-secret",
                 "super_admin_identifiers": "owner@clinic.com",
-                "super_admin_totp_secrets": '{"owner@clinic.com":"JBSWY3DPEHPK3PXP"}',
             },
         )(),
     )
