@@ -51,7 +51,7 @@ export default function Hero() {
         </div>
         <h1 className="hero__title">
           <span className="hero__line">
-            <span className="hero__word">The clinic,</span>
+            <span className="hero__word">Your clinic,</span>
           </span>
           <span className="hero__line">
             <span className="hero__word hero__word--glow">unified</span>

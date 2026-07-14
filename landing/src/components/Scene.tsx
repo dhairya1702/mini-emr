@@ -41,6 +41,15 @@ export default function Scene({ scene, index }: Props) {
           0
         );
 
+      // start any in-view "writing" animations only when the beat arrives
+      ScrollTrigger.create({
+        trigger: root.current,
+        start: "top 62%",
+        once: true,
+        onEnter: () =>
+          root.current?.querySelector(".viz")?.classList.add("is-writing"),
+      });
+
       // gentle parallax on the visual as the section travels through
       gsap.to(".scene__visual", {
         yPercent: -12,

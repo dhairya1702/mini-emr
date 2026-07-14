@@ -11,12 +11,11 @@ export type Scene = {
   chips?: string[];
   /** Visual variant rendered in the right/feature panel */
   visual:
-    | "queue"
     | "ai"
-    | "chart"
+    | "context"
+    | "practice"
     | "billing"
     | "followup"
-    | "intro"
     | "none";
 };
 
@@ -40,16 +39,6 @@ export const SCENES: Scene[] = [
     visual: "none",
   },
   {
-    id: "problem",
-    background:
-      "radial-gradient(100% 90% at 15% 20%, rgba(47,143,211,0.16) 0%, rgba(7,13,24,0) 55%), radial-gradient(90% 90% at 90% 80%, rgba(120,90,200,0.10) 0%, rgba(4,7,13,0) 60%), linear-gradient(160deg, #050912 0%, #0a1322 100%)",
-    glow: "#7c9bd8",
-    kicker: "The problem",
-    title: "Clinicians spend more time typing than caring.",
-    copy: "Notes after hours. Context buried across visits. Admin that never ends. The work that matters gets squeezed by the work that shouldn't.",
-    visual: "intro",
-  },
-  {
     id: "ai",
     background:
       "radial-gradient(120% 120% at 50% 0%, rgba(103,183,255,0.30) 0%, rgba(2,5,10,0) 50%), radial-gradient(90% 90% at 50% 120%, rgba(47,143,211,0.18) 0%, rgba(2,5,10,0) 55%), linear-gradient(180deg, #03060c 0%, #061021 100%)",
@@ -69,18 +58,18 @@ export const SCENES: Scene[] = [
     title: "It already knows the whole story.",
     copy: "Every visit, note, attachment and result, understood. Walk into the room and the AI surfaces what matters about this patient — before you ask.",
     chips: ["Timeline", "Summaries", "Recall"],
-    visual: "chart",
+    visual: "context",
   },
   {
     id: "queue",
     background:
       "radial-gradient(110% 100% at 80% 15%, rgba(47,143,211,0.22) 0%, rgba(7,13,24,0) 55%), radial-gradient(80% 80% at 10% 90%, rgba(103,183,255,0.10) 0%, rgba(4,7,13,0) 60%), linear-gradient(180deg, #060b16 0%, #081120 100%)",
     glow: "#67b7ff",
-    kicker: "03 — AI Assistance",
-    title: "An intelligence across every workflow.",
-    copy: "Draft letters, suggest follow-ups, flag the next step, keep the floor moving. The same intelligence runs from the front desk to the chart.",
-    chips: ["Queue", "Letters", "Next-best-step"],
-    visual: "queue",
+    kicker: "03 — Practice Management",
+    title: "The whole practice, on one schedule.",
+    copy: "Appointments, reception, staff and rooms — across every doctor and location, in one live view. The AI books, checks patients in, and keeps the day moving on its own.",
+    chips: ["Scheduling", "Multi-location", "Front desk"],
+    visual: "practice",
   },
   {
     id: "billing",

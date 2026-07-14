@@ -37,10 +37,10 @@ export default function Finale() {
       <div className="finale__inner">
         <h2 className="finale__title">
           <span className="finale__line">
-            <span className="finale__word">Less typing.</span>
+            <span className="finale__word">Your clinic,</span>
           </span>
           <span className="finale__line">
-            <span className="finale__word finale__word--glow">More care.</span>
+            <span className="finale__word finale__word--glow">running itself.</span>
           </span>
         </h2>
         <p className="finale__sub">
