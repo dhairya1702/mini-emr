@@ -40,6 +40,7 @@ class ClinicSettingsUpdate(BaseModel):
     document_template_margin_left: float | None = Field(default=None, ge=0, le=288)
     onboarding_required: bool | None = None
     onboarding_completed_at: datetime | None = None
+    users_allowed: int | None = Field(default=None, ge=1, le=500)
     workspace_mode: WorkspaceMode | None = None
 
     @field_validator("appointment_start_time", "appointment_end_time")
@@ -102,6 +103,7 @@ class ClinicSettingsOut(BaseModel):
     document_template_margin_left: float = DEFAULT_DOCUMENT_TEMPLATE_MARGIN
     onboarding_required: bool = False
     onboarding_completed_at: datetime | None = None
+    users_allowed: int = 2
     workspace_mode: WorkspaceMode = "solo"
     id: UUID
     org_id: UUID

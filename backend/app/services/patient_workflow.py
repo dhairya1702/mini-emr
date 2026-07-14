@@ -33,7 +33,7 @@ async def update_patient_workflow(
 ) -> PatientOut:
     updates = payload.model_dump(exclude_unset=True, mode="json")
     updated = await repo.update_patient(str(current_user.org_id), patient_id, updates)
-    if set(updates) - {"status", "billed"}:
+    if set(updates) - {"status", "billed", "queue_priority"}:
         await repo.mark_patient_summary_stale(str(current_user.org_id), patient_id)
     changed_fields = sorted(updates.keys())
     await record_patient_updated(repo, current_user, updated, changed_fields)

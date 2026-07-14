@@ -9,7 +9,7 @@ from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.patients import FollowUpCreate, FollowUpOut, FollowUpUpdate
 from app.services.audit_service import record_follow_up_created, record_follow_up_updated
 from app.services.followup_booking_service import create_follow_up_booking_token, decode_follow_up_booking_token
-from app.services.email_service import send_clinic_email_message
+from app.services.email_service import EmailDeliveryError, send_clinic_email_message
 
 FOLLOW_UP_SUGGESTION_DAYS = 7
 
@@ -95,8 +95,21 @@ async def _suggest_follow_up_slots(
     *,
     earliest_at: datetime | None = None,
 ) -> list[datetime]:
-    scheduled_appointments = await repo.list_appointments(org_id, status="scheduled", limit=500)
-    occupied = [_as_utc_minute(appointment["scheduled_for"]) for appointment in scheduled_appointments]
+    timezone = get_clinic_timezone(clinic_settings)
+    now_local = clinic_now(clinic_settings).replace(second=0, microsecond=0)
+    earliest_local = now_local
+    if earliest_at is not None:
+        earliest_local = max(earliest_local, as_clinic_time(earliest_at, clinic_settings).replace(second=0, microsecond=0))
+    window_start = datetime.combine(earliest_local.date(), datetime.min.time(), tzinfo=timezone).astimezone(UTC)
+    window_end = (window_start.astimezone(timezone) + timedelta(days=FOLLOW_UP_SUGGESTION_DAYS)).astimezone(UTC)
+    occupied = [
+        _as_utc_minute(value)
+        for value in await repo.list_scheduled_appointment_times(
+            org_id,
+            window_start.isoformat(),
+            window_end.isoformat(),
+        )
+    ]
     occupied_exact = set(occupied)
     capacity = _appointments_per_hour(clinic_settings)
     slot_interval_minutes = 60 // capacity
@@ -107,11 +120,6 @@ async def _suggest_follow_up_slots(
         bucket = _hour_bucket(appointment_time, clinic_settings)
         occupied_by_hour[bucket] = occupied_by_hour.get(bucket, 0) + 1
     suggestions: list[datetime] = []
-    timezone = get_clinic_timezone(clinic_settings)
-    now_local = clinic_now(clinic_settings).replace(second=0, microsecond=0)
-    earliest_local = now_local
-    if earliest_at is not None:
-        earliest_local = max(earliest_local, as_clinic_time(earliest_at, clinic_settings).replace(second=0, microsecond=0))
     for day_offset in range(FOLLOW_UP_SUGGESTION_DAYS):
         day = (earliest_local + timedelta(days=day_offset)).date()
         if day.weekday() == 6:
@@ -144,7 +152,7 @@ async def _send_follow_up_email_if_needed(repo: AppRepository, current_user: Use
     patient = await repo.get_patient(str(current_user.org_id), str(follow_up["patient_id"]))
     recipient = str(patient.get("email") or "").strip()
     if not recipient:
-        return
+        raise RuntimeError("Patient email is not configured.")
     clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
     scheduled_for = format_display_datetime(follow_up["scheduled_for"], str(clinic_settings.get("timezone") or "UTC"))
@@ -163,16 +171,14 @@ async def _send_follow_up_email_if_needed(repo: AppRepository, current_user: Use
         booking_link=booking_link,
         booking_window=_format_booking_window(clinic_settings),
     )
-    try:
-        await send_clinic_email_message(
-            clinic_settings=clinic_settings,
-            recipient=recipient,
-            subject=subject,
-            text_content=text_content,
-        )
-        await repo.mark_follow_up_reminder_sent(str(current_user.org_id), str(follow_up["id"]))
-    except RuntimeError:
-        return
+    await send_clinic_email_message(
+        clinic_settings=clinic_settings,
+        recipient=recipient,
+        subject=subject,
+        text_content=text_content,
+        message_id=f"<follow-up-{follow_up['id']}@clinicos>",
+    )
+    await repo.mark_follow_up_reminder_sent(str(current_user.org_id), str(follow_up["id"]))
 
 
 async def send_due_follow_up_emails_workflow(
@@ -185,13 +191,20 @@ async def send_due_follow_up_emails_workflow(
         1,
         min(int(getattr(get_settings(), "follow_up_reminder_lead_hours", 24)), 168),
     )
-    due_follow_ups = await repo.list_due_follow_ups(
+    due_follow_ups = await repo.claim_due_follow_ups(
         str(current_user.org_id),
         now.isoformat(),
         (now + timedelta(hours=lead_hours)).isoformat(),
     )
     for follow_up in due_follow_ups:
-        await _send_follow_up_email_if_needed(repo, current_user, follow_up)
+        try:
+            await _send_follow_up_email_if_needed(repo, current_user, follow_up)
+        except (RuntimeError, EmailDeliveryError) as exc:
+            await repo.release_follow_up_reminder_claim(
+                str(current_user.org_id),
+                str(follow_up["id"]),
+                str(exc),
+            )
 
 
 async def get_follow_up_booking_context_workflow(
@@ -285,7 +298,10 @@ async def create_follow_up_workflow(
         min(int(getattr(get_settings(), "follow_up_reminder_lead_hours", 24)), 168),
     )
     if scheduled_for <= datetime.now(UTC) + timedelta(hours=lead_hours):
-        await _send_follow_up_email_if_needed(repo, current_user, created)
+        try:
+            await _send_follow_up_email_if_needed(repo, current_user, created)
+        except (RuntimeError, EmailDeliveryError):
+            pass
     return FollowUpOut(**created)
 
 
@@ -309,5 +325,8 @@ async def update_follow_up_workflow(
             min(int(getattr(get_settings(), "follow_up_reminder_lead_hours", 24)), 168),
         )
         if _as_utc_minute(scheduled_at) <= datetime.now(UTC) + timedelta(hours=lead_hours):
-            await _send_follow_up_email_if_needed(repo, current_user, updated)
+            try:
+                await _send_follow_up_email_if_needed(repo, current_user, updated)
+            except (RuntimeError, EmailDeliveryError):
+                pass
     return FollowUpOut(**updated)

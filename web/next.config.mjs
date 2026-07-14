@@ -108,6 +108,18 @@ const nextConfig = {
             key: "Referrer-Policy",
             value: "strict-origin-when-cross-origin",
           },
+          ...(!isDev
+            ? [
+                {
+                  key: "Strict-Transport-Security",
+                  value: "max-age=31536000; includeSubDomains",
+                },
+                {
+                  key: "Permissions-Policy",
+                  value: "camera=(), microphone=(), geolocation=(), payment=()",
+                },
+              ]
+            : []),
         ],
       },
     ];

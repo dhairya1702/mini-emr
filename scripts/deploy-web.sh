@@ -6,6 +6,7 @@ source "$(dirname "$0")/deploy-common.sh"
 
 deploy_root_dir
 ensure_expected_gcloud_target
+ensure_clean_release_tree
 
 IMAGE_TAG="$(resolve_image_tag)"
 BACKEND_URL="${BACKEND_URL:-$(resolve_backend_url)}"
@@ -28,7 +29,9 @@ gcloud run deploy "$WEB_SERVICE" \
   --project="$PROJECT_ID" \
   --region="$REGION" \
   --image="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/clinic-emr-web:${IMAGE_TAG}" \
-  --allow-unauthenticated
+  --allow-unauthenticated \
+  --no-traffic
 
-CURRENT_WEB_URL="$(resolve_web_url)"
-echo "Web deployed: $CURRENT_WEB_URL"
+LATEST_WEB_REVISION="$(gcloud run services describe "$WEB_SERVICE" --project="$PROJECT_ID" --region="$REGION" --format='value(status.latestCreatedRevisionName)')"
+echo "Prepared no-traffic web revision: $LATEST_WEB_REVISION"
+echo "Production traffic was not changed."

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from test_app import auth_headers_for_token, client, register_test_clinic
 
 
@@ -31,7 +33,10 @@ def test_audit_events_list_tracks_core_changes(client):
 
     create_follow_up = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
-        json={"scheduled_for": "2026-07-10T10:30:00+00:00", "notes": "Audit trail check"},
+        json={
+            "scheduled_for": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+            "notes": "Audit trail check",
+        },
         headers=headers,
     )
     assert create_follow_up.status_code == 201

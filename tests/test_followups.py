@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -203,6 +204,32 @@ def test_internal_follow_up_reminder_runner_processes_orgs(client, monkeypatch):
     assert response.json()["processed_orgs"] == 1
 
 
+def test_due_follow_up_claim_cannot_be_claimed_twice(client):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="reminder-claim@clinic.com", clinic_name="Reminder Claim Clinic")
+    headers = auth_headers_for_token(session["token"])
+    patient = test_client.post(
+        "/patients",
+        json={"name": "Reminder Patient", "phone": "5550199999", "reason": "Review"},
+        headers=headers,
+    ).json()
+    created = test_client.post(
+        f"/patients/{patient['id']}/follow-ups",
+        json={"scheduled_for": _future_iso(days=2), "notes": "Claim once"},
+        headers=headers,
+    )
+    assert created.status_code == 201
+    org_id = session["user"]["org_id"]
+    start = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+    end = (datetime.now(UTC) + timedelta(days=3)).isoformat()
+
+    first = asyncio.run(repo.claim_due_follow_ups(org_id, start, end))
+    second = asyncio.run(repo.claim_due_follow_ups(org_id, start, end))
+
+    assert len(first) == 1
+    assert second == []
+
+
 def test_internal_follow_up_reminder_runner_reports_missing_config(client, monkeypatch):
     test_client, _repo = client
     register_test_clinic(test_client, identifier="scheduler-missing@clinic.com", clinic_name="Scheduler Missing Clinic")
@@ -253,10 +280,16 @@ def test_follow_up_listing_uses_clinic_local_date_boundaries(client):
         headers=headers,
     ).json()
 
+    scheduled_for = (datetime.now(UTC) + timedelta(days=2)).replace(
+        hour=19,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
     create_follow_up = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
         json={
-            "scheduled_for": "2026-07-10T19:00:00+00:00",
+            "scheduled_for": scheduled_for.isoformat(),
             "notes": "Midnight boundary review",
         },
         headers=headers,
@@ -264,7 +297,7 @@ def test_follow_up_listing_uses_clinic_local_date_boundaries(client):
     assert create_follow_up.status_code == 201
 
     list_follow_ups = test_client.get(
-        "/follow-ups?scheduled_date=2026-07-11",
+        f"/follow-ups?scheduled_date={(scheduled_for + timedelta(hours=5, minutes=30)).date().isoformat()}",
         headers=headers,
     )
     assert list_follow_ups.status_code == 200

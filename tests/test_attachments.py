@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 from PIL import Image
+from pypdf import PdfWriter
 
 from test_app import auth_headers_for_token, client, register_test_clinic
 from app import storage as storage_module
@@ -19,7 +20,15 @@ def _image_bytes(image_format: str) -> bytes:
 
 MP4_BYTES = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 20
 WEBM_BYTES = b"\x1aE\xdf\xa3" + b"\x00" * 20
-PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n"
+def _pdf_bytes() -> bytes:
+    output = BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=595, height=842)
+    writer.write(output)
+    return output.getvalue()
+
+
+PDF_BYTES = _pdf_bytes()
 JPEG_BYTES = _image_bytes("JPEG")
 WEBP_BYTES = _image_bytes("WEBP")
 
@@ -125,6 +134,20 @@ def test_patient_document_attachment_upload_list_and_download(client):
     assert downloaded.status_code == 200
     assert downloaded.content == PDF_BYTES
     assert repo.patient_attachment_files[attachment["storage_path"]] == PDF_BYTES
+
+
+def test_patient_attachment_rejects_malformed_pdf(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="bad-pdf@clinic.com", clinic_name="Bad PDF Clinic")
+    headers = auth_headers_for_token(session["token"])
+    patient = _create_patient(test_client, headers)
+    upload = test_client.post(
+        f"/patients/{patient['id']}/attachments",
+        files={"file": ("unsafe.pdf", b"%PDF-1.4 malformed", "application/pdf")},
+        headers=headers,
+    )
+    assert upload.status_code == 400
+    assert "malformed or unsafe" in upload.json()["detail"]
 
 
 def test_patient_attachment_delete_removes_metadata_and_storage(client):

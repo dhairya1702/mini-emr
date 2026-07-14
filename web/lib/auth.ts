@@ -46,7 +46,10 @@ function removeKeysWithPrefixes(storage: Storage | null, prefixes: string[]) {
 
 export const authStorage = {
   getToken(): string {
-    return getSessionStorage()?.getItem(TOKEN_KEY) || "";
+    // Browser authentication is cookie-first. Clear tokens left by older
+    // builds so JavaScript never retains a reusable bearer credential.
+    getSessionStorage()?.removeItem(TOKEN_KEY);
+    return "";
   },
   getUser() {
     if (!isBrowser()) {
@@ -85,24 +88,15 @@ export const authStorage = {
     if (!isBrowser()) {
       return;
     }
-    if (session.token) {
-      getSessionStorage()?.setItem(TOKEN_KEY, session.token);
-    }
+    getSessionStorage()?.removeItem(TOKEN_KEY);
     getSessionStorage()?.setItem(USER_KEY, JSON.stringify(session.user));
     if (expiresAtMs && Number.isFinite(expiresAtMs)) {
       getSessionStorage()?.setItem(SESSION_EXPIRY_KEY, String(expiresAtMs));
     }
   },
   setToken(token: string) {
-    const storage = getSessionStorage();
-    if (!storage) {
-      return;
-    }
-    if (token) {
-      storage.setItem(TOKEN_KEY, token);
-      return;
-    }
-    storage.removeItem(TOKEN_KEY);
+    void token;
+    getSessionStorage()?.removeItem(TOKEN_KEY);
   },
   setUser(user: AuthResponse["user"] | null) {
     if (!isBrowser()) {

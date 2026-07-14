@@ -14,6 +14,10 @@ from app.schema_domains.admin import (
     CustomerOnboardingCreate,
     CustomerOnboardingOut,
     CustomerOnboardingUpdate,
+    OrganizationWorkspaceModeOut,
+    OrganizationWorkspaceModeUpdate,
+    OrganizationUsersAllowedOut,
+    OrganizationUsersAllowedUpdate,
     PlatformErrorOut,
     SuperdashboardDashboardOut,
     SuperdashboardMetricPointOut,
@@ -200,6 +204,7 @@ async def create_superdashboard_customer(
             customer_name=payload.customer_name.strip(),
             phone=normalize_phone_number(payload.phone),
             users_allowed=payload.users_allowed,
+            workspace_mode=payload.workspace_mode,
             created_by=str(current_user.id),
         )
     except Exception as exc:
@@ -214,15 +219,56 @@ async def update_superdashboard_customer(
     current_user: UserOut = Depends(require_super_admin),
     repo: AppRepository = Depends(get_repository),
 ) -> CustomerOnboardingOut:
-    del current_user
     updates = payload.model_dump(exclude_unset=True)
     if "phone" in updates and updates["phone"] is not None:
         updates["phone"] = normalize_phone_number(updates["phone"])
     try:
-        row = await repo.update_customer_onboarding(str(customer_onboarding_id), updates)
+        existing_rows = await repo.list_customer_onboarding()
+        existing = next((item for item in existing_rows if str(item["id"]) == str(customer_onboarding_id)), None)
+        await repo.update_customer_onboarding(str(customer_onboarding_id), updates)
+        refreshed_rows = await repo.list_customer_onboarding()
+        row = next((item for item in refreshed_rows if str(item["id"]) == str(customer_onboarding_id)), None)
+        if row is None:
+            raise ValueError("Customer onboarding record not found.")
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return CustomerOnboardingOut(**{**row, "users_used": row.get("users_used", 0), "claimed_org_name": row.get("claimed_org_name")})
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    if (
+        existing
+        and existing.get("claimed_org_id")
+        and "workspace_mode" in updates
+        and existing.get("workspace_mode") != row.get("workspace_mode")
+    ):
+        await repo.create_audit_event(
+            str(existing["claimed_org_id"]),
+            str(current_user.id),
+            current_user.name or current_user.identifier,
+            "organization",
+            str(existing["claimed_org_id"]),
+            "workspace_mode_changed",
+            f"ClinicOS Ops changed workspace mode from {existing.get('workspace_mode')} to {row.get('workspace_mode')}.",
+            {"previous_mode": existing.get("workspace_mode"), "workspace_mode": row.get("workspace_mode")},
+        )
+    if (
+        existing
+        and existing.get("claimed_org_id")
+        and "users_allowed" in updates
+        and existing.get("users_allowed") != row.get("users_allowed")
+    ):
+        await repo.create_audit_event(
+            str(existing["claimed_org_id"]),
+            str(current_user.id),
+            current_user.name or current_user.identifier,
+            "organization",
+            str(existing["claimed_org_id"]),
+            "user_limit_changed",
+            f"ClinicOS Ops changed the user limit from {existing.get('users_allowed')} to {row.get('users_allowed')}.",
+            {
+                "previous_users_allowed": existing.get("users_allowed"),
+                "users_allowed": row.get("users_allowed"),
+            },
+        )
+    return CustomerOnboardingOut(**row)
 
 
 @router.post("/superdashboard/onboarding/customers/{customer_onboarding_id}/disable", response_model=CustomerOnboardingOut)
@@ -285,6 +331,65 @@ async def get_superuser_org_detail(
         ),
         recent_audit_events=[AuditEventOut(**row) for row in recent_audit_events],
     )
+
+
+@router.patch("/superdashboard/orgs/{org_id}/workspace-mode", response_model=OrganizationWorkspaceModeOut)
+async def update_superdashboard_org_workspace_mode(
+    org_id: UUID,
+    payload: OrganizationWorkspaceModeUpdate,
+    current_user: UserOut = Depends(require_super_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> OrganizationWorkspaceModeOut:
+    settings = await repo.get_clinic_settings(str(org_id))
+    if not settings:
+        raise HTTPException(status_code=404, detail="Organization settings not found.")
+    previous_mode = str(settings.get("workspace_mode") or "solo")
+    try:
+        saved_mode = await repo.update_organization_workspace_mode(str(org_id), payload.workspace_mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if saved_mode != previous_mode:
+        await repo.create_audit_event(
+            str(org_id),
+            str(current_user.id),
+            current_user.name or current_user.identifier,
+            "organization",
+            str(org_id),
+            "workspace_mode_changed",
+            f"ClinicOS Ops changed workspace mode from {previous_mode} to {saved_mode}.",
+            {"previous_mode": previous_mode, "workspace_mode": saved_mode},
+        )
+    return OrganizationWorkspaceModeOut(org_id=org_id, workspace_mode=saved_mode)
+
+
+@router.patch("/superdashboard/orgs/{org_id}/users-allowed", response_model=OrganizationUsersAllowedOut)
+async def update_superdashboard_org_users_allowed(
+    org_id: UUID,
+    payload: OrganizationUsersAllowedUpdate,
+    current_user: UserOut = Depends(require_super_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> OrganizationUsersAllowedOut:
+    settings = await repo.get_clinic_settings(str(org_id))
+    if not settings:
+        raise HTTPException(status_code=404, detail="Organization settings not found.")
+    previous_limit = int(settings.get("users_allowed") or 2)
+    try:
+        saved_limit = await repo.update_organization_users_allowed(str(org_id), payload.users_allowed)
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    if saved_limit != previous_limit:
+        await repo.create_audit_event(
+            str(org_id),
+            str(current_user.id),
+            current_user.name or current_user.identifier,
+            "organization",
+            str(org_id),
+            "user_limit_changed",
+            f"ClinicOS Ops changed the user limit from {previous_limit} to {saved_limit}.",
+            {"previous_users_allowed": previous_limit, "users_allowed": saved_limit},
+        )
+    return OrganizationUsersAllowedOut(org_id=org_id, users_allowed=saved_limit)
 
 
 @router.get("/superdashboard/errors", response_model=list[PlatformErrorOut])

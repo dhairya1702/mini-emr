@@ -57,14 +57,6 @@ export default function LoginPage() {
         return;
       }
 
-      if (!authStorage.getToken()) {
-        if (expiredReason && active) {
-          authStorage.clear();
-          setError(SESSION_EXPIRED_MESSAGE);
-        }
-        return;
-      }
-
       try {
         await api.getCurrentUser();
         if (active) {
@@ -81,9 +73,13 @@ export default function LoginPage() {
           } else if (
             error.message === "Invalid token." ||
             error.message === "Token expired." ||
-            error.message === "Session expired."
+            error.message === "Session expired." ||
+            error.message === "Authentication required."
           ) {
             authStorage.clear();
+            if (expiredReason) {
+              setError(SESSION_EXPIRED_MESSAGE);
+            }
           }
         }
       }

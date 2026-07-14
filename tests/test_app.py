@@ -262,6 +262,8 @@ class FakeRepo:
                 {
                     "org_id": org_id,
                     "clinic_name": clinic_settings.get("clinic_name") or org["name"],
+                    "workspace_mode": clinic_settings.get("workspace_mode") or "solo",
+                    "users_allowed": int(clinic_settings.get("users_allowed") or 2),
                     "created_at": org["created_at"],
                     "user_count": len(users),
                     "patient_count": len(patients),
@@ -283,7 +285,8 @@ class FakeRepo:
         customer_name: str,
         phone: str,
         users_allowed: int,
-        created_by: str | None,
+        workspace_mode: str = "solo",
+        created_by: str | None = None,
     ) -> dict:
         if customer_id in self.customer_onboarding:
             raise ValueError("Customer onboarding record already exists.")
@@ -294,6 +297,7 @@ class FakeRepo:
             "customer_name": customer_name,
             "phone": _normalize_phone(phone),
             "users_allowed": users_allowed,
+            "workspace_mode": workspace_mode,
             "status": "pending",
             "claimed_org_id": None,
             "claimed_at": None,
@@ -364,7 +368,13 @@ class FakeRepo:
         organization = await self.create_organization(str(clinic_settings.clinic_name or ""))
         org_id = str(organization["id"])
         try:
-            await self.create_clinic_settings(org_id, clinic_settings)
+            provisioned_settings = clinic_settings.model_copy(
+                update={
+                    "workspace_mode": onboarding.get("workspace_mode") or "solo",
+                    "users_allowed": int(onboarding.get("users_allowed") or 2),
+                }
+            )
+            await self.create_clinic_settings(org_id, provisioned_settings)
             created = await self.create_user(
                 org_id=org_id,
                 identifier=identifier,
@@ -388,15 +398,50 @@ class FakeRepo:
         for row in self.customer_onboarding.values():
             if row["id"] != onboarding_id:
                 continue
-            for key in ("customer_name", "phone", "users_allowed", "status"):
+            if "users_allowed" in payload and row.get("claimed_org_id"):
+                users_used = await self.count_users_for_org(row["claimed_org_id"])
+                if int(payload["users_allowed"]) < users_used:
+                    raise ValueError(f"User limit cannot be lower than the {users_used} existing users.")
+            for key in ("customer_name", "phone", "users_allowed", "workspace_mode", "status"):
                 if key in payload and payload[key] is not None:
                     row[key] = _normalize_phone(payload[key]) if key == "phone" else payload[key]
+            if "workspace_mode" in payload and row.get("claimed_org_id"):
+                self.clinic_settings[row["claimed_org_id"]]["workspace_mode"] = row["workspace_mode"]
+            if "users_allowed" in payload and row.get("claimed_org_id"):
+                self.clinic_settings[row["claimed_org_id"]]["users_allowed"] = int(row["users_allowed"])
             row["updated_at"] = _now()
             return dict(row)
         raise ValueError("Customer onboarding record not found.")
 
     async def disable_customer_onboarding(self, onboarding_id: str) -> dict:
         return await self.update_customer_onboarding(onboarding_id, {"status": "disabled"})
+
+    async def update_organization_workspace_mode(self, org_id: str, workspace_mode: str) -> str:
+        settings = self.clinic_settings.get(org_id)
+        if not settings:
+            raise ValueError("Organization settings not found.")
+        settings["workspace_mode"] = workspace_mode
+        settings["updated_at"] = _now()
+        for row in self.customer_onboarding.values():
+            if row.get("claimed_org_id") == org_id:
+                row["workspace_mode"] = workspace_mode
+                row["updated_at"] = _now()
+        return workspace_mode
+
+    async def update_organization_users_allowed(self, org_id: str, users_allowed: int) -> int:
+        settings = self.clinic_settings.get(org_id)
+        if not settings:
+            raise ValueError("Organization settings not found.")
+        users_used = await self.count_users_for_org(org_id)
+        if users_allowed < users_used:
+            raise ValueError(f"User limit cannot be lower than the {users_used} existing users.")
+        settings["users_allowed"] = users_allowed
+        settings["updated_at"] = _now()
+        for row in self.customer_onboarding.values():
+            if row.get("claimed_org_id") == org_id:
+                row["users_allowed"] = users_allowed
+                row["updated_at"] = _now()
+        return users_allowed
 
     async def count_users_for_org(self, org_id: str) -> int:
         return sum(1 for user in self.users.values() if user["org_id"] == org_id)
@@ -751,6 +796,9 @@ class FakeRepo:
             "address": payload.address.strip(),
             "status": "waiting",
             "billed": False,
+            "queue_priority": "normal",
+            "stage_entered_at": created_at,
+            "queue_position": self._next_queue_position(org_id, "waiting"),
             "profile_photo_storage_path": None,
             "profile_photo_content_type": None,
             "profile_photo_updated_at": None,
@@ -768,6 +816,9 @@ class FakeRepo:
 
     async def _record_patient_visit(self, org_id: str, patient_id: str, payload, source: str, appointment_id: str | None = None) -> dict:
         visit_id = str(uuid4())
+        appointment = self.appointments.get(appointment_id, {}) if appointment_id else {}
+        follow_up_id = appointment.get("follow_up_id")
+        visit_kind = "follow_up" if follow_up_id else "new"
         visit = {
             "id": visit_id,
             "org_id": org_id,
@@ -778,15 +829,28 @@ class FakeRepo:
             "address": payload.address.strip(),
             "reason": payload.reason,
             "date_of_birth": getattr(payload, "date_of_birth", None),
+            "sex_at_birth": getattr(payload, "sex_at_birth", None),
+            "gender_identity": getattr(payload, "gender_identity", ""),
             "age": payload.age if payload.age is not None else calculate_age_from_dob(getattr(payload, "date_of_birth", None)),
             "weight": payload.weight,
             "height": payload.height,
             "temperature": payload.temperature,
             "source": source,
             "appointment_id": appointment_id,
+            "follow_up_id": follow_up_id,
+            "visit_kind": visit_kind,
             "created_at": _now(),
         }
         self.patient_visits[visit_id] = visit
+        patient = self.patients[patient_id]
+        patient["current_visit_id"] = visit_id
+        patient["current_visit"] = {
+            "id": visit_id,
+            "kind": visit_kind,
+            "source": source,
+            "scheduled_for": self.appointments.get(appointment_id, {}).get("scheduled_for") if appointment_id else None,
+        }
+        patient["billing_summary"] = None
         return visit
 
     async def list_patient_matches_by_phone(self, org_id: str, phone: str, limit: int = 10) -> list[dict]:
@@ -830,6 +894,7 @@ class FakeRepo:
             "status": "scheduled",
             "checked_in_patient_id": None,
             "checked_in_at": None,
+            "follow_up_id": None,
             "created_at": _now(),
         }
         self.appointments[appointment_id] = appointment
@@ -888,6 +953,22 @@ class FakeRepo:
             if appointment["org_id"] == org_id and appointment["checked_in_patient_id"] == patient_id
         ]
 
+    async def list_scheduled_appointment_times(
+        self,
+        org_id: str,
+        scheduled_from: str,
+        scheduled_to: str,
+    ) -> list[datetime]:
+        start = _as_utc_minute(scheduled_from)
+        end = _as_utc_minute(scheduled_to)
+        return [
+            _as_utc_minute(appointment["scheduled_for"])
+            for appointment in self.appointments.values()
+            if appointment["org_id"] == org_id
+            and appointment["status"] == "scheduled"
+            and start <= _as_utc_minute(appointment["scheduled_for"]) < end
+        ]
+
     async def list_potential_check_in_matches(self, org_id: str, appointment_id: str) -> list[dict]:
         appointment = self.appointments[appointment_id]
         return [
@@ -910,6 +991,7 @@ class FakeRepo:
 
         if payload.existing_patient_id is not None:
             patient = self.patients[str(payload.existing_patient_id)]
+            entered_at = _now()
             patient.update({
                 "name": appointment["name"],
                 "phone": appointment["phone"],
@@ -917,13 +999,18 @@ class FakeRepo:
                 "address": appointment["address"],
                 "reason": appointment["reason"],
                 "date_of_birth": appointment.get("date_of_birth"),
+                "sex_at_birth": appointment.get("sex_at_birth"),
+                "gender_identity": appointment.get("gender_identity", ""),
                 "age": appointment["age"],
                 "weight": appointment["weight"],
                 "height": appointment["height"],
                 "temperature": appointment["temperature"],
                 "status": "waiting",
                 "billed": False,
-                "last_visit_at": _now(),
+                "queue_priority": "normal",
+                "stage_entered_at": entered_at,
+                "queue_position": self._next_queue_position(org_id, "waiting", exclude_id=patient["id"]),
+                "last_visit_at": entered_at,
             })
         else:
             patient_id = str(uuid4())
@@ -937,12 +1024,17 @@ class FakeRepo:
                 "address": appointment["address"],
                 "reason": appointment["reason"],
                 "date_of_birth": appointment.get("date_of_birth"),
+                "sex_at_birth": appointment.get("sex_at_birth"),
+                "gender_identity": appointment.get("gender_identity", ""),
                 "age": appointment["age"],
                 "weight": appointment["weight"],
                 "height": appointment["height"],
                 "temperature": appointment["temperature"],
                 "status": "waiting",
                 "billed": False,
+                "queue_priority": "normal",
+                "stage_entered_at": created_at,
+                "queue_position": self._next_queue_position(org_id, "waiting"),
                 "profile_photo_storage_path": None,
                 "profile_photo_content_type": None,
                 "profile_photo_updated_at": None,
@@ -964,6 +1056,8 @@ class FakeRepo:
                     "address": appointment["address"],
                     "reason": appointment["reason"],
                     "date_of_birth": appointment.get("date_of_birth"),
+                    "sex_at_birth": appointment.get("sex_at_birth"),
+                    "gender_identity": appointment.get("gender_identity", ""),
                     "age": appointment["age"],
                     "weight": appointment["weight"],
                     "height": appointment["height"],
@@ -1030,8 +1124,7 @@ class FakeRepo:
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]:
-        rows = sorted(
-            [
+        rows = [
                 patient
                 for patient in self.patients.values()
                 if patient["org_id"] == org_id
@@ -1040,11 +1133,39 @@ class FakeRepo:
                     or patient["status"] in {"waiting", "consultation"}
                     or (patient["status"] == "done" and not patient["billed"])
                 )
-            ],
-            key=lambda patient: patient["last_visit_at"],
-            reverse=True,
+            ]
+        rows.sort(
+            key=lambda patient: (
+                {"waiting": 0, "consultation": 1, "done": 2}[patient["status"]],
+                0 if patient.get("queue_priority", "normal") == "urgent" else 1,
+                int(patient.get("queue_position") or 0),
+            )
         )
-        return rows[offset : offset + limit if limit is not None else None]
+        selected = rows[offset : offset + limit if limit is not None else None]
+        for patient in selected:
+            visit_id = patient.get("current_visit_id")
+            matching = [invoice for invoice in self.invoices.values() if invoice.get("visit_id") == visit_id]
+            if matching:
+                invoice = max(matching, key=lambda row: row["created_at"])
+                patient["billing_summary"] = {
+                    "invoice_id": invoice["id"],
+                    "total": invoice["total"],
+                    "payment_status": invoice["payment_status"],
+                    "balance_due": invoice["balance_due"],
+                    "item_count": len(invoice["items"]),
+                    "medicine_count": sum(1 for item in invoice["items"] if item["item_type"] == "medicine"),
+                    "completed_at": invoice["completed_at"],
+                    "sent_at": invoice["sent_at"],
+                }
+        return selected
+
+    def _next_queue_position(self, org_id: str, status: str, *, exclude_id: str = "") -> int:
+        positions = [
+            int(patient.get("queue_position") or 0)
+            for patient_id, patient in self.patients.items()
+            if patient_id != exclude_id and patient["org_id"] == org_id and patient["status"] == status
+        ]
+        return max(positions, default=0) + 1
 
     async def list_patients_by_ids(self, org_id: str, patient_ids: list[str]) -> list[dict]:
         allowed = {str(patient_id) for patient_id in patient_ids}
@@ -1067,12 +1188,17 @@ class FakeRepo:
                 "address": payload.address.strip(),
                 "reason": payload.reason,
                 "date_of_birth": getattr(payload, "date_of_birth", None),
+                "sex_at_birth": getattr(payload, "sex_at_birth", None),
+                "gender_identity": getattr(payload, "gender_identity", ""),
                 "age": payload.age if payload.age is not None else calculate_age_from_dob(getattr(payload, "date_of_birth", None)),
                 "weight": payload.weight,
                 "height": payload.height,
                 "temperature": payload.temperature,
                 "status": "waiting",
                 "billed": False,
+                "queue_priority": "normal",
+                "stage_entered_at": updated_at,
+                "queue_position": self._next_queue_position(org_id, "waiting", exclude_id=patient_id),
                 "last_visit_at": updated_at,
                 "ai_summary_stale": True,
                 "ai_summary_revision": int(patient.get("ai_summary_revision") or 0) + 1,
@@ -1088,8 +1214,71 @@ class FakeRepo:
         updates = dict(payload)
         if "phone" in updates and updates["phone"] is not None:
             updates["phone"] = _normalize_phone(updates["phone"])
+        next_status = updates.get("status", patient["status"])
+        next_priority = updates.get("queue_priority", patient.get("queue_priority", "normal"))
+        if next_status != patient["status"]:
+            updates["stage_entered_at"] = _now()
+            updates["queue_position"] = self._next_queue_position(org_id, next_status, exclude_id=patient_id)
+        elif next_priority != patient.get("queue_priority", "normal"):
+            matching_positions = [
+                int(row.get("queue_position") or 0)
+                for row_id, row in self.patients.items()
+                if row_id != patient_id
+                and row["org_id"] == org_id
+                and row["status"] == patient["status"]
+                and row.get("queue_priority", "normal") == next_priority
+            ]
+            updates["queue_position"] = min(matching_positions, default=1) - 1
         patient.update(updates)
         return patient
+
+    async def reorder_queue(
+        self,
+        org_id: str,
+        columns: dict[str, list[str]],
+        *,
+        role: str,
+    ) -> list[dict]:
+        statuses = ("waiting", "consultation", "done")
+        submitted = [patient_id for status in statuses for patient_id in columns.get(status, [])]
+        if len(submitted) != len(set(submitted)):
+            raise ValueError("A patient can appear only once in the queue order.")
+        active = {
+            patient_id: patient
+            for patient_id, patient in self.patients.items()
+            if patient["org_id"] == org_id
+            and (patient["status"] in {"waiting", "consultation"} or (patient["status"] == "done" and not patient["billed"]))
+        }
+        if any(patient_id not in active for patient_id in submitted):
+            raise ValueError("Queue order includes a patient that is not active for this clinic.")
+        target_by_id = {
+            patient_id: status
+            for status in statuses
+            for patient_id in columns.get(status, [])
+        }
+        for patient_id, target_status in target_by_id.items():
+            source_status = active[patient_id]["status"]
+            if source_status == target_status:
+                continue
+            if role != "admin" or (source_status, target_status) not in {
+                ("waiting", "consultation"),
+                ("consultation", "done"),
+            }:
+                raise ValueError("Patients can only move through the queue stages in order.")
+        for status in statuses:
+            ordered_ids = list(columns.get(status, [])) + [
+                patient_id
+                for patient_id, patient in active.items()
+                if patient_id not in target_by_id and patient["status"] == status
+            ]
+            ordered_ids.sort(key=lambda patient_id: 0 if active[patient_id].get("queue_priority") == "urgent" else 1)
+            for position, patient_id in enumerate(ordered_ids, start=1):
+                patient = active[patient_id]
+                if patient["status"] != status:
+                    patient["stage_entered_at"] = _now()
+                patient["status"] = status
+                patient["queue_position"] = position
+        return await self.list_patients(org_id, active_only=True, limit=500)
 
     async def get_patient(self, org_id: str, patient_id: str) -> dict:
         patient = self.patients[patient_id]
@@ -1499,6 +1688,7 @@ class FakeRepo:
                 "id": invoice_id,
                 "org_id": org_id,
                 "patient_id": str(payload.patient_id),
+                "visit_id": patient.get("current_visit_id"),
                 "created_at": _now(),
             }
         items = []
@@ -1686,6 +1876,9 @@ class FakeRepo:
             "status": "scheduled",
             "completed_at": None,
             "reminder_sent_at": None,
+            "reminder_claimed_at": None,
+            "reminder_attempt_count": 0,
+            "reminder_last_error": "",
             "created_at": _now(),
         }
         self.follow_ups[follow_up_id] = row
@@ -1807,6 +2000,8 @@ class FakeRepo:
             "address": patient.get("address", ""),
             "reason": f"Follow-up: {str(patient.get('reason') or '').strip() or 'Review'}",
             "date_of_birth": patient.get("date_of_birth"),
+            "sex_at_birth": patient.get("sex_at_birth"),
+            "gender_identity": patient.get("gender_identity", ""),
             "age": patient.get("age"),
             "weight": patient.get("weight"),
             "height": patient.get("height"),
@@ -1815,12 +2010,13 @@ class FakeRepo:
             "status": "scheduled",
             "checked_in_patient_id": None,
             "checked_in_at": None,
+            "follow_up_id": follow_up_id,
             "created_at": _now(),
         }
         self.appointments[appointment_id] = appointment
         return follow_up, appointment
 
-    async def list_due_follow_ups(
+    async def claim_due_follow_ups(
         self,
         org_id: str,
         due_after_iso: str,
@@ -1828,20 +2024,34 @@ class FakeRepo:
     ) -> list[dict]:
         due_after = _as_utc_minute(due_after_iso)
         due_before = _as_utc_minute(due_before_iso)
-        return [
+        claimed = [
             follow_up for follow_up in self.follow_ups.values()
             if follow_up["org_id"] == org_id
             and follow_up["status"] == "scheduled"
             and follow_up["reminder_sent_at"] is None
+            and follow_up.get("reminder_claimed_at") is None
             and due_after < _as_utc_minute(follow_up["scheduled_for"]) <= due_before
         ]
+        for follow_up in claimed:
+            follow_up["reminder_claimed_at"] = _now()
+            follow_up["reminder_attempt_count"] = int(follow_up.get("reminder_attempt_count") or 0) + 1
+            follow_up["reminder_last_error"] = ""
+        return claimed
 
     async def mark_follow_up_reminder_sent(self, org_id: str, follow_up_id: str) -> dict:
         follow_up = self.follow_ups[follow_up_id]
         if follow_up["org_id"] != org_id:
             raise ValueError("Follow-up not found for this organization.")
         follow_up["reminder_sent_at"] = _now()
+        follow_up["reminder_claimed_at"] = None
         return follow_up
+
+    async def release_follow_up_reminder_claim(self, org_id: str, follow_up_id: str, error: str) -> None:
+        follow_up = self.follow_ups[follow_up_id]
+        if follow_up["org_id"] != org_id:
+            raise ValueError("Follow-up not found for this organization.")
+        follow_up["reminder_claimed_at"] = None
+        follow_up["reminder_last_error"] = error
 
 
 class FakePatientAttachmentStorage:
@@ -1871,7 +2081,10 @@ def client(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         auth_module,
         "get_settings",
-        lambda: SimpleNamespace(auth_secret="test-secret"),
+        lambda: SimpleNamespace(
+            auth_secret="test-secret",
+            app_origin="http://127.0.0.1:3000",
+        ),
     )
     monkeypatch.setattr(
         config_module,
@@ -1923,7 +2136,10 @@ def register_test_clinic(client: TestClient, *, identifier: str, clinic_name: st
 
 
 def auth_headers_for_token(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+    return {
+        "Authorization": f"Bearer {token}",
+        "Cookie": f"{auth_module.SESSION_COOKIE_NAME}={token}",
+    }
 
 
 def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
@@ -1949,7 +2165,18 @@ def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
     assert patient_response.status_code == 201
     patient = patient_response.json()
 
-    scheduled_for = (datetime.now(UTC).replace(microsecond=0) + timedelta(days=2)).isoformat()
+    follow_up_day = (datetime.now(UTC) + timedelta(days=2)).date()
+    while follow_up_day.weekday() == 6:
+        follow_up_day += timedelta(days=1)
+    scheduled_for_value = datetime(
+        follow_up_day.year,
+        follow_up_day.month,
+        follow_up_day.day,
+        8,
+        30,
+        tzinfo=UTC,
+    )
+    scheduled_for = scheduled_for_value.isoformat()
     follow_up_response = test_client.post(
         f"/patients/{patient['id']}/follow-ups",
         headers=auth_headers_for_token(token),
@@ -1964,11 +2191,7 @@ def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
         follow_up_id=follow_up["id"],
     )
 
-    first_slot = datetime.now(UTC).replace(microsecond=0, second=0, minute=0, hour=9)
-    if first_slot <= datetime.now(UTC):
-        first_slot += timedelta(days=1)
-    while first_slot.weekday() == 6:
-        first_slot += timedelta(days=1)
+    first_slot = scheduled_for_value.replace(hour=9, minute=0)
     second_slot = first_slot + timedelta(minutes=30)
     repo.clinic_settings[session["user"]["org_id"]].update(
         {

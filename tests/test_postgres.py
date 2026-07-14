@@ -960,6 +960,8 @@ def test_postgres_auth_settings_repository_lists_superuser_org_summaries():
                 (
                     "org-1",
                     "Fika Clinic",
+                    "team",
+                    6,
                     "2026-06-10T10:00:00+00:00",
                     2,
                     5,
@@ -968,6 +970,7 @@ def test_postgres_auth_settings_repository_lists_superuser_org_summaries():
                     1,
                     1200,
                     4096,
+                    2,
                     "2026-06-11T16:10:00+00:00",
                 )
             ]
@@ -982,6 +985,8 @@ def test_postgres_auth_settings_repository_lists_superuser_org_summaries():
         {
             "org_id": "org-1",
             "clinic_name": "Fika Clinic",
+            "workspace_mode": "team",
+            "users_allowed": 6,
             "created_at": "2026-06-10T10:00:00+00:00",
             "user_count": 2,
             "patient_count": 5,
@@ -990,6 +995,7 @@ def test_postgres_auth_settings_repository_lists_superuser_org_summaries():
             "follow_up_count": 1,
             "total_tokens": 1200,
             "media_storage_bytes": 4096,
+            "recent_error_count": 2,
             "last_activity_at": "2026-06-11T16:10:00+00:00",
         }
     ]
@@ -1011,7 +1017,7 @@ def test_postgres_auth_settings_repository_deletes_and_counts_users():
     assert count == 7
 
 
-def _patient_row(patient_id: str = "patient-1", *, phone: str = "1234567890") -> tuple:
+def _patient_row(patient_id: str = "patient-1", *, phone: str = "1234567890", current_visit_id: str | None = None) -> tuple:
     return (
         patient_id,
         "org-1",
@@ -1021,12 +1027,25 @@ def _patient_row(patient_id: str = "patient-1", *, phone: str = "1234567890") ->
         "Main Road",
         "fever",
         date(2014, 1, 20),
+        "female",
+        "",
         12,
         78,
         175,
         98,
+        None,
+        None,
+        None,
         "waiting",
         False,
+        "normal",
+        "2026-06-11T17:00:00+00:00",
+        1,
+        current_visit_id,
+        "",
+        None,
+        True,
+        0,
         "2026-06-11T17:00:00+00:00",
         "2026-06-11T17:00:00+00:00",
     )
@@ -1042,6 +1061,8 @@ def _appointment_row(*, status: str = "scheduled", phone: str = "1234567890") ->
         "Main Road",
         "fever",
         date(2014, 1, 20),
+        "female",
+        "",
         12,
         78,
         175,
@@ -1093,8 +1114,8 @@ def _follow_up_row(*, status: str = "scheduled", reminder_sent_at: str | None = 
 
 def test_postgres_patient_flow_repository_creates_patient_and_visit():
     cursor = ScriptedCursor(
-        descriptions=[PATIENT_COLUMNS, []],
-        fetchone_rows=[_patient_row(phone="1234567890")],
+        descriptions=[PATIENT_COLUMNS, ["id"], PATIENT_COLUMNS],
+        fetchone_rows=[_patient_row(phone="1234567890"), ("visit-1",), _patient_row(phone="1234567890", current_visit_id="visit-1")],
     )
     repo = PostgresPatientFlowRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
 
@@ -1169,14 +1190,15 @@ def test_postgres_patient_flow_repository_detects_duplicate_check_in_matches():
 
 def test_postgres_patient_flow_repository_checks_in_via_schema_function_when_forced():
     cursor = ScriptedCursor(
-        descriptions=[["check_in_appointment_atomic"]],
+        descriptions=[["check_in_appointment_atomic"], ["visit_kind"]],
         fetchone_rows=[
             (
                 {
                     "appointment": {"id": "appointment-1", "status": "checked_in"},
                     "patient": {"id": "patient-1", "status": "waiting"},
                 },
-            )
+            ),
+            ("follow_up",),
         ],
     )
     repo = PostgresPatientFlowRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
@@ -1363,6 +1385,7 @@ def _invoice_row(*, amount_paid: float = 500) -> tuple:
         "invoice-1",
         "org-1",
         "patient-1",
+        "visit-1",
         500,
         500,
         "paid",
@@ -1485,7 +1508,7 @@ def test_postgres_billing_repository_catalog_and_stock_flow():
 def test_postgres_billing_repository_invoice_rpc_and_invoice_items():
     cursor = ScriptedCursor(
         descriptions=[
-            ["id"],
+                ["id", "current_visit_id"],
             ["id"],
             INVOICE_COLUMNS,
             INVOICE_COLUMNS,
@@ -1496,11 +1519,12 @@ def test_postgres_billing_repository_invoice_rpc_and_invoice_items():
             INVOICE_ITEM_COLUMNS,
         ],
         fetchone_rows=[
-            ("patient-1",),
+                ("patient-1", "visit-1"),
             (
                 "invoice-1",
-                "org-1",
-                "patient-1",
+                    "org-1",
+                    "patient-1",
+                    "visit-1",
                 500,
                 500,
                 "paid",
@@ -1542,9 +1566,10 @@ def test_postgres_billing_repository_invoice_rpc_and_invoice_items():
     )
     loaded = asyncio.run(repo.get_invoice("org-1", "invoice-1"))
 
-    assert cursor.executed[2][1][0:4] == (
+    assert cursor.executed[2][1][0:5] == (
         "org-1",
         "00000000-0000-0000-0000-000000000001",
+        "visit-1",
         500.0,
         500.0,
     )

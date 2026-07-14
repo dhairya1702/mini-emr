@@ -18,6 +18,7 @@ PASSWORD_ITERATIONS = 600_000
 SESSION_TOKEN_HEADER = "X-Session-Token"
 SESSION_EXPIRES_AT_HEADER = "X-Session-Expires-At"
 SESSION_COOKIE_NAME = "clinic_session"
+SAFE_HTTP_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
 def _b64encode(value: bytes) -> str:
@@ -156,6 +157,20 @@ def decode_access_token(token: str) -> dict[str, str | int]:
     return payload
 
 
+def _allowed_request_origins() -> set[str]:
+    settings = get_settings()
+    cors_origins = getattr(settings, "cors_origins", None)
+    if callable(cors_origins):
+        configured = cors_origins()
+    else:
+        configured = [getattr(settings, "app_origin", "")]
+    return {
+        str(item).rstrip("/")
+        for item in configured
+        if str(item).strip()
+    }
+
+
 async def get_current_user(
     request: Request,
     authorization: str | None = Header(default=None),
@@ -169,25 +184,36 @@ async def get_current_user(
     if not bearer_token and not cookie_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
 
-    payload = None
-    valid_payloads: list[dict[str, str | int]] = []
-    last_error: HTTPException | None = None
-    for token in [bearer_token, cookie_token]:
-        if not token:
-            continue
-        try:
-            valid_payloads.append(decode_access_token(token))
-        except HTTPException as exc:
-            last_error = exc
-
-    if valid_payloads:
-        payload = max(
-            valid_payloads,
-            key=lambda candidate: int(candidate.get("iat") or 0),
-        )
-
-    if payload is None:
-        raise last_error or HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
+    # An explicitly supplied bearer credential is always authoritative. Never
+    # choose between identities by token issue time: doing so can turn a staff
+    # bearer request into an admin cookie request in shared clients.
+    if bearer_token:
+        payload = decode_access_token(bearer_token)
+        if cookie_token:
+            try:
+                cookie_payload = decode_access_token(cookie_token)
+            except HTTPException:
+                cookie_payload = None
+            if cookie_payload is not None and (
+                cookie_payload.get("sub") != payload.get("sub")
+                or cookie_payload.get("org_id") != payload.get("org_id")
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Conflicting authentication credentials.",
+                )
+        request.state.auth_source = "bearer"
+    else:
+        payload = decode_access_token(cookie_token)
+        request.state.auth_source = "cookie"
+        if request.method.upper() not in SAFE_HTTP_METHODS:
+            origin = str(request.headers.get("origin") or "").rstrip("/")
+            allowed_origins = _allowed_request_origins()
+            if not origin or origin not in allowed_origins:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Invalid request origin.",
+                )
 
     user_id = payload.get("sub")
     if not isinstance(user_id, str):

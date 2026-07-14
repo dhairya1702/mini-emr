@@ -8,6 +8,12 @@ create table if not exists public.organizations (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.schema_migrations (
+  migration_name text primary key,
+  checksum_sha256 text not null,
+  applied_at timestamptz not null default now()
+);
+
 create table if not exists public.patients (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
@@ -17,6 +23,8 @@ create table if not exists public.patients (
   address text not null default '',
   reason text not null,
   date_of_birth date,
+  sex_at_birth text check (sex_at_birth in ('female', 'male', 'intersex', 'prefer_not_to_say', 'unknown')),
+  gender_identity text not null default '',
   age integer,
   weight double precision,
   height double precision,
@@ -26,6 +34,10 @@ create table if not exists public.patients (
   profile_photo_updated_at timestamptz,
   status text not null default 'waiting' check (status in ('waiting', 'consultation', 'done')),
   billed boolean not null default false,
+  queue_priority text not null default 'normal' check (queue_priority in ('normal', 'urgent')),
+  stage_entered_at timestamptz not null default now(),
+  queue_position bigint not null default 0,
+  current_visit_id uuid,
   ai_summary text not null default '',
   ai_summary_updated_at timestamptz,
   ai_summary_stale boolean not null default true,
@@ -113,6 +125,7 @@ create table if not exists public.clinic_settings (
   document_template_margin_left double precision not null default 54,
   onboarding_required boolean not null default false,
   onboarding_completed_at timestamptz,
+  users_allowed integer not null default 2 check (users_allowed > 0),
   workspace_mode text not null default 'solo' check (workspace_mode in ('solo', 'team')),
   updated_at timestamptz not null default now()
 );
@@ -123,6 +136,7 @@ create table if not exists public.customer_onboarding (
   customer_name text not null,
   phone text not null,
   users_allowed integer not null default 2 check (users_allowed > 0),
+  workspace_mode text not null default 'solo' check (workspace_mode in ('solo', 'team')),
   status text not null default 'pending' check (status in ('pending', 'claimed', 'disabled')),
   claimed_org_id uuid references public.organizations(id) on delete set null,
   claimed_at timestamptz,
@@ -157,6 +171,7 @@ create table if not exists public.invoices (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
   patient_id uuid not null references public.patients(id) on delete cascade,
+  visit_id uuid,
   subtotal numeric(14,2) not null default 0,
   total numeric(14,2) not null default 0,
   payment_status text not null default 'unpaid' check (payment_status in ('unpaid', 'paid', 'partial')),
@@ -266,6 +281,9 @@ create table if not exists public.follow_ups (
   status text not null default 'scheduled' check (status in ('scheduled', 'completed', 'cancelled')),
   completed_at timestamptz,
   reminder_sent_at timestamptz,
+  reminder_claimed_at timestamptz,
+  reminder_attempt_count integer not null default 0,
+  reminder_last_error text not null default '',
   created_at timestamptz not null default now()
 );
 
@@ -278,12 +296,15 @@ create table if not exists public.appointments (
   address text not null default '',
   reason text not null,
   date_of_birth date,
+  sex_at_birth text check (sex_at_birth in ('female', 'male', 'intersex', 'prefer_not_to_say', 'unknown')),
+  gender_identity text not null default '',
   age integer,
   weight double precision,
   height double precision,
   temperature double precision,
   scheduled_for timestamptz not null,
   status text not null default 'scheduled' check (status in ('scheduled', 'checked_in', 'cancelled')),
+  follow_up_id uuid references public.follow_ups(id) on delete set null,
   checked_in_patient_id uuid references public.patients(id) on delete set null,
   checked_in_at timestamptz,
   created_at timestamptz not null default now()
@@ -299,14 +320,33 @@ create table if not exists public.patient_visits (
   address text not null default '',
   reason text not null,
   date_of_birth date,
+  sex_at_birth text check (sex_at_birth in ('female', 'male', 'intersex', 'prefer_not_to_say', 'unknown')),
+  gender_identity text not null default '',
   age integer,
   weight double precision,
   height double precision,
   temperature double precision,
   source text not null default 'queue' check (source in ('queue', 'appointment')),
   appointment_id uuid references public.appointments(id) on delete set null,
+  follow_up_id uuid references public.follow_ups(id) on delete set null,
+  visit_kind text not null default 'new' check (visit_kind in ('new', 'follow_up')),
   created_at timestamptz not null default now()
 );
+
+alter table public.patients
+  drop constraint if exists patients_current_visit_id_fkey;
+alter table public.patients
+  add constraint patients_current_visit_id_fkey
+  foreign key (current_visit_id) references public.patient_visits(id) on delete set null;
+
+alter table public.invoices
+  drop constraint if exists invoices_visit_id_fkey;
+alter table public.invoices
+  add constraint invoices_visit_id_fkey
+  foreign key (visit_id) references public.patient_visits(id) on delete set null;
+
+create index if not exists patients_current_visit_idx on public.patients (org_id, current_visit_id);
+create index if not exists invoices_visit_created_idx on public.invoices (org_id, visit_id, created_at desc);
 
 create table if not exists public.myopia_measurements (
   id uuid primary key default gen_random_uuid(),
@@ -442,6 +482,79 @@ add column if not exists org_id uuid references public.organizations(id) on dele
 
 alter table public.patients
 add column if not exists billed boolean not null default false;
+
+alter table public.patients
+add column if not exists queue_priority text not null default 'normal';
+
+alter table public.patients
+add column if not exists stage_entered_at timestamptz not null default now();
+
+alter table public.patients
+add column if not exists queue_position bigint not null default 0;
+
+alter table public.patients
+drop constraint if exists patients_queue_priority_check;
+
+alter table public.patients
+add constraint patients_queue_priority_check
+check (queue_priority in ('normal', 'urgent'));
+
+update public.patients
+set stage_entered_at = last_visit_at
+where status = 'waiting';
+
+with ranked as (
+  select id,
+    row_number() over (
+      partition by org_id, status
+      order by case when queue_priority = 'urgent' then 0 else 1 end, last_visit_at desc, id
+    ) as next_position
+  from public.patients
+)
+update public.patients p
+set queue_position = ranked.next_position
+from ranked
+where ranked.id = p.id
+  and p.queue_position = 0;
+
+create index if not exists patients_org_queue_order_idx
+on public.patients (org_id, status, queue_priority, queue_position);
+
+create or replace function public.set_patient_queue_metadata()
+returns trigger
+language plpgsql
+as $$
+begin
+  perform pg_advisory_xact_lock(hashtext(new.org_id::text));
+  if tg_op = 'INSERT' then
+    new.queue_priority := coalesce(new.queue_priority, 'normal');
+    new.stage_entered_at := coalesce(new.stage_entered_at, now());
+    if coalesce(new.queue_position, 0) <= 0 then
+      select coalesce(max(queue_position), 0) + 1 into new.queue_position
+      from public.patients where org_id = new.org_id and status = new.status;
+    end if;
+  elsif new.status is distinct from old.status then
+    new.stage_entered_at := now();
+    if new.queue_position = old.queue_position then
+      select coalesce(max(queue_position), 0) + 1 into new.queue_position
+      from public.patients where org_id = new.org_id and status = new.status and id <> new.id;
+    end if;
+  elsif new.status = 'waiting' and new.last_visit_at is distinct from old.last_visit_at then
+    new.queue_priority := 'normal';
+    new.stage_entered_at := now();
+    if new.queue_position = old.queue_position then
+      select coalesce(max(queue_position), 0) + 1 into new.queue_position
+      from public.patients where org_id = new.org_id and status = 'waiting' and id <> new.id;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists patients_queue_metadata_trigger on public.patients;
+create trigger patients_queue_metadata_trigger
+before insert or update of status, last_visit_at on public.patients
+for each row execute function public.set_patient_queue_metadata();
 
 alter table public.patients
 add column if not exists last_visit_at timestamptz not null default now();
@@ -611,6 +724,40 @@ alter table public.clinic_settings
 add column if not exists onboarding_completed_at timestamptz;
 
 alter table public.clinic_settings
+add column if not exists users_allowed integer not null default 2;
+
+update public.clinic_settings cs
+set users_allowed = greatest(
+  cs.users_allowed,
+  coalesce((
+    select co.users_allowed
+    from public.customer_onboarding co
+    where co.claimed_org_id = cs.org_id
+    limit 1
+  ), 0),
+  coalesce((
+    select count(*)::integer
+    from public.clinic_users cu
+    where cu.org_id = cs.org_id
+  ), 0),
+  1
+);
+
+update public.customer_onboarding co
+set users_allowed = cs.users_allowed,
+  updated_at = now()
+from public.clinic_settings cs
+where co.claimed_org_id = cs.org_id
+and co.users_allowed <> cs.users_allowed;
+
+alter table public.clinic_settings
+drop constraint if exists clinic_settings_users_allowed_check;
+
+alter table public.clinic_settings
+add constraint clinic_settings_users_allowed_check
+check (users_allowed > 0);
+
+alter table public.clinic_settings
 add column if not exists workspace_mode text not null default 'solo';
 
 alter table public.clinic_settings
@@ -618,6 +765,21 @@ drop constraint if exists clinic_settings_workspace_mode_check;
 
 alter table public.clinic_settings
 add constraint clinic_settings_workspace_mode_check
+check (workspace_mode in ('solo', 'team'));
+
+alter table public.customer_onboarding
+add column if not exists workspace_mode text not null default 'solo';
+
+update public.customer_onboarding co
+set workspace_mode = cs.workspace_mode
+from public.clinic_settings cs
+where co.claimed_org_id = cs.org_id;
+
+alter table public.customer_onboarding
+drop constraint if exists customer_onboarding_workspace_mode_check;
+
+alter table public.customer_onboarding
+add constraint customer_onboarding_workspace_mode_check
 check (workspace_mode in ('solo', 'team'));
 
 alter table public.catalog_items
@@ -728,6 +890,8 @@ create index if not exists follow_ups_due_reminder_idx on public.follow_ups (org
   where status = 'scheduled' and reminder_sent_at is null;
 create index if not exists appointments_org_status_scheduled_idx on public.appointments (org_id, status, scheduled_for asc);
 create index if not exists appointments_org_checked_in_patient_created_idx on public.appointments (org_id, checked_in_patient_id, created_at desc);
+create index if not exists appointments_org_follow_up_idx on public.appointments (org_id, follow_up_id);
+create index if not exists patient_visits_org_follow_up_idx on public.patient_visits (org_id, follow_up_id);
 
 drop function if exists public.check_in_appointment_atomic(uuid, uuid);
 drop function if exists public.check_in_appointment_atomic(uuid, uuid, boolean, uuid);
@@ -743,6 +907,7 @@ declare
   v_appointment public.appointments%rowtype;
   v_patient public.patients%rowtype;
   v_visit public.patient_visits%rowtype;
+  v_visit_kind text;
 begin
   select *
   into v_appointment
@@ -758,6 +923,8 @@ begin
   if v_appointment.status <> 'scheduled' then
     raise exception 'Only scheduled appointments can be added to the waiting queue.';
   end if;
+
+  v_visit_kind := case when v_appointment.follow_up_id is not null then 'follow_up' else 'new' end;
 
   if p_existing_patient_id is not null then
     select *
@@ -783,6 +950,8 @@ begin
       address = v_appointment.address,
       reason = v_appointment.reason,
       date_of_birth = v_appointment.date_of_birth,
+      sex_at_birth = v_appointment.sex_at_birth,
+      gender_identity = v_appointment.gender_identity,
       age = v_appointment.age,
       weight = v_appointment.weight,
       height = v_appointment.height,
@@ -801,6 +970,8 @@ begin
       address,
       reason,
       date_of_birth,
+      sex_at_birth,
+      gender_identity,
       age,
       weight,
       height,
@@ -817,6 +988,8 @@ begin
       v_appointment.address,
       v_appointment.reason,
       v_appointment.date_of_birth,
+      v_appointment.sex_at_birth,
+      v_appointment.gender_identity,
       v_appointment.age,
       v_appointment.weight,
       v_appointment.height,
@@ -837,12 +1010,16 @@ begin
     address,
     reason,
     date_of_birth,
+    sex_at_birth,
+    gender_identity,
     age,
     weight,
     height,
     temperature,
     source,
-    appointment_id
+    appointment_id,
+    follow_up_id,
+    visit_kind
   )
   values (
     p_org_id,
@@ -853,14 +1030,23 @@ begin
     v_appointment.address,
     v_appointment.reason,
     v_appointment.date_of_birth,
+    v_appointment.sex_at_birth,
+    v_appointment.gender_identity,
     v_appointment.age,
     v_appointment.weight,
     v_appointment.height,
     v_appointment.temperature,
     'appointment',
-    v_appointment.id
+    v_appointment.id,
+    v_appointment.follow_up_id,
+    v_visit_kind
   )
   returning * into v_visit;
+
+  update public.patients
+  set current_visit_id = v_visit.id
+  where id = v_patient.id
+  returning * into v_patient;
 
   update public.appointments
   set
@@ -973,12 +1159,15 @@ begin
     address,
     reason,
     date_of_birth,
+    sex_at_birth,
+    gender_identity,
     age,
     weight,
     height,
     temperature,
     scheduled_for,
-    status
+    status,
+    follow_up_id
   )
   values (
     p_org_id,
@@ -988,12 +1177,15 @@ begin
     v_patient.address,
     v_reason,
     v_patient.date_of_birth,
+    v_patient.sex_at_birth,
+    v_patient.gender_identity,
     v_patient.age,
     v_patient.weight,
     v_patient.height,
     v_patient.temperature,
     v_scheduled_for,
-    'scheduled'
+    'scheduled',
+    v_follow_up.id
   )
   returning * into v_appointment;
 
@@ -1077,6 +1269,7 @@ begin
   insert into public.invoices (
     org_id,
     patient_id,
+    visit_id,
     subtotal,
     total,
     payment_status,
@@ -1086,6 +1279,7 @@ begin
   values (
     p_org_id,
     p_patient_id,
+    (select current_visit_id from public.patients where id = p_patient_id and org_id = p_org_id),
     v_total,
     v_total,
     p_payment_status,
@@ -1123,6 +1317,7 @@ begin
     'id', v_invoice.id,
     'org_id', v_invoice.org_id,
     'patient_id', v_invoice.patient_id,
+    'visit_id', v_invoice.visit_id,
     'subtotal', v_invoice.subtotal,
     'total', v_invoice.total,
     'payment_status', v_invoice.payment_status,

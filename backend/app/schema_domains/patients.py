@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schema_domains.common import AppointmentStatus, FollowUpStatus, NoteStatus, PatientStatus, TimelineEventType
+from app.schema_domains.common import AppointmentStatus, FollowUpStatus, NoteStatus, PatientStatus, QueuePriority, SexAtBirth, TimelineEventType, VisitKind
 
 
 def calculate_age_from_dob(date_of_birth: date | None) -> int | None:
@@ -22,6 +22,8 @@ class PatientCreate(BaseModel):
     address: str = Field(default="", max_length=300)
     reason: str = Field(min_length=1, max_length=200)
     date_of_birth: date | None = None
+    sex_at_birth: SexAtBirth | None = None
+    gender_identity: str = Field(default="", max_length=80)
     age: int | None = Field(default=None, ge=0, le=130)
     weight: float | None = Field(default=None, gt=0, le=500)
     temperature: float | None = Field(default=None, ge=90, le=110)
@@ -31,12 +33,15 @@ class PatientCreate(BaseModel):
 class PatientUpdate(BaseModel):
     status: PatientStatus | None = None
     billed: bool | None = None
+    queue_priority: QueuePriority | None = None
     name: str | None = Field(default=None, min_length=1, max_length=120)
     phone: str | None = Field(default=None, min_length=5, max_length=30)
     email: str | None = Field(default=None, max_length=200)
     address: str | None = Field(default=None, max_length=300)
     reason: str | None = Field(default=None, min_length=1, max_length=200)
     date_of_birth: date | None = None
+    sex_at_birth: SexAtBirth | None = None
+    gender_identity: str | None = Field(default=None, max_length=80)
     age: int | None = Field(default=None, ge=0, le=130)
     weight: float | None = Field(default=None, gt=0, le=500)
     temperature: float | None = Field(default=None, ge=90, le=110)
@@ -58,17 +63,52 @@ class PatientOut(BaseModel):
     address: str = ""
     reason: str
     date_of_birth: date | None = None
+    sex_at_birth: SexAtBirth | None = None
+    gender_identity: str = ""
     age: int | None = None
     weight: float | None = None
     temperature: float | None = None
     height: float | None = None
     status: PatientStatus
     billed: bool = False
+    queue_priority: QueuePriority = "normal"
+    stage_entered_at: datetime
+    queue_position: int = 0
     profile_photo_url: str | None = None
     profile_photo_content_type: str | None = None
     profile_photo_updated_at: datetime | None = None
     created_at: datetime
     last_visit_at: datetime
+    current_visit: "CurrentVisitSummaryOut | None" = None
+    billing_summary: "QueueBillingSummaryOut | None" = None
+
+
+class CurrentVisitSummaryOut(BaseModel):
+    id: UUID
+    kind: VisitKind = "new"
+    source: str = "queue"
+    scheduled_for: datetime | None = None
+
+
+class QueueBillingSummaryOut(BaseModel):
+    invoice_id: UUID
+    total: float = 0
+    payment_status: str = "unpaid"
+    balance_due: float = 0
+    item_count: int = 0
+    medicine_count: int = 0
+    completed_at: datetime | None = None
+    sent_at: datetime | None = None
+
+
+class QueueOrderColumns(BaseModel):
+    waiting: list[UUID] = Field(default_factory=list, max_length=500)
+    consultation: list[UUID] = Field(default_factory=list, max_length=500)
+    done: list[UUID] = Field(default_factory=list, max_length=500)
+
+
+class QueueOrderUpdate(BaseModel):
+    columns: QueueOrderColumns
 
 
 class PatientVisitOut(BaseModel):
@@ -80,12 +120,15 @@ class PatientVisitOut(BaseModel):
     address: str = ""
     reason: str
     date_of_birth: date | None = None
+    sex_at_birth: SexAtBirth | None = None
+    gender_identity: str = ""
     age: int | None = None
     weight: float | None = None
     temperature: float | None = None
     height: float | None = None
     source: str = ""
     appointment_id: UUID | None = None
+    visit_kind: VisitKind = "new"
     created_at: datetime
     status: PatientStatus
     billed: bool = False
@@ -130,6 +173,8 @@ class AppointmentCreate(BaseModel):
     address: str = Field(default="", max_length=300)
     reason: str = Field(min_length=1, max_length=200)
     date_of_birth: date | None = None
+    sex_at_birth: SexAtBirth | None = None
+    gender_identity: str = Field(default="", max_length=80)
     age: int | None = Field(default=None, ge=0, le=130)
     weight: float | None = Field(default=None, gt=0, le=500)
     temperature: float | None = Field(default=None, ge=90, le=110)
@@ -146,6 +191,8 @@ class AppointmentOut(BaseModel):
     address: str = ""
     reason: str
     date_of_birth: date | None = None
+    sex_at_birth: SexAtBirth | None = None
+    gender_identity: str = ""
     age: int | None = None
     weight: float | None = None
     temperature: float | None = None
@@ -175,6 +222,8 @@ class PatientMatchOut(BaseModel):
     address: str = ""
     reason: str
     date_of_birth: date | None = None
+    sex_at_birth: SexAtBirth | None = None
+    gender_identity: str = ""
     age: int | None = None
     weight: float | None = None
     height: float | None = None
@@ -195,6 +244,8 @@ class PatientVisitCreate(BaseModel):
     address: str = Field(default="", max_length=300)
     reason: str = Field(min_length=1, max_length=200)
     date_of_birth: date | None = None
+    sex_at_birth: SexAtBirth | None = None
+    gender_identity: str = Field(default="", max_length=80)
     age: int | None = Field(default=None, ge=0, le=130)
     weight: float | None = Field(default=None, gt=0, le=500)
     temperature: float | None = Field(default=None, ge=90, le=110)

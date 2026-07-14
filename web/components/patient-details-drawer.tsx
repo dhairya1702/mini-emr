@@ -24,6 +24,7 @@ import {
   PatientVisitDetail,
   PatientTimelineEvent,
   PediatricGrowthSummary,
+  SexAtBirth,
 } from "@/lib/types";
 
 type ChartTab = "visits" | "attachments" | "tests";
@@ -49,6 +50,8 @@ interface PatientDetailsDrawerProps {
     address: string;
     reason: string;
     date_of_birth?: string | null;
+    sex_at_birth?: SexAtBirth | null;
+    gender_identity?: string;
     age: number | null;
     weight: number | null;
     height: number | null;
@@ -175,9 +178,13 @@ function getPhoneDigits(value: string) {
 }
 
 function patientMetadataLine(patient: Patient) {
+  const sexLabel = patient.sex_at_birth
+    ? patient.sex_at_birth.split("_").map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ")
+    : "";
   const parts = [
     patient.phone,
     patient.date_of_birth ? `DOB ${patient.date_of_birth}` : typeof patient.age === "number" ? `Age ${patient.age}` : "",
+    sexLabel,
     patient.address,
     `last visit ${formatDateTime(patient.last_visit_at)}`,
   ].filter(Boolean);
@@ -654,6 +661,8 @@ export function PatientDetailsDrawer({
     address: "",
     reason: "",
     dateOfBirth: "",
+    sexAtBirth: "" as "" | SexAtBirth,
+    genderIdentity: "",
     weight: "",
     height: "",
     temperature: "",
@@ -721,6 +730,8 @@ export function PatientDetailsDrawer({
       address: patient.address ?? "",
       reason: patient.reason,
       dateOfBirth: patient.date_of_birth ?? "",
+      sexAtBirth: patient.sex_at_birth ?? "",
+      genderIdentity: patient.gender_identity ?? "",
       weight: patient.weight?.toString() ?? "",
       height: patient.height?.toString() ?? "",
       temperature: patient.temperature?.toString() ?? "",
@@ -1299,6 +1310,8 @@ export function PatientDetailsDrawer({
         address: form.address.trim(),
         reason: form.reason.trim(),
         date_of_birth: form.dateOfBirth || null,
+        sex_at_birth: form.sexAtBirth || null,
+        gender_identity: form.genderIdentity.trim(),
         age: null,
         weight,
         height,
@@ -1415,6 +1428,21 @@ export function PatientDetailsDrawer({
                 <SummaryField label="Weight" value={form.weight} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, weight: value })); }} />
                 <SummaryField label="Height" value={form.height} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, height: value })); }} />
                 <SummaryField label="Temp" value={form.temperature} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, temperature: value })); }} />
+              </div>
+              <div className="mt-3 max-w-xs">
+                <label className="block text-xs font-medium text-slate-500">
+                  Sex
+                  <select
+                    value={form.sexAtBirth}
+                    onChange={(event) => { setError(""); setForm((current) => ({ ...current, sexAtBirth: event.target.value as "" | SexAtBirth })); }}
+                    className="mt-1 w-full rounded-lg border border-[#dbe7ef] bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#6daed8]"
+                  >
+                    <option value="">Not recorded</option>
+                    <option value="female">Female</option>
+                    <option value="male">Male</option>
+                    <option value="unknown">Other</option>
+                  </select>
+                </label>
               </div>
             </div>
           ) : null}

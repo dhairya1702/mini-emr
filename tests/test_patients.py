@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import asyncio
 from types import SimpleNamespace
 
@@ -7,6 +9,212 @@ from test_app import auth_headers_for_token, client, register_test_clinic
 from app.services import billing_workflow
 
 
+def _create_queue_patient(test_client, headers, name: str, phone: str):
+    response = test_client.post(
+        "/patients",
+        json={
+            "name": name,
+            "phone": phone,
+            "reason": "Queue review",
+            "age": 30,
+            "temperature": 98.6,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 201, response.json()
+    return response.json()
+
+
+def test_queue_priority_and_shared_order_are_authoritative(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="queue-order@clinic.com", clinic_name="Queue Order Clinic")
+    headers = auth_headers_for_token(session["token"])
+    first = _create_queue_patient(test_client, headers, "First Patient", "5550101001")
+    second = _create_queue_patient(test_client, headers, "Second Patient", "5550101002")
+    urgent = _create_queue_patient(test_client, headers, "Urgent Patient", "5550101003")
+
+    priority = test_client.patch(
+        f"/patients/{urgent['id']}",
+        json={"queue_priority": "urgent"},
+        headers=headers,
+    )
+    assert priority.status_code == 200
+    assert priority.json()["queue_priority"] == "urgent"
+
+    reordered = test_client.put(
+        "/patients/queue/order",
+        json={
+            "columns": {
+                "waiting": [urgent["id"], second["id"], first["id"]],
+                "consultation": [],
+                "done": [],
+            }
+        },
+        headers=headers,
+    )
+    assert reordered.status_code == 200, reordered.json()
+    assert [row["id"] for row in reordered.json()] == [urgent["id"], second["id"], first["id"]]
+    assert [row["queue_position"] for row in reordered.json()] == [1, 2, 3]
+
+    listed = test_client.get("/patients", params={"active_only": True}, headers=headers)
+    assert [row["id"] for row in listed.json()] == [urgent["id"], second["id"], first["id"]]
+
+
+def test_queue_reorder_moves_stages_and_rejects_duplicate_ids(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="queue-stage@clinic.com", clinic_name="Queue Stage Clinic")
+    headers = auth_headers_for_token(session["token"])
+    patient = _create_queue_patient(test_client, headers, "Stage Patient", "5550102001")
+    original_stage_time = patient["stage_entered_at"]
+
+    moved = test_client.put(
+        "/patients/queue/order",
+        json={
+            "columns": {
+                "waiting": [],
+                "consultation": [patient["id"]],
+                "done": [],
+            }
+        },
+        headers=headers,
+    )
+    assert moved.status_code == 200, moved.json()
+    assert moved.json()[0]["status"] == "consultation"
+    assert moved.json()[0]["stage_entered_at"] >= original_stage_time
+
+    duplicate = test_client.put(
+        "/patients/queue/order",
+        json={
+            "columns": {
+                "waiting": [patient["id"]],
+                "consultation": [patient["id"]],
+                "done": [],
+            }
+        },
+        headers=headers,
+    )
+    assert duplicate.status_code == 400
+    assert duplicate.json()["detail"] == "A patient can appear only once in the queue order."
+
+
+def test_queue_exposes_demographics_and_current_visit_context(client):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="queue-context@clinic.com", clinic_name="Context Clinic")
+    headers = auth_headers_for_token(session["token"])
+    created = test_client.post(
+        "/patients",
+        headers=headers,
+        json={
+            "name": "Context Patient",
+            "phone": "5550103901",
+            "reason": "Review",
+            "age": 34,
+            "sex_at_birth": "female",
+            "gender_identity": "Woman",
+        },
+    )
+    assert created.status_code == 201
+    patient = created.json()
+    assert patient["sex_at_birth"] == "female"
+    assert patient["gender_identity"] == "Woman"
+    assert patient["current_visit"]["kind"] == "new"
+    assert patient["current_visit"]["source"] == "queue"
+
+    returning_walk_in = test_client.post(
+        f"/patients/{patient['id']}/visits",
+        headers=headers,
+        json={
+            "name": "Context Patient",
+            "phone": "5550103901",
+            "reason": "Follow-up review",
+            "age": 34,
+            "sex_at_birth": "female",
+            "gender_identity": "Woman",
+        },
+    )
+    assert returning_walk_in.status_code == 200
+    assert returning_walk_in.json()["current_visit"]["kind"] == "new"
+
+    scheduled_for = (datetime.now(UTC) + timedelta(days=3)).replace(hour=10, minute=0, second=0, microsecond=0)
+    appointment = test_client.post(
+        "/appointments",
+        headers=headers,
+        json={
+            "name": "Context Patient",
+            "phone": "5550103901",
+            "reason": "Scheduled review",
+            "age": 34,
+            "sex_at_birth": "female",
+            "gender_identity": "Woman",
+            "scheduled_for": scheduled_for.isoformat(),
+        },
+    ).json()
+    checked_in = test_client.post(
+        f"/appointments/{appointment['id']}/check-in",
+        headers=headers,
+        json={"existing_patient_id": patient["id"]},
+    )
+    assert checked_in.status_code == 200
+    current_visit = checked_in.json()["current_visit"]
+    assert current_visit["kind"] == "new"
+    assert current_visit["source"] == "appointment"
+    assert datetime.fromisoformat(current_visit["scheduled_for"].replace("Z", "+00:00")) == scheduled_for
+
+    follow_up_time = (datetime.now(UTC) + timedelta(days=5)).replace(hour=10, minute=0, second=0, microsecond=0)
+    follow_up = asyncio.run(repo.create_follow_up(
+        session["user"]["org_id"],
+        patient["id"],
+        session["user"]["id"],
+        SimpleNamespace(scheduled_for=follow_up_time, notes="Scheduled review"),
+    ))
+    _saved_follow_up, follow_up_appointment = asyncio.run(repo.self_book_follow_up_atomic(
+        org_id=session["user"]["org_id"],
+        patient_id=patient["id"],
+        follow_up_id=follow_up["id"],
+        scheduled_for=follow_up_time,
+        appointments_per_hour=4,
+        timezone="UTC",
+    ))
+    checked_in_follow_up = test_client.post(
+        f"/appointments/{follow_up_appointment['id']}/check-in",
+        headers=headers,
+        json={"existing_patient_id": patient["id"]},
+    )
+    assert checked_in_follow_up.status_code == 200
+    assert checked_in_follow_up.json()["current_visit"]["kind"] == "follow_up"
+
+
+def test_billing_column_summary_is_scoped_to_current_visit(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="queue-billing@clinic.com", clinic_name="Billing Context Clinic")
+    headers = auth_headers_for_token(session["token"])
+    patient = _create_queue_patient(test_client, headers, "Billing Patient", "5550103902")
+    invoice = test_client.post(
+        "/invoices",
+        headers=headers,
+        json={
+            "patient_id": patient["id"],
+            "payment_status": "partial",
+            "amount_paid": 200,
+            "items": [
+                {"item_type": "service", "label": "Consultation", "quantity": 1, "unit_price": 500},
+                {"item_type": "medicine", "label": "Medicine", "quantity": 1, "unit_price": 100},
+            ],
+        },
+    )
+    assert invoice.status_code == 201
+    listed = test_client.get("/patients?active_only=true&limit=500", headers=headers).json()
+    summary = next(row for row in listed if row["id"] == patient["id"])["billing_summary"]
+    assert summary == {
+        "invoice_id": invoice.json()["id"],
+        "total": 600.0,
+        "payment_status": "partial",
+        "balance_due": 400.0,
+        "item_count": 2,
+        "medicine_count": 1,
+        "completed_at": None,
+        "sent_at": None,
+    }
 def test_patient_timeline_includes_notes_and_billing_events(client, monkeypatch):
     test_client, repo = client
     session = register_test_clinic(test_client, identifier="timeline@clinic.com", clinic_name="Timeline Clinic")

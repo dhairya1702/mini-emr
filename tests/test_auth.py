@@ -37,6 +37,19 @@ def test_auth_me_reissues_session_headers(client):
     assert test_client.cookies.get(auth_module.SESSION_COOKIE_NAME) == refreshed_token
 
 
+def test_api_responses_include_or_preserve_request_id(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="request-id@clinic.com", clinic_name="Request ID Clinic")
+    generated = test_client.get("/auth/me", headers=auth_headers_for_token(session["token"]))
+    assert generated.headers.get("x-request-id")
+
+    supplied = test_client.get(
+        "/auth/me",
+        headers={**auth_headers_for_token(session["token"]), "X-Request-ID": "trace-123"},
+    )
+    assert supplied.headers["x-request-id"] == "trace-123"
+
+
 def test_register_creates_clinic_settings_with_empty_specialty(client):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="specialty-register@clinic.com", clinic_name="Specialty Register Clinic")
@@ -107,7 +120,8 @@ def test_valid_registration_claims_onboarded_customer_id(client):
             customer_id=customer_id,
             customer_name="Claim Clinic",
             phone="5550103333",
-            users_allowed=2,
+            users_allowed=5,
+            workspace_mode="team",
             created_by=None,
         )
     )
@@ -130,6 +144,13 @@ def test_valid_registration_claims_onboarded_customer_id(client):
     row = asyncio.run(repo.get_customer_onboarding_by_customer_id(customer_id))
     assert row["status"] == "claimed"
     assert row["claimed_org_id"] == response.json()["user"]["org_id"]
+    settings = test_client.get(
+        "/settings/clinic",
+        headers=auth_headers_for_token(response.json()["token"]),
+    )
+    assert settings.status_code == 200
+    assert settings.json()["workspace_mode"] == "team"
+    assert settings.json()["users_allowed"] == 5
 
 
 def test_authenticated_non_auth_routes_reissue_session_headers(client):
@@ -157,7 +178,10 @@ def test_auth_cookie_session_and_logout(client):
     assert cookie_response.status_code == 200
     assert cookie_response.json()["identifier"] == "cookie@clinic.com"
 
-    logout_response = test_client.post("/auth/logout")
+    logout_response = test_client.post(
+        "/auth/logout",
+        headers={"Origin": "http://127.0.0.1:3000"},
+    )
     assert logout_response.status_code == 204
     assert test_client.cookies.get(auth_module.SESSION_COOKIE_NAME) is None
 
@@ -168,6 +192,47 @@ def test_auth_cookie_session_and_logout(client):
         headers=auth_headers_for_token(session["token"]),
     )
     assert old_bearer.status_code == 401
+
+
+def test_conflicting_bearer_and_cookie_identities_are_rejected(client):
+    test_client, _repo = client
+    admin = register_test_clinic(test_client, identifier="conflict-admin@clinic.com", clinic_name="Conflict Clinic")
+    created = test_client.post(
+        "/users/staff",
+        json={"identifier": "conflict-staff@clinic.com", "password": "password123!"},
+        headers=auth_headers_for_token(admin["token"]),
+    )
+    assert created.status_code == 201
+    staff = test_client.post(
+        "/auth/login",
+        json={"identifier": "conflict-staff@clinic.com", "password": "password123!"},
+    ).json()
+
+    response = test_client.get(
+        "/auth/me",
+        headers={
+            "Authorization": f"Bearer {admin['token']}",
+            "Cookie": f"{auth_module.SESSION_COOKIE_NAME}={staff['token']}",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Conflicting authentication credentials."
+
+
+def test_cookie_authenticated_mutation_requires_allowed_origin(client):
+    test_client, _repo = client
+    register_test_clinic(test_client, identifier="csrf@clinic.com", clinic_name="CSRF Clinic")
+
+    missing_origin = test_client.post("/auth/logout")
+    assert missing_origin.status_code == 403
+    assert missing_origin.json()["detail"] == "Invalid request origin."
+
+    allowed = test_client.post(
+        "/auth/logout",
+        headers={"Origin": "http://127.0.0.1:3000"},
+    )
+    assert allowed.status_code == 204
 
 
 def test_get_current_user_skips_repository_when_session_is_missing(monkeypatch: pytest.MonkeyPatch):
@@ -314,7 +379,7 @@ def test_signature_cleanup_makes_background_transparent():
     normalized = Image.open(BytesIO(normalized_bytes)).convert("RGBA")
     assert normalized.getbbox() is not None
 
-    pixels = list(normalized.getdata())
+    pixels = list(normalized.get_flattened_data())
     transparent_pixels = sum(1 for pixel in pixels if pixel[3] == 0)
     visible_pixels = sum(1 for pixel in pixels if pixel[3] > 0)
 
@@ -343,7 +408,7 @@ def test_signature_cleanup_removes_warm_paper_noise():
 
     transparent_pixels = 0
     retained_warm_pixels = 0
-    for red, green, blue, alpha in normalized.getdata():
+    for red, green, blue, alpha in normalized.get_flattened_data():
         if alpha == 0:
             transparent_pixels += 1
             continue

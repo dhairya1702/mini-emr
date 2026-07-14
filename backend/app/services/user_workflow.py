@@ -127,12 +127,11 @@ async def create_staff_user_workflow(
     if existing:
         raise HTTPException(status_code=409, detail="An account with that email or phone already exists.")
 
-    onboarding = await repo.get_customer_onboarding_for_org(str(current_user.org_id))
-    if onboarding:
-        users_used = await repo.count_users_for_org(str(current_user.org_id))
-        users_allowed = int(onboarding.get("users_allowed") or 0)
-        if users_allowed > 0 and users_used >= users_allowed:
-            raise HTTPException(status_code=400, detail="User limit reached for this customer.")
+    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    users_used = await repo.count_users_for_org(str(current_user.org_id))
+    users_allowed = int(clinic_settings.get("users_allowed") or 2)
+    if users_used >= users_allowed:
+        raise HTTPException(status_code=400, detail="User limit reached for this customer.")
 
     created = await repo.create_user(
         org_id=str(current_user.org_id),
@@ -149,9 +148,5 @@ async def create_staff_user_workflow(
         action="staff_user_created",
         summary=f"Created staff user {identifier}.",
         metadata={"identifier": identifier, "role": "staff"},
-    )
-    await repo.upsert_clinic_settings(
-        str(current_user.org_id),
-        ClinicSettingsUpdate(workspace_mode="team"),
     )
     return build_user_out(created)

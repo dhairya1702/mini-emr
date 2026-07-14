@@ -77,6 +77,15 @@ ensure_expected_gcloud_target() {
   fi
 }
 
+ensure_clean_release_tree() {
+  require_command git
+  if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+    echo "Refusing to release from a dirty or untracked working tree." >&2
+    git status --short >&2
+    exit 1
+  fi
+}
+
 require_env_vars() {
   local missing=()
   local name

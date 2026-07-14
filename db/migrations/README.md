@@ -27,3 +27,9 @@ psql "$DATABASE_URL" -f db/migrations/<file>.sql
 | 2026-06-27 | `2026-06-27_financial_precision.sql`  | Converts money and stock quantities to fixed-precision numerics. |
 | 2026-06-27 | `2026-06-27_api_request_metrics.sql`  | Adds daily request/error counters for a real platform error rate. |
 | 2026-06-27 | `2026-06-27_tenant_integrity.sql`     | Enforces same-organization references for clinical child records. |
+| 2026-07-13 | `2026-07-13_ops_workspace_mode.sql`   | Persists the Ops-selected solo/team workspace mode on customer onboarding records. |
+| 2026-07-13 | `2026-07-13_ops_user_limits.sql`      | Persists and safely backfills the Ops-managed user limit for every clinic. |
+| 2026-07-13 | `2026-07-13_shared_queue_board.sql`   | Adds shared queue ordering, explicit urgency, and per-stage timing. |
+| 2026-07-13 | `2026-07-13_queue_context.sql`        | Adds optional sex/gender demographics, current visit context, and visit-linked billing summaries. |
+| 2026-07-13 | `2026-07-13_queue_visit_provenance.sql` | Distinguishes walk-ins and ordinary appointments from visits explicitly booked through follow-up. |
+| 2026-07-14 | `2026-07-14_follow_up_reminder_claims.sql` | Adds leased, concurrency-safe claiming and delivery-attempt metadata for follow-up reminders. |

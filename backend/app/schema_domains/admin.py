@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.schema_domains.common import UserRole
+from app.schema_domains.auth_settings import WorkspaceMode
 from app.schema_domains.patients import AuditEventOut
 
 
@@ -21,6 +22,8 @@ class SuperuserOrgSummaryOut(BaseModel):
     media_storage_bytes: int = 0
     last_activity_at: datetime | None = None
     recent_error_count: int = 0
+    workspace_mode: WorkspaceMode = "solo"
+    users_allowed: int = 2
 
 
 class SuperuserOrgUserOut(BaseModel):
@@ -105,12 +108,14 @@ class CustomerOnboardingCreate(BaseModel):
     customer_name: str = Field(min_length=1, max_length=120)
     phone: str = Field(min_length=5, max_length=40)
     users_allowed: int = Field(default=2, ge=1, le=500)
+    workspace_mode: WorkspaceMode
 
 
 class CustomerOnboardingUpdate(BaseModel):
     customer_name: str | None = Field(default=None, min_length=1, max_length=120)
     phone: str | None = Field(default=None, min_length=5, max_length=40)
     users_allowed: int | None = Field(default=None, ge=1, le=500)
+    workspace_mode: WorkspaceMode | None = None
     status: str | None = Field(default=None, pattern="^(pending|claimed|disabled)$")
 
 
@@ -120,6 +125,7 @@ class CustomerOnboardingOut(BaseModel):
     customer_name: str
     phone: str
     users_allowed: int = 2
+    workspace_mode: WorkspaceMode = "solo"
     users_used: int = 0
     status: str
     claimed_org_id: UUID | None = None
@@ -140,6 +146,24 @@ class SuperdashboardOnboardingSummaryOut(BaseModel):
 class SuperdashboardOnboardingOut(BaseModel):
     summary: SuperdashboardOnboardingSummaryOut
     customers: list[CustomerOnboardingOut] = Field(default_factory=list)
+
+
+class OrganizationWorkspaceModeUpdate(BaseModel):
+    workspace_mode: WorkspaceMode
+
+
+class OrganizationWorkspaceModeOut(BaseModel):
+    org_id: UUID
+    workspace_mode: WorkspaceMode
+
+
+class OrganizationUsersAllowedUpdate(BaseModel):
+    users_allowed: int = Field(ge=1, le=500)
+
+
+class OrganizationUsersAllowedOut(BaseModel):
+    org_id: UUID
+    users_allowed: int
 
 
 class ExportRow(BaseModel):

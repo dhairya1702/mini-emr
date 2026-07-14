@@ -1,10 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { Camera, X } from "lucide-react";
+import Image from "next/image";
 
 import { api } from "@/lib/api";
-import { PatientMatch } from "@/lib/types";
+import { PatientMatch, SexAtBirth } from "@/lib/types";
 
 interface AddPatientModalProps {
   open: boolean;
@@ -19,11 +20,14 @@ interface AddPatientModalProps {
     address: string;
     reason: string;
     date_of_birth?: string | null;
+    sex_at_birth?: SexAtBirth | null;
+    gender_identity?: string;
     age: number | null;
     weight: number | null;
     height: number | null;
     temperature: number | null;
     scheduled_for?: string;
+    photo?: File | null;
   }) => Promise<void>;
 }
 
@@ -39,6 +43,8 @@ export function AddPatientModal({
     email: "",
     address: "",
     dateOfBirth: "",
+    sexAtBirth: "" as "" | SexAtBirth,
+    genderIdentity: "",
     reason: "",
     age: "",
     weight: "",
@@ -57,6 +63,8 @@ export function AddPatientModal({
   const [searchFeedback, setSearchFeedback] = useState("");
   const [existingMatches, setExistingMatches] = useState<PatientMatch[]>([]);
   const [selectedExistingMatchId, setSelectedExistingMatchId] = useState("");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
 
   function getPhoneDigits(value: string) {
     return value.replace(/\D/g, "");
@@ -77,6 +85,8 @@ export function AddPatientModal({
       email: "",
       address: "",
       dateOfBirth: "",
+      sexAtBirth: "" as "" | SexAtBirth,
+      genderIdentity: "",
       reason: "",
       age: "",
       weight: "",
@@ -91,6 +101,7 @@ export function AddPatientModal({
     setSelectedExistingMatchId("");
     setSearchPhone("");
     setSearchFeedback("");
+    setPhotoFile(null);
   }
 
   function handleClose() {
@@ -108,6 +119,16 @@ export function AddPatientModal({
     }
   }, [open]);
 
+  useEffect(() => {
+    if (!photoFile) {
+      setPhotoPreviewUrl("");
+      return;
+    }
+    const objectUrl = URL.createObjectURL(photoFile);
+    setPhotoPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [photoFile]);
+
   if (!open) {
     return null;
   }
@@ -120,6 +141,8 @@ export function AddPatientModal({
       email: match.email ?? "",
       address: match.address ?? "",
       dateOfBirth: match.date_of_birth ?? "",
+      sexAtBirth: match.sex_at_birth ?? "",
+      genderIdentity: match.gender_identity ?? "",
       reason: "",
       age: "",
       weight: "",
@@ -155,7 +178,6 @@ export function AddPatientModal({
       setForm((current) => ({ ...current, phone: digits }));
       if (matches.length) {
         setExistingMatches(matches);
-        setSearchFeedback("Existing patient records found. Select the right profile or continue as a new entry.");
         return;
       }
       setSearchFeedback("No existing patient found for this number. Continue below to add a new patient.");
@@ -187,6 +209,16 @@ export function AddPatientModal({
 
     if (!form.reason.trim()) {
       setError("Reason for visit is required.");
+      return;
+    }
+
+    if (photoFile && !["image/jpeg", "image/png", "image/webp"].includes(photoFile.type)) {
+      setError("Photo must be a JPG, PNG, or WEBP image.");
+      return;
+    }
+
+    if (photoFile && photoFile.size > 5 * 1024 * 1024) {
+      setError("Patient photo must be 5 MB or smaller.");
       return;
     }
 
@@ -254,6 +286,8 @@ export function AddPatientModal({
         address: form.address.trim(),
         reason: form.reason,
         date_of_birth: form.dateOfBirth || null,
+        sex_at_birth: form.sexAtBirth || null,
+        gender_identity: form.genderIdentity.trim(),
         age,
         weight,
         height,
@@ -261,6 +295,7 @@ export function AddPatientModal({
         scheduled_for: isAppointment
           ? new Date(`${form.appointmentDate}T${form.appointmentTime}:00`).toISOString()
           : undefined,
+        photo: isAppointment ? null : photoFile,
       });
       resetForm();
       setExistingMatches([]);
@@ -283,11 +318,11 @@ export function AddPatientModal({
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#dbeaf4]/60 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[20px] border-2 border-[#9fc7e1] bg-white shadow-[0_20px_60px_rgba(64,131,181,0.12)]">
-        <div className="flex items-center justify-between border-b border-[#dbe7ef] px-6 py-5">
+      <div className="flex max-h-[96vh] w-full max-w-5xl flex-col overflow-hidden rounded-[20px] border-2 border-[#9fc7e1] bg-white shadow-[0_20px_60px_rgba(64,131,181,0.12)]">
+        <div className="flex items-center justify-between border-b border-[#dbe7ef] px-5 py-3.5">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Add Patient</h2>
-            <p className="mt-1 text-sm text-slate-700">Quick intake for the live queue or a future booking.</p>
+            <p className="mt-0.5 text-sm text-slate-700">Quick intake for the live queue or a future booking.</p>
           </div>
           <button
             type="button"
@@ -298,7 +333,7 @@ export function AddPatientModal({
           </button>
         </div>
 
-        <form className="space-y-4 overflow-y-auto px-6 py-5" onSubmit={handleSubmit}>
+        <form className="space-y-3 overflow-y-auto px-5 py-4 lg:overflow-visible" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-3 sm:flex-row">
               <input
                 value={searchPhone}
@@ -311,14 +346,14 @@ export function AddPatientModal({
                   setSearchPhone(digits);
                   setForm((current) => ({ ...current, phone: digits }));
                 }}
-                className="min-w-0 flex-1 rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
+                className="min-w-0 flex-1 rounded-xl border border-[#dbe7ef] bg-white px-4 py-2.5 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
                 placeholder="Search by 10-digit phone number"
               />
               <button
                 type="button"
                 onClick={() => void handleSearchExistingPatient()}
                 disabled={isSearching}
-                className="rounded-xl bg-[#2f8fd3] px-4 py-3 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSearching ? "Searching..." : "Search"}
               </button>
@@ -328,107 +363,12 @@ export function AddPatientModal({
             <p className="text-sm text-slate-700">{searchFeedback}</p>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium text-slate-800">Add As:</span>
-            <div className="flex flex-wrap items-center gap-2">
-              {[
-                { value: "queue" as const, label: "Queue" },
-                { value: "appointment" as const, label: "Appointment" },
-              ].map((option) => {
-                const isActive = form.entryType === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => {
-                      setError("");
-                      setForm((current) => ({
-                        ...current,
-                        entryType: option.value,
-                      }));
-                    }}
-                    className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
-                      isActive
-                        ? "border-[#2f8fd3] bg-[#2f8fd3] text-white"
-                        : "border-[#bfd7e8] bg-white text-slate-700 hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-800">Name</span>
-              <input
-                required
-                value={form.name}
-                onChange={(event) => {
-                  setError("");
-                  setSelectedExistingMatchId("");
-                  setForm((current) => ({ ...current, name: event.target.value }));
-                }}
-                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
-                placeholder="Patient full name"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-800">Phone</span>
-              <input
-                required
-                value={form.phone}
-                onChange={(event) => {
-                  setError("");
-                  setSelectedExistingMatchId("");
-                  const digits = getPhoneDigits(event.target.value).slice(0, 10);
-                  setSearchPhone(digits);
-                  setForm((current) => ({ ...current, phone: digits }));
-                }}
-                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
-                placeholder="10-digit phone number"
-              />
-            </label>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-800">Email</span>
-              <input
-                type="email"
-                value={form.email}
-                onChange={(event) => {
-                  setError("");
-                  setForm((current) => ({ ...current, email: event.target.value }));
-                }}
-                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
-                placeholder="patient@example.com"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-800">DOB</span>
-              <input
-                type="date"
-                value={form.dateOfBirth}
-                onChange={(event) => {
-                  setError("");
-                  setForm((current) => ({ ...current, dateOfBirth: event.target.value }));
-                }}
-                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
-              />
-            </label>
-          </div>
-
           {existingMatches.length ? (
             <div className="rounded-[16px] border border-amber-200 bg-amber-50 px-4 py-4">
               <p className="text-sm font-semibold text-amber-900">
                 Existing records found for this phone number.
               </p>
-              <div className="mt-4 max-h-64 space-y-3 overflow-y-auto pr-1">
+              <div className="mt-2 max-h-32 space-y-2 overflow-y-auto pr-1">
                 {existingMatches.map((match) => (
                   <div key={match.id} className="rounded-[20px] border border-amber-200 bg-white px-4 py-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -479,10 +419,139 @@ export function AddPatientModal({
             </div>
           ) : null}
 
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium text-slate-800">Add As:</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {[
+                { value: "queue" as const, label: "Queue" },
+                { value: "appointment" as const, label: "Appointment" },
+              ].map((option) => {
+                const isActive = form.entryType === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      setError("");
+                      setForm((current) => ({
+                        ...current,
+                        entryType: option.value,
+                      }));
+                    }}
+                    className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
+                      isActive
+                        ? "border-[#2f8fd3] bg-[#2f8fd3] text-white"
+                        : "border-[#bfd7e8] bg-white text-slate-700 hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-[92px_minmax(0,1fr)_minmax(0,1fr)] sm:items-end">
+            {form.entryType === "queue" ? (
+              <label className="block cursor-pointer">
+                <span className="mb-1 block text-sm font-medium text-slate-800">Photo</span>
+                <span className="grid h-[46px] w-[92px] place-items-center overflow-hidden rounded-xl border border-dashed border-[#9fc7e1] bg-[#f3f8fb] text-[#2f8fd3] transition hover:bg-[#eaf5fc]">
+                  {photoPreviewUrl ? (
+                    <Image unoptimized src={photoPreviewUrl} alt="Patient preview" width={92} height={46} className="h-full w-full object-cover" />
+                  ) : (
+                    <Camera className="h-5 w-5" />
+                  )}
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  onChange={(event) => setPhotoFile(event.target.files?.[0] ?? null)}
+                />
+              </label>
+            ) : <span className="hidden sm:block" />}
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-800">Name</span>
+              <input
+                required
+                value={form.name}
+                onChange={(event) => {
+                  setError("");
+                  setSelectedExistingMatchId("");
+                  setForm((current) => ({ ...current, name: event.target.value }));
+                }}
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-2.5 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
+                placeholder="Patient full name"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-800">Phone</span>
+              <input
+                required
+                value={form.phone}
+                onChange={(event) => {
+                  setError("");
+                  setSelectedExistingMatchId("");
+                  const digits = getPhoneDigits(event.target.value).slice(0, 10);
+                  setSearchPhone(digits);
+                  setForm((current) => ({ ...current, phone: digits }));
+                }}
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-2.5 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
+                placeholder="10-digit phone number"
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-800">Email</span>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(event) => {
+                  setError("");
+                  setForm((current) => ({ ...current, email: event.target.value }));
+                }}
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-2.5 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
+                placeholder="patient@example.com"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-800">DOB</span>
+              <input
+                type="date"
+                value={form.dateOfBirth}
+                onChange={(event) => {
+                  setError("");
+                  setForm((current) => ({ ...current, dateOfBirth: event.target.value }));
+                }}
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-2.5 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-800">Sex</span>
+              <select
+                value={form.sexAtBirth}
+                onChange={(event) => {
+                  setError("");
+                  setForm((current) => ({ ...current, sexAtBirth: event.target.value as "" | SexAtBirth }));
+                }}
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-2.5 text-slate-800 outline-none transition focus:border-[#6daed8]"
+              >
+                <option value="">Not recorded</option>
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+                <option value="unknown">Other</option>
+              </select>
+            </label>
+          </div>
+
           {form.entryType === "appointment" ? (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-800">Appointment Date</span>
+                <span className="mb-1 block text-sm font-medium text-slate-800">Appointment Date</span>
                 <input
                   type="date"
                   value={form.appointmentDate}
@@ -492,12 +561,12 @@ export function AddPatientModal({
                     setSelectedExistingMatchId("");
                     setForm((current) => ({ ...current, appointmentDate: event.target.value }));
                   }}
-                  className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                  className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-2.5 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 />
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-800">Appointment Time</span>
+                <span className="mb-1 block text-sm font-medium text-slate-800">Appointment Time</span>
                 <input
                   type="time"
                   value={form.appointmentTime}
@@ -507,7 +576,7 @@ export function AddPatientModal({
                     setSelectedExistingMatchId("");
                     setForm((current) => ({ ...current, appointmentTime: event.target.value }));
                   }}
-                  className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                  className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-2.5 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 />
               </label>
             </div>
@@ -515,9 +584,9 @@ export function AddPatientModal({
 
           {form.entryType === "queue" ? (
             <>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-800">Temperature</span>
+                  <span className="mb-1 block text-sm font-medium text-slate-800">Temperature</span>
                   <div className="flex gap-2">
                     <input
                       inputMode="decimal"
@@ -526,7 +595,7 @@ export function AddPatientModal({
                         setError("");
                         setForm((current) => ({ ...current, temperature: event.target.value }));
                       }}
-                      className="min-w-0 flex-1 rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
+                      className="min-w-0 flex-1 rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-2.5 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
                       placeholder={form.temperatureUnit === "C" ? "37" : "98.6"}
                     />
                     <select
@@ -538,18 +607,15 @@ export function AddPatientModal({
                           temperatureUnit: event.target.value as "C" | "F",
                         }));
                       }}
-                      className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                      className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-2.5 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     >
                       <option value="F">F</option>
                       <option value="C">C</option>
                     </select>
                   </div>
                 </label>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-800">Weight</span>
+                  <span className="mb-1 block text-sm font-medium text-slate-800">Weight</span>
                   <input
                     inputMode="decimal"
                     value={form.weight}
@@ -557,13 +623,13 @@ export function AddPatientModal({
                       setError("");
                       setForm((current) => ({ ...current, weight: event.target.value }));
                     }}
-                    className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
+                    className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-2.5 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
                     placeholder="kg"
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-800">Height</span>
+                  <span className="mb-1 block text-sm font-medium text-slate-800">Height</span>
                   <div className="flex gap-2">
                     <input
                       inputMode="decimal"
@@ -572,7 +638,7 @@ export function AddPatientModal({
                         setError("");
                         setForm((current) => ({ ...current, height: event.target.value }));
                       }}
-                      className="min-w-0 flex-1 rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
+                      className="min-w-0 flex-1 rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-2.5 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
                       placeholder={form.heightUnit === "m" ? "1.72" : "172"}
                     />
                     <select
@@ -584,7 +650,7 @@ export function AddPatientModal({
                           heightUnit: event.target.value as "m" | "cm",
                         }));
                       }}
-                      className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                      className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-2.5 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     >
                       <option value="cm">cm</option>
                       <option value="m">m</option>
@@ -596,16 +662,16 @@ export function AddPatientModal({
           ) : null}
 
           <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-800">Reason for Visit</span>
+              <span className="mb-1 block text-sm font-medium text-slate-800">Reason for Visit</span>
             <textarea
               required
-              rows={2}
+              rows={1}
               value={form.reason}
               onChange={(event) => {
                 setError("");
                 setForm((current) => ({ ...current, reason: event.target.value }));
               }}
-              className="min-h-[88px] w-full resize-none rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
+              className="min-h-[48px] w-full resize-none rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-2.5 text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#6daed8]"
               placeholder="Short reason for visit"
             />
           </label>

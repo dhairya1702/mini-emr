@@ -973,7 +973,6 @@ export function SettingsDrawer({
         document_template_margin_right: margins.right,
         document_template_margin_bottom: margins.bottom,
         document_template_margin_left: margins.left,
-        workspace_mode: settings?.workspace_mode,
       };
       if (form.sender_email_app_password.trim()) {
         clinicPayload.sender_email_app_password = form.sender_email_app_password.trim();

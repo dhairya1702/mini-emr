@@ -6,6 +6,7 @@ from fastapi.responses import Response, StreamingResponse
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
 from app.db import AppRepository, get_repository
+from app.file_validation import validate_pdf_bytes
 from app.schema_domains.attachments import (
     PatientAttachmentOut,
     SendPatientAttachmentRequest,
@@ -124,6 +125,11 @@ async def upload_patient_attachment(
         raise HTTPException(status_code=400, detail="Attachment must be 50 MB or smaller.")
     if not _content_matches_type(raw_bytes, content_type):
         raise HTTPException(status_code=400, detail="Attachment content does not match its file type.")
+    if content_type == "application/pdf":
+        try:
+            validate_pdf_bytes(raw_bytes)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     uploaded_path = ""
     try:
         row = await repo.prepare_patient_attachment_metadata(

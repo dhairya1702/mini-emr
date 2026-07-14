@@ -4,11 +4,13 @@ import traceback
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from uuid import UUID
+from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.background import BackgroundTasks
 
 from app import config as config_module
 from app.auth import (
@@ -107,14 +109,17 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=[SESSION_TOKEN_HEADER, SESSION_EXPIRES_AT_HEADER],
+    expose_headers=[SESSION_EXPIRES_AT_HEADER],
 )
 
 
 @app.middleware("http")
 async def refresh_authenticated_session(request: Request, call_next):
+    request_id = str(request.headers.get("X-Request-ID") or "").strip()[:128] or uuid4().hex
+    request.state.request_id = request_id
+
     async def record_request(status_code: int) -> None:
-        if request.url.path == "/health":
+        if request.method == "OPTIONS" or request.url.path.startswith("/health"):
             return
         current_user = getattr(request.state, "current_user", None)
         try:
@@ -146,12 +151,21 @@ async def refresh_authenticated_session(request: Request, call_next):
                     error_type=type(exc).__name__,
                     message=str(exc),
                     details=traceback.format_exc(),
-                    context={},
+                    context={"request_id": request_id},
                 )
             except Exception:
                 logger.exception("Failed to persist platform error for %s %s", request.method, request.url.path)
         raise
-    await record_request(response.status_code)
+    background = response.background
+    if isinstance(background, BackgroundTasks):
+        background.add_task(record_request, response.status_code)
+    else:
+        tasks = BackgroundTasks()
+        if background is not None:
+            tasks.add_task(background)
+        tasks.add_task(record_request, response.status_code)
+        response.background = tasks
+    response.headers["X-Request-ID"] = request_id
     current_user = getattr(request.state, "current_user", None)
     if current_user is not None and not getattr(request.state, "suppress_session_refresh", False):
         issue_session_headers(

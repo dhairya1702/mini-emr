@@ -39,62 +39,29 @@ import {
   createTrainingPatient,
   createTrainingTimeline,
   readTrainingPatients,
-  trainingQueueOrderStorageKey,
   writeTrainingPatients,
 } from "@/lib/training-mode";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { CatalogItem, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientVisitDetail, PaymentStatus } from "@/lib/types";
+import { CatalogItem, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientVisitDetail, PaymentStatus, SexAtBirth } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
-const QUEUE_REFRESH_INTERVAL_MS = 5000;
+const QUEUE_REFRESH_INTERVAL_MS = 15000;
+const QUEUE_REFRESH_MAX_BACKOFF_MS = 60000;
 
-function loadQueueOrder(storageKey: string, persistent: boolean): QueueOrder {
-  if (typeof window === "undefined") {
-    return createEmptyQueueOrder();
+function applyQueueOrder(patients: Patient[], order: QueueOrder, changedAt: string) {
+  const placement = new Map<string, { status: PatientStatus; position: number }>();
+  for (const status of statusOrder) {
+    order[status].forEach((patientId, index) => placement.set(patientId, { status, position: index + 1 }));
   }
-
-  try {
-    const storage = persistent ? window.localStorage : window.sessionStorage;
-    const raw = storage.getItem(storageKey);
-    if (!raw) {
-      return createEmptyQueueOrder();
-    }
-    const parsed = JSON.parse(raw) as Partial<Record<PatientStatus, unknown>>;
+  return patients.map((patient) => {
+    const next = placement.get(patient.id);
+    if (!next) return patient;
     return {
-      waiting: Array.isArray(parsed.waiting) ? parsed.waiting.map(String) : [],
-      consultation: Array.isArray(parsed.consultation) ? parsed.consultation.map(String) : [],
-      done: Array.isArray(parsed.done) ? parsed.done.map(String) : [],
+      ...patient,
+      status: next.status,
+      queue_position: next.position,
+      stage_entered_at: patient.status === next.status ? patient.stage_entered_at : changedAt,
     };
-  } catch {
-    return createEmptyQueueOrder();
-  }
-}
-
-function getOrderedPatientsForStatus(
-  patients: Patient[],
-  status: PatientStatus,
-  orderedIds: string[],
-) {
-  const visiblePatients = patients.filter(
-    (patient) => patient.status === status && (status !== "done" || !patient.billed),
-  );
-  const positionById = new Map(orderedIds.map((id, index) => [id, index]));
-  const fallbackById = new Map(visiblePatients.map((patient, index) => [patient.id, index]));
-
-  return [...visiblePatients].sort((left, right) => {
-    const leftPosition = positionById.get(left.id);
-    const rightPosition = positionById.get(right.id);
-
-    if (leftPosition !== undefined && rightPosition !== undefined) {
-      return leftPosition - rightPosition;
-    }
-    if (leftPosition !== undefined) {
-      return -1;
-    }
-    if (rightPosition !== undefined) {
-      return 1;
-    }
-    return (fallbackById.get(left.id) ?? 0) - (fallbackById.get(right.id) ?? 0);
   });
 }
 
@@ -236,8 +203,9 @@ export default function HomePage() {
   const [billingPatientId, setBillingPatientId] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [queueOrder, setQueueOrder] = useState<QueueOrder>(() => createEmptyQueueOrder());
   const [draggedPatient, setDraggedPatient] = useState<Patient | null>(null);
+  const [isQueueMutationPending, setIsQueueMutationPending] = useState(false);
+  const [queueClock, setQueueClock] = useState(() => Date.now());
   const [invoiceItems, setInvoiceItems] = useState<DraftInvoiceItem[]>([]);
   const [billingError, setBillingError] = useState("");
   const [billingStatus, setBillingStatus] = useState("");
@@ -255,9 +223,10 @@ export default function HomePage() {
   const [customItemLabel, setCustomItemLabel] = useState("");
   const [customItemQuantity, setCustomItemQuantity] = useState("1");
   const [customItemUnitPrice, setCustomItemUnitPrice] = useState("");
-  const loadedQueueOrderKeyRef = useRef("");
-  const hydratingQueueOrderRef = useRef("");
-  const previousQueueOrderSaveKeyRef = useRef("");
+  const queueRefreshInFlightRef = useRef(false);
+  const queueRefreshFailureCountRef = useRef(0);
+  const nextQueueRefreshAllowedAtRef = useRef(0);
+  const lastQueueRefreshAtRef = useRef(Date.now());
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -285,6 +254,7 @@ export default function HomePage() {
   }, []);
   const onPageData = useCallback((data: Patient[]) => {
     setPatients(data);
+    lastQueueRefreshAtRef.current = Date.now();
   }, []);
   const {
     currentUser,
@@ -328,60 +298,47 @@ export default function HomePage() {
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
   const workspaceMode = clinicSettings?.workspace_mode ?? "team";
   const isSoloWorkspace = workspaceMode === "solo";
-  const queueOrderStorageKey = useMemo(() => (
-    isTrainingMode && trainingScope
-      ? trainingQueueOrderStorageKey(trainingScope)
-      : currentUser
-        ? `clinic_queue_order_v2:${currentUser.org_id}:${currentUser.id}`
-        : "clinic_queue_order_v2:anonymous"
-  ), [currentUser, isTrainingMode, trainingScope]);
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setQueueClock(Date.now()), 60000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
-    const nextQueueOrder = loadQueueOrder(queueOrderStorageKey, isTrainingMode);
-    hydratingQueueOrderRef.current = JSON.stringify(nextQueueOrder);
-    loadedQueueOrderKeyRef.current = queueOrderStorageKey;
-    setQueueOrder(nextQueueOrder);
-  }, [isTrainingMode, queueOrderStorageKey]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (loadedQueueOrderKeyRef.current !== queueOrderStorageKey) {
-      return;
-    }
-    if (previousQueueOrderSaveKeyRef.current !== queueOrderStorageKey) {
-      previousQueueOrderSaveKeyRef.current = queueOrderStorageKey;
-      return;
-    }
-    const serializedQueueOrder = JSON.stringify(queueOrder);
-    if (hydratingQueueOrderRef.current === serializedQueueOrder) {
-      hydratingQueueOrderRef.current = "";
-      return;
-    }
-    const storage = isTrainingMode ? window.localStorage : window.sessionStorage;
-    storage.setItem(queueOrderStorageKey, serializedQueueOrder);
-  }, [isTrainingMode, queueOrder, queueOrderStorageKey]);
-
-  useEffect(() => {
-    if (!isAuthReady || isRedirectingToLogin || isTrainingMode) {
+    if (!isAuthReady || isRedirectingToLogin || isTrainingMode || isQueueMutationPending || draggedPatient) {
       return;
     }
 
     let active = true;
 
     async function refreshPatients() {
+      const now = Date.now();
+      if (
+        !active
+        || document.visibilityState !== "visible"
+        || queueRefreshInFlightRef.current
+        || now < nextQueueRefreshAllowedAtRef.current
+      ) {
+        return;
+      }
+      queueRefreshInFlightRef.current = true;
       try {
         const nextPatients = await api.listQueuePatients();
         if (active) {
           setPatients(nextPatients);
+          lastQueueRefreshAtRef.current = Date.now();
+          queueRefreshFailureCountRef.current = 0;
+          nextQueueRefreshAllowedAtRef.current = 0;
         }
       } catch {
-        // Keep the current queue stable if a background refresh fails.
+        queueRefreshFailureCountRef.current += 1;
+        nextQueueRefreshAllowedAtRef.current = Date.now() + Math.min(
+          QUEUE_REFRESH_INTERVAL_MS * (2 ** (queueRefreshFailureCountRef.current - 1)),
+          QUEUE_REFRESH_MAX_BACKOFF_MS,
+        );
+      } finally {
+        queueRefreshInFlightRef.current = false;
       }
     }
-
-    void refreshPatients();
 
     const intervalId = isSoloWorkspace
       ? null
@@ -390,13 +347,18 @@ export default function HomePage() {
       }, QUEUE_REFRESH_INTERVAL_MS);
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
+      if (
+        document.visibilityState === "visible"
+        && Date.now() - lastQueueRefreshAtRef.current >= QUEUE_REFRESH_INTERVAL_MS
+      ) {
         void refreshPatients();
       }
     };
 
     const handleFocus = () => {
-      void refreshPatients();
+      if (Date.now() - lastQueueRefreshAtRef.current >= QUEUE_REFRESH_INTERVAL_MS) {
+        void refreshPatients();
+      }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -410,7 +372,7 @@ export default function HomePage() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [isAuthReady, isRedirectingToLogin, isSoloWorkspace, isTrainingMode]);
+  }, [draggedPatient, isAuthReady, isQueueMutationPending, isRedirectingToLogin, isSoloWorkspace, isTrainingMode]);
 
   useEffect(() => {
     if (!isAuthReady || currentUser?.role !== "admin") {
@@ -433,7 +395,12 @@ export default function HomePage() {
   const groupedPatients = useMemo(() => {
     return statusOrder.reduce<Record<PatientStatus, Patient[]>>(
       (accumulator, status) => {
-        accumulator[status] = getOrderedPatientsForStatus(patients, status, queueOrder[status]);
+        accumulator[status] = patients
+          .filter((patient) => patient.status === status && (status !== "done" || !patient.billed))
+          .sort((left, right) => {
+            const priorityDifference = (left.queue_priority === "urgent" ? 0 : 1) - (right.queue_priority === "urgent" ? 0 : 1);
+            return priorityDifference || left.queue_position - right.queue_position;
+          });
         return accumulator;
       },
       {
@@ -442,28 +409,15 @@ export default function HomePage() {
         done: [],
       },
     );
-  }, [patients, queueOrder]);
+  }, [patients]);
   const activeQueuePatients = useMemo(() => {
-    const orderedIds = [...queueOrder.waiting, ...queueOrder.consultation, ...queueOrder.done];
     const activePatients = patients.filter((patient) => !patient.billed);
-    const positionById = new Map(orderedIds.map((id, index) => [id, index]));
-    const fallbackById = new Map(activePatients.map((patient, index) => [patient.id, index]));
-
     return [...activePatients].sort((left, right) => {
-      const leftPosition = positionById.get(left.id);
-      const rightPosition = positionById.get(right.id);
-      if (leftPosition !== undefined && rightPosition !== undefined) {
-        return leftPosition - rightPosition;
-      }
-      if (leftPosition !== undefined) {
-        return -1;
-      }
-      if (rightPosition !== undefined) {
-        return 1;
-      }
-      return (fallbackById.get(left.id) ?? 0) - (fallbackById.get(right.id) ?? 0);
+      const priorityDifference = (left.queue_priority === "urgent" ? 0 : 1) - (right.queue_priority === "urgent" ? 0 : 1);
+      return priorityDifference || new Date(left.last_visit_at).getTime() - new Date(right.last_visit_at).getTime();
     });
-  }, [patients, queueOrder]);
+  }, [patients]);
+
   const billingPatients = useMemo(
     () => patients.filter((patient) => patient.status === "done" && !patient.billed),
     [patients],
@@ -579,7 +533,6 @@ export default function HomePage() {
   function handleResetTrainingMode() {
     resetTrainingMode();
     setPatients([]);
-    setQueueOrder(createEmptyQueueOrder());
     setSelectedPatient(null);
     setDrawerMode(null);
     setError("");
@@ -594,11 +547,14 @@ export default function HomePage() {
     address: string;
     reason: string;
     date_of_birth?: string | null;
+    sex_at_birth?: SexAtBirth | null;
+    gender_identity?: string;
     age: number | null;
     weight: number | null;
     height: number | null;
     temperature: number | null;
     scheduled_for?: string;
+    photo?: File | null;
   }) {
     if (isTrainingMode) {
       if (payload.entryType === "appointment") {
@@ -614,6 +570,8 @@ export default function HomePage() {
         address: payload.address,
         reason: payload.reason,
         date_of_birth: payload.date_of_birth ?? null,
+        sex_at_birth: payload.sex_at_birth ?? null,
+        gender_identity: payload.gender_identity ?? "",
         age: payload.age,
         weight: payload.weight,
         height: payload.height,
@@ -637,6 +595,8 @@ export default function HomePage() {
           address: payload.address,
           reason: payload.reason,
           date_of_birth: payload.date_of_birth ?? null,
+          sex_at_birth: payload.sex_at_birth ?? null,
+          gender_identity: payload.gender_identity ?? "",
           age: payload.age,
           weight: payload.weight,
           height: payload.height,
@@ -653,20 +613,29 @@ export default function HomePage() {
 
     if (payload.existingPatientId) {
       try {
-        const updated = await api.createPatientVisit(payload.existingPatientId, {
+        let updated = await api.createPatientVisit(payload.existingPatientId, {
           name: payload.name,
           phone: payload.phone,
           email: payload.email,
           address: payload.address,
           reason: payload.reason,
           date_of_birth: payload.date_of_birth ?? null,
+          sex_at_birth: payload.sex_at_birth ?? null,
+          gender_identity: payload.gender_identity ?? "",
           age: payload.age,
           weight: payload.weight,
           height: payload.height,
           temperature: payload.temperature,
         });
+        if (payload.photo) {
+          try {
+            updated = await api.uploadPatientProfilePhoto(updated.id, payload.photo);
+          } catch (photoError) {
+            setError(photoError instanceof Error ? photoError.message : "The visit was added, but the photo upload failed.");
+          }
+        }
         setPatients((current) => [updated, ...current.filter((patient) => patient.id !== updated.id)]);
-        setError("");
+        if (!payload.photo) setError("");
       } catch (createError) {
         setError(createError instanceof Error ? createError.message : "Failed to record patient visit.");
         throw createError;
@@ -680,12 +649,17 @@ export default function HomePage() {
       last_visit_at: new Date().toISOString(),
       status: "waiting",
       billed: false,
+      queue_priority: "normal",
+      stage_entered_at: new Date().toISOString(),
+      queue_position: groupedPatients.waiting.length + 1,
       name: payload.name,
       phone: payload.phone,
       email: payload.email,
       address: payload.address,
       reason: payload.reason,
       date_of_birth: payload.date_of_birth ?? null,
+      sex_at_birth: payload.sex_at_birth ?? null,
+      gender_identity: payload.gender_identity ?? "",
       age: payload.age,
       weight: payload.weight,
       height: payload.height,
@@ -694,22 +668,31 @@ export default function HomePage() {
 
     setPatients((current) => [optimisticPatient, ...current]);
     try {
-      const created = await api.createPatient({
+      let created = await api.createPatient({
         name: payload.name,
         phone: payload.phone,
         email: payload.email,
         address: payload.address,
         reason: payload.reason,
         date_of_birth: payload.date_of_birth ?? null,
+        sex_at_birth: payload.sex_at_birth ?? null,
+        gender_identity: payload.gender_identity ?? "",
         age: payload.age,
         weight: payload.weight,
         height: payload.height,
         temperature: payload.temperature,
       });
+      if (payload.photo) {
+        try {
+          created = await api.uploadPatientProfilePhoto(created.id, payload.photo);
+        } catch (photoError) {
+          setError(photoError instanceof Error ? photoError.message : "The patient was added, but the photo upload failed.");
+        }
+      }
       setPatients((current) =>
         current.map((patient) => (patient.id === optimisticPatient.id ? created : patient)),
       );
-      setError("");
+      if (!payload.photo) setError("");
     } catch (createError) {
       setPatients((current) => current.filter((patient) => patient.id !== optimisticPatient.id));
       setError(createError instanceof Error ? createError.message : "Failed to add patient.");
@@ -726,6 +709,8 @@ export default function HomePage() {
       const updatedPatient = {
         ...patient,
         status: nextStatus,
+        stage_entered_at: new Date().toISOString(),
+        queue_position: groupedPatients[nextStatus].length + 1,
         last_visit_at: new Date().toISOString(),
       };
       commitTrainingPatients((current) =>
@@ -748,9 +733,11 @@ export default function HomePage() {
     }
 
     try {
-      await api.updatePatientStatus(patient.id, nextStatus);
+      const saved = await api.updatePatientStatus(patient.id, nextStatus);
+      setPatients((current) => current.map((entry) => (entry.id === patient.id ? saved : entry)));
+      if (selectedPatient?.id === patient.id) setSelectedPatient(saved);
       setError("");
-      return { ...patient, status: nextStatus };
+      return saved;
     } catch (updateError) {
       setPatients((current) =>
         current.map((entry) =>
@@ -771,6 +758,34 @@ export default function HomePage() {
       await transitionPatientStatus(patient, nextStatus);
     } catch {
       return;
+    }
+  }
+
+  async function handleTogglePriority(patient: Patient) {
+    const previousPatients = patients;
+    const nextPriority = patient.queue_priority === "urgent" ? "normal" : "urgent";
+    const optimistic = {
+      ...patient,
+      queue_priority: nextPriority,
+      queue_position: 0,
+    } as Patient;
+    if (isTrainingMode) {
+      commitTrainingPatients((current) => current.map((entry) => entry.id === patient.id ? optimistic : entry));
+      setError("");
+      return;
+    }
+    setPatients((current) => current.map((entry) => entry.id === patient.id ? optimistic : entry));
+    setIsQueueMutationPending(true);
+    try {
+      const saved = await api.updatePatient(patient.id, { queue_priority: nextPriority });
+      setPatients((current) => current.map((entry) => entry.id === patient.id ? saved : entry));
+      if (selectedPatient?.id === patient.id) setSelectedPatient(saved);
+      setError("");
+    } catch (priorityError) {
+      setPatients(previousPatients);
+      setError(priorityError instanceof Error ? priorityError.message : "Failed to update queue priority.");
+    } finally {
+      setIsQueueMutationPending(false);
     }
   }
 
@@ -815,13 +830,31 @@ export default function HomePage() {
     }
 
     if (sourceStatus === targetStatus) {
-      setQueueOrder(reorderQueueColumn(visibleQueueOrder, sourceStatus, activeId, overId));
-      setError("");
+      const nextQueueOrder = reorderQueueColumn(visibleQueueOrder, sourceStatus, activeId, overId);
+      const changedAt = new Date().toISOString();
+      const previousPatients = patients;
+      const optimisticPatients = applyQueueOrder(patients, nextQueueOrder, changedAt);
+      if (isTrainingMode) {
+        commitTrainingPatients(() => optimisticPatients);
+        setError("");
+        return;
+      }
+      setPatients(optimisticPatients);
+      setIsQueueMutationPending(true);
+      try {
+        const saved = await api.updateQueueOrder(nextQueueOrder);
+        setPatients(saved);
+        setError("");
+      } catch (updateError) {
+        setPatients(previousPatients);
+        setError(updateError instanceof Error ? updateError.message : "Failed to save queue order.");
+      } finally {
+        setIsQueueMutationPending(false);
+      }
       return;
     }
 
     const previousPatients = patients;
-    const previousQueueOrder = queueOrder;
     const targetPatient = patients.find((entry) => entry.id === overId);
     const nextQueueOrder = movePatientBetweenQueueColumns(
       visibleQueueOrder,
@@ -830,14 +863,12 @@ export default function HomePage() {
       activeId,
       targetPatient?.id,
     );
-    const movedPatient = { ...patient, status: targetStatus };
-
-    setQueueOrder(nextQueueOrder);
+    const changedAt = new Date().toISOString();
+    const optimisticPatients = applyQueueOrder(patients, nextQueueOrder, changedAt);
+    const movedPatient = optimisticPatients.find((entry) => entry.id === patient.id) ?? patient;
 
     if (isTrainingMode) {
-      commitTrainingPatients((current) =>
-        current.map((entry) => (entry.id === patient.id ? movedPatient : entry)),
-      );
+      commitTrainingPatients(() => optimisticPatients);
       if (selectedPatient?.id === patient.id) {
         setSelectedPatient(movedPatient);
       }
@@ -845,23 +876,26 @@ export default function HomePage() {
       return;
     }
 
-    setPatients((current) =>
-      current.map((entry) => (entry.id === patient.id ? movedPatient : entry)),
-    );
+    setPatients(optimisticPatients);
     if (selectedPatient?.id === patient.id) {
       setSelectedPatient(movedPatient);
     }
 
     try {
-      await api.updatePatientStatus(patient.id, targetStatus);
+      setIsQueueMutationPending(true);
+      const saved = await api.updateQueueOrder(nextQueueOrder);
+      setPatients(saved);
+      const savedPatient = saved.find((entry) => entry.id === patient.id);
+      if (savedPatient && selectedPatient?.id === patient.id) setSelectedPatient(savedPatient);
       setError("");
     } catch (updateError) {
-      setQueueOrder(previousQueueOrder);
       setPatients(previousPatients);
       if (selectedPatient?.id === patient.id) {
         setSelectedPatient(patient);
       }
       setError(updateError instanceof Error ? updateError.message : "Failed to update status.");
+    } finally {
+      setIsQueueMutationPending(false);
     }
   }
 
@@ -1289,7 +1323,7 @@ export default function HomePage() {
   }
 
   return (
-    <main className="h-screen overflow-hidden px-4 py-5 sm:px-6 lg:px-8">
+    <main className="h-screen overflow-hidden px-4 py-5 sm:px-6 lg:px-6">
       <div className="mx-auto flex h-full max-w-[1600px] flex-col">
         <AppHeader
           clinicName={clinicName}
@@ -1297,6 +1331,7 @@ export default function HomePage() {
           active="queue"
           onOpenSettings={() => setIsSettingsOpen(true)}
           onLogout={handleLogout}
+          timezone={clinicSettings?.timezone}
         />
 
         {error ? (
@@ -1330,23 +1365,24 @@ export default function HomePage() {
         ) : null}
 
         {isSoloWorkspace ? (
-          <section className="flex min-h-0 flex-1 flex-col rounded-[18px] border border-[#bfd7e8] bg-white/95 p-4 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
-            <div className="mb-4 flex shrink-0 items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-800">Today</h2>
-                <p className="text-sm text-slate-500">{activeQueuePatients.length} patients</p>
-              </div>
+          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-[#bfd7e8] bg-white/80 shadow-[0_14px_38px_rgba(64,131,181,0.10)]">
+            <div className="flex shrink-0 items-center gap-3 border-b border-[#dbe7ef] bg-[#f3faff] px-[18px] py-3.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#2f8fd3] ring-4 ring-[#d8ebf7]" />
+              <h2 className="text-[15px] font-bold text-[#1f2b3d]">Today</h2>
+              <span className="ml-auto inline-flex min-w-7 items-center justify-center rounded-full border border-[#bfe0f5] bg-[#ecf6fd] px-2 py-1 text-xs font-bold text-[#2a6fa8]">
+                {activeQueuePatients.length}
+              </span>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(true)}
                 aria-label="Add patient"
                 title="Add patient"
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#edf5fa] text-[#2a6fa8] transition hover:bg-[#dbeaf4]"
+                className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] border border-[#bfe0f5] bg-[#ecf6fd] text-[#2a6fa8] transition hover:bg-[#d8ebf7] active:scale-95"
               >
                 <Plus className="h-4 w-4" />
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="min-h-0 flex-1 overflow-y-auto p-3.5">
               <div className="space-y-3">
                 {activeQueuePatients.length ? activeQueuePatients.map((patient) => (
                   <PatientCard
@@ -1355,11 +1391,15 @@ export default function HomePage() {
                     onOpen={handleOpenPatient}
                     onAdvance={handleAdvancePatient}
                     onRemoveFromQueue={handleRemoveFromQueue}
+                    onTogglePriority={handleTogglePriority}
+                    onOpenBilling={(patient) => openBillingWorkspace(patient.id)}
+                    canAdvance={currentUser?.role === "admin"}
+                    now={queueClock}
                   />
                 )) : (
-                  <div className="rounded-[14px] border border-dashed border-[#bfd7e8] bg-[#f5f9fc] px-4 py-8 text-center">
-                    <p className="text-sm font-medium text-slate-600">No patients in today&apos;s queue.</p>
-                    <p className="mt-1 text-xs text-slate-500">New arrivals and follow-through work will appear here.</p>
+                  <div className="rounded-[16px] border border-dashed border-[#bfd7e8] bg-[#f3f8fb] px-4 py-10 text-center">
+                    <p className="text-sm font-semibold text-[#5b6b80]">No patients in today&apos;s queue</p>
+                    <p className="mt-1 text-xs text-[#8595a8]">New arrivals will appear here.</p>
                   </div>
                 )}
               </div>
@@ -1375,7 +1415,7 @@ export default function HomePage() {
             }}
             onDragCancel={handleDragCancel}
           >
-            <div className="grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-3">
+            <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto xl:grid-cols-3 xl:overflow-hidden">
               <PatientColumn
                 status="waiting"
                 title="Waiting"
@@ -1383,8 +1423,11 @@ export default function HomePage() {
                 onOpen={handleOpenPatient}
                 onAdvance={handleAdvancePatient}
                 onRemoveFromQueue={handleRemoveFromQueue}
+                onTogglePriority={handleTogglePriority}
+                onOpenBilling={(patient) => openBillingWorkspace(patient.id)}
                 onAddPatient={() => setIsModalOpen(true)}
                 canAdvance={() => currentUser?.role === "admin"}
+                now={queueClock}
               />
               <PatientColumn
                 status="consultation"
@@ -1393,7 +1436,10 @@ export default function HomePage() {
                 onOpen={handleOpenPatient}
                 onAdvance={handleAdvancePatient}
                 onRemoveFromQueue={handleRemoveFromQueue}
+                onTogglePriority={handleTogglePriority}
+                onOpenBilling={(patient) => openBillingWorkspace(patient.id)}
                 canAdvance={() => currentUser?.role === "admin"}
+                now={queueClock}
               />
               <PatientColumn
                 status="done"
@@ -1402,6 +1448,9 @@ export default function HomePage() {
                 onOpen={handleOpenPatient}
                 onAdvance={handleAdvancePatient}
                 onRemoveFromQueue={handleRemoveFromQueue}
+                onTogglePriority={handleTogglePriority}
+                onOpenBilling={(patient) => openBillingWorkspace(patient.id)}
+                now={queueClock}
               />
             </div>
             <DragOverlay>
@@ -1413,6 +1462,7 @@ export default function HomePage() {
                     onAdvance={() => undefined}
                     onRemoveFromQueue={() => undefined}
                     canAdvance={false}
+                    now={queueClock}
                   />
                 </div>
               ) : null}

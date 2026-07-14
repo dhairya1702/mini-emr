@@ -50,6 +50,7 @@ export type MockClinicSettings = {
   document_template_margin_left: number;
   onboarding_required: boolean;
   onboarding_completed_at: string | null;
+  users_allowed: number;
   workspace_mode: WorkspaceMode;
   updated_at: string | null;
 };
@@ -61,12 +62,24 @@ export type MockPatient = {
   email: string;
   address: string;
   reason: string;
+  sex_at_birth: "female" | "male" | "intersex" | "prefer_not_to_say" | "unknown" | null;
+  gender_identity: string;
   age: number | null;
   weight: number | null;
   height: number | null;
   temperature: number | null;
   status: "waiting" | "consultation" | "done";
   billed: boolean;
+  queue_priority: "normal" | "urgent";
+  stage_entered_at: string;
+  queue_position: number;
+  current_visit: {
+    id: string;
+    kind: "new" | "follow_up";
+    source: "queue" | "appointment";
+    scheduled_for: string | null;
+  } | null;
+  billing_summary: null;
   created_at: string;
   last_visit_at: string;
 };
@@ -164,6 +177,7 @@ export function buildClinicSettings(overrides: Partial<MockClinicSettings> = {})
     document_template_margin_left: 54,
     onboarding_required: false,
     onboarding_completed_at: nowIso(),
+    users_allowed: 2,
     workspace_mode: "team",
     updated_at: nowIso(),
     ...overrides,
@@ -178,12 +192,19 @@ export function buildPatient(overrides: Partial<MockPatient> = {}): MockPatient 
     email: "jamie@example.com",
     address: "22 Oak Avenue",
     reason: "Fever",
+    sex_at_birth: "female",
+    gender_identity: "",
     age: 28,
     weight: 70,
     height: 172,
     temperature: 99.1,
     status: "waiting",
     billed: false,
+    queue_priority: "normal",
+    stage_entered_at: nowIso(),
+    queue_position: 1,
+    current_visit: { id: "visit-1", kind: "new", source: "queue", scheduled_for: null },
+    billing_summary: null,
     created_at: nowIso(),
     last_visit_at: nowIso(),
     ...overrides,
@@ -319,6 +340,30 @@ export async function mockClinicBootstrap(
       onboarding_completed_at: nowIso(),
     };
     await fulfillJson(route, clinicSettings);
+  });
+  await page.route(`${API_ORIGIN}/patients/queue/order`, async (route) => {
+    const payload = JSON.parse(route.request().postData() || "{}");
+    const columns = payload.columns ?? {};
+    const stageEnteredAt = nowIso();
+    for (const status of ["waiting", "consultation", "done"] as const) {
+      const ids = Array.isArray(columns[status]) ? columns[status] : [];
+      ids.forEach((patientId: string, index: number) => {
+        const patient = patients.find((entry) => entry.id === patientId);
+        if (!patient) return;
+        const stageChanged = patient.status !== status;
+        Object.assign(patient, {
+          status,
+          queue_position: index + 1,
+          ...(stageChanged ? { stage_entered_at: stageEnteredAt } : {}),
+        });
+      });
+    }
+    const stageRank = { waiting: 0, consultation: 1, done: 2 };
+    await fulfillJson(route, [...patients].sort((left, right) => (
+      stageRank[left.status] - stageRank[right.status]
+      || Number(right.queue_priority === "urgent") - Number(left.queue_priority === "urgent")
+      || left.queue_position - right.queue_position
+    )));
   });
   await page.route(new RegExp(`${API_ORIGIN}/patients(?:\\?.*)?$`), async (route) => {
     await fulfillJson(route, patients);

@@ -1,4 +1,4 @@
-import { AuthUser, GenerateNotePayload, Patient, PatientStatus, PatientTimelineEvent } from "@/lib/types";
+import { AuthUser, GenerateNotePayload, Patient, PatientStatus, PatientTimelineEvent, SexAtBirth } from "@/lib/types";
 
 const TRAINING_MODE_PREFIX = "clinic_training_mode_v1";
 const TRAINING_PATIENTS_PREFIX = "clinic_training_patients_v1";
@@ -91,6 +91,8 @@ export function createTrainingPatient(payload: {
   address: string;
   reason: string;
   date_of_birth?: string | null;
+  sex_at_birth?: SexAtBirth | null;
+  gender_identity?: string;
   age: number | null;
   weight: number | null;
   height: number | null;
@@ -104,12 +106,17 @@ export function createTrainingPatient(payload: {
     last_visit_at: now,
     status: payload.status ?? "waiting",
     billed: false,
+    queue_priority: "normal",
+    stage_entered_at: now,
+    queue_position: 1,
     name: payload.name,
     phone: payload.phone,
     email: payload.email,
     address: payload.address,
     reason: payload.reason,
     date_of_birth: payload.date_of_birth ?? null,
+    sex_at_birth: payload.sex_at_birth ?? null,
+    gender_identity: payload.gender_identity ?? "",
     age: payload.age,
     weight: payload.weight,
     height: payload.height,

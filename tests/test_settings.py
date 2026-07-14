@@ -30,7 +30,11 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
     assert initial.json()["onboarding_completed_at"] is None
     assert initial.json()["workspace_mode"] == "solo"
 
-    template_bytes = b"%PDF-1.4 sample clinic paper"
+    writer = PdfWriter()
+    writer.add_blank_page(width=595, height=842)
+    template_buffer = BytesIO()
+    writer.write(template_buffer)
+    template_bytes = template_buffer.getvalue()
     uploaded = test_client.post(
         "/settings/clinic/document-template",
         headers=headers,
@@ -125,6 +129,18 @@ def test_clinic_settings_can_store_specialty_for_existing_org(client):
 
     missing = test_client.get("/settings/clinic/document-template/file", headers=headers)
     assert missing.status_code == 404
+
+
+def test_clinic_template_rejects_malformed_pdf(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="bad-template@clinic.com", clinic_name="Bad Template Clinic")
+    response = test_client.post(
+        "/settings/clinic/document-template",
+        headers=auth_headers_for_token(session["token"]),
+        files={"file": ("unsafe.pdf", b"%PDF-1.4 not a real PDF", "application/pdf")},
+    )
+    assert response.status_code == 400
+    assert "malformed or unsafe" in response.json()["detail"]
 
 
 def test_clinic_settings_normalizes_common_timezone_aliases(client):
@@ -436,7 +452,7 @@ def test_admin_can_change_user_role(client):
     assert updated.json()["role"] == "admin"
 
 
-def test_staff_creation_upgrades_workspace_mode_to_team(client):
+def test_staff_creation_preserves_ops_workspace_mode(client):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="workspace-admin@clinic.com", clinic_name="Workspace Clinic")
     headers = auth_headers_for_token(session["token"])
@@ -454,10 +470,10 @@ def test_staff_creation_upgrades_workspace_mode_to_team(client):
 
     updated = test_client.get("/settings/clinic", headers=headers)
     assert updated.status_code == 200
-    assert updated.json()["workspace_mode"] == "team"
+    assert updated.json()["workspace_mode"] == "solo"
 
 
-def test_onboarding_completion_sets_team_mode_when_staff_exists(client):
+def test_onboarding_completion_preserves_ops_workspace_mode_when_staff_exists(client):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="workspace-onboarding@clinic.com", clinic_name="Workspace Onboarding")
     headers = auth_headers_for_token(session["token"])
@@ -485,7 +501,32 @@ def test_onboarding_completion_sets_team_mode_when_staff_exists(client):
 
     completed = test_client.post("/settings/clinic/onboarding/complete", headers=headers)
     assert completed.status_code == 200
-    assert completed.json()["workspace_mode"] == "team"
+    assert completed.json()["workspace_mode"] == "solo"
+
+
+def test_clinic_admin_cannot_change_ops_workspace_mode(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="workspace-locked@clinic.com", clinic_name="Locked Workspace")
+    headers = auth_headers_for_token(session["token"])
+
+    updated = test_client.put(
+        "/settings/clinic",
+        headers=headers,
+        json={"workspace_mode": "team"},
+    )
+
+    assert updated.status_code == 403
+    assert updated.json()["detail"] == "Workspace mode and user limits are managed by ClinicOS Ops."
+    current = test_client.get("/settings/clinic", headers=headers)
+    assert current.json()["workspace_mode"] == "solo"
+
+    limit_update = test_client.put(
+        "/settings/clinic",
+        headers=headers,
+        json={"users_allowed": 20},
+    )
+    assert limit_update.status_code == 403
+    assert limit_update.json()["detail"] == "Workspace mode and user limits are managed by ClinicOS Ops."
 
 
 def test_admin_can_remove_user_but_not_self(client):

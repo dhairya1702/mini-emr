@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from app.api_errors import internal_server_error
 from app.auth import get_current_user, require_admin
 from app.db import AppRepository, get_repository
+from app.file_validation import validate_pdf_bytes
 from app.schema_domains.auth_settings import ClinicSettingsOut, ClinicSettingsUpdate, UserOut
 
 
@@ -25,10 +26,6 @@ ALLOWED_TEMPLATE_EXTENSIONS = {
     ".png": "image/png",
 }
 MAX_TEMPLATE_BYTES = 10 * 1024 * 1024
-
-
-def _infer_workspace_mode(user_count: int) -> str:
-    return "team" if user_count > 1 else "solo"
 
 
 def _serialize_clinic_settings(settings_row: dict) -> ClinicSettingsOut:
@@ -68,23 +65,6 @@ def _has_required_onboarding(settings_row: dict) -> bool:
     )
 
 
-async def _ensure_workspace_mode(
-    repo: AppRepository,
-    org_id: str,
-    settings_row: dict,
-) -> dict:
-    existing_mode = str(settings_row.get("workspace_mode") or "").strip()
-    if existing_mode in {"solo", "team"}:
-        return settings_row
-
-    users = await repo.list_users_for_org_any(org_id)
-    resolved_mode = _infer_workspace_mode(len(users))
-    return await repo.upsert_clinic_settings(
-        org_id,
-        ClinicSettingsUpdate(workspace_mode=resolved_mode),
-    )
-
-
 @router.get("/settings/clinic", response_model=ClinicSettingsOut)
 async def get_clinic_settings(
     repo: AppRepository = Depends(get_repository),
@@ -97,7 +77,6 @@ async def get_clinic_settings(
                 str(current_user.org_id),
                 ClinicSettingsUpdate(),
             )
-        settings_row = await _ensure_workspace_mode(repo, str(current_user.org_id), settings_row)
         settings_row["doctor_name"] = current_user.name or str(settings_row.get("doctor_name") or "")
         return _serialize_clinic_settings(settings_row)
     except Exception as exc:  # pragma: no cover
@@ -110,6 +89,8 @@ async def update_clinic_settings(
     repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> ClinicSettingsOut:
+    if {"workspace_mode", "users_allowed"} & payload.model_fields_set:
+        raise HTTPException(status_code=403, detail="Workspace mode and user limits are managed by ClinicOS Ops.")
     try:
         saved = await repo.upsert_clinic_settings(
             str(current_user.org_id),
@@ -130,13 +111,11 @@ async def complete_clinic_onboarding(
         settings_row = await repo.get_clinic_settings(str(current_user.org_id))
         if not settings_row or not _has_required_onboarding(settings_row):
             raise HTTPException(status_code=400, detail="Complete specialty and clinic hours before entering the workspace.")
-        users = await repo.list_users_for_org_any(str(current_user.org_id))
         saved = await repo.upsert_clinic_settings(
             str(current_user.org_id),
             ClinicSettingsUpdate(
                 onboarding_required=True,
                 onboarding_completed_at=datetime.now(UTC),
-                workspace_mode=_infer_workspace_mode(len(users)),
             ),
         )
         saved["doctor_name"] = current_user.name or str(saved.get("doctor_name") or "")
@@ -159,6 +138,11 @@ async def upload_clinic_template(
         raise HTTPException(status_code=400, detail="Template file is empty.")
     if len(raw_bytes) > MAX_TEMPLATE_BYTES:
         raise HTTPException(status_code=400, detail="Template file must be 10 MB or smaller.")
+    if content_type == "application/pdf":
+        try:
+            validate_pdf_bytes(raw_bytes)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
         saved = await repo.set_clinic_document_template(

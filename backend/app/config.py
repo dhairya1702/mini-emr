@@ -18,11 +18,16 @@ class Settings(BaseSettings):
     follow_up_reminder_interval_seconds: int = 300
     follow_up_reminder_lead_hours: int = 24
     session_ttl_hours: int = 12
+    db_pool_min_size: int = 1
+    db_pool_max_size: int = 10
+    db_pool_timeout_seconds: float = 10.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     def cors_origins(self) -> list[str]:
-        origins = [self.app_origin, "http://localhost:3000", "http://127.0.0.1:3000"]
+        origins = [self.app_origin]
+        if not str(self.app_origin or "").startswith("https://"):
+            origins.extend(["http://localhost:3000", "http://127.0.0.1:3000"])
         extra = [
             origin.strip()
             for origin in str(self.app_origins or "").split(",")

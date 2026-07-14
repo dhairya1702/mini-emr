@@ -21,6 +21,7 @@ from app.schema_domains.patients import (
     PatientVisitDetailOut,
     PatientMatchOut,
     PatientOut,
+    QueueOrderUpdate,
     PatientSummaryOut,
     PatientTimelineEvent,
     PatientUpdate,
@@ -145,6 +146,29 @@ async def create_patient(
         return await create_patient_workflow(repo, current_user, payload)
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="create_patient") from exc
+
+
+@router.put("/patients/queue/order", response_model=list[PatientOut])
+async def update_queue_order(
+    payload: QueueOrderUpdate,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> list[PatientOut]:
+    try:
+        rows = await repo.reorder_queue(
+            str(current_user.org_id),
+            {
+                "waiting": [str(patient_id) for patient_id in payload.columns.waiting],
+                "consultation": [str(patient_id) for patient_id in payload.columns.consultation],
+                "done": [str(patient_id) for patient_id in payload.columns.done],
+            },
+            role=current_user.role,
+        )
+        return [PatientOut(**row) for row in rows]
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="update_queue_order") from exc
 
 
 @router.get("/patients/{patient_id}", response_model=PatientOut)

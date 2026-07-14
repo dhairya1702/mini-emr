@@ -62,7 +62,6 @@ function settingsPayload(settings: ClinicSettings, patch: Partial<ClinicSettings
     document_template_margin_left: settings.document_template_margin_left,
     onboarding_required: settings.onboarding_required,
     onboarding_completed_at: settings.onboarding_completed_at,
-    workspace_mode: settings.workspace_mode,
     ...patch,
   };
 }

@@ -24,7 +24,17 @@ class PostgresConnectionManager:
 
         from psycopg_pool import ConnectionPool
 
-        return ConnectionPool(conninfo=self.database_url, open=False)
+        settings = get_settings()
+        min_size = max(0, int(getattr(settings, "db_pool_min_size", 1)))
+        max_size = max(min_size or 1, int(getattr(settings, "db_pool_max_size", 10)))
+        timeout = max(1.0, float(getattr(settings, "db_pool_timeout_seconds", 10.0)))
+        return ConnectionPool(
+            conninfo=self.database_url,
+            min_size=min_size,
+            max_size=max_size,
+            timeout=timeout,
+            open=False,
+        )
 
     @property
     def pool(self) -> Any:

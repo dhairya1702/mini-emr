@@ -385,20 +385,26 @@ def test_appointment_listing_uses_clinic_local_date_boundaries(client):
     )
     assert settings_response.status_code == 200
 
+    scheduled_for = (datetime.now(UTC) + timedelta(days=2)).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
     create_appointment = test_client.post(
         "/appointments",
         json={
             "name": "Midnight Boundary Patient",
             "phone": "5550111111",
             "reason": "Boundary review",
-            "scheduled_for": "2026-07-11T00:00:00+00:00",
+            "scheduled_for": scheduled_for.isoformat(),
         },
         headers=headers,
     )
     assert create_appointment.status_code == 201
 
     list_appointments = test_client.get(
-        "/appointments?scheduled_date=2026-07-10",
+        f"/appointments?scheduled_date={(scheduled_for - timedelta(hours=7)).date().isoformat()}",
         headers=headers,
     )
     assert list_appointments.status_code == 200

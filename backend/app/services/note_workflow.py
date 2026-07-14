@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from app.clinic_context import build_clinic_context, build_measurements_context, build_patient_context
 from app.db import AppRepository
 from app.formatting import format_display_datetime
+from app.file_validation import validate_pdf_bytes
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.documents import (
     FinalizeNoteRequest,
@@ -77,6 +78,11 @@ async def persist_note_attachments(
         if total_bytes > MAX_NOTE_ASSET_BYTES:
             raise HTTPException(status_code=400, detail="Consultation attachments must total 25 MB or less.")
         content_type = str(asset.get("content_type") or "application/octet-stream").strip() or "application/octet-stream"
+        if content_type == "application/pdf":
+            try:
+                validate_pdf_bytes(raw_bytes)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
         row = await repo.prepare_patient_attachment_metadata(
             str(current_user.org_id),
             patient_id,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock3, Download, RefreshCw, Search } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
@@ -101,6 +101,10 @@ export default function HistoryPage() {
     onPageData,
   });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
+  useEffect(() => {
+    const searchQuery = new URLSearchParams(window.location.search).get("q");
+    if (searchQuery) setQuery(searchQuery);
+  }, []);
   const uniquePatients = useMemo<Patient[]>(() => {
     const seen = new Set<string>();
     const records: Patient[] = [];
@@ -122,6 +126,9 @@ export default function HistoryPage() {
         temperature: visit.temperature,
         status: visit.status,
         billed: visit.billed,
+        queue_priority: "normal",
+        stage_entered_at: visit.last_visit_at,
+        queue_position: records.length + 1,
         created_at: visit.created_at,
         last_visit_at: visit.last_visit_at,
       });
@@ -376,6 +383,9 @@ export default function HistoryPage() {
                             temperature: visit.temperature,
                             status: visit.status,
                             billed: visit.billed,
+                            queue_priority: "normal" as const,
+                            stage_entered_at: visit.last_visit_at,
+                            queue_position: 0,
                             created_at: visit.created_at,
                             last_visit_at: visit.last_visit_at,
                           };

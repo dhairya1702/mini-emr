@@ -34,6 +34,7 @@ INVOICE_COLUMNS = [
     "id",
     "org_id",
     "patient_id",
+    "visit_id",
     "subtotal",
     "total",
     "payment_status",
@@ -228,11 +229,13 @@ class PostgresBillingRepository:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "select id from public.patients where org_id = %s and id = %s limit 1",
+                        "select id, current_visit_id from public.patients where org_id = %s and id = %s limit 1",
                         (org_id, str(payload.patient_id)),
                     )
-                    if not cursor.fetchone():
+                    patient_row = cursor.fetchone()
+                    if not patient_row:
                         raise ValueError("Patient not found for this organization.")
+                    current_visit_id = str(patient_row[1]) if patient_row[1] else None
 
                     catalog_item_ids = [item["catalog_item_id"] for item in item_payload if item["catalog_item_id"]]
                     if catalog_item_ids:
@@ -267,16 +270,18 @@ class PostgresBillingRepository:
                             """
                             update public.invoices
                             set
+                              visit_id = coalesce(visit_id, %s),
                               subtotal = %s,
                               total = %s,
                               payment_status = %s,
                               amount_paid = %s,
                               paid_at = %s
                             where org_id = %s and id = %s
-                            returning id, org_id, patient_id, subtotal, total, payment_status, amount_paid,
+                            returning id, org_id, patient_id, visit_id, subtotal, total, payment_status, amount_paid,
                               paid_at, completed_at, completed_by, sent_at, created_at
                             """,
                             (
+                                current_visit_id,
                                 invoice_total,
                                 invoice_total,
                                 payload.payment_status,
@@ -290,15 +295,16 @@ class PostgresBillingRepository:
                         cursor.execute(
                             """
                             insert into public.invoices (
-                              org_id, patient_id, subtotal, total, payment_status, amount_paid, paid_at
+                              org_id, patient_id, visit_id, subtotal, total, payment_status, amount_paid, paid_at
                             )
-                            values (%s, %s, %s, %s, %s, %s, %s)
-                            returning id, org_id, patient_id, subtotal, total, payment_status, amount_paid,
+                            values (%s, %s, %s, %s, %s, %s, %s, %s)
+                            returning id, org_id, patient_id, visit_id, subtotal, total, payment_status, amount_paid,
                               paid_at, completed_at, completed_by, sent_at, created_at
                             """,
                             (
                                 org_id,
                                 str(payload.patient_id),
+                                current_visit_id,
                                 invoice_total,
                                 invoice_total,
                                 payload.payment_status,
@@ -317,7 +323,7 @@ class PostgresBillingRepository:
                             update public.invoices
                             set paid_at = now()
                             where id = %s
-                            returning id, org_id, patient_id, subtotal, total, payment_status, amount_paid,
+                            returning id, org_id, patient_id, visit_id, subtotal, total, payment_status, amount_paid,
                               paid_at, completed_at, completed_by, sent_at, created_at
                             """,
                             (invoice_id,),
@@ -474,7 +480,7 @@ class PostgresBillingRepository:
                                   else sent_at
                                 end
                             where org_id = %s and id = %s
-                            returning id, org_id, patient_id, subtotal, total, payment_status, amount_paid,
+                            returning id, org_id, patient_id, visit_id, subtotal, total, payment_status, amount_paid,
                               paid_at, completed_at, completed_by, sent_at, created_at
                             """,
                             (completed_by, mark_sent, org_id, invoice_id),
@@ -485,7 +491,7 @@ class PostgresBillingRepository:
                             update public.invoices
                             set sent_at = now()
                             where org_id = %s and id = %s
-                            returning id, org_id, patient_id, subtotal, total, payment_status, amount_paid,
+                            returning id, org_id, patient_id, visit_id, subtotal, total, payment_status, amount_paid,
                               paid_at, completed_at, completed_by, sent_at, created_at
                             """,
                             (org_id, invoice_id),

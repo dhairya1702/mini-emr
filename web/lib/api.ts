@@ -113,10 +113,6 @@ const SAFE_REQUEST_RETRY_DELAY_MS = 350;
 const SESSION_TOKEN_HEADER = "x-session-token";
 const SESSION_EXPIRES_AT_HEADER = "x-session-expires-at";
 
-function shouldAttachAuth(path: string) {
-  return path !== "/auth/login" && path !== "/auth/register";
-}
-
 function isSessionErrorMessage(message: string) {
   return (
     message === "Authentication required." ||
@@ -137,19 +133,17 @@ function shouldClearSessionOnError(message: string) {
 }
 
 function getActiveToken(path: string) {
-  if (!shouldAttachAuth(path)) {
-    return "";
-  }
+  void path;
   authStorage.clearExpiredSession();
-  return authStorage.getToken();
+  return "";
 }
 
 function syncSessionFromResponse(response: Response) {
   const refreshedToken = response.headers.get(SESSION_TOKEN_HEADER);
   const refreshedExpiry = response.headers.get(SESSION_EXPIRES_AT_HEADER);
-  if (refreshedToken) {
-    authStorage.setToken(refreshedToken);
-  }
+  // The browser relies on the HttpOnly cookie. The exposed token header is
+  // retained for non-browser API clients but must not enter browser storage.
+  void refreshedToken;
   authStorage.setSessionExpiry(refreshedExpiry ? Number(refreshedExpiry) : null);
 }
 
@@ -465,6 +459,16 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  updateSuperdashboardOrgWorkspaceMode: (orgId: string, workspaceMode: "solo" | "team") =>
+    request<{ org_id: string; workspace_mode: "solo" | "team" }>(`/superdashboard/orgs/${orgId}/workspace-mode`, {
+      method: "PATCH",
+      body: JSON.stringify({ workspace_mode: workspaceMode }),
+    }),
+  updateSuperdashboardOrgUsersAllowed: (orgId: string, usersAllowed: number) =>
+    request<{ org_id: string; users_allowed: number }>(`/superdashboard/orgs/${orgId}/users-allowed`, {
+      method: "PATCH",
+      body: JSON.stringify({ users_allowed: usersAllowed }),
+    }),
   disableSuperdashboardCustomer: (customerId: string) =>
     request<CustomerOnboarding>(`/superdashboard/onboarding/customers/${customerId}/disable`, {
       method: "POST",
@@ -581,6 +585,11 @@ export const api = {
     request<Patient>(`/patients/${patientId}`, {
       method: "PATCH",
       body: JSON.stringify({ status }),
+    }),
+  updateQueueOrder: (columns: Record<PatientStatus, string[]>) =>
+    request<Patient[]>("/patients/queue/order", {
+      method: "PUT",
+      body: JSON.stringify({ columns }),
     }),
   updatePatient: (
     patientId: string,

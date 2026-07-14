@@ -1,7 +1,28 @@
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 
 export type PatientStatus = "waiting" | "consultation" | "done";
+export type QueuePriority = "normal" | "urgent";
+export type SexAtBirth = "female" | "male" | "intersex" | "prefer_not_to_say" | "unknown";
+export type VisitKind = "new" | "follow_up";
 export type WorkspaceMode = "solo" | "team";
+
+export interface CurrentVisitSummary {
+  id: string;
+  kind: VisitKind;
+  source: "queue" | "appointment";
+  scheduled_for: string | null;
+}
+
+export interface QueueBillingSummary {
+  invoice_id: string;
+  total: number;
+  payment_status: PaymentStatus;
+  balance_due: number;
+  item_count: number;
+  medicine_count: number;
+  completed_at: string | null;
+  sent_at: string | null;
+}
 
 export interface Patient {
   id: string;
@@ -11,12 +32,19 @@ export interface Patient {
   address: string;
   reason: string;
   date_of_birth?: string | null;
+  sex_at_birth?: SexAtBirth | null;
+  gender_identity?: string;
   age: number | null;
   weight: number | null;
   height: number | null;
   temperature: number | null;
   status: PatientStatus;
   billed: boolean;
+  queue_priority: QueuePriority;
+  stage_entered_at: string;
+  queue_position: number;
+  current_visit?: CurrentVisitSummary | null;
+  billing_summary?: QueueBillingSummary | null;
   profile_photo_url?: string | null;
   profile_photo_content_type?: string | null;
   profile_photo_updated_at?: string | null;
@@ -32,6 +60,8 @@ export interface PatientMatch {
   address: string;
   reason: string;
   date_of_birth?: string | null;
+  sex_at_birth?: SexAtBirth | null;
+  gender_identity?: string;
   age: number | null;
   weight: number | null;
   height: number | null;
@@ -54,12 +84,15 @@ export interface PatientVisit {
   address: string;
   reason: string;
   date_of_birth?: string | null;
+  sex_at_birth?: SexAtBirth | null;
+  gender_identity?: string;
   age: number | null;
   weight: number | null;
   height: number | null;
   temperature: number | null;
   source: string;
   appointment_id: string | null;
+  visit_kind: VisitKind;
   created_at: string;
   status: PatientStatus;
   billed: boolean;
@@ -77,6 +110,8 @@ export interface Appointment {
   address: string;
   reason: string;
   date_of_birth?: string | null;
+  sex_at_birth?: SexAtBirth | null;
+  gender_identity?: string;
   age: number | null;
   weight: number | null;
   height: number | null;
@@ -184,6 +219,7 @@ export interface PatientAttachment {
   id: string;
   org_id: string;
   patient_id: string;
+  visit_id?: string | null;
   uploaded_by: string | null;
   file_name: string;
   content_type: string;
@@ -705,6 +741,7 @@ export interface Invoice {
   id: string;
   org_id: string;
   patient_id: string;
+  visit_id?: string | null;
   patient_name?: string | null;
   subtotal: number;
   total: number;
@@ -748,6 +785,7 @@ export interface ClinicSettings {
   document_template_margin_left: number;
   onboarding_required: boolean;
   onboarding_completed_at: string | null;
+  users_allowed: number;
   workspace_mode: WorkspaceMode;
   updated_at: string | null;
 }
@@ -785,6 +823,8 @@ export interface SuperuserOrgSummary {
   media_storage_bytes: number;
   recent_error_count: number;
   last_activity_at: string | null;
+  workspace_mode: WorkspaceMode;
+  users_allowed: number;
 }
 
 export interface SuperuserOrgUser {
@@ -871,6 +911,7 @@ export interface CustomerOnboarding {
   customer_name: string;
   phone: string;
   users_allowed: number;
+  workspace_mode: WorkspaceMode;
   users_used: number;
   status: "pending" | "claimed" | "disabled";
   claimed_org_id: string | null;
@@ -885,12 +926,14 @@ export interface CustomerOnboardingCreatePayload {
   customer_name: string;
   phone: string;
   users_allowed: number;
+  workspace_mode: WorkspaceMode;
 }
 
 export interface CustomerOnboardingUpdatePayload {
   customer_name?: string;
   phone?: string;
   users_allowed?: number;
+  workspace_mode?: WorkspaceMode;
   status?: "pending" | "claimed" | "disabled";
 }
 
@@ -993,6 +1036,8 @@ export interface AppointmentCreatePayload {
   address: string;
   reason: string;
   date_of_birth?: string | null;
+  sex_at_birth?: SexAtBirth | null;
+  gender_identity?: string;
   age: number | null;
   weight: number | null;
   height: number | null;
@@ -1028,6 +1073,8 @@ export interface PatientInput {
   address: string;
   reason: string;
   date_of_birth?: string | null;
+  sex_at_birth?: SexAtBirth | null;
+  gender_identity?: string;
   age: number | null;
   weight: number | null;
   height: number | null;
@@ -1037,6 +1084,9 @@ export interface PatientInput {
 export interface PatientUpdatePayload {
   status?: PatientStatus;
   billed?: boolean;
+  queue_priority?: QueuePriority;
+  sex_at_birth?: SexAtBirth | null;
+  gender_identity?: string;
   name?: string;
   phone?: string;
   email?: string;
@@ -1107,5 +1157,6 @@ export interface ClinicSettingsUpdatePayload {
   document_template_margin_left: number;
   onboarding_required?: boolean;
   onboarding_completed_at?: string | null;
+  users_allowed?: number;
   workspace_mode?: WorkspaceMode;
 }

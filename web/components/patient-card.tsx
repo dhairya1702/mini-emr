@@ -1,18 +1,117 @@
 "use client";
 
-import { ArrowRight, GripVertical, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Clock3, Flag, GripVertical, ReceiptIndianRupee, Trash2 } from "lucide-react";
 import type { HTMLAttributes } from "react";
 
 import { Patient, PatientStatus } from "@/lib/types";
 
-function formatPatientMetadata(patient: Patient) {
-  const reason = patient.reason.trim();
-  const age =
-    typeof patient.age === "number" && Number.isFinite(patient.age)
-      ? `${patient.age}y`
-      : "";
-  const metadata = [age, reason].filter(Boolean).join(" · ");
-  return metadata || "No reason added";
+const stageStyles: Record<PatientStatus, {
+  rail: string;
+  elapsed: string;
+  action: string;
+  label: string;
+}> = {
+  waiting: {
+    rail: "border-l-[#f59e0b]",
+    elapsed: "border-amber-200 bg-[#fff7ea] text-amber-700",
+    action: "bg-[#2f8fd3] text-white hover:bg-[#287fc0]",
+    label: "Waiting",
+  },
+  consultation: {
+    rail: "border-l-[#2f8fd3]",
+    elapsed: "border-[#bfe0f5] bg-[#ecf6fd] text-[#2a6fa8]",
+    action: "border border-[#bce8cd] bg-[#ecfaf1] text-[#16a34a] hover:bg-[#ddf6e7]",
+    label: "In consultation",
+  },
+  done: {
+    rail: "border-l-[#16a34a]",
+    elapsed: "border-[#bce8cd] bg-[#ecfaf1] text-[#15803d]",
+    action: "border border-[#bce8cd] bg-[#ecfaf1] text-[#16a34a] hover:bg-[#ddf6e7]",
+    label: "Ready to bill",
+  },
+};
+
+const avatarPalettes = [
+  "from-amber-500 to-amber-300",
+  "from-[#2f8fd3] to-[#57b0e6]",
+  "from-violet-500 to-violet-400",
+  "from-emerald-600 to-emerald-400",
+  "from-rose-600 to-rose-400",
+  "from-cyan-600 to-cyan-400",
+];
+
+function initialsForPatient(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "P";
+}
+
+function avatarPaletteForPatient(patient: Patient) {
+  const seed = [...patient.id].reduce((sum, character) => sum + character.charCodeAt(0), 0);
+  return avatarPalettes[seed % avatarPalettes.length];
+}
+
+export function formatStageElapsed(stageEnteredAt: string, now: number) {
+  const enteredAt = new Date(stageEnteredAt).getTime();
+  if (!Number.isFinite(enteredAt)) return "Just now";
+  const minutes = Math.max(0, Math.floor((now - enteredAt) / 60000));
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+}
+
+function patientChips(patient: Patient) {
+  if (patient.status === "done") {
+    const billing = patient.billing_summary;
+    if (!billing) return ["Ready for invoice"];
+    const chips = [
+      `${billing.item_count} item${billing.item_count === 1 ? "" : "s"}`,
+      billing.medicine_count ? `${billing.medicine_count} medicine${billing.medicine_count === 1 ? "" : "s"}` : "Consultation",
+      billing.payment_status.charAt(0).toUpperCase() + billing.payment_status.slice(1),
+    ];
+    return chips;
+  }
+  const chips = [patient.reason.trim()];
+  if (patient.temperature !== null) chips.push(`${patient.temperature.toFixed(1)}°F`);
+  if (patient.weight !== null) chips.push(`${patient.weight.toFixed(patient.weight % 1 ? 1 : 0)} kg`);
+  if (patient.height !== null) chips.push(`${patient.height.toFixed(patient.height % 1 ? 1 : 0)} cm`);
+  return chips.filter(Boolean).slice(0, 3);
+}
+
+const sexLabels = {
+  female: "Female",
+  male: "Male",
+  intersex: "Intersex",
+  prefer_not_to_say: "Prefer not to say",
+  unknown: "Other",
+} as const;
+
+function patientMetadata(patient: Patient) {
+  let resolvedAge = patient.age;
+  if (resolvedAge === null && patient.date_of_birth) {
+    const [year, month, day] = patient.date_of_birth.split("-").map(Number);
+    if (year && month && day) {
+      const today = new Date();
+      resolvedAge = today.getFullYear() - year;
+      if (today.getMonth() + 1 < month || (today.getMonth() + 1 === month && today.getDate() < day)) {
+        resolvedAge -= 1;
+      }
+      resolvedAge = Math.max(resolvedAge, 0);
+    }
+  }
+  const age = resolvedAge !== null ? `${resolvedAge}y` : "Age not recorded";
+  return patient.sex_at_birth ? `${age} · ${sexLabels[patient.sex_at_birth]}` : age;
+}
+
+function visitContext(patient: Patient) {
+  const visit = patient.current_visit;
+  if (visit?.kind === "follow_up") {
+    return "Follow-up";
+  }
+  if (visit?.source === "appointment" && visit.scheduled_for) {
+    return `Appointment · ${new Date(visit.scheduled_for).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  }
+  return "Walk-in";
 }
 
 interface PatientCardProps {
@@ -20,7 +119,10 @@ interface PatientCardProps {
   onOpen: (patient: Patient) => void;
   onAdvance: (patient: Patient, next: PatientStatus) => void;
   onRemoveFromQueue: (patient: Patient) => void;
+  onTogglePriority?: (patient: Patient) => void;
+  onOpenBilling?: (patient: Patient) => void;
   canAdvance?: boolean;
+  now?: number;
   dragHandleProps?: {
     attributes?: HTMLAttributes<HTMLElement>;
     listeners?: HTMLAttributes<HTMLElement>;
@@ -32,23 +134,29 @@ interface PatientCardProps {
 export function PatientCard({
   patient,
   onOpen,
+  onAdvance,
   onRemoveFromQueue,
+  onTogglePriority,
+  onOpenBilling,
+  canAdvance = true,
+  now = Date.now(),
   dragHandleProps,
 }: PatientCardProps) {
-  const createdAt = new Date(patient.last_visit_at).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  const patientMetadata = formatPatientMetadata(patient);
+  const style = stageStyles[patient.status];
+  const elapsed = formatStageElapsed(patient.stage_entered_at, now);
+  const elapsedMinutes = Math.max(0, Math.floor((now - new Date(patient.stage_entered_at).getTime()) / 60000));
+  const warningElapsed = patient.status === "waiting" && elapsedMinutes >= 30;
+  const billing = patient.billing_summary;
+  const badgeLabel = patient.status === "done"
+    ? billing ? `₹${billing.total.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "Ready"
+    : elapsed;
 
   return (
-    <div
+    <article
       ref={dragHandleProps?.setActivatorNodeRef}
       {...dragHandleProps?.attributes}
       {...dragHandleProps?.listeners}
-      role="button"
       aria-label={`Drag ${patient.name}; open chart`}
-      tabIndex={0}
       onClick={() => onOpen(patient)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -56,61 +164,131 @@ export function PatientCard({
           onOpen(patient);
         }
       }}
-      className={`group w-full rounded-[14px] border border-[#bfd7e8] bg-white px-3 py-2.5 text-left shadow-[0_7px_18px_rgba(64,131,181,0.06)] transition hover:border-[#9fc7e1] hover:shadow-[0_12px_26px_rgba(64,131,181,0.1)] ${
-        dragHandleProps && !dragHandleProps.disabled ? "cursor-grab active:cursor-grabbing" : ""
-      }`}
+      className={`group relative w-full rounded-[16px] border border-l-4 border-[#dbe7ef] ${style.rail} bg-white px-3.5 py-3 text-left shadow-[0_6px_16px_rgba(64,131,181,0.07)] transition duration-200 hover:-translate-y-0.5 hover:border-[#9fc7e1] hover:shadow-[0_18px_36px_rgba(64,131,181,0.14)] ${
+        patient.queue_priority === "urgent" ? "border-l-rose-600" : ""
+      } ${dragHandleProps && !dragHandleProps.disabled ? "cursor-grab active:cursor-grabbing" : ""}`}
+      tabIndex={0}
     >
-      <div className="flex items-start justify-between gap-2.5">
-        <div className="flex min-w-0 items-start gap-2">
-          {dragHandleProps ? (
-            <span
-              aria-hidden="true"
-              title="Drag patient"
-              className={`mt-[-1px] inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition ${
-                dragHandleProps.disabled ? "opacity-40" : "group-hover:bg-[#edf5fa] group-hover:text-[#2a6fa8]"
-              }`}
-            >
-              <GripVertical className="h-4 w-4" />
+      <div className="flex items-center gap-2.5">
+        {dragHandleProps ? (
+          <span className={`inline-flex h-8 w-6 shrink-0 items-center justify-center rounded-lg text-slate-400 transition ${
+            dragHandleProps.disabled ? "opacity-35" : "group-hover:bg-[#edf5fa] group-hover:text-[#2a6fa8]"
+          }`} aria-hidden="true">
+            <GripVertical className="h-4 w-4" />
+          </span>
+        ) : null}
+        {patient.profile_photo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={patient.profile_photo_url} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover" />
+        ) : (
+          <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${avatarPaletteForPatient(patient)} text-sm font-bold text-white`}>
+            {initialsForPatient(patient.name)}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-[15px] font-bold leading-5 tracking-[-0.01em] text-[#1f2b3d]">{patient.name}</h3>
+          <p className="mt-0.5 truncate text-xs text-[#5b6b80]">
+            {patientMetadata(patient)}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {patient.queue_priority === "urgent" ? (
+            <span className="rounded-md bg-rose-50 px-2 py-1 text-[9px] font-extrabold uppercase tracking-[0.12em] text-rose-600">
+              Urgent
             </span>
           ) : null}
-          <p className="min-w-0 truncate text-[15px] font-semibold leading-5 text-slate-800">{patient.name}</p>
+          <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold ${
+            warningElapsed ? "border-amber-200 bg-[#fff7ea] text-amber-700" : style.elapsed
+          }`}>
+            {patient.status !== "done" ? <Clock3 className="h-3 w-3" /> : null} {badgeLabel}
+          </span>
         </div>
-        <span className="rounded-lg border border-[#dbe7ef] bg-[#edf5fa] px-2.5 py-1 text-[10px] font-medium text-slate-500">
-          {createdAt}
-        </span>
       </div>
 
-      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <p className="line-clamp-1 min-w-0 text-[13px] text-slate-700">
-          {patientMetadata}
-        </p>
-        <div className="flex shrink-0 justify-end gap-1.5">
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {patientChips(patient).map((chip, index) => (
+          <span key={`${chip}-${index}`} className={`rounded-lg border px-2 py-1 text-[11px] font-semibold ${
+            patient.status === "done" && index === 2
+              ? patient.billing_summary?.payment_status === "paid"
+                ? "border-[#bce8cd] bg-[#ecfaf1] text-[#15803d]"
+                : "border-amber-200 bg-[#fff7ea] text-amber-700"
+              : index === 0 && patient.queue_priority === "urgent"
+              ? "border-rose-200 bg-rose-50 text-rose-700"
+              : "border-[#dbe7ef] bg-[#f3f8fb] text-[#5b6b80]"
+          }`}>
+            {chip}
+          </span>
+        ))}
+      </div>
+
+      <footer className="mt-3 flex items-center justify-between gap-2 border-t border-dashed border-[#dbe7ef] pt-2.5">
+        <span className="min-w-0 truncate text-xs text-[#5b6b80]">
+          <b className="font-semibold text-[#1f2b3d]">
+            {patient.status === "done" ? billing ? billing.payment_status === "paid" ? "Paid" : "Ready" : "Ready" : visitContext(patient)}
+          </b>
+          {patient.status === "done" ? (
+            <span> · {billing ? billing.completed_at ? "invoice finalized" : "invoice drafted" : "create invoice"}</span>
+          ) : null}
+        </span>
+        <div className="flex shrink-0 gap-1.5">
+          {onTogglePriority ? (
+            <button
+              type="button"
+              onClick={(event) => { event.stopPropagation(); onTogglePriority(patient); }}
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-[10px] border transition active:scale-95 ${
+                patient.queue_priority === "urgent"
+                  ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                  : "border-[#dbe7ef] bg-[#f3f8fb] text-[#8595a8] hover:border-rose-200 hover:text-rose-600"
+              }`}
+              aria-label={`${patient.queue_priority === "urgent" ? "Remove urgent priority from" : "Mark urgent"} ${patient.name}`}
+              title={patient.queue_priority === "urgent" ? "Remove urgent priority" : "Mark urgent"}
+            >
+              <Flag className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-700 transition hover:bg-rose-100"
-            onClick={(event) => {
-              event.stopPropagation();
-              onRemoveFromQueue(patient);
-            }}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-rose-200 bg-rose-50 text-rose-700 transition hover:bg-rose-100 active:scale-95"
+            onClick={(event) => { event.stopPropagation(); onRemoveFromQueue(patient); }}
             aria-label={`Remove ${patient.name} from queue`}
             title="Remove from queue"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
-          <button
-            type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[#2f8fd3] text-white transition hover:bg-[#287fc0]"
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpen(patient);
-            }}
-            aria-label={`Open chart for ${patient.name}`}
-            title="Open chart"
-          >
-            <ArrowRight className="h-4 w-4" />
-          </button>
+          {patient.status === "consultation" && canAdvance ? (
+            <button
+              type="button"
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-[10px] transition active:scale-95 ${style.action}`}
+              onClick={(event) => { event.stopPropagation(); onAdvance(patient, "done"); }}
+              aria-label={`Send ${patient.name} to billing`}
+              title="Send to billing"
+            >
+              <Check className="h-4 w-4" />
+            </button>
+          ) : null}
+          {patient.status === "done" && onOpenBilling ? (
+            <button
+              type="button"
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-[10px] transition active:scale-95 ${style.action}`}
+              onClick={(event) => { event.stopPropagation(); onOpenBilling(patient); }}
+              aria-label={`Open billing for ${patient.name}`}
+              title="Open billing"
+            >
+              <ReceiptIndianRupee className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-[10px] transition active:scale-95 ${style.action}`}
+              onClick={(event) => { event.stopPropagation(); onOpen(patient); }}
+              aria-label={`Open chart for ${patient.name}`}
+              title="Open chart"
+            >
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          )}
         </div>
-      </div>
-    </div>
+      </footer>
+    </article>
   );
 }

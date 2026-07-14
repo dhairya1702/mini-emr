@@ -84,6 +84,8 @@ def visit_payload(payload: PatientCreate | PatientVisitCreate) -> dict[str, Any]
         "address": payload.address.strip(),
         "reason": payload.reason.strip(),
         "date_of_birth": payload.date_of_birth.isoformat() if payload.date_of_birth else None,
+        "sex_at_birth": payload.sex_at_birth,
+        "gender_identity": payload.gender_identity.strip(),
         "age": payload.age if payload.age is not None else calculate_age_from_dob(payload.date_of_birth),
         "weight": payload.weight,
         "height": payload.height,

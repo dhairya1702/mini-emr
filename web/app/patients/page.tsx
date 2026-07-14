@@ -89,6 +89,11 @@ export default function PatientsPage() {
     setRecentPatients(recentPatientsScope ? loadRecentPatients(recentPatientsScope) : []);
   }, [recentPatientsScope]);
 
+  useEffect(() => {
+    const searchQuery = new URLSearchParams(window.location.search).get("q");
+    if (searchQuery) setQuery(searchQuery);
+  }, []);
+
   function rememberRecentPatient(patient: Patient) {
     if (!recentPatientsScope) {
       return;

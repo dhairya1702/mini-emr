@@ -33,6 +33,8 @@ PATIENT_COLUMNS = [
     "address",
     "reason",
     "date_of_birth",
+    "sex_at_birth",
+    "gender_identity",
     "age",
     "weight",
     "height",
@@ -42,6 +44,10 @@ PATIENT_COLUMNS = [
     "profile_photo_updated_at",
     "status",
     "billed",
+    "queue_priority",
+    "stage_entered_at",
+    "queue_position",
+    "current_visit_id",
     "ai_summary",
     "ai_summary_updated_at",
     "ai_summary_stale",
@@ -53,12 +59,15 @@ PATIENT_COLUMNS = [
 PATIENT_UPDATE_COLUMNS = {
     "status",
     "billed",
+    "queue_priority",
     "name",
     "phone",
     "email",
     "address",
     "reason",
     "date_of_birth",
+    "sex_at_birth",
+    "gender_identity",
     "age",
     "weight",
     "height",
@@ -74,6 +83,8 @@ APPOINTMENT_COLUMNS = [
     "address",
     "reason",
     "date_of_birth",
+    "sex_at_birth",
+    "gender_identity",
     "age",
     "weight",
     "height",
@@ -95,12 +106,15 @@ PATIENT_VISIT_COLUMNS = [
     "address",
     "reason",
     "date_of_birth",
+    "sex_at_birth",
+    "gender_identity",
     "age",
     "weight",
     "height",
     "temperature",
     "source",
     "appointment_id",
+    "visit_kind",
     "created_at",
 ]
 
@@ -126,6 +140,70 @@ def _patient_with_profile_photo_url(patient: dict[str, Any]) -> dict[str, Any]:
 class PostgresPatientFlowRepository:
     def __init__(self, connection_manager: PostgresConnectionManager) -> None:
         self.connection_manager = connection_manager
+
+    @staticmethod
+    def _attach_queue_context(cursor: Any, patients: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        visit_ids = [str(patient["current_visit_id"]) for patient in patients if patient.get("current_visit_id")]
+        visits: dict[str, dict[str, Any]] = {}
+        billing: dict[str, dict[str, Any]] = {}
+        if visit_ids:
+            cursor.execute(
+                """
+                select visit.id::text, visit.visit_kind, visit.source, appointment.scheduled_for
+                from public.patient_visits visit
+                left join public.appointments appointment on appointment.id = visit.appointment_id
+                where visit.id = any(%s::uuid[])
+                """,
+                (visit_ids,),
+            )
+            visits = {
+                str(row[0]): {
+                    "id": str(row[0]),
+                    "kind": str(row[1]),
+                    "source": str(row[2]),
+                    "scheduled_for": row[3],
+                }
+                for row in cursor.fetchall()
+            }
+            cursor.execute(
+                """
+                select distinct on (invoice.visit_id)
+                  invoice.visit_id::text, invoice.id::text, invoice.total,
+                  invoice.payment_status, invoice.amount_paid, invoice.completed_at,
+                  invoice.sent_at,
+                  coalesce(items.item_count, 0), coalesce(items.medicine_count, 0)
+                from public.invoices invoice
+                left join lateral (
+                  select count(*)::integer as item_count,
+                    count(*) filter (where item_type = 'medicine')::integer as medicine_count
+                  from public.invoice_items where invoice_id = invoice.id
+                ) items on true
+                where invoice.visit_id = any(%s::uuid[])
+                order by invoice.visit_id, invoice.created_at desc
+                """,
+                (visit_ids,),
+            )
+            billing = {
+                str(row[0]): {
+                    "invoice_id": str(row[1]),
+                    "total": float(row[2] or 0),
+                    "payment_status": str(row[3]),
+                    "balance_due": max(float(row[2] or 0) - float(row[4] or 0), 0),
+                    "completed_at": row[5],
+                    "sent_at": row[6],
+                    "item_count": int(row[7] or 0),
+                    "medicine_count": int(row[8] or 0),
+                }
+                for row in cursor.fetchall()
+            }
+        return [
+            {
+                **patient,
+                "current_visit": visits.get(str(patient.get("current_visit_id") or "")),
+                "billing_summary": billing.get(str(patient.get("current_visit_id") or "")),
+            }
+            for patient in patients
+        ]
 
     async def list_patients(
         self,
@@ -155,12 +233,17 @@ class PostgresPatientFlowRepository:
                         from public.patients
                         where org_id = %s
                         {active_clause}
-                        order by last_visit_at desc
+                        order by
+                          case status when 'waiting' then 0 when 'consultation' then 1 else 2 end,
+                          case when queue_priority = 'urgent' then 0 else 1 end,
+                          queue_position asc,
+                          last_visit_at desc
                         {paging_clause}
                         """,
                         params,
                     )
-                    return [_patient_with_profile_photo_url(_row_to_dict(row, cursor)) for row in cursor.fetchall()]
+                    patients = [_patient_with_profile_photo_url(_row_to_dict(row, cursor)) for row in cursor.fetchall()]
+                    return self._attach_queue_context(cursor, patients)
 
         return await asyncio.to_thread(_list)
 
@@ -174,10 +257,13 @@ class PostgresPatientFlowRepository:
                     cursor.execute(
                         f"""
                         insert into public.patients (
-                          org_id, name, phone, email, address, reason, date_of_birth, age, weight,
+                          org_id, name, phone, email, address, reason, date_of_birth, sex_at_birth,
+                          gender_identity, age, weight,
                           height, temperature, last_visit_at
                         )
-                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        values (
+                          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        )
                         returning {_columns_sql(PATIENT_COLUMNS)}
                         """,
                         (
@@ -188,6 +274,8 @@ class PostgresPatientFlowRepository:
                             values["address"],
                             values["reason"],
                             values["date_of_birth"],
+                            values["sex_at_birth"],
+                            values["gender_identity"],
                             values["age"],
                             values["weight"],
                             values["height"],
@@ -203,9 +291,11 @@ class PostgresPatientFlowRepository:
                         """
                         insert into public.patient_visits (
                           org_id, patient_id, name, phone, email, address, reason,
-                          date_of_birth, age, weight, height, temperature, source
+                          date_of_birth, sex_at_birth, gender_identity, age, weight, height,
+                          temperature, source, visit_kind
                         )
-                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'queue')
+                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'queue', 'new')
+                        returning id
                         """,
                         (
                             org_id,
@@ -216,13 +306,31 @@ class PostgresPatientFlowRepository:
                             values["address"],
                             values["reason"],
                             values["date_of_birth"],
+                            values["sex_at_birth"],
+                            values["gender_identity"],
                             values["age"],
                             values["weight"],
                             values["height"],
                             values["temperature"],
                         ),
                     )
-                    return patient
+                    visit_row = cursor.fetchone()
+                    if not visit_row:
+                        raise ValueError("Failed to create patient visit.")
+                    cursor.execute(
+                        f"""
+                        update public.patients set current_visit_id = %s
+                        where org_id = %s and id = %s
+                        returning {_columns_sql(PATIENT_COLUMNS)}
+                        """,
+                        (str(visit_row[0]), org_id, str(patient["id"])),
+                    )
+                    saved = _patient_with_profile_photo_url(_row_to_dict(cursor.fetchone(), cursor))
+                    saved["current_visit"] = {
+                        "id": str(visit_row[0]), "kind": "new", "source": "queue", "scheduled_for": None,
+                    }
+                    saved["billing_summary"] = None
+                    return saved
 
         return await asyncio.to_thread(_create)
 
@@ -233,18 +341,40 @@ class PostgresPatientFlowRepository:
         def _create() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
+                    cursor.execute("select pg_advisory_xact_lock(hashtext(%s))", (org_id,))
                     cursor.execute(
-                        "select id from public.patients where org_id = %s and id = %s limit 1",
+                        "select id from public.patients where org_id = %s and id = %s limit 1 for update",
                         (org_id, patient_id),
                     )
                     if not cursor.fetchone():
                         raise ValueError("Patient not found for this organization.")
+                    visit_kind = "new"
+                    cursor.execute(
+                        """
+                        insert into public.patient_visits (
+                          org_id, patient_id, name, phone, email, address, reason,
+                          date_of_birth, sex_at_birth, gender_identity, age, weight, height,
+                          temperature, source, visit_kind
+                        )
+                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'queue', %s)
+                        returning id
+                        """,
+                        (
+                            org_id, patient_id, values["name"], values["phone"], values["email"],
+                            values["address"], values["reason"], values["date_of_birth"],
+                            values["sex_at_birth"], values["gender_identity"], values["age"],
+                            values["weight"], values["height"], values["temperature"], visit_kind,
+                        ),
+                    )
+                    visit_id = str(cursor.fetchone()[0])
                     cursor.execute(
                         f"""
                         update public.patients
                         set name = %s, phone = %s, email = %s, address = %s, reason = %s,
-                          date_of_birth = %s, age = %s, weight = %s, height = %s, temperature = %s,
+                          date_of_birth = %s, sex_at_birth = %s, gender_identity = %s,
+                          age = %s, weight = %s, height = %s, temperature = %s,
                           status = 'waiting', billed = false, last_visit_at = %s,
+                          current_visit_id = %s,
                           ai_summary_stale = true,
                           ai_summary_revision = ai_summary_revision + 1
                         where org_id = %s and id = %s
@@ -257,11 +387,14 @@ class PostgresPatientFlowRepository:
                             values["address"],
                             values["reason"],
                             values["date_of_birth"],
+                            values["sex_at_birth"],
+                            values["gender_identity"],
                             values["age"],
                             values["weight"],
                             values["height"],
                             values["temperature"],
                             now,
+                            visit_id,
                             org_id,
                             patient_id,
                         ),
@@ -269,31 +402,12 @@ class PostgresPatientFlowRepository:
                     row = cursor.fetchone()
                     if not row:
                         raise ValueError("Failed to update patient visit.")
-                    updated = _row_to_dict(row, cursor)
-                    cursor.execute(
-                        """
-                        insert into public.patient_visits (
-                          org_id, patient_id, name, phone, email, address, reason,
-                          date_of_birth, age, weight, height, temperature, source
-                        )
-                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'queue')
-                        """,
-                        (
-                            org_id,
-                            patient_id,
-                            values["name"],
-                            values["phone"],
-                            values["email"],
-                            values["address"],
-                            values["reason"],
-                            values["date_of_birth"],
-                            values["age"],
-                            values["weight"],
-                            values["height"],
-                            values["temperature"],
-                        ),
-                    )
-                    return updated
+                    saved = _patient_with_profile_photo_url(_row_to_dict(row, cursor))
+                    saved["current_visit"] = {
+                        "id": visit_id, "kind": visit_kind, "source": "queue", "scheduled_for": None,
+                    }
+                    saved["billing_summary"] = None
+                    return saved
 
         return await asyncio.to_thread(_create)
 
@@ -352,10 +466,11 @@ class PostgresPatientFlowRepository:
                     cursor.execute(
                         f"""
                         insert into public.appointments (
-                          org_id, name, phone, email, address, reason, date_of_birth, age, weight,
+                          org_id, name, phone, email, address, reason, date_of_birth, sex_at_birth,
+                          gender_identity, age, weight,
                           height, temperature, scheduled_for, status
                         )
-                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'scheduled')
+                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'scheduled')
                         returning {_columns_sql(APPOINTMENT_COLUMNS)}
                         """,
                         (
@@ -366,6 +481,8 @@ class PostgresPatientFlowRepository:
                             values["address"],
                             values["reason"],
                             values["date_of_birth"],
+                            values["sex_at_birth"],
+                            values["gender_identity"],
                             values["age"],
                             values["weight"],
                             values["height"],
@@ -459,6 +576,31 @@ class PostgresPatientFlowRepository:
                         tuple(params),
                     )
                     return [_row_to_dict(row, cursor) for row in cursor.fetchall()]
+
+        return await asyncio.to_thread(_list)
+
+    async def list_scheduled_appointment_times(
+        self,
+        org_id: str,
+        scheduled_from: str,
+        scheduled_to: str,
+    ) -> list[datetime]:
+        def _list() -> list[datetime]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select scheduled_for
+                        from public.appointments
+                        where org_id = %s
+                          and status = 'scheduled'
+                          and scheduled_for >= %s
+                          and scheduled_for < %s
+                        order by scheduled_for asc
+                        """,
+                        (org_id, scheduled_from, scheduled_to),
+                    )
+                    return [row[0] for row in cursor.fetchall()]
 
         return await asyncio.to_thread(_list)
 
@@ -592,7 +734,22 @@ class PostgresPatientFlowRepository:
                     patient = payload_data.get("patient")
                     if not appointment or not patient:
                         raise ValueError("Failed to check in appointment.")
-                    return appointment, _patient_with_profile_photo_url(patient)
+                    saved = _patient_with_profile_photo_url(patient)
+                    visit_id = str(saved.get("current_visit_id") or "")
+                    if visit_id:
+                        cursor.execute(
+                            "select visit_kind from public.patient_visits where org_id = %s and id = %s",
+                            (org_id, visit_id),
+                        )
+                        visit_row = cursor.fetchone()
+                        saved["current_visit"] = {
+                            "id": visit_id,
+                            "kind": str(visit_row[0] if visit_row else "new"),
+                            "source": "appointment",
+                            "scheduled_for": appointment.get("scheduled_for"),
+                        }
+                    saved["billing_summary"] = None
+                    return appointment, saved
 
         return await asyncio.to_thread(_check_in)
 
@@ -764,9 +921,49 @@ class PostgresPatientFlowRepository:
             raise ValueError("No patient updates provided.")
 
         def _update() -> dict[str, Any]:
-            assignments = ", ".join(f"{column} = %s" for column in update_payload)
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
+                    cursor.execute("select pg_advisory_xact_lock(hashtext(%s))", (org_id,))
+                    cursor.execute(
+                        """
+                        select status, queue_priority
+                        from public.patients
+                        where org_id = %s and id = %s
+                        for update
+                        """,
+                        (org_id, patient_id),
+                    )
+                    current = cursor.fetchone()
+                    if not current:
+                        raise ValueError("Failed to update patient.")
+                    current_status = str(current[0])
+                    current_priority = str(current[1])
+                    next_status = str(update_payload.get("status") or current_status)
+                    next_priority = str(update_payload.get("queue_priority") or current_priority)
+                    if next_status != current_status:
+                        update_payload["stage_entered_at"] = datetime.now(UTC).isoformat()
+                        cursor.execute(
+                            """
+                            select coalesce(max(queue_position), 0) + 1
+                            from public.patients
+                            where org_id = %s and status = %s and id <> %s
+                            """,
+                            (org_id, next_status, patient_id),
+                        )
+                        position_row = cursor.fetchone()
+                        update_payload["queue_position"] = int(position_row[0] if position_row else 1)
+                    elif next_priority != current_priority:
+                        cursor.execute(
+                            """
+                            select coalesce(min(queue_position), 1) - 1
+                            from public.patients
+                            where org_id = %s and status = %s and queue_priority = %s and id <> %s
+                            """,
+                            (org_id, current_status, next_priority, patient_id),
+                        )
+                        position_row = cursor.fetchone()
+                        update_payload["queue_position"] = int(position_row[0] if position_row else 0)
+                    assignments = ", ".join(f"{column} = %s" for column in update_payload)
                     cursor.execute(
                         f"""
                         update public.patients
@@ -779,9 +976,116 @@ class PostgresPatientFlowRepository:
                     row = cursor.fetchone()
                     if not row:
                         raise ValueError("Failed to update patient.")
-                    return _patient_with_profile_photo_url(_row_to_dict(row, cursor))
+                    patient = _patient_with_profile_photo_url(_row_to_dict(row, cursor))
+                    return self._attach_queue_context(cursor, [patient])[0]
 
         return await asyncio.to_thread(_update)
+
+    async def reorder_queue(
+        self,
+        org_id: str,
+        columns: dict[str, list[str]],
+        *,
+        role: str,
+    ) -> list[dict[str, Any]]:
+        statuses = ("waiting", "consultation", "done")
+        submitted = [patient_id for status in statuses for patient_id in columns.get(status, [])]
+        if len(submitted) != len(set(submitted)):
+            raise ValueError("A patient can appear only once in the queue order.")
+
+        def _reorder() -> list[dict[str, Any]]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("select pg_advisory_xact_lock(hashtext(%s))", (org_id,))
+                    cursor.execute(
+                        """
+                        select id::text, status, queue_priority, queue_position
+                        from public.patients
+                        where org_id = %s
+                          and (status in ('waiting', 'consultation') or (status = 'done' and billed = false))
+                        order by
+                          case status when 'waiting' then 0 when 'consultation' then 1 else 2 end,
+                          case when queue_priority = 'urgent' then 0 else 1 end,
+                          queue_position,
+                          last_visit_at desc
+                        for update
+                        """,
+                        (org_id,),
+                    )
+                    rows = cursor.fetchall()
+                    current = {
+                        str(row[0]): {
+                            "status": str(row[1]),
+                            "queue_priority": str(row[2]),
+                            "queue_position": int(row[3]),
+                        }
+                        for row in rows
+                    }
+                    unknown = [patient_id for patient_id in submitted if patient_id not in current]
+                    if unknown:
+                        raise ValueError("Queue order includes a patient that is not active for this clinic.")
+
+                    target_by_id = {
+                        patient_id: status
+                        for status in statuses
+                        for patient_id in columns.get(status, [])
+                    }
+                    for patient_id, target_status in target_by_id.items():
+                        source_status = current[patient_id]["status"]
+                        if source_status == target_status:
+                            continue
+                        allowed = role == "admin" and (
+                            (source_status == "waiting" and target_status == "consultation")
+                            or (source_status == "consultation" and target_status == "done")
+                        )
+                        if not allowed:
+                            raise ValueError("Patients can only move through the queue stages in order.")
+
+                    for status in statuses:
+                        ordered_ids = list(columns.get(status, []))
+                        ordered_ids.extend(
+                            patient_id
+                            for patient_id, data in current.items()
+                            if patient_id not in target_by_id and data["status"] == status
+                        )
+                        ordered_ids = sorted(
+                            ordered_ids,
+                            key=lambda patient_id: 0 if current[patient_id]["queue_priority"] == "urgent" else 1,
+                        )
+                        for position, patient_id in enumerate(ordered_ids, start=1):
+                            source_status = current[patient_id]["status"]
+                            cursor.execute(
+                                """
+                                update public.patients
+                                set status = %s,
+                                  queue_position = %s,
+                                  stage_entered_at = case when status <> %s then now() else stage_entered_at end
+                                where org_id = %s and id = %s
+                                """,
+                                (status, position, status, org_id, patient_id),
+                            )
+
+                    cursor.execute(
+                        f"""
+                        select {_columns_sql(PATIENT_COLUMNS)}
+                        from public.patients
+                        where org_id = %s
+                          and (status in ('waiting', 'consultation') or (status = 'done' and billed = false))
+                        order by
+                          case status when 'waiting' then 0 when 'consultation' then 1 else 2 end,
+                          case when queue_priority = 'urgent' then 0 else 1 end,
+                          queue_position,
+                          last_visit_at desc
+                        """,
+                        (org_id,),
+                    )
+                    patients = [
+                        _patient_with_profile_photo_url(_row_to_dict(row, cursor))
+                        for row in cursor.fetchall()
+                    ]
+                    return self._attach_queue_context(cursor, patients)
+
+        return await asyncio.to_thread(_reorder)
 
     async def list_patient_matches_by_phone(self, org_id: str, phone: str, limit: int = 10) -> list[dict[str, Any]]:
         normalized_phone = normalize_phone_number(phone)

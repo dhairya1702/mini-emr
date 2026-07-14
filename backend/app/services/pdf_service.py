@@ -10,6 +10,8 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
 
+from app.file_validation import validate_pdf_bytes
+
 try:  # pragma: no cover - exercised through integration paths when installed
     from pypdf import PdfReader, PdfWriter
 except Exception:  # pragma: no cover
@@ -50,6 +52,7 @@ def _page_size_for_template(template: tuple[str, bytes] | None) -> tuple[float, 
     if not template or template[0] != "application/pdf" or PdfReader is None:
         return DEFAULT_PAGE_SIZE
     try:
+        validate_pdf_bytes(template[1])
         reader = PdfReader(BytesIO(template[1]))
     except Exception as exc:
         raise TemplateConfigurationError(
@@ -833,6 +836,7 @@ def _build_note_pdf_attachment_pdf(
 
     try:
         raw_bytes = base64.b64decode(str(asset.get("data_base64") or ""), validate=True)
+        validate_pdf_bytes(raw_bytes)
         attachment_reader = PdfReader(BytesIO(raw_bytes))
     except Exception:
         return None

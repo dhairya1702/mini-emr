@@ -3,12 +3,22 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEV_ENV_FILE="$ROOT_DIR/.env"
+
+python3 "$ROOT_DIR/scripts/validate-env.py" "$DEV_ENV_FILE" "$ROOT_DIR/backend/.env"
+
+if [[ -f "$DEV_ENV_FILE" ]]; then
+  set -a
+  source "$DEV_ENV_FILE"
+  set +a
+fi
+
 BACKEND_DIR="$ROOT_DIR/backend"
 WEB_DIR="$ROOT_DIR/web"
 BACKEND_VENV="$BACKEND_DIR/.venv"
 BACKEND_HOST="127.0.0.1"
 BACKEND_PORT="8001"
-BACKEND_HEALTH_URL="http://$BACKEND_HOST:$BACKEND_PORT/health"
+BACKEND_HEALTH_URL="http://$BACKEND_HOST:$BACKEND_PORT/health/live"
 BACKEND_STARTUP_TIMEOUT_SECONDS="${BACKEND_STARTUP_TIMEOUT_SECONDS:-20}"
 BACKEND_RELOAD="${BACKEND_RELOAD:-0}"
 SHUTDOWN_GRACE_SECONDS="${SHUTDOWN_GRACE_SECONDS:-5}"

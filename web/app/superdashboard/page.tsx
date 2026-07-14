@@ -13,6 +13,7 @@ import {
   SuperdashboardTrends,
   SuperdashboardUsageByOrg,
   SuperuserOrgSummary,
+  WorkspaceMode,
 } from "@/lib/types";
 
 type Tab = "dashboard" | "onboard" | "errors";
@@ -201,10 +202,14 @@ export default function SuperdashboardPage() {
   const [clinicName, setClinicName] = useState("");
   const [phone, setPhone] = useState("");
   const [usersAllowed, setUsersAllowed] = useState("2");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode | "">("");
   const [lastCreatedCid, setLastCreatedCid] = useState("");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [updatingWorkspaceId, setUpdatingWorkspaceId] = useState("");
+  const [updatingUserLimitId, setUpdatingUserLimitId] = useState("");
+  const [userLimitDrafts, setUserLimitDrafts] = useState<Record<string, string>>({});
 
   const totalRemaining = useMemo(
     () => Math.max(onboarding.summary.pending_count + onboarding.summary.claimed_count + onboarding.summary.disabled_count, 1),
@@ -242,6 +247,10 @@ export default function SuperdashboardPage() {
 
   async function createCid(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!workspaceMode) {
+      setMessage("Choose a Solo or Team workspace before creating the CID.");
+      return;
+    }
     setIsCreating(true);
     setMessage("");
     setLastCreatedCid("");
@@ -250,11 +259,13 @@ export default function SuperdashboardPage() {
         customer_name: clinicName.trim(),
         phone: phone.trim(),
         users_allowed: Number(usersAllowed || 2),
+        workspace_mode: workspaceMode,
       });
       setLastCreatedCid(created.customer_id);
       setClinicName("");
       setPhone("");
       setUsersAllowed("2");
+      setWorkspaceMode("");
       const updated = await api.getSuperdashboardOnboarding();
       setOnboarding(updated);
     } catch (error) {
@@ -266,14 +277,134 @@ export default function SuperdashboardPage() {
 
   async function updateUsersAllowed(row: CustomerOnboarding, value: string) {
     const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed < 1) {
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 500) {
+      setMessage("User limit must be a whole number between 1 and 500.");
       return;
     }
-    const updated = await api.updateSuperdashboardCustomer(row.id, { users_allowed: parsed });
-    setOnboarding((current) => ({
-      ...current,
-      customers: current.customers.map((customer) => (customer.id === updated.id ? { ...customer, ...updated } : customer)),
-    }));
+    setUpdatingUserLimitId(row.id);
+    setMessage("");
+    try {
+      const updated = await api.updateSuperdashboardCustomer(row.id, { users_allowed: parsed });
+      setOnboarding((current) => ({
+        ...current,
+        customers: current.customers.map((customer) => (customer.id === updated.id ? { ...customer, ...updated } : customer)),
+      }));
+      if (updated.claimed_org_id) {
+        setOrgs((current) => current.map((org) => (
+          org.org_id === updated.claimed_org_id ? { ...org, users_allowed: updated.users_allowed } : org
+        )));
+        setUserLimitDrafts((current) => ({
+          ...current,
+          [updated.claimed_org_id as string]: String(updated.users_allowed),
+        }));
+      }
+      setMessage(`${row.customer_name} can now have ${updated.users_allowed} user${updated.users_allowed === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to update user limit.");
+    } finally {
+      setUpdatingUserLimitId("");
+    }
+  }
+
+  async function updateOnboardingWorkspaceMode(row: CustomerOnboarding, mode: WorkspaceMode) {
+    if (row.workspace_mode === mode) {
+      return;
+    }
+    if (row.status === "claimed" && !window.confirm(
+      `Switch ${row.claimed_org_name || row.customer_name} from ${row.workspace_mode} to ${mode}? This changes the queue layout for every clinic user on their next refresh.`,
+    )) {
+      return;
+    }
+    setUpdatingWorkspaceId(row.id);
+    setMessage("");
+    try {
+      const updated = await api.updateSuperdashboardCustomer(row.id, { workspace_mode: mode });
+      setOnboarding((current) => ({
+        ...current,
+        customers: current.customers.map((customer) => (
+          customer.id === updated.id ? { ...customer, ...updated } : customer
+        )),
+      }));
+      if (updated.claimed_org_id) {
+        setOrgs((current) => current.map((org) => (
+          org.org_id === updated.claimed_org_id ? { ...org, workspace_mode: mode } : org
+        )));
+      }
+      setMessage(`${row.customer_name} now uses the ${mode === "solo" ? "Solo" : "Team"} workspace.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to update workspace mode.");
+    } finally {
+      setUpdatingWorkspaceId("");
+    }
+  }
+
+  async function updateOrgWorkspaceMode(org: SuperuserOrgSummary, mode: WorkspaceMode) {
+    if (org.workspace_mode === mode || !window.confirm(
+      `Switch ${org.clinic_name} from ${org.workspace_mode} to ${mode}? This changes the queue layout for every clinic user on their next refresh.`,
+    )) {
+      return;
+    }
+    setUpdatingWorkspaceId(org.org_id);
+    setMessage("");
+    try {
+      const updated = await api.updateSuperdashboardOrgWorkspaceMode(org.org_id, mode);
+      setOrgs((current) => current.map((row) => (
+        row.org_id === org.org_id ? { ...row, workspace_mode: updated.workspace_mode } : row
+      )));
+      setOnboarding((current) => ({
+        ...current,
+        customers: current.customers.map((customer) => (
+          customer.claimed_org_id === org.org_id
+            ? { ...customer, workspace_mode: updated.workspace_mode }
+            : customer
+        )),
+      }));
+      setMessage(`${org.clinic_name} now uses the ${mode === "solo" ? "Solo" : "Team"} workspace.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to update workspace mode.");
+    } finally {
+      setUpdatingWorkspaceId("");
+    }
+  }
+
+  async function updateOrgUsersAllowed(org: SuperuserOrgSummary, value: string) {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 500) {
+      setMessage("User limit must be a whole number between 1 and 500.");
+      setUserLimitDrafts((current) => ({ ...current, [org.org_id]: String(org.users_allowed) }));
+      return;
+    }
+    if (parsed < org.user_count) {
+      setMessage(`User limit cannot be lower than the ${org.user_count} existing users.`);
+      setUserLimitDrafts((current) => ({ ...current, [org.org_id]: String(org.users_allowed) }));
+      return;
+    }
+    if (parsed === org.users_allowed) {
+      return;
+    }
+    setUpdatingUserLimitId(org.org_id);
+    setMessage("");
+    try {
+      const updated = await api.updateSuperdashboardOrgUsersAllowed(org.org_id, parsed);
+      setOrgs((current) => current.map((row) => (
+        row.org_id === org.org_id ? { ...row, users_allowed: updated.users_allowed } : row
+      )));
+      setOnboarding((current) => ({
+        ...current,
+        customers: current.customers.map((customer) => (
+          customer.claimed_org_id === org.org_id
+            ? { ...customer, users_allowed: updated.users_allowed }
+            : customer
+        )),
+      }));
+      setUserLimitDrafts((current) => ({ ...current, [org.org_id]: String(updated.users_allowed) }));
+      setMessage(`${org.clinic_name} can now have ${updated.users_allowed} user${updated.users_allowed === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setUserLimitDrafts((current) => ({ ...current, [org.org_id]: String(org.users_allowed) }));
+      setMessage(error instanceof Error ? error.message : "Failed to update user limit.");
+    } finally {
+      setUpdatingUserLimitId("");
+    }
   }
 
   function copyText(value: string) {
@@ -325,11 +456,13 @@ export default function SuperdashboardPage() {
                 <div className="h-px flex-1 bg-slate-200" />
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px] text-left">
+                <table className="w-full min-w-[1380px] text-left">
                   <thead className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
                     <tr>
                       <th className="px-7 py-4">Org</th>
                       <th className="px-7 py-4">Users</th>
+                      <th className="px-7 py-4">User limit</th>
+                      <th className="px-7 py-4">Workspace</th>
                       <th className="px-7 py-4">Patients</th>
                       <th className="px-7 py-4">Notes</th>
                       <th className="px-7 py-4">Invoices</th>
@@ -343,6 +476,38 @@ export default function SuperdashboardPage() {
                       <tr key={org.org_id} className="border-t border-slate-100 text-base">
                         <td className="px-7 py-5 font-black">{org.clinic_name}</td>
                         <td className="px-7 py-5">{org.user_count}</td>
+                        <td className="px-7 py-5">
+                          <input
+                            type="number"
+                            min={Math.max(org.user_count, 1)}
+                            max={500}
+                            step={1}
+                            value={userLimitDrafts[org.org_id] ?? String(org.users_allowed)}
+                            disabled={updatingUserLimitId === org.org_id}
+                            onChange={(event) => setUserLimitDrafts((current) => ({
+                              ...current,
+                              [org.org_id]: event.target.value,
+                            }))}
+                            onBlur={(event) => void updateOrgUsersAllowed(org, event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") event.currentTarget.blur();
+                            }}
+                            aria-label={`User limit for ${org.clinic_name}`}
+                            className="h-11 w-24 rounded-xl border border-slate-200 bg-slate-50 px-3 font-black outline-none transition focus:border-blue-500 disabled:opacity-60"
+                          />
+                        </td>
+                        <td className="px-7 py-5">
+                          <select
+                            value={org.workspace_mode}
+                            disabled={updatingWorkspaceId === org.org_id}
+                            onChange={(event) => void updateOrgWorkspaceMode(org, event.target.value as WorkspaceMode)}
+                            aria-label={`Workspace mode for ${org.clinic_name}`}
+                            className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 font-black capitalize outline-none transition focus:border-blue-500 disabled:opacity-60"
+                          >
+                            <option value="solo">Solo</option>
+                            <option value="team">Team</option>
+                          </select>
+                        </td>
                         <td className="px-7 py-5">{org.patient_count}</td>
                         <td className="px-7 py-5">{org.note_count}</td>
                         <td className="px-7 py-5">{org.invoice_count}</td>
@@ -362,22 +527,48 @@ export default function SuperdashboardPage() {
           <div className="space-y-10">
             <div className="grid gap-6 lg:grid-cols-[1fr_580px]">
               <div className="rounded-[24px] border border-slate-200 bg-white p-7 shadow-sm">
-                <form onSubmit={createCid} className="grid items-end gap-6 xl:grid-cols-[1.5fr_1fr_160px_190px]">
-                  <label>
-                    <span className="mb-3 block text-lg font-black text-slate-700">Clinic name</span>
-                    <input value={clinicName} onChange={(event) => setClinicName(event.target.value)} required placeholder="Bluebird Clinic" className="h-20 w-full rounded-2xl border border-slate-200 bg-slate-50 px-7 text-2xl font-black outline-none transition focus:border-blue-500" />
-                  </label>
-                  <label>
-                    <span className="mb-3 block text-lg font-black text-slate-700">Phone</span>
-                    <input value={phone} onChange={(event) => setPhone(event.target.value)} required placeholder="+91 98765 43210" className="h-20 w-full rounded-2xl border border-slate-200 bg-slate-50 px-7 text-2xl font-black outline-none transition focus:border-blue-500" />
-                  </label>
-                  <label>
-                    <span className="mb-3 block text-lg font-black text-slate-700">Users</span>
-                    <input value={usersAllowed} onChange={(event) => setUsersAllowed(event.target.value)} required type="number" min={1} className="h-20 w-full rounded-2xl border border-slate-200 bg-slate-50 px-7 text-2xl font-black outline-none transition focus:border-blue-500" />
-                  </label>
-                  <button disabled={isCreating} className="h-20 rounded-2xl bg-blue-500 px-8 text-2xl font-black text-white shadow-sm transition hover:bg-blue-600 disabled:opacity-60">
-                    Create CID <ArrowRight className="ml-2 inline h-6 w-6" />
-                  </button>
+                <form onSubmit={createCid} className="space-y-6">
+                  <div className="grid items-end gap-6 xl:grid-cols-[1.5fr_1fr_160px]">
+                    <label>
+                      <span className="mb-3 block text-lg font-black text-slate-700">Clinic name</span>
+                      <input value={clinicName} onChange={(event) => setClinicName(event.target.value)} required placeholder="Bluebird Clinic" className="h-20 w-full rounded-2xl border border-slate-200 bg-slate-50 px-7 text-2xl font-black outline-none transition focus:border-blue-500" />
+                    </label>
+                    <label>
+                      <span className="mb-3 block text-lg font-black text-slate-700">Phone</span>
+                      <input value={phone} onChange={(event) => setPhone(event.target.value)} required placeholder="+91 98765 43210" className="h-20 w-full rounded-2xl border border-slate-200 bg-slate-50 px-7 text-2xl font-black outline-none transition focus:border-blue-500" />
+                    </label>
+                    <label>
+                      <span className="mb-3 block text-lg font-black text-slate-700">Users</span>
+                      <input value={usersAllowed} onChange={(event) => setUsersAllowed(event.target.value)} required type="number" min={1} className="h-20 w-full rounded-2xl border border-slate-200 bg-slate-50 px-7 text-2xl font-black outline-none transition focus:border-blue-500" />
+                    </label>
+                  </div>
+                  <fieldset>
+                    <legend className="mb-3 text-lg font-black text-slate-700">Workspace mode</legend>
+                    <div className="grid gap-4 xl:grid-cols-[1fr_1fr_190px]">
+                      {([
+                        ["solo", "Solo workspace", "One combined Today queue."],
+                        ["team", "Team workflow", "Waiting, Consultation, and Billing."],
+                      ] as const).map(([value, label, description]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setWorkspaceMode(value)}
+                          aria-pressed={workspaceMode === value}
+                          className={`rounded-2xl border px-5 py-4 text-left transition ${
+                            workspaceMode === value
+                              ? "border-blue-500 bg-blue-50 ring-4 ring-blue-100"
+                              : "border-slate-200 bg-slate-50 hover:border-blue-300"
+                          }`}
+                        >
+                          <span className="block text-lg font-black text-slate-900">{label}</span>
+                          <span className="mt-1 block text-sm font-semibold text-slate-500">{description}</span>
+                        </button>
+                      ))}
+                      <button disabled={isCreating || !workspaceMode} className="min-h-20 rounded-2xl bg-blue-500 px-8 text-2xl font-black text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50">
+                        Create CID <ArrowRight className="ml-2 inline h-6 w-6" />
+                      </button>
+                    </div>
+                  </fieldset>
                 </form>
                 {lastCreatedCid ? (
                   <button onClick={() => copyText(lastCreatedCid)} className="mt-5 inline-flex items-center gap-2 rounded-full bg-blue-50 px-5 py-3 text-lg font-black text-blue-700">
@@ -415,7 +606,7 @@ export default function SuperdashboardPage() {
                 <div className="h-px flex-1 bg-slate-200" />
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1120px] text-left">
+                <table className="w-full min-w-[1280px] text-left">
                   <thead className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
                     <tr>
                       <th className="px-7 py-4">Customer</th>
@@ -424,6 +615,7 @@ export default function SuperdashboardPage() {
                       <th className="px-7 py-4">Status</th>
                       <th className="px-7 py-4">Users allowed</th>
                       <th className="px-7 py-4">Users used</th>
+                      <th className="px-7 py-4">Workspace</th>
                       <th className="px-7 py-4">Created</th>
                       <th className="px-7 py-4">Claimed by org</th>
                       <th className="px-7 py-4" />
@@ -443,9 +635,31 @@ export default function SuperdashboardPage() {
                           <span className={`rounded-full px-4 py-2 text-sm font-black capitalize ${statusClass(customer.status)}`}>{customer.status}</span>
                         </td>
                         <td className="px-7 py-5">
-                          <input defaultValue={customer.users_allowed} type="number" min={1} onBlur={(event) => updateUsersAllowed(customer, event.target.value)} className="h-12 w-28 rounded-xl border border-slate-200 bg-slate-50 px-4 text-center font-black outline-none focus:border-blue-500" />
+                          <input
+                            key={customer.users_allowed}
+                            defaultValue={customer.users_allowed}
+                            type="number"
+                            min={Math.max(customer.users_used, 1)}
+                            max={500}
+                            step={1}
+                            disabled={updatingUserLimitId === customer.id || customer.status === "disabled"}
+                            onBlur={(event) => void updateUsersAllowed(customer, event.target.value)}
+                            className="h-12 w-28 rounded-xl border border-slate-200 bg-slate-50 px-4 text-center font-black outline-none focus:border-blue-500 disabled:opacity-60"
+                          />
                         </td>
                         <td className="px-7 py-5">{customer.users_used} / {customer.users_allowed}</td>
+                        <td className="px-7 py-5">
+                          <select
+                            value={customer.workspace_mode}
+                            disabled={updatingWorkspaceId === customer.id || customer.status === "disabled"}
+                            onChange={(event) => void updateOnboardingWorkspaceMode(customer, event.target.value as WorkspaceMode)}
+                            aria-label={`Workspace mode for ${customer.customer_name}`}
+                            className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 font-black capitalize outline-none transition focus:border-blue-500 disabled:opacity-60"
+                          >
+                            <option value="solo">Solo</option>
+                            <option value="team">Team</option>
+                          </select>
+                        </td>
                         <td className="px-7 py-5">{formatDate(customer.created_at)}</td>
                         <td className="px-7 py-5">{customer.claimed_org_name || customer.claimed_org_id || "—"}</td>
                         <td className="px-7 py-5">

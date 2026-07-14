@@ -41,6 +41,9 @@ FOLLOW_UP_COLUMNS = [
     "status",
     "completed_at",
     "reminder_sent_at",
+    "reminder_claimed_at",
+    "reminder_attempt_count",
+    "reminder_last_error",
     "created_at",
 ]
 
@@ -432,31 +435,44 @@ class PostgresRecordsRepository:
 
         return await asyncio.to_thread(_cancel)
 
-    async def list_due_follow_ups(
+    async def claim_due_follow_ups(
         self,
         org_id: str,
         due_after_iso: str,
         due_before_iso: str,
     ) -> list[dict[str, Any]]:
-        def _list() -> list[dict[str, Any]]:
+        def _claim() -> list[dict[str, Any]]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         f"""
-                        select {_columns_sql(FOLLOW_UP_COLUMNS)}
-                        from public.follow_ups
-                        where org_id = %s
-                          and status = 'scheduled'
-                          and reminder_sent_at is null
-                          and scheduled_for > %s
-                          and scheduled_for <= %s
-                        order by scheduled_for asc
+                        with candidates as (
+                          select id from public.follow_ups
+                          where org_id = %s
+                            and status = 'scheduled'
+                            and reminder_sent_at is null
+                            and scheduled_for > %s
+                            and scheduled_for <= %s
+                            and (
+                              reminder_claimed_at is null
+                              or reminder_claimed_at < now() - interval '15 minutes'
+                            )
+                          order by scheduled_for asc
+                          for update skip locked
+                        )
+                        update public.follow_ups follow_up
+                        set reminder_claimed_at = now(),
+                            reminder_attempt_count = reminder_attempt_count + 1,
+                            reminder_last_error = ''
+                        from candidates
+                        where follow_up.id = candidates.id
+                        returning {', '.join(f'follow_up.{column}' for column in FOLLOW_UP_COLUMNS)}
                         """,
                         (org_id, due_after_iso, due_before_iso),
                     )
                     return [_row_to_dict(row, cursor) for row in cursor.fetchall()]
 
-        return await asyncio.to_thread(_list)
+        return await asyncio.to_thread(_claim)
 
     async def mark_follow_up_reminder_sent(self, org_id: str, follow_up_id: str) -> dict[str, Any]:
         def _mark() -> dict[str, Any]:
@@ -465,7 +481,9 @@ class PostgresRecordsRepository:
                     cursor.execute(
                         f"""
                         update public.follow_ups
-                        set reminder_sent_at = %s
+                        set reminder_sent_at = %s,
+                            reminder_claimed_at = null,
+                            reminder_last_error = ''
                         where org_id = %s and id = %s
                         returning {_columns_sql(FOLLOW_UP_COLUMNS)}
                         """,
@@ -477,6 +495,22 @@ class PostgresRecordsRepository:
                     return _row_to_dict(row, cursor)
 
         return await asyncio.to_thread(_mark)
+
+    async def release_follow_up_reminder_claim(self, org_id: str, follow_up_id: str, error: str) -> None:
+        def _release() -> None:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        update public.follow_ups
+                        set reminder_claimed_at = null,
+                            reminder_last_error = %s
+                        where org_id = %s and id = %s and reminder_sent_at is null
+                        """,
+                        (str(error)[:1000], org_id, follow_up_id),
+                    )
+
+        await asyncio.to_thread(_release)
 
     async def update_follow_up(self, org_id: str, follow_up_id: str, payload: FollowUpUpdate) -> dict[str, Any]:
         def _update() -> dict[str, Any]:

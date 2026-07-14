@@ -7,6 +7,7 @@ from email.message import EmailMessage
 
 GMAIL_SMTP_HOST = "smtp.gmail.com"
 GMAIL_SMTP_PORT = 587
+SMTP_TIMEOUT_SECONDS = 15
 
 
 class EmailDeliveryError(RuntimeError):
@@ -22,7 +23,7 @@ def _build_sender(clinic_settings: dict) -> str:
 
 
 def _send_email_sync(message: EmailMessage, *, sender_email: str, app_password: str) -> None:
-    with smtplib.SMTP(GMAIL_SMTP_HOST, GMAIL_SMTP_PORT, timeout=20) as server:
+    with smtplib.SMTP(GMAIL_SMTP_HOST, GMAIL_SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS) as server:
         server.starttls()
         server.login(sender_email, app_password)
         server.send_message(message)
@@ -36,6 +37,7 @@ async def send_clinic_email_message(
     text_content: str,
     html_content: str | None = None,
     attachments: list[tuple[str, bytes, str]] | None = None,
+    message_id: str | None = None,
 ) -> None:
     sender_email = str(clinic_settings.get("sender_email") or "").strip()
     app_password = str(clinic_settings.get("sender_email_app_password") or "").strip()
@@ -49,6 +51,8 @@ async def send_clinic_email_message(
     message["From"] = _build_sender(clinic_settings)
     message["Reply-To"] = sender_email
     message["Subject"] = subject.strip()
+    if message_id:
+        message["Message-ID"] = message_id
     message.set_content(text_content)
     if html_content:
         message.add_alternative(html_content, subtype="html")

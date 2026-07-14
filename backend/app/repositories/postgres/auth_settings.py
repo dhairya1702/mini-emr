@@ -43,6 +43,7 @@ CLINIC_SETTINGS_COLUMNS = [
     "document_template_margin_left",
     "onboarding_required",
     "onboarding_completed_at",
+    "users_allowed",
     "workspace_mode",
     "updated_at",
 ]
@@ -75,6 +76,7 @@ CLINIC_SETTINGS_MUTABLE_COLUMNS = [
     "document_template_margin_left",
     "onboarding_required",
     "onboarding_completed_at",
+    "users_allowed",
     "workspace_mode",
 ]
 
@@ -106,6 +108,7 @@ def _clinic_settings_defaults() -> dict[str, Any]:
         "document_template_margin_left",
         "onboarding_required",
         "onboarding_completed_at",
+        "users_allowed",
         "workspace_mode",
     }
     return ClinicSettingsOut.model_construct(id=nil_uuid, org_id=nil_uuid).model_dump(include=field_names)
@@ -148,6 +151,8 @@ USER_LIST_COLUMNS = [
 SUPERUSER_ORG_SUMMARY_COLUMNS = [
     "org_id",
     "clinic_name",
+    "workspace_mode",
+    "users_allowed",
     "created_at",
     "user_count",
     "patient_count",
@@ -156,6 +161,7 @@ SUPERUSER_ORG_SUMMARY_COLUMNS = [
     "follow_up_count",
     "total_tokens",
     "media_storage_bytes",
+    "recent_error_count",
     "last_activity_at",
 ]
 
@@ -247,6 +253,8 @@ class PostgresAuthSettingsRepository:
                         select
                           o.id as org_id,
                           coalesce(nullif(cs.clinic_name, ''), o.name) as clinic_name,
+                          coalesce(cs.workspace_mode, 'solo') as workspace_mode,
+                          coalesce(cs.users_allowed, 2)::int as users_allowed,
                           o.created_at,
                           coalesce(users.user_count, 0)::int as user_count,
                           coalesce(patients.patient_count, 0)::int as patient_count,
@@ -328,7 +336,8 @@ class PostgresAuthSettingsRepository:
         customer_name: str,
         phone: str,
         users_allowed: int,
-        created_by: str | None,
+        workspace_mode: str = "solo",
+        created_by: str | None = None,
     ) -> dict[str, Any]:
         def _create() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
@@ -340,13 +349,14 @@ class PostgresAuthSettingsRepository:
                           customer_name,
                           phone,
                           users_allowed,
+                          workspace_mode,
                           created_by
                         )
-                        values (%s, %s, %s, %s, %s)
-                        returning id, customer_id, customer_name, phone, users_allowed, status,
+                        values (%s, %s, %s, %s, %s, %s)
+                        returning id, customer_id, customer_name, phone, users_allowed, workspace_mode, status,
                           claimed_org_id, claimed_at, created_by, created_at, updated_at
                         """,
-                        (customer_id, customer_name, phone, users_allowed, created_by),
+                        (customer_id, customer_name, phone, users_allowed, workspace_mode, created_by),
                     )
                     row = cursor.fetchone()
                     if not row:
@@ -367,6 +377,7 @@ class PostgresAuthSettingsRepository:
                           co.customer_name,
                           co.phone,
                           co.users_allowed,
+                          co.workspace_mode,
                           co.status,
                           co.claimed_org_id,
                           co.claimed_at,
@@ -396,7 +407,7 @@ class PostgresAuthSettingsRepository:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        select id, customer_id, customer_name, phone, users_allowed, status,
+                        select id, customer_id, customer_name, phone, users_allowed, workspace_mode, status,
                           claimed_org_id, claimed_at, created_by, created_at, updated_at
                         from public.customer_onboarding
                         where customer_id = %s
@@ -427,7 +438,7 @@ class PostgresAuthSettingsRepository:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        select id, phone, status
+                        select id, phone, status, workspace_mode, users_allowed
                         from public.customer_onboarding
                         where customer_id = %s
                         for update
@@ -441,6 +452,9 @@ class PostgresAuthSettingsRepository:
                         or normalize_phone_number(onboarding[1]) != normalize_phone_number(expected_phone)
                     ):
                         raise ValueError("Invalid customer ID or phone number.")
+
+                    settings_values["workspace_mode"] = str(onboarding[3] or "solo")
+                    settings_values["users_allowed"] = int(onboarding[4] or 2)
 
                     cursor.execute(
                         "select 1 from public.clinic_users where identifier = %s limit 1",
@@ -516,7 +530,7 @@ class PostgresAuthSettingsRepository:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        select id, customer_id, customer_name, phone, users_allowed, status,
+                        select id, customer_id, customer_name, phone, users_allowed, workspace_mode, status,
                           claimed_org_id, claimed_at, created_by, created_at, updated_at
                         from public.customer_onboarding
                         where claimed_org_id = %s
@@ -543,7 +557,7 @@ class PostgresAuthSettingsRepository:
                           claimed_at = %s,
                           updated_at = %s
                         where customer_id = %s and status = 'pending'
-                        returning id, customer_id, customer_name, phone, users_allowed, status,
+                        returning id, customer_id, customer_name, phone, users_allowed, workspace_mode, status,
                           claimed_org_id, claimed_at, created_by, created_at, updated_at
                         """,
                         (org_id, timestamp, timestamp, customer_id),
@@ -556,7 +570,7 @@ class PostgresAuthSettingsRepository:
         return await asyncio.to_thread(_claim)
 
     async def update_customer_onboarding(self, onboarding_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        allowed = {"customer_name", "phone", "users_allowed", "status"}
+        allowed = {"customer_name", "phone", "users_allowed", "workspace_mode", "status"}
         updates = {key: value for key, value in payload.items() if key in allowed and value is not None}
         if not updates:
             raise ValueError("No updates provided.")
@@ -571,7 +585,7 @@ class PostgresAuthSettingsRepository:
                         update public.customer_onboarding
                         set {assignments}
                         where id = %s
-                        returning id, customer_id, customer_name, phone, users_allowed, status,
+                        returning id, customer_id, customer_name, phone, users_allowed, workspace_mode, status,
                           claimed_org_id, claimed_at, created_by, created_at, updated_at
                         """,
                         (*updates.values(), onboarding_id),
@@ -579,12 +593,107 @@ class PostgresAuthSettingsRepository:
                     row = cursor.fetchone()
                     if not row:
                         raise ValueError("Customer onboarding record not found.")
-                    return _row_to_dict(row, cursor)
+                    saved = _row_to_dict(row, cursor)
+                    claimed_org_id = saved.get("claimed_org_id")
+                    if "workspace_mode" in updates and claimed_org_id:
+                        cursor.execute(
+                            """
+                            update public.clinic_settings
+                            set workspace_mode = %s, updated_at = now()
+                            where org_id = %s
+                            """,
+                            (saved["workspace_mode"], claimed_org_id),
+                        )
+                    if "users_allowed" in updates and claimed_org_id:
+                        cursor.execute(
+                            "select count(*)::int from public.clinic_users where org_id = %s",
+                            (claimed_org_id,),
+                        )
+                        count_row = cursor.fetchone()
+                        users_used = int(count_row[0] if count_row else 0)
+                        users_allowed = int(saved["users_allowed"])
+                        if users_allowed < users_used:
+                            raise ValueError(
+                                f"User limit cannot be lower than the {users_used} existing users."
+                            )
+                        cursor.execute(
+                            """
+                            update public.clinic_settings
+                            set users_allowed = %s, updated_at = now()
+                            where org_id = %s
+                            """,
+                            (users_allowed, claimed_org_id),
+                        )
+                    return saved
 
         return await asyncio.to_thread(_update)
 
     async def disable_customer_onboarding(self, onboarding_id: str) -> dict[str, Any]:
         return await self.update_customer_onboarding(onboarding_id, {"status": "disabled"})
+
+    async def update_organization_workspace_mode(self, org_id: str, workspace_mode: str) -> str:
+        def _update() -> str:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        update public.clinic_settings
+                        set workspace_mode = %s, updated_at = now()
+                        where org_id = %s
+                        returning workspace_mode
+                        """,
+                        (workspace_mode, org_id),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("Organization settings not found.")
+                    cursor.execute(
+                        """
+                        update public.customer_onboarding
+                        set workspace_mode = %s, updated_at = now()
+                        where claimed_org_id = %s
+                        """,
+                        (workspace_mode, org_id),
+                    )
+                    return str(row[0])
+
+        return await asyncio.to_thread(_update)
+
+    async def update_organization_users_allowed(self, org_id: str, users_allowed: int) -> int:
+        def _update() -> int:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "select count(*)::int from public.clinic_users where org_id = %s",
+                        (org_id,),
+                    )
+                    row = cursor.fetchone()
+                    users_used = int(row[0] if row else 0)
+                    if users_allowed < users_used:
+                        raise ValueError(f"User limit cannot be lower than the {users_used} existing users.")
+                    cursor.execute(
+                        """
+                        update public.clinic_settings
+                        set users_allowed = %s, updated_at = now()
+                        where org_id = %s
+                        returning users_allowed
+                        """,
+                        (users_allowed, org_id),
+                    )
+                    saved = cursor.fetchone()
+                    if not saved:
+                        raise ValueError("Organization settings not found.")
+                    cursor.execute(
+                        """
+                        update public.customer_onboarding
+                        set users_allowed = %s, updated_at = now()
+                        where claimed_org_id = %s
+                        """,
+                        (users_allowed, org_id),
+                    )
+                    return int(saved[0])
+
+        return await asyncio.to_thread(_update)
 
     async def count_users_for_org(self, org_id: str) -> int:
         def _count() -> int:

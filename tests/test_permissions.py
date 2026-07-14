@@ -118,6 +118,7 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
     audit_events = test_client.get("/audit-events", headers=staff_headers)
     assert audit_events.status_code == 403
 
+
     exports = test_client.get("/exports/patients.csv", headers=staff_headers)
     assert exports.status_code == 403
 
@@ -197,6 +198,52 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
     )
     assert start_consultation.status_code == 403
     assert "Admin access required to start consultation" in start_consultation.text
+
+
+def test_staff_can_prioritize_and_reorder_but_cannot_advance_queue_stage(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="owner-queue-perms@clinic.com", clinic_name="Queue Perms Clinic")
+    admin_headers = auth_headers_for_token(session["token"])
+    assert test_client.post(
+        "/users/staff",
+        json={"identifier": "staff-queue-perms@clinic.com", "password": "password123!"},
+        headers=admin_headers,
+    ).status_code == 201
+    staff_login = test_client.post(
+        "/auth/login",
+        json={"identifier": "staff-queue-perms@clinic.com", "password": "password123!"},
+    ).json()
+    staff_headers = auth_headers_for_token(staff_login["token"])
+    patients = [
+        test_client.post(
+            "/patients",
+            json={"name": name, "phone": phone, "reason": "Review", "age": 30},
+            headers=admin_headers,
+        ).json()
+        for name, phone in (("Queue A", "5550103001"), ("Queue B", "5550103002"))
+    ]
+
+    priority = test_client.patch(
+        f"/patients/{patients[1]['id']}",
+        json={"queue_priority": "urgent"},
+        headers=staff_headers,
+    )
+    assert priority.status_code == 200
+
+    reordered = test_client.put(
+        "/patients/queue/order",
+        json={"columns": {"waiting": [patients[1]["id"], patients[0]["id"]], "consultation": [], "done": []}},
+        headers=staff_headers,
+    )
+    assert reordered.status_code == 200
+
+    forbidden_move = test_client.put(
+        "/patients/queue/order",
+        json={"columns": {"waiting": [patients[1]["id"]], "consultation": [patients[0]["id"]], "done": []}},
+        headers=staff_headers,
+    )
+    assert forbidden_move.status_code == 400
+    assert forbidden_move.json()["detail"] == "Patients can only move through the queue stages in order."
 
 
 def test_admin_cannot_manage_users_across_organizations(client):
