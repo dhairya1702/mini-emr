@@ -7,7 +7,7 @@ import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Mail,
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-myopia-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia/myopia-management-modal";
-import { api } from "@/lib/api";
+import { api, resolveApiAssetUrl } from "@/lib/api";
 import { formatMillimeterDelta } from "@/lib/optometry/myopia/shared";
 import { specialtyHasModule } from "@/lib/specialty";
 import { createTrainingId } from "@/lib/training-mode";
@@ -74,17 +74,6 @@ function formatDateTime(value: string) {
 
 const PROFILE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 const PROFILE_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-
-function resolveApiAssetUrl(path: string | null | undefined) {
-  if (!path) {
-    return "";
-  }
-  if (/^https?:\/\//i.test(path)) {
-    return path;
-  }
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
-  return `${baseUrl.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
-}
 
 function patientInitials(patient: Patient) {
   const parts = patient.name.trim().split(/\s+/).filter(Boolean);

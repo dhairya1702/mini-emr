@@ -94,7 +94,10 @@ function resolveApiBaseUrl() {
     const isLoopbackBrowser =
       currentHostname === "127.0.0.1" || currentHostname === "localhost";
 
-    if (isLoopbackConfigured && !isLoopbackBrowser) {
+    if (
+      isLoopbackConfigured &&
+      (!isLoopbackBrowser || configuredHostname !== currentHostname)
+    ) {
       configuredUrl.hostname = currentHostname;
       return configuredUrl.toString().replace(/\/$/, "");
     }
@@ -112,6 +115,16 @@ const SAFE_REQUEST_RETRY_ATTEMPTS = 2;
 const SAFE_REQUEST_RETRY_DELAY_MS = 350;
 const SESSION_TOKEN_HEADER = "x-session-token";
 const SESSION_EXPIRES_AT_HEADER = "x-session-expires-at";
+
+export function resolveApiAssetUrl(path: string | null | undefined) {
+  if (!path) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
 
 function isSessionErrorMessage(message: string) {
   return (
