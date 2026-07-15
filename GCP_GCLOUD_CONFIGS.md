@@ -117,7 +117,7 @@ gcloud run services logs read clinic-emr-backend --region=asia-south1 --limit=10
 Read web logs:
 
 ```bash
-gcloud run services logs read clinic-emr-web --region=asia-south1 --limit=100
+gcloud run services logs read clinic-os-ai --region=asia-south1 --limit=100
 ```
 
 List Cloud SQL instances:
@@ -171,7 +171,7 @@ This builds and deploys only the web app. It:
 - Passes `NEXT_PUBLIC_API_BASE_URL` as the backend URL at build time.
 - Pushes the image to Artifact Registry:
   `asia-south1-docker.pkg.dev/project-e8d0eb79-8682-4bd9-b31/clinic-emr/clinic-emr-web:<IMAGE_TAG>`
-- Deploys Cloud Run service `clinic-emr-web`.
+- Deploys Cloud Run service `clinic-os-ai`.
 
 `scripts/deploy-all.sh`
 
@@ -229,14 +229,14 @@ export PROJECT_ID='project-e8d0eb79-8682-4bd9-b31'
 export REGION='asia-south1'
 export AR_REPO='clinic-emr'
 export BACKEND_SERVICE='clinic-emr-backend'
-export WEB_SERVICE='clinic-emr-web'
+export WEB_SERVICE='clinic-os-ai'
 export SQL_CONNECTION_NAME='project-e8d0eb79-8682-4bd9-b31:asia-south1:clinic-emr-prod'
 export DB_NAME='clinic_emr'
 export DB_USER='clinic_app'
 export GCS_BUCKET='clinic-emr-patient-attachments-prod'
 export BACKEND_SA='clinic-emr-backend@project-e8d0eb79-8682-4bd9-b31.iam.gserviceaccount.com'
 export BACKEND_PUBLIC_URL='https://clinic-emr-backend-388811826415.asia-south1.run.app'
-export WEB_URL='https://clinic-emr-web-388811826415.asia-south1.run.app'
+export WEB_URL='https://clinic-os-ai-388811826415.asia-south1.run.app'
 ```
 
 If `.env.deploy` is missing, the deploy script will refuse to run because required Secret Manager names are unset.
@@ -304,7 +304,7 @@ After every deploy, verify:
 
 ```bash
 curl -sS https://clinic-emr-backend-388811826415.asia-south1.run.app/health
-curl -I -sS https://clinic-emr-web-388811826415.asia-south1.run.app
+curl -I -sS https://clinic-os-ai-388811826415.asia-south1.run.app
 gcloud run services list --region=asia-south1
 ```
 
@@ -323,7 +323,7 @@ gcloud run services logs read clinic-emr-backend --region=asia-south1 --limit=10
 Check recent web logs:
 
 ```bash
-gcloud run services logs read clinic-emr-web --region=asia-south1 --limit=100
+gcloud run services logs read clinic-os-ai --region=asia-south1 --limit=100
 ```
 
 ## Known Deploy Details

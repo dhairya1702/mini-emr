@@ -4,7 +4,7 @@
 - Region: `asia-south1`
 - Services:
   - `clinic-emr-backend` on Cloud Run
-  - `clinic-emr-web` on Cloud Run
+  - `clinic-os-ai` on Cloud Run
 - Database target: Cloud SQL for PostgreSQL
 - Attachment storage: GCS bucket `clinic-emr-patient-attachments-prod`
 - AI provider: Gemini on Vertex AI

@@ -17,7 +17,7 @@ This repo can be deployed to GCP with:
 
 - Artifact Registry repo: `clinic-emr`
 - Backend Cloud Run service: `clinic-emr-backend`
-- Web Cloud Run service: `clinic-emr-web`
+- Web Cloud Run service: `clinic-os-ai`
 - GCS bucket: `clinic-emr-patient-attachments-prod`
 - Reminder endpoint path: `/internal/run-follow-up-reminders`
 
@@ -96,8 +96,8 @@ runtime service account needs `roles/secretmanager.secretAccessor`.
 
 Cloud Run exposes two hostnames for the same service:
 
-- the stable regional URL shown in deploy output, e.g. `https://clinic-emr-web-388811826415.asia-south1.run.app`
-- the canonical URL returned by `gcloud run services describe --format='value(status.url)'`, e.g. `https://clinic-emr-web-gmyeejkiaa-el.a.run.app`
+- the stable regional URL shown in deploy output, e.g. `https://clinic-os-ai-388811826415.asia-south1.run.app`
+- the canonical URL returned by `gcloud run services describe --format='value(status.url)'`
 
 They both point to the same service. For this project:
 
@@ -193,7 +193,7 @@ After the backend exists and you have its `run.app` URL, rebuild the web image w
 Deploy:
 
 ```bash
-gcloud run deploy clinic-emr-web \
+gcloud run deploy clinic-os-ai \
   --project=project-e8d0eb79-8682-4bd9-b31 \
   --region=asia-south1 \
   --image=asia-south1-docker.pkg.dev/project-e8d0eb79-8682-4bd9-b31/clinic-emr/clinic-emr-web:SHORT_SHA \
