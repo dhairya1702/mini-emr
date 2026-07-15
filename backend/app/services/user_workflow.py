@@ -6,6 +6,7 @@ from app.auth import (
     password_hash_needs_upgrade,
     verify_password,
 )
+from app import config as config_module
 from app.db import AppRepository
 from app.repositories.base import normalize_phone_number
 from app.schema_domains.auth_settings import (
@@ -64,28 +65,43 @@ async def register_user_workflow(
     identifier = normalize_identifier(payload.identifier)
     customer_id = payload.customer_id.strip().upper()
     await enforce_repository_rate_limit(repo, "auth_register", client_ip or "unknown")
-    await enforce_repository_rate_limit(repo, "auth_register_invite", customer_id)
+    if customer_id:
+        await enforce_repository_rate_limit(repo, "auth_register_invite", customer_id)
     existing = await repo.get_user_by_identifier(identifier)
     if existing:
         raise HTTPException(status_code=409, detail="An account with that email or phone already exists.")
 
+    clinic_settings = ClinicSettingsUpdate(
+        clinic_name=payload.clinic_name,
+        clinic_address=payload.clinic_address,
+        clinic_phone=payload.clinic_phone,
+        doctor_name=payload.doctor_name,
+        onboarding_required=True,
+        onboarding_completed_at=None,
+        workspace_mode="team",
+        users_allowed=2,
+    )
     try:
-        created = await repo.provision_customer_organization(
-            customer_id=customer_id,
-            expected_phone=normalize_phone_number(payload.clinic_phone),
-            clinic_settings=ClinicSettingsUpdate(
-                clinic_name=payload.clinic_name,
-                clinic_address=payload.clinic_address,
-                clinic_phone=payload.clinic_phone,
-                doctor_name=payload.doctor_name,
-                onboarding_required=True,
-                onboarding_completed_at=None,
-                workspace_mode="solo",
-            ),
-            identifier=identifier,
-            name=payload.admin_name,
-            password_hash=hash_password(payload.password),
-        )
+        if customer_id:
+            created = await repo.provision_customer_organization(
+                customer_id=customer_id,
+                expected_phone=normalize_phone_number(payload.clinic_phone),
+                clinic_settings=clinic_settings,
+                identifier=identifier,
+                name=payload.admin_name,
+                password_hash=hash_password(payload.password),
+            )
+        else:
+            if not config_module.get_settings().open_clinic_registration:
+                raise _invalid_customer()
+            created = await repo.provision_open_organization(
+                clinic_settings=clinic_settings,
+                identifier=identifier,
+                name=payload.admin_name,
+                password_hash=hash_password(payload.password),
+            )
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise _invalid_customer() from exc
     return AuthResponse(token=issue_session_headers(response, _session_identity(created)), user=build_user_out(created))

@@ -108,6 +108,7 @@ Backend:
 - `GOOGLE_CLOUD_PROJECT=...`
 - `GOOGLE_CLOUD_LOCATION=global`
 - `GEMINI_MODEL=gemini-3.5-flash`
+- `OPEN_CLINIC_REGISTRATION=true` allows clinics to create a Team workspace without a CID. Set it to `false` to restore CID-gated signup.
 - `INTERNAL_SCHEDULER_TOKEN=...` used by Cloud Scheduler to trigger follow-up reminders over HTTP
 - `APP_ORIGIN=http://127.0.0.1:3000`
 - `SUPER_ADMIN_IDENTIFIERS=you@example.com` optional, comma-separated allowlist for the hidden `/superuser` dashboard

@@ -826,6 +826,7 @@ export interface SuperuserOrgSummary {
   last_activity_at: string | null;
   workspace_mode: WorkspaceMode;
   users_allowed: number;
+  clinic_specialty: ClinicSpecialty | null;
 }
 
 export interface SuperuserOrgUser {
@@ -860,6 +861,7 @@ export interface SuperuserUsageSummary {
 
 export interface SuperuserOrgDetail {
   summary: SuperuserOrgSummary;
+  settings: ClinicSettings | null;
   users: SuperuserOrgUser[];
   recent_errors: PlatformError[];
   usage: SuperuserUsageSummary;
@@ -962,12 +964,18 @@ export interface PasswordUpdatePayload {
 export interface RegisterPayload {
   identifier: string;
   password: string;
-  customer_id: string;
+  customer_id?: string;
   admin_name: string;
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string;
   doctor_name: string;
+}
+
+export interface RegistrationConfig {
+  customer_id_required: boolean;
+  default_workspace_mode: WorkspaceMode;
+  default_users_allowed: number;
 }
 
 export interface AuthResponse {

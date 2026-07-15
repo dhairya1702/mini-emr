@@ -1,7 +1,75 @@
 from __future__ import annotations
 
 from test_app import auth_headers_for_token, client, main_module, register_test_clinic
-from app.services import note_workflow
+from app.services import ai_generation_service, note_workflow
+
+
+def test_generate_note_inserts_eye_exam_table_when_ai_omits_it(client, monkeypatch):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="notes-eye-exam@clinic.com", clinic_name="Eye Exam Clinic")
+    headers = auth_headers_for_token(session["token"])
+
+    async def fake_generate_vertex_content(**_kwargs):
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": (
+                                    "Presenting Complaint:\nBlurred distance vision.\n\n"
+                                    "Diagnosis:\nRefractive error.\n\n"
+                                    "Clinical Notes:\nAI noted that the eye exam is recorded below.\n\n"
+                                    "Treatment:\nSpectacle correction discussed.\n\n"
+                                    "Follow-up Advice:\nReview if symptoms worsen."
+                                )
+                            }
+                        ]
+                    }
+                }
+            ],
+            "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 10},
+        }
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", fake_generate_vertex_content)
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Eye Exam Patient",
+            "phone": "5550106767",
+            "reason": "Blurred vision",
+            "age": 31,
+            "weight": 70,
+            "height": 172,
+            "temperature": 98.4,
+        },
+        headers=headers,
+    ).json()
+
+    generated = test_client.post(
+        "/generate-note",
+        json={
+            "patient_id": patient["id"],
+            "symptoms": "Blurred distance vision",
+            "diagnosis": "Refractive error",
+            "medications": "Spectacle correction discussed.",
+            "notes": "AI noted that the eye exam is recorded below.",
+            "eye_exam": [
+                {"eye": "right", "sphere": "-1.25", "cylinder": "-0.50", "axis": "90", "vision": "6/6"},
+                {"eye": "left", "sphere": "-1.00", "cylinder": "-0.25", "axis": "85", "vision": "6/6"},
+            ],
+        },
+        headers=headers,
+    )
+
+    assert generated.status_code == 200, generated.json()
+    content = generated.json()["content"]
+    assert "Clinical Notes:\nEye Exam:" in content
+    assert "Eye | Sphere | Cylinder | Axis | Vision" in content
+    assert "Right | -1.25 | -0.50 | 90 | 6/6" in content
+    assert "Left | -1.00 | -0.25 | 85 | 6/6" in content
+    assert content.index("Eye Exam:") < content.index("AI noted that the eye exam is recorded below.")
 
 
 def test_sent_consultation_note_is_emailed_and_locked_to_saved_record(client, monkeypatch):

@@ -236,13 +236,14 @@ class PostgresAuthSettingsRepository:
 
         return await asyncio.to_thread(_create)
 
-    async def delete_organization(self, org_id: str) -> None:
-        def _delete() -> None:
+    async def delete_organization(self, org_id: str) -> bool:
+        def _delete() -> bool:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute("delete from public.organizations where id = %s", (org_id,))
+                    return int(cursor.rowcount or 0) > 0
 
-        await asyncio.to_thread(_delete)
+        return await asyncio.to_thread(_delete)
 
     async def list_all_organizations(self) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
@@ -255,6 +256,7 @@ class PostgresAuthSettingsRepository:
                           coalesce(nullif(cs.clinic_name, ''), o.name) as clinic_name,
                           coalesce(cs.workspace_mode, 'solo') as workspace_mode,
                           coalesce(cs.users_allowed, 2)::int as users_allowed,
+                          cs.clinic_specialty,
                           o.created_at,
                           coalesce(users.user_count, 0)::int as user_count,
                           coalesce(patients.patient_count, 0)::int as patient_count,
@@ -520,6 +522,73 @@ class PostgresAuthSettingsRepository:
                     )
                     if not cursor.fetchone():
                         raise ValueError("Invalid customer ID or phone number.")
+                    return user
+
+        return await asyncio.to_thread(_provision)
+
+    async def provision_open_organization(
+        self,
+        *,
+        clinic_settings: ClinicSettingsUpdate,
+        identifier: str,
+        name: str,
+        password_hash: str,
+    ) -> dict[str, Any]:
+        settings_values = _settings_values(clinic_settings)
+        settings_columns = list(CLINIC_SETTINGS_MUTABLE_COLUMNS)
+
+        def _provision() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "select 1 from public.clinic_users where identifier = %s limit 1",
+                        (identifier,),
+                    )
+                    if cursor.fetchone():
+                        raise ValueError("An account with that email or phone already exists.")
+
+                    cursor.execute(
+                        """
+                        insert into public.organizations (name)
+                        values (%s)
+                        returning id
+                        """,
+                        (str(clinic_settings.clinic_name or "").strip(),),
+                    )
+                    organization = cursor.fetchone()
+                    if not organization:
+                        raise ValueError("Failed to create organization.")
+                    org_id = str(organization[0])
+
+                    cursor.execute(
+                        f"""
+                        insert into public.clinic_settings (org_id, {", ".join(settings_columns)})
+                        values ({", ".join(["%s"] * (len(settings_columns) + 1))})
+                        returning {_settings_returning_clause()}
+                        """,
+                        (org_id, *(settings_values[column] for column in settings_columns)),
+                    )
+                    if not cursor.fetchone():
+                        raise ValueError("Failed to create clinic settings.")
+
+                    cursor.execute(
+                        """
+                        insert into public.clinic_users (
+                          org_id, identifier, name, password_hash, role, doctor_dob,
+                          doctor_address, session_version
+                        )
+                        values (%s, %s, %s, %s, 'admin', null, '', 1)
+                        returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                          doctor_signature_name, doctor_signature_content_type,
+                          doctor_signature_data_base64, created_at, session_version
+                        """,
+                        (org_id, identifier, name.strip(), password_hash),
+                    )
+                    user_row = cursor.fetchone()
+                    if not user_row:
+                        raise ValueError("Failed to create user.")
+                    user = _row_to_dict(user_row, cursor)
+                    user["name"] = display_name(user)
                     return user
 
         return await asyncio.to_thread(_provision)

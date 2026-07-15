@@ -28,11 +28,17 @@ class PostgresConnectionManager:
         min_size = max(0, int(getattr(settings, "db_pool_min_size", 1)))
         max_size = max(min_size or 1, int(getattr(settings, "db_pool_max_size", 10)))
         timeout = max(1.0, float(getattr(settings, "db_pool_timeout_seconds", 10.0)))
+        max_lifetime = max(60.0, float(getattr(settings, "db_pool_max_lifetime_seconds", 1800.0)))
+        max_idle = max(30.0, float(getattr(settings, "db_pool_max_idle_seconds", 300.0)))
+        check_connections = bool(getattr(settings, "db_pool_check_connections", True))
         return ConnectionPool(
             conninfo=self.database_url,
             min_size=min_size,
             max_size=max_size,
             timeout=timeout,
+            max_lifetime=max_lifetime,
+            max_idle=max_idle,
+            check=ConnectionPool.check_connection if check_connections else None,
             open=False,
         )
 

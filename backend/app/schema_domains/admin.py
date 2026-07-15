@@ -4,8 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schema_domains.common import UserRole
-from app.schema_domains.auth_settings import WorkspaceMode
+from app.schema_domains.common import ClinicSpecialty, UserRole
+from app.schema_domains.auth_settings import ClinicSettingsOut, WorkspaceMode
 from app.schema_domains.patients import AuditEventOut
 
 
@@ -24,6 +24,7 @@ class SuperuserOrgSummaryOut(BaseModel):
     recent_error_count: int = 0
     workspace_mode: WorkspaceMode = "solo"
     users_allowed: int = 2
+    clinic_specialty: ClinicSpecialty | None = None
 
 
 class SuperuserOrgUserOut(BaseModel):
@@ -58,6 +59,7 @@ class SuperuserUsageSummaryOut(BaseModel):
 
 class SuperuserOrgDetailOut(BaseModel):
     summary: SuperuserOrgSummaryOut
+    settings: ClinicSettingsOut | None = None
     users: list[SuperuserOrgUserOut] = Field(default_factory=list)
     recent_errors: list[PlatformErrorOut] = Field(default_factory=list)
     usage: SuperuserUsageSummaryOut

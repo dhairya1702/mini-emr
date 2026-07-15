@@ -64,6 +64,7 @@ import {
   PasswordUpdatePayload,
   PatientCaseStudySource,
   RegisterPayload,
+  RegistrationConfig,
   UserRoleUpdatePayload,
   UpdateNoteDraftPayload,
   SendInvoicePayload,
@@ -77,6 +78,7 @@ import {
   SuperdashboardUsageByOrg,
   SuperuserOrgDetail,
   SuperuserOrgSummary,
+  SuperuserOrgUser,
   PlatformError,
 } from "@/lib/types";
 
@@ -315,7 +317,11 @@ async function request<T>(path: string, init?: RequestInit, options?: { timeoutM
     return undefined as T;
   }
 
-  return response.json();
+  const raw = await response.text();
+  if (!raw) {
+    return undefined as T;
+  }
+  return JSON.parse(raw) as T;
 }
 
 async function requestBlob(path: string, init?: RequestInit, options?: { timeoutMs?: number }): Promise<Blob> {
@@ -369,6 +375,7 @@ async function requestForm<T>(path: string, formData: FormData, init?: RequestIn
 }
 
 export const api = {
+  getRegistrationConfig: () => request<RegistrationConfig>("/auth/registration-config"),
   login: (payload: { identifier: string; password: string }) =>
     request<AuthResponse>("/auth/login", {
       method: "POST",
@@ -489,6 +496,16 @@ export const api = {
     }),
   listSuperdashboardOrgs: () => request<SuperuserOrgSummary[]>("/superdashboard/orgs"),
   getSuperdashboardOrgDetail: (orgId: string) => request<SuperuserOrgDetail>(`/superdashboard/orgs/${orgId}`),
+  updateSuperdashboardOrgSettings: (orgId: string, payload: Partial<ClinicSettingsUpdatePayload>) =>
+    request<ClinicSettings>(`/superdashboard/orgs/${orgId}/settings`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  updateSuperdashboardUserRole: (userId: string, payload: UserRoleUpdatePayload) =>
+    request<SuperuserOrgUser>(`/superdashboard/users/${userId}/role`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   listPlatformErrors: (limit = 100) => request<PlatformError[]>(withQuery("/superdashboard/errors", { limit })),
   listSuperuserOrgs: () => request<SuperuserOrgSummary[]>("/superdashboard/orgs"),
   getSuperuserOrgDetail: (orgId: string) => request<SuperuserOrgDetail>(`/superdashboard/orgs/${orgId}`),
@@ -624,6 +641,8 @@ export const api = {
     request<Patient>(`/patients/${patientId}/profile-photo`, {
       method: "DELETE",
     }),
+  getPatientProfilePhoto: (patientId: string) =>
+    requestBlob(`/patients/${patientId}/profile-photo/file`),
   listPatientChartVisits: (patientId: string) =>
     request<PatientChartVisit[]>(`/patients/${patientId}/visits`),
   getPatientVisitDetail: (patientId: string, visitId: string) =>

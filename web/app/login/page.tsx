@@ -28,6 +28,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [customerId, setCustomerId] = useState("");
+  const [customerIdRequired, setCustomerIdRequired] = useState(true);
+  const [showOptionalCustomerId, setShowOptionalCustomerId] = useState(false);
   const [adminName, setAdminName] = useState("");
   const [clinicName, setClinicName] = useState("");
   const [clinicAddress, setClinicAddress] = useState("");
@@ -41,6 +43,20 @@ export default function LoginPage() {
       return;
     }
     setIsMobileSurface(new URLSearchParams(window.location.search).get("surface") === "mobile");
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void api.getRegistrationConfig()
+      .then((config) => {
+        if (active) setCustomerIdRequired(config.customer_id_required);
+      })
+      .catch(() => {
+        // Fail closed: if configuration cannot be loaded, retain CID-gated signup.
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -97,6 +113,7 @@ export default function LoginPage() {
     setPassword("");
     setConfirmPassword("");
     setCustomerId("");
+    setShowOptionalCustomerId(false);
     setAdminName("");
     setClinicName("");
     setClinicAddress("");
@@ -116,7 +133,7 @@ export default function LoginPage() {
   }
 
   function handleContinueRegistration() {
-    if (!customerId.trim()) {
+    if (customerIdRequired && !customerId.trim()) {
       setError("Customer ID is required.");
       return;
     }
@@ -166,7 +183,7 @@ export default function LoginPage() {
         if (!adminName.trim()) {
           throw new Error("Admin name is required.");
         }
-        if (!customerId.trim()) {
+        if (customerIdRequired && !customerId.trim()) {
           throw new Error("Customer ID is required.");
         }
         if (!clinicName.trim()) {
@@ -191,7 +208,7 @@ export default function LoginPage() {
         session = await api.register({
           identifier: identifier.trim(),
           password,
-          customer_id: customerId.trim().toUpperCase(),
+          customer_id: customerId.trim().toUpperCase() || undefined,
           admin_name: adminName.trim(),
           clinic_name: clinicName.trim(),
           clinic_address: clinicAddress.trim(),
@@ -262,17 +279,27 @@ export default function LoginPage() {
                 </>
               ) : registerStep === 1 ? (
                 <>
-                  <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">
-                      Customer ID
-                    </span>
-                    <input
-                      value={customerId}
-                      onChange={(event) => setCustomerId(event.target.value)}
-                      placeholder="Paste the secure customer invitation ID"
-                      className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 uppercase text-slate-800 outline-none transition focus:border-[#6daed8]"
-                    />
-                  </label>
+                  {customerIdRequired || showOptionalCustomerId ? (
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-medium text-slate-700">
+                        Customer ID{customerIdRequired ? "" : " (optional)"}
+                      </span>
+                      <input
+                        value={customerId}
+                        onChange={(event) => setCustomerId(event.target.value)}
+                        placeholder="Paste the secure customer invitation ID"
+                        className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 uppercase text-slate-800 outline-none transition focus:border-[#6daed8]"
+                      />
+                    </label>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowOptionalCustomerId(true)}
+                      className="text-left text-sm font-medium text-[#2a6fa8] hover:text-[#235f8e]"
+                    >
+                      Have a Customer ID?
+                    </button>
+                  )}
 
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-slate-700">Admin name</span>

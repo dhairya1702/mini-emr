@@ -16,6 +16,7 @@ from test_app import (
     register_test_clinic,
     signature_png_bytes,
 )
+from app import config as config_module
 from app.services.signature_service import normalize_signature_image
 
 
@@ -58,6 +59,70 @@ def test_register_creates_clinic_settings_with_empty_specialty(client):
 
     assert response.status_code == 200
     assert response.json()["clinic_specialty"] is None
+
+
+def test_registration_config_exposes_open_team_signup(client):
+    test_client, _repo = client
+
+    response = test_client.get("/auth/registration-config")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "customer_id_required": False,
+        "default_workspace_mode": "team",
+        "default_users_allowed": 2,
+    }
+
+
+def test_open_registration_creates_team_clinic_without_customer_id(client):
+    test_client, repo = client
+
+    response = test_client.post(
+        "/auth/register",
+        json={
+            "identifier": "open-register@clinic.com",
+            "password": "password123!",
+            "admin_name": "Clinic Admin",
+            "clinic_name": "Open Clinic",
+            "clinic_address": "123 Main Street",
+            "clinic_phone": "5550104444",
+            "doctor_name": "Dr Open",
+        },
+    )
+
+    assert response.status_code == 201
+    org_id = response.json()["user"]["org_id"]
+    assert repo.clinic_settings[org_id]["workspace_mode"] == "team"
+    assert repo.clinic_settings[org_id]["users_allowed"] == 2
+    assert not any(row.get("claimed_org_id") == org_id for row in repo.customer_onboarding.values())
+
+
+def test_closed_registration_requires_customer_id(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    monkeypatch.setattr(
+        config_module,
+        "get_settings",
+        lambda: type("Settings", (), {"open_clinic_registration": False})(),
+    )
+
+    config_response = test_client.get("/auth/registration-config")
+    response = test_client.post(
+        "/auth/register",
+        json={
+            "identifier": "closed-register@clinic.com",
+            "password": "password123!",
+            "admin_name": "Clinic Admin",
+            "clinic_name": "Closed Clinic",
+            "clinic_address": "123 Main Street",
+            "clinic_phone": "5550105555",
+            "doctor_name": "Dr Closed",
+        },
+    )
+
+    assert config_response.status_code == 200
+    assert config_response.json()["customer_id_required"] is True
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid customer ID or phone number."
 
 
 def test_register_requires_valid_onboarded_customer_id(client):

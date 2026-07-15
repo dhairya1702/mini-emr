@@ -264,6 +264,7 @@ class FakeRepo:
                     "clinic_name": clinic_settings.get("clinic_name") or org["name"],
                     "workspace_mode": clinic_settings.get("workspace_mode") or "solo",
                     "users_allowed": int(clinic_settings.get("users_allowed") or 2),
+                    "clinic_specialty": clinic_settings.get("clinic_specialty"),
                     "created_at": org["created_at"],
                     "user_count": len(users),
                     "patient_count": len(patients),
@@ -384,6 +385,37 @@ class FakeRepo:
             )
             await self.claim_customer_onboarding(customer_id, org_id)
             return created
+        except Exception:
+            self.organizations.pop(org_id, None)
+            self.clinic_settings.pop(org_id, None)
+            self.users = {
+                user_id: user
+                for user_id, user in self.users.items()
+                if user["org_id"] != org_id
+            }
+            raise
+
+    async def provision_open_organization(
+        self,
+        *,
+        clinic_settings,
+        identifier: str,
+        name: str,
+        password_hash: str,
+    ) -> dict:
+        if any(user["identifier"] == identifier for user in self.users.values()):
+            raise ValueError("An account with that email or phone already exists.")
+        organization = await self.create_organization(str(clinic_settings.clinic_name or ""))
+        org_id = str(organization["id"])
+        try:
+            await self.create_clinic_settings(org_id, clinic_settings)
+            return await self.create_user(
+                org_id=org_id,
+                identifier=identifier,
+                name=name,
+                password_hash=password_hash,
+                role="admin",
+            )
         except Exception:
             self.organizations.pop(org_id, None)
             self.clinic_settings.pop(org_id, None)
@@ -562,8 +594,8 @@ class FakeRepo:
     async def delete_user_any(self, user_id: str) -> None:
         self.users.pop(user_id, None)
 
-    async def delete_organization(self, org_id: str) -> None:
-        self.organizations.pop(org_id, None)
+    async def delete_organization(self, org_id: str) -> bool:
+        return self.organizations.pop(org_id, None) is not None
 
     async def create_clinic_settings(self, org_id: str, payload) -> dict:
         settings_id = str(uuid4())
@@ -2092,6 +2124,7 @@ def client(monkeypatch: pytest.MonkeyPatch):
         lambda: SimpleNamespace(
             auth_secret="test-secret",
             app_origin="http://127.0.0.1:3000",
+            open_clinic_registration=True,
         ),
     )
     monkeypatch.setattr(
@@ -2100,6 +2133,7 @@ def client(monkeypatch: pytest.MonkeyPatch):
         lambda: SimpleNamespace(
             auth_secret="test-secret",
             app_origin="http://127.0.0.1:3000",
+            open_clinic_registration=True,
         ),
     )
     monkeypatch.setattr(

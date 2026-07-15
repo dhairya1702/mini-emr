@@ -7,7 +7,7 @@ import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Mail,
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-myopia-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia/myopia-management-modal";
-import { api, resolveApiAssetUrl } from "@/lib/api";
+import { api } from "@/lib/api";
 import { formatMillimeterDelta } from "@/lib/optometry/myopia/shared";
 import { specialtyHasModule } from "@/lib/specialty";
 import { createTrainingId } from "@/lib/training-mode";
@@ -672,6 +672,7 @@ export function PatientDetailsDrawer({
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [isUploadingProfilePhoto, setIsUploadingProfilePhoto] = useState(false);
   const [profilePhotoVersion, setProfilePhotoVersion] = useState(0);
+  const [profilePhotoObjectUrl, setProfilePhotoObjectUrl] = useState("");
   const [attachmentSendDraft, setAttachmentSendDraft] = useState<{
     attachmentId: string;
     fileName: string;
@@ -708,6 +709,42 @@ export function PatientDetailsDrawer({
   useEffect(() => {
     setOpenVisitSections({ note: false, attachments: false, other: false });
   }, [selectedVisitId]);
+
+  useEffect(() => {
+    if (!currentPatient?.profile_photo_url) {
+      setProfilePhotoObjectUrl("");
+      return;
+    }
+
+    let active = true;
+    let objectUrl = "";
+
+    api.getPatientProfilePhoto(currentPatient.id)
+      .then((blob) => {
+        if (!active) {
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setProfilePhotoObjectUrl(objectUrl);
+      })
+      .catch(() => {
+        if (active) {
+          setProfilePhotoObjectUrl("");
+        }
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [
+    currentPatient?.id,
+    currentPatient?.profile_photo_url,
+    currentPatient?.profile_photo_updated_at,
+    profilePhotoVersion,
+  ]);
 
   useEffect(() => {
     if (!patient) {
@@ -1319,12 +1356,6 @@ export function PatientDetailsDrawer({
     }
   }
 
-  const profilePhotoUrl = currentPatient.profile_photo_url
-    ? `${resolveApiAssetUrl(currentPatient.profile_photo_url)}?v=${encodeURIComponent(
-        currentPatient.profile_photo_updated_at || String(profilePhotoVersion),
-      )}`
-    : "";
-
   return (
     <div className="fixed inset-0 z-30 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5">
       <div className="mx-auto flex h-full max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-[20px] border border-[#dbe7ef] bg-white shadow-[0_35px_90px_rgba(15,23,42,0.18)]">
@@ -1333,10 +1364,10 @@ export function PatientDetailsDrawer({
             <div className="flex min-w-0 flex-1 items-start gap-4">
               <div className="shrink-0">
                 <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-[#dbe7ef] bg-[#f3f8fb] text-2xl font-semibold text-[#2a6fa8] shadow-[0_10px_26px_rgba(64,131,181,0.08)]">
-                  {profilePhotoUrl ? (
+                  {profilePhotoObjectUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={profilePhotoUrl}
+                      src={profilePhotoObjectUrl}
                       alt={`${currentPatient.name} profile photo`}
                       className="h-full w-full object-cover"
                     />

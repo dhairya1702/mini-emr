@@ -31,7 +31,7 @@ from app.schema_domains.admin import (
     SuperuserOrgUserOut,
     SuperuserUsageSummaryOut,
 )
-from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.auth_settings import ClinicSettingsOut, ClinicSettingsUpdate, UserOut, UserRoleUpdate
 from app.schema_domains.patients import AuditEventOut
 
 
@@ -310,6 +310,7 @@ async def get_superuser_org_detail(
         raise HTTPException(status_code=404, detail="Organization not found.")
 
     users = await repo.list_users_for_org_any(str(org_id))
+    settings = await repo.get_clinic_settings(str(org_id))
     recent_errors = await repo.list_platform_errors(limit=50, org_id=str(org_id))
     usage_events = await repo.list_ai_usage_events_for_org(str(org_id), limit=200)
     recent_audit_events = await repo.list_audit_events(str(org_id), limit=50)
@@ -322,6 +323,7 @@ async def get_superuser_org_detail(
 
     return SuperuserOrgDetailOut(
         summary=SuperuserOrgSummaryOut(**summary),
+        settings=ClinicSettingsOut(**settings) if settings else None,
         users=[SuperuserOrgUserOut(**row) for row in users],
         recent_errors=[PlatformErrorOut(**row) for row in recent_errors],
         usage=SuperuserUsageSummaryOut(
@@ -392,6 +394,81 @@ async def update_superdashboard_org_users_allowed(
     return OrganizationUsersAllowedOut(org_id=org_id, users_allowed=saved_limit)
 
 
+@router.patch("/superdashboard/orgs/{org_id}/settings", response_model=ClinicSettingsOut)
+@router.patch("/superuser/orgs/{org_id}/settings", response_model=ClinicSettingsOut)
+async def update_superdashboard_org_settings(
+    org_id: UUID,
+    payload: ClinicSettingsUpdate,
+    current_user: UserOut = Depends(require_super_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> ClinicSettingsOut:
+    current_settings = await repo.get_clinic_settings(str(org_id))
+    if not current_settings:
+        raise HTTPException(status_code=404, detail="Organization settings not found.")
+    updates = payload.model_dump(exclude_unset=True)
+    if "users_allowed" in updates or "workspace_mode" in updates:
+        raise HTTPException(
+            status_code=400,
+            detail="Use the dedicated Superdashboard endpoints for user limit or workspace mode changes.",
+        )
+    try:
+        saved = await repo.upsert_clinic_settings(str(org_id), payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if updates:
+        audit_updates = {key: value for key, value in updates.items() if key != "sender_email_app_password"}
+        await repo.create_audit_event(
+            str(org_id),
+            str(current_user.id),
+            current_user.name or current_user.identifier,
+            "organization",
+            str(org_id),
+            "settings_changed",
+            "ClinicOS Ops changed organization settings.",
+            {"fields": sorted(audit_updates), "updates": audit_updates},
+        )
+    return ClinicSettingsOut(**saved)
+
+
+@router.patch("/superdashboard/users/{user_id}/role", response_model=SuperuserOrgUserOut)
+@router.patch("/superuser/users/{user_id}/role", response_model=SuperuserOrgUserOut)
+async def update_superdashboard_user_role(
+    user_id: UUID,
+    payload: UserRoleUpdate,
+    current_user: UserOut = Depends(require_super_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> SuperuserOrgUserOut:
+    try:
+        target_user = await repo.get_user(str(user_id))
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="User not found.") from exc
+    previous_role = str(target_user.get("role") or "")
+    target_org_id = str(target_user["org_id"])
+    if previous_role == payload.role:
+        return SuperuserOrgUserOut(**target_user)
+    if previous_role == "admin" and payload.role != "admin":
+        admin_count = await repo.count_admins_for_org(target_org_id)
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="Organization must keep at least one admin.")
+    updated = await repo.update_user_role(str(user_id), payload)
+    await repo.create_audit_event(
+        target_org_id,
+        str(current_user.id),
+        current_user.name or current_user.identifier,
+        "user",
+        str(user_id),
+        "user_role_changed",
+        f"ClinicOS Ops changed {updated.get('identifier')} from {previous_role} to {payload.role}.",
+        {
+            "target_user_id": str(user_id),
+            "identifier": updated.get("identifier"),
+            "previous_role": previous_role,
+            "role": payload.role,
+        },
+    )
+    return SuperuserOrgUserOut(**updated)
+
+
 @router.get("/superdashboard/errors", response_model=list[PlatformErrorOut])
 @router.get("/superuser/errors", response_model=list[PlatformErrorOut])
 async def list_superuser_errors(
@@ -429,4 +506,6 @@ async def delete_superuser_org(
 ) -> None:
     if str(current_user.org_id) == str(org_id):
         raise HTTPException(status_code=400, detail="You cannot delete your own organization.")
-    await repo.delete_organization(str(org_id))
+    deleted = await repo.delete_organization(str(org_id))
+    if deleted is False:
+        raise HTTPException(status_code=404, detail="Organization not found.")

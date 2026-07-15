@@ -2,8 +2,9 @@
 
 import { ArrowRight, Check, Clock3, Flag, GripVertical, ReceiptIndianRupee, Trash2 } from "lucide-react";
 import type { HTMLAttributes } from "react";
+import { useEffect, useState } from "react";
 
-import { resolveApiAssetUrl } from "@/lib/api";
+import { api } from "@/lib/api";
 import { Patient, PatientStatus } from "@/lib/types";
 
 const stageStyles: Record<PatientStatus, {
@@ -151,9 +152,38 @@ export function PatientCard({
   const badgeLabel = patient.status === "done"
     ? billing ? `₹${billing.total.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "Ready"
     : elapsed;
-  const profilePhotoUrl = patient.profile_photo_url
-    ? `${resolveApiAssetUrl(patient.profile_photo_url)}?v=${encodeURIComponent(patient.profile_photo_updated_at || "")}`
-    : "";
+  const [profilePhotoObjectUrl, setProfilePhotoObjectUrl] = useState("");
+
+  useEffect(() => {
+    if (!patient.profile_photo_url) {
+      setProfilePhotoObjectUrl("");
+      return;
+    }
+
+    let active = true;
+    let objectUrl = "";
+
+    api.getPatientProfilePhoto(patient.id)
+      .then((blob) => {
+        if (!active) {
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setProfilePhotoObjectUrl(objectUrl);
+      })
+      .catch(() => {
+        if (active) {
+          setProfilePhotoObjectUrl("");
+        }
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [patient.id, patient.profile_photo_url, patient.profile_photo_updated_at]);
 
   return (
     <article
@@ -181,9 +211,9 @@ export function PatientCard({
             <GripVertical className="h-4 w-4" />
           </span>
         ) : null}
-        {profilePhotoUrl ? (
+        {profilePhotoObjectUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={profilePhotoUrl} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover" />
+          <img src={profilePhotoObjectUrl} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover" />
         ) : (
           <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${avatarPaletteForPatient(patient)} text-sm font-bold text-white`}>
             {initialsForPatient(patient.name)}

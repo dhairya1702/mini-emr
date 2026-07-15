@@ -171,6 +171,182 @@ def test_superdashboard_can_change_organization_user_limit(client, monkeypatch: 
     assert below_current.json()["detail"] == "User limit cannot be lower than the 2 existing users."
 
 
+def test_superdashboard_org_detail_includes_settings(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="ops-detail@clinic.com", clinic_name="Detail Clinic")
+    monkeypatch.setattr(
+        auth_module,
+        "get_settings",
+        lambda: type(
+            "Settings",
+            (),
+            {
+                "auth_secret": "test-secret",
+                "super_admin_identifiers": "ops-detail@clinic.com",
+            },
+        )(),
+    )
+    headers = _superadmin_headers(test_client, session)
+
+    response = test_client.get(f"/superdashboard/orgs/{session['user']['org_id']}", headers=headers)
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["summary"]["clinic_name"] == "Detail Clinic"
+    assert body["settings"]["clinic_name"] == "Detail Clinic"
+    assert body["users"][0]["identifier"] == "ops-detail@clinic.com"
+
+
+def test_superdashboard_can_update_organization_settings(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="ops-settings@clinic.com", clinic_name="Settings Clinic")
+    monkeypatch.setattr(
+        auth_module,
+        "get_settings",
+        lambda: type(
+            "Settings",
+            (),
+            {
+                "auth_secret": "test-secret",
+                "super_admin_identifiers": "ops-settings@clinic.com",
+            },
+        )(),
+    )
+    headers = _superadmin_headers(test_client, session)
+
+    updated = test_client.patch(
+        f"/superdashboard/orgs/{session['user']['org_id']}/settings",
+        headers=headers,
+        json={
+            "clinic_name": "Renamed Clinic",
+            "clinic_phone": "+91 90000 11111",
+            "clinic_specialty": "pediatrics",
+            "timezone": "Asia/Kolkata",
+            "appointment_start_time": "10:00",
+            "appointment_end_time": "19:00",
+            "appointments_per_hour": 3,
+            "doctor_name": "Dr Ops",
+        },
+    )
+
+    assert updated.status_code == 200, updated.json()
+    assert updated.json()["clinic_name"] == "Renamed Clinic"
+    assert updated.json()["clinic_specialty"] == "pediatrics"
+    assert updated.json()["timezone"] == "Asia/Kolkata"
+    detail = test_client.get(f"/superdashboard/orgs/{session['user']['org_id']}", headers=headers)
+    assert detail.json()["settings"]["doctor_name"] == "Dr Ops"
+    orgs = test_client.get("/superdashboard/orgs", headers=headers)
+    assert orgs.json()[0]["clinic_specialty"] == "pediatrics"
+
+
+def test_superdashboard_can_update_user_role(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="ops-role@clinic.com", clinic_name="Role Clinic")
+    monkeypatch.setattr(
+        auth_module,
+        "get_settings",
+        lambda: type(
+            "Settings",
+            (),
+            {
+                "auth_secret": "test-secret",
+                "super_admin_identifiers": "ops-role@clinic.com",
+            },
+        )(),
+    )
+    headers = _superadmin_headers(test_client, session)
+    staff = test_client.post(
+        "/users/staff",
+        headers=auth_headers_for_token(session["token"]),
+        json={"identifier": "role-staff@clinic.com", "password": "password123!"},
+    )
+    assert staff.status_code == 201, staff.json()
+    staff_id = staff.json()["id"]
+
+    updated = test_client.patch(
+        f"/superdashboard/users/{staff_id}/role",
+        headers=headers,
+        json={"role": "admin"},
+    )
+
+    assert updated.status_code == 200, updated.json()
+    assert updated.json()["role"] == "admin"
+    detail = test_client.get(f"/superdashboard/orgs/{session['user']['org_id']}", headers=headers)
+    assert any(user["identifier"] == "role-staff@clinic.com" and user["role"] == "admin" for user in detail.json()["users"])
+
+
+def test_superdashboard_prevents_demoting_last_admin_but_can_delete_admins(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="ops-last-admin@clinic.com", clinic_name="Last Admin Clinic")
+    managed_session = register_test_clinic(
+        test_client,
+        identifier="managed-admin@clinic.com",
+        clinic_name="Managed Admin Clinic",
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "get_settings",
+        lambda: type(
+            "Settings",
+            (),
+            {
+                "auth_secret": "test-secret",
+                "super_admin_identifiers": "ops-last-admin@clinic.com",
+            },
+        )(),
+    )
+    headers = _superadmin_headers(test_client, session)
+    user_id = session["user"]["id"]
+    managed_user_id = managed_session["user"]["id"]
+
+    demote = test_client.patch(
+        f"/superdashboard/users/{user_id}/role",
+        headers=headers,
+        json={"role": "staff"},
+    )
+    delete_managed_admin = test_client.delete(f"/superdashboard/users/{managed_user_id}", headers=headers)
+    delete_self = test_client.delete(f"/superdashboard/users/{user_id}", headers=headers)
+
+    assert demote.status_code == 400
+    assert demote.json()["detail"] == "Organization must keep at least one admin."
+    assert delete_managed_admin.status_code == 200, delete_managed_admin.text
+    assert delete_self.status_code == 400
+    assert delete_self.json()["detail"] == "You cannot remove your own account."
+
+
+def test_superdashboard_delete_org_removes_org_and_reports_missing(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="ops-delete@clinic.com", clinic_name="Delete Ops Clinic")
+    managed_session = register_test_clinic(
+        test_client,
+        identifier="managed-delete@clinic.com",
+        clinic_name="Managed Delete Clinic",
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "get_settings",
+        lambda: type(
+            "Settings",
+            (),
+            {
+                "auth_secret": "test-secret",
+                "super_admin_identifiers": "ops-delete@clinic.com",
+            },
+        )(),
+    )
+    headers = _superadmin_headers(test_client, session)
+    managed_org_id = managed_session["user"]["org_id"]
+
+    deleted = test_client.delete(f"/superdashboard/orgs/{managed_org_id}", headers=headers)
+    orgs = test_client.get("/superdashboard/orgs", headers=headers)
+    deleted_again = test_client.delete(f"/superdashboard/orgs/{managed_org_id}", headers=headers)
+
+    assert deleted.status_code == 200, deleted.text
+    assert all(row["org_id"] != managed_org_id for row in orgs.json())
+    assert deleted_again.status_code == 404
+    assert deleted_again.json()["detail"] == "Organization not found."
+
+
 def test_customer_user_limit_blocks_extra_staff(client):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="limit-owner@clinic.com", clinic_name="Limit Clinic")

@@ -6,9 +6,11 @@ from fastapi.responses import StreamingResponse
 from app.api_errors import bad_request_error
 from app.auth import clear_session, get_current_user, hash_password, issue_session_headers, verify_password
 from app.db import AppRepository, get_repository
+from app import config as config_module
 from app.schema_domains.auth_settings import (
     AuthResponse,
     LoginRequest,
+    RegistrationConfigOut,
     UserAccountUpdate,
     UserCreate,
     UserOut,
@@ -20,6 +22,16 @@ from app.services.user_workflow import build_user_out
 
 
 router = APIRouter()
+
+
+@router.get("/auth/registration-config", response_model=RegistrationConfigOut)
+async def get_registration_config() -> RegistrationConfigOut:
+    settings = config_module.get_settings()
+    return RegistrationConfigOut(
+        customer_id_required=not settings.open_clinic_registration,
+        default_workspace_mode="team",
+        default_users_allowed=2,
+    )
 
 
 @router.post("/auth/register", response_model=AuthResponse, status_code=201)

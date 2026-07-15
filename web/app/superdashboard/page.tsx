@@ -2,9 +2,11 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowRight, Copy, ExternalLink, LogOut, RefreshCw, Zap } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { authStorage } from "@/lib/auth";
+import { CLINIC_SPECIALTY_OPTIONS } from "@/lib/clinic-specialty";
 import {
   CustomerOnboarding,
   PlatformError,
@@ -104,6 +106,13 @@ function statusClass(status: CustomerOnboarding["status"]) {
   return "bg-amber-50 text-amber-700";
 }
 
+function specialtyLabel(value: SuperuserOrgSummary["clinic_specialty"]) {
+  if (!value) {
+    return "—";
+  }
+  return CLINIC_SPECIALTY_OPTIONS.find((option) => option.value === value)?.label ?? value;
+}
+
 function StatCard({
   label,
   value,
@@ -192,6 +201,7 @@ function Header({ tab, setTab, onRefresh }: { tab: Tab; setTab: (tab: Tab) => vo
 }
 
 export default function SuperdashboardPage() {
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>("dashboard");
   const [dashboard, setDashboard] = useState(emptyDashboard);
   const [trends, setTrends] = useState(emptyTrends);
@@ -209,7 +219,6 @@ export default function SuperdashboardPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [updatingWorkspaceId, setUpdatingWorkspaceId] = useState("");
   const [updatingUserLimitId, setUpdatingUserLimitId] = useState("");
-  const [userLimitDrafts, setUserLimitDrafts] = useState<Record<string, string>>({});
 
   const totalRemaining = useMemo(
     () => Math.max(onboarding.summary.pending_count + onboarding.summary.claimed_count + onboarding.summary.disabled_count, 1),
@@ -293,10 +302,6 @@ export default function SuperdashboardPage() {
         setOrgs((current) => current.map((org) => (
           org.org_id === updated.claimed_org_id ? { ...org, users_allowed: updated.users_allowed } : org
         )));
-        setUserLimitDrafts((current) => ({
-          ...current,
-          [updated.claimed_org_id as string]: String(updated.users_allowed),
-        }));
       }
       setMessage(`${row.customer_name} can now have ${updated.users_allowed} user${updated.users_allowed === 1 ? "" : "s"}.`);
     } catch (error) {
@@ -367,46 +372,6 @@ export default function SuperdashboardPage() {
     }
   }
 
-  async function updateOrgUsersAllowed(org: SuperuserOrgSummary, value: string) {
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 500) {
-      setMessage("User limit must be a whole number between 1 and 500.");
-      setUserLimitDrafts((current) => ({ ...current, [org.org_id]: String(org.users_allowed) }));
-      return;
-    }
-    if (parsed < org.user_count) {
-      setMessage(`User limit cannot be lower than the ${org.user_count} existing users.`);
-      setUserLimitDrafts((current) => ({ ...current, [org.org_id]: String(org.users_allowed) }));
-      return;
-    }
-    if (parsed === org.users_allowed) {
-      return;
-    }
-    setUpdatingUserLimitId(org.org_id);
-    setMessage("");
-    try {
-      const updated = await api.updateSuperdashboardOrgUsersAllowed(org.org_id, parsed);
-      setOrgs((current) => current.map((row) => (
-        row.org_id === org.org_id ? { ...row, users_allowed: updated.users_allowed } : row
-      )));
-      setOnboarding((current) => ({
-        ...current,
-        customers: current.customers.map((customer) => (
-          customer.claimed_org_id === org.org_id
-            ? { ...customer, users_allowed: updated.users_allowed }
-            : customer
-        )),
-      }));
-      setUserLimitDrafts((current) => ({ ...current, [org.org_id]: String(updated.users_allowed) }));
-      setMessage(`${org.clinic_name} can now have ${updated.users_allowed} user${updated.users_allowed === 1 ? "" : "s"}.`);
-    } catch (error) {
-      setUserLimitDrafts((current) => ({ ...current, [org.org_id]: String(org.users_allowed) }));
-      setMessage(error instanceof Error ? error.message : "Failed to update user limit.");
-    } finally {
-      setUpdatingUserLimitId("");
-    }
-  }
-
   function copyText(value: string) {
     navigator.clipboard?.writeText(value);
     setMessage(`Copied ${value}`);
@@ -456,12 +421,12 @@ export default function SuperdashboardPage() {
                 <div className="h-px flex-1 bg-slate-200" />
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1380px] text-left">
+                <table className="w-full min-w-[1320px] text-left">
                   <thead className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
                     <tr>
                       <th className="px-7 py-4">Org</th>
                       <th className="px-7 py-4">Users</th>
-                      <th className="px-7 py-4">User limit</th>
+                      <th className="px-7 py-4">Specialty</th>
                       <th className="px-7 py-4">Workspace</th>
                       <th className="px-7 py-4">Patients</th>
                       <th className="px-7 py-4">Notes</th>
@@ -473,33 +438,24 @@ export default function SuperdashboardPage() {
                   </thead>
                   <tbody>
                     {orgs.map((org) => (
-                      <tr key={org.org_id} className="border-t border-slate-100 text-base">
-                        <td className="px-7 py-5 font-black">{org.clinic_name}</td>
-                        <td className="px-7 py-5">{org.user_count}</td>
-                        <td className="px-7 py-5">
-                          <input
-                            type="number"
-                            min={Math.max(org.user_count, 1)}
-                            max={500}
-                            step={1}
-                            value={userLimitDrafts[org.org_id] ?? String(org.users_allowed)}
-                            disabled={updatingUserLimitId === org.org_id}
-                            onChange={(event) => setUserLimitDrafts((current) => ({
-                              ...current,
-                              [org.org_id]: event.target.value,
-                            }))}
-                            onBlur={(event) => void updateOrgUsersAllowed(org, event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") event.currentTarget.blur();
-                            }}
-                            aria-label={`User limit for ${org.clinic_name}`}
-                            className="h-11 w-24 rounded-xl border border-slate-200 bg-slate-50 px-3 font-black outline-none transition focus:border-blue-500 disabled:opacity-60"
-                          />
+                      <tr
+                        key={org.org_id}
+                        onClick={() => router.push(`/superdashboard/orgs/${org.org_id}`)}
+                        className="cursor-pointer border-t border-slate-100 text-base transition hover:bg-blue-50/50"
+                      >
+                        <td className="px-7 py-5 font-black">
+                          <span className="inline-flex items-center gap-2">
+                            {org.clinic_name}
+                            <ArrowRight className="h-4 w-4 text-slate-400" />
+                          </span>
                         </td>
+                        <td className="px-7 py-5">{org.user_count}</td>
+                        <td className="px-7 py-5 font-bold text-slate-600">{specialtyLabel(org.clinic_specialty)}</td>
                         <td className="px-7 py-5">
                           <select
                             value={org.workspace_mode}
                             disabled={updatingWorkspaceId === org.org_id}
+                            onClick={(event) => event.stopPropagation()}
                             onChange={(event) => void updateOrgWorkspaceMode(org, event.target.value as WorkspaceMode)}
                             aria-label={`Workspace mode for ${org.clinic_name}`}
                             className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 font-black capitalize outline-none transition focus:border-blue-500 disabled:opacity-60"

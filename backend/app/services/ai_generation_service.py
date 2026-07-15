@@ -139,14 +139,10 @@ def _normalize_note_content(
         if matched:
             continue
 
-    clinical_notes = notes.strip() or "No additional findings were documented during this consultation."
-    if measurements_context.strip():
-        clinical_notes = f"{measurements_context.strip()}\n{clinical_notes}".strip()
-
     fallbacks = {
         "Presenting Complaint": symptoms.strip() or "Symptoms not fully documented.",
         "Diagnosis": diagnosis.strip() or "Clinical impression is still under evaluation.",
-        "Clinical Notes": clinical_notes,
+        "Clinical Notes": notes.strip() or "No additional findings were documented during this consultation.",
         "Treatment": medications.strip() or "Medication plan was not documented.",
         "Follow-up Advice": "Return for reassessment if symptoms worsen or fail to improve.",
     }
@@ -155,6 +151,8 @@ def _normalize_note_content(
     for label in SECTION_ORDER:
         existing = _strip_pipe_tables("\n".join(line for line in sections[label] if line.strip()))
         content = existing or fallbacks[label]
+        if label == "Clinical Notes" and measurements_context.strip():
+            content = f"{measurements_context.strip()}\n{content}".strip()
         if label == "Treatment" and medications.strip():
             exact_details = _format_exact_medication_details(medications)
             required_fragments = _medication_required_fragments(medications)

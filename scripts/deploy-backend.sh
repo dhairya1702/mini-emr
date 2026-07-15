@@ -59,6 +59,7 @@ gcloud run deploy "$BACKEND_SERVICE" \
   --set-env-vars="APP_ORIGIN=${WEB_URL}" \
   --set-env-vars="^@^APP_ORIGINS=${WEB_ORIGINS}" \
   --set-env-vars="SUPER_ADMIN_IDENTIFIERS=${SUPER_ADMIN_IDENTIFIERS}" \
+  --set-env-vars="OPEN_CLINIC_REGISTRATION=true" \
   --set-env-vars="FOLLOW_UP_REMINDER_RUNNER_ENABLED=false" \
   --set-env-vars="FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300" \
   --set-env-vars="DB_POOL_MIN_SIZE=1" \

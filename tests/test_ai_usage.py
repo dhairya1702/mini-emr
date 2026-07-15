@@ -61,6 +61,29 @@ def test_note_normalization_preserves_exact_structured_medication_regimen():
     assert "After food" in normalized
 
 
+def test_note_normalization_preserves_structured_eye_exam_table_with_generated_prose():
+    normalized = ai_generation_service._normalize_note_content(
+        """Presenting Complaint:\nBlurred vision.\n\nDiagnosis:\nRefractive error.\n\nClinical Notes:\nThe patient reports intermittent blur while reading.\n\nTreatment:\nSpectacle correction discussed.\n\nFollow-up Advice:\nReview if symptoms worsen.""",
+        symptoms="Blurred vision",
+        diagnosis="Refractive error",
+        medications="Spectacle correction discussed.",
+        notes="The patient reports intermittent blur while reading.",
+        measurements_context=(
+            "Eye Exam:\n"
+            "Eye | Sphere | Cylinder | Axis | Vision\n"
+            "--- | --- | --- | --- | ---\n"
+            "Right | -1.25 | -0.50 | 90 | 6/6\n"
+            "Left | -1.00 | -0.25 | 85 | 6/6"
+        ),
+    )
+
+    assert "Clinical Notes:\nEye Exam:" in normalized
+    assert "Eye | Sphere | Cylinder | Axis | Vision" in normalized
+    assert "Right | -1.25 | -0.50 | 90 | 6/6" in normalized
+    assert "The patient reports intermittent blur while reading." in normalized
+    assert normalized.index("Eye Exam:") < normalized.index("The patient reports intermittent blur while reading.")
+
+
 async def _fake_generate_vertex_content(**_kwargs):
     return {
         "candidates": [

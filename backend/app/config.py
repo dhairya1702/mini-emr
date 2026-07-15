@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     app_origin: str = "http://127.0.0.1:3000"
     app_origins: str = ""
     super_admin_identifiers: str = ""
+    open_clinic_registration: bool = True
     follow_up_reminder_runner_enabled: bool = False
     follow_up_reminder_interval_seconds: int = 300
     follow_up_reminder_lead_hours: int = 24
@@ -21,6 +22,9 @@ class Settings(BaseSettings):
     db_pool_min_size: int = 1
     db_pool_max_size: int = 10
     db_pool_timeout_seconds: float = 10.0
+    db_pool_max_lifetime_seconds: float = 1800.0
+    db_pool_max_idle_seconds: float = 300.0
+    db_pool_check_connections: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

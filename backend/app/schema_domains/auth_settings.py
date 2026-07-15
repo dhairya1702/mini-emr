@@ -116,7 +116,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(min_length=12, max_length=128)
-    customer_id: str = Field(min_length=1, max_length=80)
+    customer_id: str = Field(default="", max_length=80)
     admin_name: str = Field(min_length=1, max_length=120)
     clinic_name: str = Field(min_length=1, max_length=120)
     clinic_address: str = Field(min_length=1, max_length=300)
@@ -134,6 +134,12 @@ class UserRoleUpdate(BaseModel):
 
 class LoginRequest(UserBase):
     password: str = Field(min_length=1, max_length=128)
+
+
+class RegistrationConfigOut(BaseModel):
+    customer_id_required: bool
+    default_workspace_mode: WorkspaceMode = "team"
+    default_users_allowed: int = 2
 
 
 class UserAccountUpdate(BaseModel):
