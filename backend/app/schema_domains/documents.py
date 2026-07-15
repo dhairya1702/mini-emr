@@ -49,6 +49,10 @@ class FinalizeNoteRequest(BaseModel):
     note_id: UUID
 
 
+class UpdateNoteDraftRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=50000)
+
+
 class GenerateLetterRequest(BaseModel):
     to: str = Field(min_length=1, max_length=200)
     subject: str = Field(min_length=1, max_length=200)

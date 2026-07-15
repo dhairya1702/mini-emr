@@ -1046,6 +1046,7 @@ def _patient_row(patient_id: str = "patient-1", *, phone: str = "1234567890", cu
         None,
         True,
         0,
+        None,
         "2026-06-11T17:00:00+00:00",
         "2026-06-11T17:00:00+00:00",
     )
@@ -1080,6 +1081,7 @@ def _note_row(*, status: str = "draft", content: str = "Visit note", sent_at: st
         "note-1",
         "org-1",
         "patient-1",
+        None,
         content,
         status,
         1,
@@ -1279,7 +1281,10 @@ def test_postgres_records_repository_creates_and_updates_note_draft():
     )
     updated = asyncio.run(repo.update_note_draft("org-1", "note-1", "Updated"))
 
-    assert cursor.executed[0][1][1:6] == (
+    assert cursor.executed[0][1][1:9] == (
+        "org-1",
+        "00000000-0000-0000-0000-000000000001",
+        None,
         "org-1",
         "00000000-0000-0000-0000-000000000001",
         "Visit note",

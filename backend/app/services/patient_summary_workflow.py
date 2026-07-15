@@ -1,17 +1,17 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import UTC, datetime
 from typing import Any, TypedDict
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.clinic_context import build_patient_context
 from app.db import AppRepository
-from app.formatting import format_display_datetime
+from app.schema_domains.patients import calculate_age_from_dob
 from app.services.ai_generation_service import generate_patient_summary
 
-# Cheap pre-pass scope: keep the prompt small and the cost negligible.
 MAX_SUMMARY_VISITS = 2
-MAX_SUMMARY_NOTES = 2
-MAX_SUMMARY_NOTE_CHARS = 1200
+MAX_SUMMARY_NOTE_CHARS = 3000
 
 
 class PatientSummaryResult(TypedDict):
@@ -22,58 +22,140 @@ class PatientSummaryResult(TypedDict):
     stale: bool
 
 
-def _truncate(value: str, limit: int) -> str:
+class PatientSummarySource(TypedDict):
+    context: dict[str, Any]
+    source_hash: str
+
+
+def _truncate(value: Any, limit: int) -> str:
     text = str(value or "").strip()
     if len(text) <= limit:
         return text
     return text[: max(0, limit - 1)].rstrip() + "…"
 
 
-def _sorted_recent(rows: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
-    def _key(row: dict[str, Any]) -> Any:
-        return row.get("created_at") or datetime.min
-
-    return sorted(rows, key=_key, reverse=True)[:limit]
+def _timestamp(row: dict[str, Any]) -> datetime:
+    value = row.get("finalized_at") or row.get("sent_at") or row.get("created_at")
+    return value if isinstance(value, datetime) else datetime.min.replace(tzinfo=UTC)
 
 
-def build_patient_history_context(
-    visits: list[dict[str, Any]], notes: list[dict[str, Any]]
-) -> str:
-    finalized_notes = [
-        note for note in notes if str(note.get("status") or "") == "finalized"
-    ]
-    recent_notes = _sorted_recent(finalized_notes, MAX_SUMMARY_NOTES)
-    recent_visits = _sorted_recent(visits, MAX_SUMMARY_VISITS)
+def _local_date(value: datetime, timezone_name: str):
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        timezone = UTC
+    aware = value if value.tzinfo else value.replace(tzinfo=UTC)
+    return aware.astimezone(timezone).date()
 
-    lines: list[str] = ["Recent visits:"]
-    if recent_visits:
-        for visit in recent_visits:
-            when = (
-                format_display_datetime(visit["created_at"])
-                if visit.get("created_at")
-                else "Unknown date"
-            )
-            lines.append(f"- {when} | {_truncate(visit.get('reason'), 160)}")
-    else:
-        lines.append("- No prior visits recorded.")
 
-    lines.extend(["", "Recent finalized notes:"])
-    if recent_notes:
-        for note in recent_notes:
-            when = (
-                format_display_datetime(note["created_at"])
-                if note.get("created_at")
-                else "Unknown date"
-            )
-            body = _truncate(
-                str(note.get("snapshot_content") or note.get("content") or "").strip(),
+def _visit_note(
+    visit: dict[str, Any],
+    recent_visits: list[dict[str, Any]],
+    notes: list[dict[str, Any]],
+    timezone_name: str,
+) -> dict[str, Any] | None:
+    visit_id = str(visit.get("id") or "")
+    eligible = [note for note in notes if str(note.get("status") or "") in {"final", "sent"}]
+    linked = [note for note in eligible if str(note.get("visit_id") or "") == visit_id]
+
+    if not linked and visit.get("created_at"):
+        visit_day = _local_date(visit["created_at"], timezone_name)
+        visits_on_day = [
+            item for item in recent_visits
+            if item.get("created_at") and _local_date(item["created_at"], timezone_name) == visit_day
+        ]
+        if len(visits_on_day) == 1:
+            linked = [
+                note for note in eligible
+                if not note.get("visit_id")
+                and note.get("created_at")
+                and _local_date(note["created_at"], timezone_name) == visit_day
+            ]
+
+    if not linked:
+        return None
+
+    # Amendments share a root. The newest finalized/sent version is the legally
+    # relevant snapshot, and the newest relevant root is the visit summary input.
+    newest_by_root: dict[str, dict[str, Any]] = {}
+    for note in linked:
+        root = str(note.get("root_note_id") or note.get("id") or "")
+        if root not in newest_by_root or _timestamp(note) > _timestamp(newest_by_root[root]):
+            newest_by_root[root] = note
+    return max(newest_by_root.values(), key=_timestamp)
+
+
+def build_patient_summary_source(
+    patient: dict[str, Any],
+    visits: list[dict[str, Any]],
+    notes: list[dict[str, Any]],
+    *,
+    timezone_name: str = "UTC",
+) -> PatientSummarySource:
+    recent_visits = sorted(
+        visits,
+        key=lambda row: row.get("created_at") or datetime.min.replace(tzinfo=UTC),
+        reverse=True,
+    )[:MAX_SUMMARY_VISITS]
+
+    demographics: dict[str, Any] = {}
+    date_of_birth = patient.get("date_of_birth")
+    age = calculate_age_from_dob(date_of_birth) if date_of_birth else patient.get("age")
+    if age is not None:
+        demographics["age_years"] = int(age)
+    if patient.get("sex_at_birth"):
+        demographics["sex"] = str(patient["sex_at_birth"])
+
+    visit_context: list[dict[str, Any]] = []
+    for visit in recent_visits:
+        entry: dict[str, Any] = {
+            "visit_id": str(visit.get("id") or ""),
+            "occurred_at": visit["created_at"].isoformat() if visit.get("created_at") else None,
+            "reason": _truncate(visit.get("reason"), 240),
+            "visit_kind": str(visit.get("visit_kind") or "new"),
+        }
+        vitals = {
+            key: visit.get(key)
+            for key in ("temperature", "weight", "height")
+            if visit.get(key) is not None
+        }
+        if vitals:
+            entry["vitals"] = vitals
+        note = _visit_note(visit, recent_visits, notes, timezone_name)
+        if note:
+            entry["consultation_note"] = _truncate(
+                note.get("snapshot_content") or note.get("content"),
                 MAX_SUMMARY_NOTE_CHARS,
             )
-            lines.append(f"- {when}\n{body}")
-    else:
-        lines.append("- No finalized consultation notes recorded.")
+        visit_context.append({key: value for key, value in entry.items() if value not in (None, "")})
 
-    return "\n".join(lines).strip()
+    context: dict[str, Any] = {"recent_visits": visit_context}
+    if demographics:
+        context["demographics"] = demographics
+    canonical = json.dumps(context, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return {
+        "context": context,
+        "source_hash": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+    }
+
+
+async def load_patient_summary_source(
+    repo: AppRepository,
+    org_id: str,
+    patient_id: str,
+    *,
+    patient: dict[str, Any] | None = None,
+) -> PatientSummarySource:
+    current_patient = patient or await repo.get_patient(org_id, patient_id)
+    visits = await repo.list_patient_visits_for_patient(org_id, patient_id)
+    notes = await repo.list_notes_for_patient(org_id, patient_id)
+    clinic_settings = await repo.get_clinic_settings(org_id)
+    return build_patient_summary_source(
+        current_patient,
+        visits,
+        notes,
+        timezone_name=str(clinic_settings.get("timezone") or "UTC"),
+    )
 
 
 async def generate_patient_summary_workflow(
@@ -83,17 +165,12 @@ async def generate_patient_summary_workflow(
 ) -> PatientSummaryResult:
     patient = await repo.get_patient(org_id, patient_id)
     expected_revision = int(patient.get("ai_summary_revision") or 0)
-    visits = await repo.list_patient_visits_for_patient(org_id, patient_id)
-    notes = await repo.list_notes_for_patient(org_id, patient_id)
-
-    patient_context = build_patient_context(patient)
-    history_context = build_patient_history_context(visits, notes)
+    source = await load_patient_summary_source(repo, org_id, patient_id, patient=patient)
 
     generation = await generate_patient_summary(
         repo,
         org_id,
-        patient_context=patient_context,
-        history_context=history_context,
+        source_context=source["context"],
     )
 
     updated_at = datetime.now(UTC)
@@ -104,6 +181,7 @@ async def generate_patient_summary_workflow(
         summary,
         updated_at,
         expected_revision,
+        source["source_hash"],
     )
     if not saved:
         latest = await repo.get_patient(org_id, patient_id)
@@ -111,7 +189,7 @@ async def generate_patient_summary_workflow(
             "summary": str(latest.get("ai_summary") or ""),
             "updated_at": latest.get("ai_summary_updated_at") or updated_at,
             "used_fallback": False,
-            "warning": "The patient record changed while the summary was generated. Refresh it again.",
+            "warning": None,
             "stale": True,
         }
 
@@ -120,5 +198,5 @@ async def generate_patient_summary_workflow(
         "updated_at": updated_at,
         "used_fallback": generation["used_fallback"],
         "warning": generation.get("warning"),
-        "stale": not saved,
+        "stale": False,
     }

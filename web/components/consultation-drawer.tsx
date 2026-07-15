@@ -237,6 +237,7 @@ type ConsultationWorkspaceSnapshot = {
   recipientEmail: string;
   hasGeneratedNote: boolean;
   isFollowUpOpen: boolean;
+  isDraftDirty?: boolean;
 };
 
 type InlineModuleKey = "vitals" | "medicines";
@@ -437,6 +438,8 @@ export function ConsultationDrawer({
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isDraftDirty, setIsDraftDirty] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
   const [isEyeExamOpen, setIsEyeExamOpen] = useState(false);
@@ -505,6 +508,8 @@ export function ConsultationDrawer({
     setIsAnalyzingAssistant(false);
     setIsCompleting(false);
     setIsFinalizing(false);
+    setIsSavingDraft(false);
+    setIsDraftDirty(cachedWorkspace?.isDraftDirty ?? false);
     setIsSending(false);
     setIsEyeExamOpen(false);
     setIsContactLensOpen(false);
@@ -621,12 +626,14 @@ export function ConsultationDrawer({
       recipientEmail,
       hasGeneratedNote,
       isFollowUpOpen,
+      isDraftDirty,
     });
   }, [
     currentNoteId,
     form,
     hasGeneratedNote,
     isFollowUpOpen,
+    isDraftDirty,
     isSent,
     medicineSearch,
     noteStatus,
@@ -798,6 +805,9 @@ export function ConsultationDrawer({
 
   async function handleGenerate(event?: FormEvent) {
     event?.preventDefault();
+    if (isDraftDirty && !window.confirm("Regenerating will replace your unsaved note edits. Continue?")) {
+      return;
+    }
     setIsGenerating(true);
     setStatusMessage("");
     try {
@@ -807,6 +817,7 @@ export function ConsultationDrawer({
       setHasGeneratedNote(true);
       setCurrentNoteId(generated.noteId || "");
       setNoteStatus(generated.status || "draft");
+      setIsDraftDirty(false);
       setIsSent(false);
       const baseMessage = refreshingDraft ? "Draft note refreshed." : "Draft SOAP note generated.";
       setStatusMessage(generated.usedFallback ? `${baseMessage} ${generated.warning || "AI unavailable, used fallback template."}` : baseMessage);
@@ -814,6 +825,35 @@ export function ConsultationDrawer({
       setStatusMessage(error instanceof Error ? error.message : "Failed to generate SOAP note.");
     } finally {
       setIsGenerating(false);
+    }
+  }
+
+  async function persistDraftIfNeeded() {
+    if (!isDraftDirty) {
+      return;
+    }
+    if (!currentNoteId || noteStatus !== "draft") {
+      throw new Error("Only an active draft note can be saved.");
+    }
+    if (isTrainingMode) {
+      setIsDraftDirty(false);
+      return;
+    }
+    const saved = await api.updateNoteDraft(currentNoteId, { content: form.generatedNote.trim() });
+    setForm((current) => ({ ...current, generatedNote: saved.content }));
+    setIsDraftDirty(false);
+  }
+
+  async function handleSaveDraft() {
+    setIsSavingDraft(true);
+    setStatusMessage("");
+    try {
+      await persistDraftIfNeeded();
+      setStatusMessage("Draft note saved.");
+    } catch (saveError) {
+      setStatusMessage(saveError instanceof Error ? saveError.message : "Failed to save draft note.");
+    } finally {
+      setIsSavingDraft(false);
     }
   }
 
@@ -931,6 +971,7 @@ export function ConsultationDrawer({
 
     setIsSending(true);
     try {
+      await persistDraftIfNeeded();
       const message = await onSend({
         note_id: currentNoteId,
         patient_id: currentPatient.id,
@@ -1030,10 +1071,12 @@ export function ConsultationDrawer({
     setStatusMessage("");
     try {
       if (isTrainingMode) {
+        setIsDraftDirty(false);
         setNoteStatus("final");
         setStatusMessage("Training note finalized. You can mark the patient done without sending.");
         return;
       }
+      await persistDraftIfNeeded();
       const finalized = await api.finalizeNote(currentNoteId);
       setCurrentNoteId(finalized.id);
       setNoteStatus(finalized.status);
@@ -2210,18 +2253,35 @@ export function ConsultationDrawer({
                     <Sparkles className="h-4 w-4" />
                     {isGenerating ? "Generating..." : noteStatus === "draft" ? "Refresh Draft" : "Generate Note"}
                   </button>
+                  {noteStatus === "draft" ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveDraft()}
+                      disabled={isSavingDraft || !isDraftDirty || !form.generatedNote.trim()}
+                      className="inline-flex items-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-50"
+                    >
+                      <PenLine className="h-4 w-4" />
+                      {isSavingDraft ? "Saving..." : isDraftDirty ? "Save Draft" : "Saved"}
+                    </button>
+                  ) : null}
                 </div>
               </div>
               <textarea
                 rows={14}
                 value={form.generatedNote}
-                readOnly
+                readOnly={noteStatus !== "draft"}
+                onChange={(event) => {
+                  if (noteStatus !== "draft") {
+                    return;
+                  }
+                  setForm((current) => ({ ...current, generatedNote: event.target.value }));
+                  setIsDraftDirty(true);
+                }}
                 className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 placeholder="Saved SOAP note will appear here"
               />
               <p className="mt-2 text-xs text-slate-500">
-                Saved notes are read-only. Generate again from the consultation fields if you need a different note.
-                {noteStatus === "draft" ? " Sending will lock the current saved version automatically." : ""}
+                {noteStatus === "draft" ? "Edit this draft freely, then save or finalize it." : "Finalized notes are read-only."}
                 {isSent ? " This note has been sent and is locked." : ""}
               </p>
             </div>

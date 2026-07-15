@@ -26,6 +26,41 @@ class _Repo:
         return payload
 
 
+def test_gemini_35_uses_medium_thinking_without_legacy_sampling():
+    config = ai_generation_service._vertex_generation_config(
+        model="gemini-3.5-flash",
+        max_output_tokens=2048,
+        temperature=0.35,
+        thinking_budget=0,
+    )
+
+    assert config == {
+        "maxOutputTokens": 2048,
+        "thinkingConfig": {"thinkingLevel": "medium"},
+    }
+
+
+def test_note_normalization_preserves_exact_structured_medication_regimen():
+    normalized = ai_generation_service._normalize_note_content(
+        """Presenting Complaint:\nFever.\n\nDiagnosis:\nViral illness.\n\nClinical Notes:\nHydration advised.\n\nTreatment:\nParacetamol was prescribed.\n\nFollow-up Advice:\nReview if worse.""",
+        symptoms="Fever",
+        diagnosis="Viral illness",
+        medications=(
+            "Prescribed medicines:\n"
+            "Medicine | Quantity | Schedule | Duration | Notes\n"
+            "--- | --- | --- | --- | ---\n"
+            "Paracetamol 500 mg | 10 tablets | Morning and night | 5 days | After food"
+        ),
+        notes="Hydration advised.",
+    )
+
+    assert "Paracetamol 500 mg" in normalized
+    assert "10 tablets" in normalized
+    assert "Morning and night" in normalized
+    assert "5 days" in normalized
+    assert "After food" in normalized
+
+
 async def _fake_generate_vertex_content(**_kwargs):
     return {
         "candidates": [
@@ -259,6 +294,44 @@ async def test_fallback_generation_does_not_record_ai_usage(monkeypatch):
     assert "Presenting Complaint:" in result["content"]
     assert result["used_fallback"] is True
     assert repo.events == []
+
+
+@pytest.mark.anyio
+async def test_patient_summary_uses_vertex_json_paragraph_contract(monkeypatch):
+    repo = _Repo()
+    seen_kwargs = {}
+
+    async def _fake_summary_content(**kwargs):
+        seen_kwargs.update(kwargs)
+        return {
+            "candidates": [{"content": {"parts": [{"text": '{"summary":"The latest visit addressed persistent fever, with hydration and paracetamol documented. The preceding visit recorded the same complaint, supporting a short recurrent pattern and planned clinical review."}' }]}}],
+            "usageMetadata": {"promptTokenCount": 80, "candidatesTokenCount": 32},
+        }
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_summary_content)
+    monkeypatch.setattr(
+        ai_generation_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_cloud_project="project-1",
+            google_cloud_location="global",
+            gemini_model="gemini-test",
+        ),
+    )
+
+    result = await ai_generation_service.generate_patient_summary(
+        repo,
+        "org-1",
+        source_context={"recent_visits": [{"reason": "fever", "consultation_note": "Hydration and paracetamol."}]},
+    )
+
+    assert result["used_fallback"] is False
+    assert "\n" not in result["content"]
+    assert not result["content"].startswith("-")
+    assert seen_kwargs["response_mime_type"] == "application/json"
+    assert seen_kwargs["max_output_tokens"] == 256
+    assert seen_kwargs["temperature"] == 0.2
+    assert repo.events[0]["metadata"]["rolling_visit_limit"] == 2
 
 
 def test_normalized_note_strips_pipe_tables_from_generated_content():

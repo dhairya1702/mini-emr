@@ -155,9 +155,54 @@ def _normalize_note_content(
     for label in SECTION_ORDER:
         existing = _strip_pipe_tables("\n".join(line for line in sections[label] if line.strip()))
         content = existing or fallbacks[label]
+        if label == "Treatment" and medications.strip():
+            exact_details = _format_exact_medication_details(medications)
+            required_fragments = _medication_required_fragments(medications)
+            if exact_details and any(fragment.lower() not in content.lower() for fragment in required_fragments):
+                content = f"{content.rstrip()}\n\nPrescribed regimen:\n{exact_details}".strip()
         normalized_sections.append(f"{label}:\n{content}")
 
     return "\n\n".join(normalized_sections).strip()
+
+
+def _structured_medication_rows(medications: str) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for raw_line in str(medications or "").splitlines():
+        if "|" not in raw_line:
+            continue
+        columns = [column.strip() for column in raw_line.split("|")]
+        if len(columns) < 5 or columns[0].lower() == "medicine" or all(set(column) <= {"-", ":"} for column in columns):
+            continue
+        rows.append(columns[:5])
+    return rows
+
+
+def _medication_required_fragments(medications: str) -> list[str]:
+    return [
+        value
+        for row in _structured_medication_rows(medications)
+        for value in row
+        if value and value != "-"
+    ]
+
+
+def _format_exact_medication_details(medications: str) -> str:
+    rows = _structured_medication_rows(medications)
+    if not rows:
+        return str(medications or "").strip()
+    lines: list[str] = []
+    for medicine, quantity, schedule, duration, instructions in rows:
+        details = []
+        if quantity != "-":
+            details.append(f"quantity {quantity}")
+        if schedule != "-":
+            details.append(f"schedule {schedule}")
+        if duration != "-":
+            details.append(f"for {duration}")
+        if instructions != "-":
+            details.append(instructions)
+        lines.append(f"- {medicine}" + (f": {'; '.join(details)}." if details else "."))
+    return "\n".join(lines)
 
 
 def build_fallback_letter(
@@ -1264,6 +1309,23 @@ Answered assistant questions:
     return result
 
 
+def _vertex_generation_config(
+    *,
+    model: str,
+    max_output_tokens: int,
+    temperature: float,
+    thinking_budget: int | None,
+) -> dict[str, Any]:
+    generation_config: dict[str, Any] = {"maxOutputTokens": max_output_tokens}
+    if str(model).startswith("gemini-3"):
+        generation_config["thinkingConfig"] = {"thinkingLevel": "medium"}
+    else:
+        generation_config["temperature"] = temperature
+        if thinking_budget is not None:
+            generation_config["thinkingConfig"] = {"thinkingBudget": thinking_budget}
+    return generation_config
+
+
 async def _generate_vertex_content(
     *,
     project_id: str,
@@ -1282,6 +1344,16 @@ async def _generate_vertex_content(
         f"{base_url}/v1/projects/{resolved_project}/locations/{location}/publishers/google/models/"
         f"{model}:generateContent"
     )
+    # Gemini 3.5 Flash defaults to medium reasoning. Set it explicitly so every
+    # feature gets the same balanced quality and avoid legacy 2.5 sampling and
+    # thinking parameters that Google no longer recommends.
+    generation_config = _vertex_generation_config(
+        model=model,
+        max_output_tokens=max_output_tokens,
+        temperature=temperature,
+        thinking_budget=thinking_budget,
+    )
+
     payload = {
         "systemInstruction": {
             "parts": [
@@ -1302,13 +1374,8 @@ async def _generate_vertex_content(
                 "parts": [{"text": prompt}],
             }
         ],
-        "generationConfig": {
-            "temperature": temperature,
-            "maxOutputTokens": max_output_tokens,
-        },
+        "generationConfig": generation_config,
     }
-    if thinking_budget is not None:
-        payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": thinking_budget}
     if response_mime_type:
         payload["generationConfig"]["responseMimeType"] = response_mime_type
     headers = {
@@ -1338,44 +1405,79 @@ def _extract_json_object(text: str) -> dict[str, Any]:
     return parsed
 
 
-def build_fallback_patient_summary(history_context: str) -> str:
-    if str(history_context or "").strip():
-        return (
-            "AI summary is unavailable right now. Recent recorded activity:\n"
-            f"{history_context.strip()}"
-        )
-    return "No finalized consultation history is available to summarize yet."
+def _clean_patient_summary(value: str) -> str:
+    text = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", str(value or "").strip(), flags=re.MULTILINE)
+    text = re.sub(r"\s*\n+\s*", " ", text)
+    text = re.sub(r"\s{2,}", " ", text).strip()
+    prohibited = (
+        "no finalized consultation",
+        "no history available",
+        "ai summary",
+        "ai is unavailable",
+        "summary is unavailable",
+        "not provided",
+    )
+    if not text or any(phrase in text.lower() for phrase in prohibited):
+        raise ValueError("Patient summary contained missing-data or system commentary.")
+    return text
+
+
+def build_fallback_patient_summary(source_context: dict[str, Any]) -> str:
+    demographics = source_context.get("demographics") or {}
+    visits = source_context.get("recent_visits") or []
+    sentences: list[str] = []
+    demographic_bits: list[str] = []
+    if demographics.get("age_years") is not None:
+        demographic_bits.append(f"{int(demographics['age_years'])}-year-old")
+    if demographics.get("sex"):
+        demographic_bits.append(str(demographics["sex"]).replace("_", " "))
+    if demographic_bits:
+        sentences.append(f"The patient is a {' '.join(demographic_bits)} under ongoing clinical care.")
+
+    for index, visit in enumerate(visits[:2]):
+        reason = str(visit.get("reason") or "").strip()
+        note = str(visit.get("consultation_note") or "").strip()
+        detail = note or reason
+        if not detail:
+            continue
+        detail = re.sub(r"\s+", " ", detail).strip()
+        detail = detail[:420].rstrip(" ,;:.-")
+        lead = "The most recent visit" if index == 0 else "The preceding visit"
+        if note:
+            sentences.append(f"{lead} concerned {reason or 'clinical review'}; {detail}.")
+        else:
+            sentences.append(f"{lead} addressed {detail}.")
+
+    if not sentences:
+        return "The patient is under active clinical care. The summary will expand as visits are documented."
+    return _clean_patient_summary(" ".join(sentences[:3]))
 
 
 async def generate_patient_summary(
     repo: AppRepository,
     org_id: str,
-    patient_context: str = "",
-    history_context: str = "",
+    source_context: dict[str, Any] | None = None,
 ) -> GeneratedNoteResult:
-    """Cheap pre-pass: condense recent finalized notes/visits into a short,
-    at-a-glance clinical summary for the patient chart. Mirrors the
-    deterministic-fallback pattern used by consultation note generation."""
+    """Summarize the exact two-visit rolling chart context."""
     settings = get_settings()
+    source = source_context or {"recent_visits": []}
     prompt = f"""
-Write a concise at-a-glance clinical summary of this patient for a clinician opening their chart.
-Return 3 to 5 short bullet points, each starting with "- ".
-Cover, when present in the input: active or recurring problems, ongoing medications,
-relevant history, and the gist of the most recent visit.
-Be specific but brief. Do not invent diagnoses, medications, vitals, or findings that are not in the input.
-If there is little or no history, say so plainly in a single bullet.
-Return plain text bullet points only, with no headings or preamble.
+Create a clinically useful patient overview from the JSON record below.
+Return JSON with exactly one string property named "summary".
+The summary must be one natural paragraph of 2 to 3 complete sentences, normally 60 to 120 words.
+Prioritize the current/recurrent complaint, material findings, diagnoses, treatment or medication,
+and follow-up advice actually documented across the two visits. Make the newest visit clearest.
+Do not use bullets, headings, labels, markdown, or line breaks.
+Do not mention missing information, absent notes, the summarization process, AI, or system state.
+Do not infer or invent diagnoses, medications, vitals, findings, history, or outcomes.
 
-Patient context:
-{patient_context or 'Not provided'}
-
-Recent finalized visits and notes:
-{history_context or 'Not provided'}
+Clinical record JSON:
+{json.dumps(source, ensure_ascii=False, sort_keys=True)}
 """.strip()
 
     if not str(settings.gemini_model or "").strip():
         return {
-            "content": build_fallback_patient_summary(history_context),
+            "content": build_fallback_patient_summary(source),
             "used_fallback": True,
             "warning": "AI unavailable, used fallback summary.",
             "error_message": "GEMINI_MODEL is not configured.",
@@ -1386,20 +1488,20 @@ Recent finalized visits and notes:
             project_id=settings.google_cloud_project,
             location=settings.google_cloud_location,
             model=settings.gemini_model,
-            max_output_tokens=512,
-            temperature=0.3,
+            max_output_tokens=256,
+            temperature=0.2,
             thinking_budget=0,
+            response_mime_type="application/json",
             system_instruction=(
-                "You write short, factual patient overviews for busy clinicians. "
-                "Return only bullet points. "
-                "Do not invent any clinical facts that are not present in the input."
+                "You write concise, factual patient overviews for clinicians. "
+                "Use only the supplied clinical JSON and return valid JSON only."
             ),
             prompt=prompt,
         )
     except Exception as exc:
         logger.exception("Vertex AI patient summary generation failed")
         return {
-            "content": build_fallback_patient_summary(history_context),
+            "content": build_fallback_patient_summary(source),
             "used_fallback": True,
             "warning": "AI unavailable, used fallback summary.",
             "error_message": str(exc),
@@ -1412,7 +1514,11 @@ Recent finalized visits and notes:
         model=settings.gemini_model,
         feature="patient_summary",
         response=response,
-        metadata={"has_history_context": bool(history_context)},
+        metadata={
+            "visit_count": len(source.get("recent_visits") or []),
+            "summary_format": "paragraph_v2",
+            "rolling_visit_limit": 2,
+        },
     )
     generated_text = _extract_text_from_vertex_response(response)
     if _has_max_tokens_finish(response) or not generated_text:
@@ -1427,14 +1533,26 @@ Recent finalized visits and notes:
             else "Vertex AI returned an empty response."
         )
         return {
-            "content": build_fallback_patient_summary(history_context),
+            "content": build_fallback_patient_summary(source),
             "used_fallback": True,
             "warning": warning,
             "error_message": error_message,
         }
 
+    try:
+        parsed = _extract_json_object(generated_text)
+        summary = _clean_patient_summary(str(parsed.get("summary") or ""))
+    except (ValueError, json.JSONDecodeError, TypeError) as exc:
+        logger.warning("Vertex AI patient summary output failed validation: %s", exc)
+        return {
+            "content": build_fallback_patient_summary(source),
+            "used_fallback": True,
+            "warning": "AI returned invalid summary content, used deterministic summary.",
+            "error_message": str(exc),
+        }
+
     return {
-        "content": generated_text.strip(),
+        "content": summary,
         "used_fallback": False,
         "warning": None,
         "error_message": None,

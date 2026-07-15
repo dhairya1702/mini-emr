@@ -107,7 +107,7 @@ Backend:
 - `AUTH_SECRET=...` required and must stay fixed across restarts so signed sessions remain valid
 - `GOOGLE_CLOUD_PROJECT=...`
 - `GOOGLE_CLOUD_LOCATION=global`
-- `GEMINI_MODEL=gemini-2.5-flash`
+- `GEMINI_MODEL=gemini-3.5-flash`
 - `INTERNAL_SCHEDULER_TOKEN=...` used by Cloud Scheduler to trigger follow-up reminders over HTTP
 - `APP_ORIGIN=http://127.0.0.1:3000`
 - `SUPER_ADMIN_IDENTIFIERS=you@example.com` optional, comma-separated allowlist for the hidden `/superuser` dashboard

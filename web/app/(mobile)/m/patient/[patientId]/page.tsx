@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, ChevronDown, FileText, Image as ImageIcon, RefreshCw, Sparkles, UserRound } from "lucide-react";
+import { ArrowLeft, ChevronDown, FileText, Image as ImageIcon, Sparkles, UserRound } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -276,9 +276,28 @@ export default function MobilePatientPage() {
     setSummaryError("");
     api
       .getPatientSummary(patientId)
-      .then((result) => {
+      .then(async (result) => {
         if (active) {
           setAiSummary(result);
+        }
+        if (result.stale && active) {
+          setIsRegeneratingSummary(true);
+          try {
+            const refreshed = await api.regeneratePatientSummary(patientId);
+            if (active) {
+              setAiSummary(refreshed);
+            }
+          } catch (regenerateError) {
+            if (active && !result.summary) {
+              setSummaryError(
+                regenerateError instanceof Error ? regenerateError.message : "Failed to generate summary."
+              );
+            }
+          } finally {
+            if (active) {
+              setIsRegeneratingSummary(false);
+            }
+          }
         }
       })
       .catch((loadError) => {
@@ -297,24 +316,6 @@ export default function MobilePatientPage() {
       active = false;
     };
   }, [currentUser, isAuthReady, isRedirectingToLogin, patientId]);
-
-  async function handleRegenerateSummary() {
-    if (!patientId || isRegeneratingSummary) {
-      return;
-    }
-    setIsRegeneratingSummary(true);
-    setSummaryError("");
-    try {
-      const result = await api.regeneratePatientSummary(patientId);
-      setAiSummary(result);
-    } catch (regenerateError) {
-      setSummaryError(
-        regenerateError instanceof Error ? regenerateError.message : "Failed to refresh summary."
-      );
-    } finally {
-      setIsRegeneratingSummary(false);
-    }
-  }
 
   useEffect(() => {
     if (!patientId || !selectedVisitId || visitDetailsById[selectedVisitId]) {
@@ -536,21 +537,12 @@ export default function MobilePatientPage() {
                 <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#2f8fd3]/10 text-[#2f8fd3]">
                   <Sparkles className="h-3.5 w-3.5" />
                 </span>
-                <span className="text-sm font-semibold text-[#1d4d72]">AI summary</span>
+                <span className="text-sm font-semibold text-[#1d4d72]">Summary</span>
               </div>
-              <button
-                type="button"
-                onClick={handleRegenerateSummary}
-                disabled={isRegeneratingSummary || isSummaryLoading}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[#cfe3f3] bg-white px-2.5 py-1.5 text-xs font-medium text-[#2f6c98] disabled:opacity-60"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${isRegeneratingSummary ? "animate-spin" : ""}`} />
-                {isRegeneratingSummary ? "Refreshing" : "Refresh"}
-              </button>
+              {isRegeneratingSummary ? (
+                <span className="text-xs font-medium text-[#2f6c98]">Updating…</span>
+              ) : null}
             </div>
-            {aiSummary?.updated_at ? (
-              <p className="mt-1 text-xs text-slate-500">Generated {formatDate(aiSummary.updated_at)}</p>
-            ) : null}
             <div className="mt-3">
               {isSummaryLoading && !aiSummary ? (
                 <div className="space-y-2">
@@ -561,16 +553,7 @@ export default function MobilePatientPage() {
               ) : summaryError ? (
                 <p className="text-sm text-rose-600">{summaryError}</p>
               ) : aiSummary?.summary ? (
-                <>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{aiSummary.summary}</p>
-                  {aiSummary.stale ? (
-                    <p className="mt-2 text-xs text-amber-600">This summary is out of date. Refresh it before relying on it.</p>
-                  ) : aiSummary.used_fallback ? (
-                    <p className="mt-2 text-xs text-amber-600">AI was unavailable — showing recent recorded activity.</p>
-                  ) : (
-                    <p className="mt-2 text-xs text-slate-400">AI-generated overview. Verify against the record.</p>
-                  )}
-                </>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{aiSummary.summary}</p>
               ) : (
                 <p className="text-sm text-slate-500">No summary available yet.</p>
               )}

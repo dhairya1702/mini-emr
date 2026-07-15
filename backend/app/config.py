@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     gcs_patient_attachments_bucket: str = ""
     google_cloud_project: str = ""
     google_cloud_location: str = "global"
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.5-flash"
     internal_scheduler_token: str = ""
     app_origin: str = "http://127.0.0.1:3000"
     app_origins: str = ""

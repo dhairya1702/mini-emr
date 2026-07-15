@@ -254,6 +254,7 @@ class PatientVisitCreate(BaseModel):
 
 class NoteCreate(BaseModel):
     patient_id: UUID
+    visit_id: UUID | None = None
     content: str = Field(min_length=1)
     asset_payload: list[dict[str, Any]] = Field(default_factory=list)
     structured_modules: list[dict[str, Any]] = Field(default_factory=list)
@@ -262,6 +263,7 @@ class NoteCreate(BaseModel):
 class NoteOut(BaseModel):
     id: UUID
     patient_id: UUID
+    visit_id: UUID | None = None
     content: str
     status: NoteStatus = "draft"
     version_number: int = 1

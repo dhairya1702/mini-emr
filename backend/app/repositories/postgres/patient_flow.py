@@ -52,6 +52,7 @@ PATIENT_COLUMNS = [
     "ai_summary_updated_at",
     "ai_summary_stale",
     "ai_summary_revision",
+    "ai_summary_source_hash",
     "created_at",
     "last_visit_at",
 ]
@@ -1136,6 +1137,7 @@ class PostgresPatientFlowRepository:
         summary: str,
         updated_at: datetime,
         expected_revision: int,
+        source_hash: str,
     ) -> bool:
         def _save() -> bool:
             with self.connection_manager.pool.connection() as connection:
@@ -1145,12 +1147,13 @@ class PostgresPatientFlowRepository:
                         update public.patients
                         set ai_summary = %s,
                             ai_summary_updated_at = %s,
-                            ai_summary_stale = false
+                            ai_summary_stale = false,
+                            ai_summary_source_hash = %s
                         where org_id = %s and id = %s
                           and ai_summary_revision = %s
                         returning id
                         """,
-                        (summary, updated_at, org_id, patient_id, expected_revision),
+                        (summary, updated_at, source_hash, org_id, patient_id, expected_revision),
                     )
                     return cursor.fetchone() is not None
 

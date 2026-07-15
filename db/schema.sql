@@ -42,6 +42,7 @@ create table if not exists public.patients (
   ai_summary_updated_at timestamptz,
   ai_summary_stale boolean not null default true,
   ai_summary_revision integer not null default 0,
+  ai_summary_source_hash text,
   created_at timestamptz not null default now(),
   last_visit_at timestamptz not null default now()
 );
@@ -67,6 +68,7 @@ create table if not exists public.notes (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
   patient_id uuid not null references public.patients(id) on delete cascade,
+  visit_id uuid,
   content text not null,
   status text not null default 'draft' check (status in ('draft', 'final', 'sent')),
   version_number integer not null default 1,
@@ -417,6 +419,8 @@ create unique index if not exists notes_org_id_id_uidx
   on public.notes(org_id, id);
 create unique index if not exists appointments_org_id_id_uidx
   on public.appointments(org_id, id);
+create unique index if not exists patient_visits_org_id_id_uidx
+  on public.patient_visits(org_id, id);
 
 do $$
 begin
@@ -428,6 +432,9 @@ begin
   end if;
   if not exists (select 1 from pg_constraint where conname = 'notes_org_amended_from_fk') then
     alter table public.notes add constraint notes_org_amended_from_fk foreign key (org_id, amended_from_note_id) references public.notes(org_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'notes_org_visit_fk') then
+    alter table public.notes add constraint notes_org_visit_fk foreign key (org_id, visit_id) references public.patient_visits(org_id, id) on delete set null;
   end if;
   if not exists (select 1 from pg_constraint where conname = 'patient_attachments_org_patient_fk') then
     alter table public.patient_attachments add constraint patient_attachments_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
@@ -577,12 +584,18 @@ add column if not exists ai_summary_stale boolean not null default true;
 alter table public.patients
 add column if not exists ai_summary_revision integer not null default 0;
 
+alter table public.patients
+add column if not exists ai_summary_source_hash text;
+
 update public.patients
 set last_visit_at = created_at
 where last_visit_at is null;
 
 alter table public.notes
 add column if not exists org_id uuid references public.organizations(id) on delete cascade;
+
+alter table public.notes
+add column if not exists visit_id uuid;
 
 alter table public.notes
 add column if not exists sent_at timestamptz;

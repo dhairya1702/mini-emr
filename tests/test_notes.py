@@ -56,6 +56,15 @@ def test_sent_consultation_note_is_emailed_and_locked_to_saved_record(client, mo
     assert repo.notes[note_id]["status"] == "draft"
     assert repo.notes[note_id]["sent_at"] is None
 
+    edited = test_client.patch(
+        f"/notes/{note_id}/draft",
+        json={"content": "Clinician-edited consultation note."},
+        headers=headers,
+    )
+    assert edited.status_code == 200
+    assert edited.json()["content"] == "Clinician-edited consultation note."
+    assert repo.notes[note_id]["content"] == "Clinician-edited consultation note."
+
     sent = test_client.post(
         "/send-note",
         json={"note_id": note_id, "patient_id": patient["id"], "recipient_email": "patient@example.com"},

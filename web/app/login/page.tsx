@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, ShieldPlus, Stethoscope } from "lucide-react";
+import { ArrowLeft, ArrowRight, ShieldPlus } from "lucide-react";
 
 import { PasswordInput } from "@/components/password-input";
 import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
@@ -215,41 +215,7 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
-      <div className={isMobileSurface ? "mx-auto flex min-h-[calc(100vh-4rem)] max-w-md items-center" : "mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl gap-6 lg:grid-cols-[1.05fr_0.95fr]"}>
-        <section className={`${isMobileSurface ? "hidden" : "hidden rounded-[22px] border border-[#dbe7ef] bg-white/95 p-8 shadow-[0_14px_38px_rgba(64,131,181,0.09)] sm:p-10 lg:block"}`}>
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-xl bg-[#f3f8fb] px-3 py-1 text-xs tracking-[0.22em] text-[#2a6fa8]">
-              <Stethoscope className="h-3.5 w-3.5" />
-              ClinicOS
-            </div>
-            <h1 className="mt-5 max-w-xl text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl">
-              AI scribe, revenue management, and modern clinic operations in one workspace.
-            </h1>
-            <p className="mt-5 max-w-lg text-base leading-8 text-slate-600">
-              Sign in to manage patients, appointments, consultation notes, follow-ups, billing,
-              inventory, and reporting from a single clinic command center. Create Account provisions
-              a new clinic organization with its own admin workspace, settings, records, and staff access.
-            </p>
-
-            <div className="mt-10 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/70 p-5">
-                <p className="text-sm font-semibold text-slate-900">Admin access</p>
-                <p className="mt-2 text-sm leading-7 text-slate-600">
-                  Manage clinic settings, live operations, AI scribe notes, billing, revenue tracking,
-                  inventory, and staff accounts.
-                </p>
-              </div>
-              <div className="rounded-[18px] border border-[#dbe7ef] bg-white p-5">
-                <p className="text-sm font-semibold text-slate-900">Staff access</p>
-                <p className="mt-2 text-sm leading-7 text-slate-600">
-                  Join the clinic workspace with an admin-issued account and support patient intake,
-                  consultation workflow, notes, and follow-up coordination.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
+      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl items-center">
         <section className="flex w-full items-center">
           <div className="w-full rounded-[22px] border border-[#dbe7ef] bg-white p-7 shadow-[0_25px_80px_rgba(148,163,184,0.14)] sm:p-8">
             <div className="flex items-center justify-between">

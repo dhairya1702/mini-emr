@@ -189,6 +189,7 @@ export interface PatientVisitDetail {
 export interface ConsultationNote {
   id: string;
   patient_id: string;
+  visit_id: string | null;
   content: string;
   status: "draft" | "final" | "sent";
   version_number: number;
@@ -1101,6 +1102,10 @@ export interface PatientUpdatePayload {
 
 export interface FinalizeNotePayload {
   note_id: string;
+}
+
+export interface UpdateNoteDraftPayload {
+  content: string;
 }
 
 export interface MobileFinalizeConsultationPayload {

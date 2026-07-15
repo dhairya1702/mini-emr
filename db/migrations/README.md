@@ -33,3 +33,4 @@ psql "$DATABASE_URL" -f db/migrations/<file>.sql
 | 2026-07-13 | `2026-07-13_queue_context.sql`        | Adds optional sex/gender demographics, current visit context, and visit-linked billing summaries. |
 | 2026-07-13 | `2026-07-13_queue_visit_provenance.sql` | Distinguishes walk-ins and ordinary appointments from visits explicitly booked through follow-up. |
 | 2026-07-14 | `2026-07-14_follow_up_reminder_claims.sql` | Adds leased, concurrency-safe claiming and delivery-attempt metadata for follow-up reminders. |
+| 2026-07-15 | `2026-07-15_patient_summary_visit_links.sql` | Links consultation notes to visits and fingerprints the rolling two-visit patient summary source. |

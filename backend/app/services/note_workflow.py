@@ -514,6 +514,35 @@ async def finalize_note_workflow(
     return NoteOut(**note)
 
 
+async def update_note_draft_workflow(
+    repo: AppRepository,
+    current_user: UserOut,
+    note_id: str,
+    content: str,
+) -> NoteOut:
+    note = await repo.update_note_draft(
+        str(current_user.org_id),
+        note_id,
+        content.strip(),
+    )
+    patient = await repo.get_patient(str(current_user.org_id), str(note["patient_id"]))
+    patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
+    await write_audit_event(
+        repo,
+        current_user,
+        entity_type="note",
+        entity_id=note_id,
+        action="consultation_note_draft_saved",
+        summary=f"Saved edited consultation note draft for {patient_name}.",
+        metadata={
+            "patient_id": str(note["patient_id"]),
+            "patient_name": patient_name,
+            "version_number": note.get("version_number", 1),
+        },
+    )
+    return NoteOut(**note)
+
+
 async def send_note_workflow(
     repo: AppRepository,
     storage: PatientAttachmentStorage,

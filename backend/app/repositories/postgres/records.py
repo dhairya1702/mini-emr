@@ -15,6 +15,7 @@ NOTE_COLUMNS = [
     "id",
     "org_id",
     "patient_id",
+    "visit_id",
     "content",
     "status",
     "version_number",
@@ -76,6 +77,7 @@ class PostgresRecordsRepository:
                           id,
                           org_id,
                           patient_id,
+                          visit_id,
                           content,
                           asset_payload,
                           structured_modules,
@@ -91,13 +93,18 @@ class PostgresRecordsRepository:
                           sent_to
                         )
                         values (
-                          %s, %s, %s, %s, %s::jsonb, %s::jsonb, 'draft', %s, %s,
+                          %s, %s, %s,
+                          coalesce(%s, (select current_visit_id from public.patients where org_id = %s and id = %s)),
+                          %s, %s::jsonb, %s::jsonb, 'draft', %s, %s,
                           %s, null, '[]'::jsonb, null, null, null, null
                         )
                         returning {_columns_sql(NOTE_COLUMNS)}
                         """,
                         (
                             note_id,
+                            org_id,
+                            str(payload.patient_id),
+                            str(payload.visit_id) if payload.visit_id else None,
                             org_id,
                             str(payload.patient_id),
                             payload.content,
@@ -233,6 +240,7 @@ class PostgresRecordsRepository:
             org_id,
             NoteCreate(
                 patient_id=note["patient_id"],
+                visit_id=note.get("visit_id"),
                 content=content,
                 asset_payload=asset_payload or note.get("asset_payload") or [],
                 structured_modules=structured_modules

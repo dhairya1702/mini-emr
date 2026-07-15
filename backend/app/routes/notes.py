@@ -22,6 +22,7 @@ from app.schema_domains.documents import (
     SendLetterRequest,
     SendNoteRequest,
     SendNoteResponse,
+    UpdateNoteDraftRequest,
 )
 from app.schema_domains.patients import NoteOut
 from app.services.note_workflow import (
@@ -32,6 +33,7 @@ from app.services.note_workflow import (
     hydrate_note_assets_for_pdf,
     send_letter_workflow,
     send_note_workflow,
+    update_note_draft_workflow,
 )
 from app.services.document_helpers import build_document_context_for_user
 from app.services.pdf_service import build_letter_pdf, build_note_pdf
@@ -101,6 +103,19 @@ async def finalize_note(
 ) -> NoteOut:
     try:
         return await finalize_note_workflow(repo, current_user, payload)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+
+
+@router.patch("/notes/{note_id}/draft", response_model=NoteOut)
+async def update_note_draft(
+    note_id: str,
+    payload: UpdateNoteDraftRequest,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(require_admin),
+) -> NoteOut:
+    try:
+        return await update_note_draft_workflow(repo, current_user, note_id, payload.content)
     except ValueError as exc:
         raise bad_request_error(exc) from exc
 

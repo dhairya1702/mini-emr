@@ -55,7 +55,7 @@ gcloud run deploy "$BACKEND_SERVICE" \
   --set-env-vars="GCS_PATIENT_ATTACHMENTS_BUCKET=${GCS_BUCKET}" \
   --set-env-vars="GOOGLE_CLOUD_PROJECT=${PROJECT_ID}" \
   --set-env-vars="GOOGLE_CLOUD_LOCATION=global" \
-  --set-env-vars="GEMINI_MODEL=gemini-2.5-flash" \
+  --set-env-vars="GEMINI_MODEL=gemini-3.5-flash" \
   --set-env-vars="APP_ORIGIN=${WEB_URL}" \
   --set-env-vars="^@^APP_ORIGINS=${WEB_ORIGINS}" \
   --set-env-vars="SUPER_ADMIN_IDENTIFIERS=${SUPER_ADMIN_IDENTIFIERS}" \

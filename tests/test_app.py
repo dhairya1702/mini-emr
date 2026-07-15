@@ -807,6 +807,7 @@ class FakeRepo:
             "ai_summary_updated_at": None,
             "ai_summary_stale": True,
             "ai_summary_revision": 0,
+            "ai_summary_source_hash": None,
             "created_at": created_at,
             "last_visit_at": created_at,
         }
@@ -1293,6 +1294,7 @@ class FakeRepo:
         summary: str,
         updated_at,
         expected_revision: int,
+        source_hash: str,
     ) -> bool:
         patient = await self.get_patient(org_id, patient_id)
         if int(patient.get("ai_summary_revision") or 0) != expected_revision:
@@ -1300,6 +1302,7 @@ class FakeRepo:
         patient["ai_summary"] = summary
         patient["ai_summary_updated_at"] = updated_at
         patient["ai_summary_stale"] = False
+        patient["ai_summary_source_hash"] = source_hash
         return True
 
     async def mark_patient_summary_stale(self, org_id: str, patient_id: str) -> None:
@@ -1508,10 +1511,12 @@ class FakeRepo:
         ]
 
     async def create_note(self, org_id: str, payload) -> dict:
+        patient = await self.get_patient(org_id, str(payload.patient_id))
         return await self._create_note(
             org_id,
             str(payload.patient_id),
             payload.content,
+            visit_id=str(getattr(payload, "visit_id", None) or patient.get("current_visit_id") or "") or None,
             asset_payload=getattr(payload, "asset_payload", []),
             structured_modules=getattr(payload, "structured_modules", []),
             version_number=1,
@@ -1525,6 +1530,7 @@ class FakeRepo:
         patient_id: str,
         content: str,
         *,
+        visit_id: str | None,
         asset_payload: list[dict],
         structured_modules: list[dict],
         version_number: int,
@@ -1536,6 +1542,7 @@ class FakeRepo:
             "id": note_id,
             "org_id": org_id,
             "patient_id": patient_id,
+            "visit_id": visit_id,
             "content": content,
             "asset_payload": asset_payload,
             "structured_modules": structured_modules,
@@ -1596,6 +1603,7 @@ class FakeRepo:
             org_id,
             note["patient_id"],
             content,
+            visit_id=note.get("visit_id"),
             asset_payload=asset_payload or note.get("asset_payload") or [],
             structured_modules=structured_modules if structured_modules is not None else note.get("structured_modules") or [],
             version_number=next_version,

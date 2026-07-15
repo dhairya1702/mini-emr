@@ -1,8 +1,8 @@
 "use client";
 
 import type { ChangeEvent, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Mail, Pencil, RefreshCw, Sparkles, Upload, UserRound, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Mail, Pencil, Sparkles, Upload, UserRound, X } from "lucide-react";
 
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-myopia-modal";
@@ -699,6 +699,11 @@ export function PatientDetailsDrawer({
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
   const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false);
+  const onLoadVisitsRef = useRef(onLoadVisits);
+  const onLoadVisitDetailRef = useRef(onLoadVisitDetail);
+  const visitsPatientId = patient?.id ?? "";
+  onLoadVisitsRef.current = onLoadVisits;
+  onLoadVisitDetailRef.current = onLoadVisitDetail;
 
   useEffect(() => {
     setOpenVisitSections({ note: false, attachments: false, other: false });
@@ -767,6 +772,25 @@ export function PatientDetailsDrawer({
         if (active) {
           setAiSummary(result);
         }
+        if (result.stale && active) {
+          setIsRegeneratingSummary(true);
+          try {
+            const refreshed = await api.regeneratePatientSummary(patientId);
+            if (active) {
+              setAiSummary(refreshed);
+            }
+          } catch (regenerateError) {
+            if (active && !result.summary) {
+              setSummaryError(
+                regenerateError instanceof Error ? regenerateError.message : "Failed to generate summary."
+              );
+            }
+          } finally {
+            if (active) {
+              setIsRegeneratingSummary(false);
+            }
+          }
+        }
       } catch (loadError) {
         if (active) {
           const message =
@@ -786,7 +810,7 @@ export function PatientDetailsDrawer({
   }, [patient, isTrainingMode]);
 
   useEffect(() => {
-    if (!patient) {
+    if (!visitsPatientId) {
       setVisits([]);
       setIsVisitsLoading(false);
       setVisitsError("");
@@ -797,14 +821,13 @@ export function PatientDetailsDrawer({
       return;
     }
 
-    const currentPatient = patient;
     let active = true;
 
     async function loadVisits() {
       setIsVisitsLoading(true);
       setVisitsError("");
       try {
-        const rows = await onLoadVisits(currentPatient.id);
+        const rows = await onLoadVisitsRef.current(visitsPatientId);
         if (!active) {
           return;
         }
@@ -829,7 +852,7 @@ export function PatientDetailsDrawer({
     return () => {
       active = false;
     };
-  }, [onLoadVisits, patient]);
+  }, [visitsPatientId]);
 
   useEffect(() => {
     if (!patient || !selectedVisitId || visitDetailsById[selectedVisitId]) {
@@ -843,7 +866,7 @@ export function PatientDetailsDrawer({
       setLoadingVisitDetailId(selectedVisitId);
       setVisitDetailError("");
       try {
-        const detail = await onLoadVisitDetail(patientId, selectedVisitId);
+        const detail = await onLoadVisitDetailRef.current(patientId, selectedVisitId);
         if (!active) {
           return;
         }
@@ -864,7 +887,7 @@ export function PatientDetailsDrawer({
     return () => {
       active = false;
     };
-  }, [onLoadVisitDetail, patient, selectedVisitId, visitDetailsById]);
+  }, [patient, selectedVisitId, visitDetailsById]);
 
   useEffect(() => {
     if (!patient || activeTab !== "attachments" || hasLoadedAttachmentsTab) {
@@ -1231,24 +1254,6 @@ export function PatientDetailsDrawer({
     }
   }
 
-  async function handleRegenerateSummary() {
-    if (!currentPatient || isTrainingMode || isRegeneratingSummary) {
-      return;
-    }
-    setIsRegeneratingSummary(true);
-    setSummaryError("");
-    try {
-      const result = await api.regeneratePatientSummary(currentPatient.id);
-      setAiSummary(result);
-    } catch (regenerateError) {
-      const message =
-        regenerateError instanceof Error ? regenerateError.message : "Failed to refresh summary.";
-      setSummaryError(message);
-    } finally {
-      setIsRegeneratingSummary(false);
-    }
-  }
-
   async function handleSave() {
     if (readOnly || !currentPatient) {
       return;
@@ -1472,22 +1477,11 @@ export function PatientDetailsDrawer({
                     <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#2f8fd3]/10 text-[#2f8fd3]">
                       <Sparkles className="h-3.5 w-3.5" />
                     </span>
-                    <span className="text-sm font-semibold text-[#1d4d72]">AI summary</span>
-                    {aiSummary?.updated_at ? (
-                      <span className="text-xs text-slate-500">
-                        · generated {formatDateTime(aiSummary.updated_at)}
-                      </span>
-                    ) : null}
+                    <span className="text-sm font-semibold text-[#1d4d72]">Summary</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleRegenerateSummary}
-                    disabled={isRegeneratingSummary || isSummaryLoading}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#cfe3f3] bg-white px-2.5 py-1.5 text-xs font-medium text-[#2f6c98] transition hover:bg-[#f3f9fe] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 ${isRegeneratingSummary ? "animate-spin" : ""}`} />
-                    {isRegeneratingSummary ? "Refreshing" : "Refresh"}
-                  </button>
+                  {isRegeneratingSummary ? (
+                    <span className="text-xs font-medium text-[#2f6c98]">Updating…</span>
+                  ) : null}
                 </div>
 
                 <div className="mt-3">
@@ -1500,24 +1494,9 @@ export function PatientDetailsDrawer({
                   ) : summaryError ? (
                     <p className="text-sm text-rose-600">{summaryError}</p>
                   ) : aiSummary?.summary ? (
-                    <>
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                        {aiSummary.summary}
-                      </p>
-                      {aiSummary.stale ? (
-                        <p className="mt-2 text-xs text-amber-600">
-                          This summary is out of date. Refresh it before relying on it.
-                        </p>
-                      ) : aiSummary.used_fallback ? (
-                        <p className="mt-2 text-xs text-amber-600">
-                          AI was unavailable — showing recent recorded activity.
-                        </p>
-                      ) : (
-                        <p className="mt-2 text-xs text-slate-400">
-                          AI-generated overview. Verify against the record before relying on it.
-                        </p>
-                      )}
-                    </>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                      {aiSummary.summary}
+                    </p>
                   ) : (
                     <p className="text-sm text-slate-500">No summary available yet.</p>
                   )}
@@ -1527,7 +1506,6 @@ export function PatientDetailsDrawer({
             {activeTab === "visits" ? (
               <div className="grid min-h-0 gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
                 <aside className="self-start rounded-xl border border-[#dbe7ef] bg-white p-3">
-                  {isVisitsLoading ? <span className="text-xs text-slate-500">Loading...</span> : null}
                   {visitsError ? <p className="mt-2 text-sm text-rose-600">{visitsError}</p> : null}
                   <div className="max-h-[58vh] space-y-1.5 overflow-y-auto pr-1">
                     {visits.length ? (

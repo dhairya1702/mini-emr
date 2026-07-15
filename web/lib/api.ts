@@ -65,6 +65,7 @@ import {
   PatientCaseStudySource,
   RegisterPayload,
   UserRoleUpdatePayload,
+  UpdateNoteDraftPayload,
   SendInvoicePayload,
   SendLetterPayload,
   SendNotePayload,
@@ -727,6 +728,11 @@ export const api = {
     request<ConsultationNote>("/notes/finalize", {
       method: "POST",
       body: JSON.stringify({ note_id: noteId } satisfies FinalizeNotePayload),
+    }),
+  updateNoteDraft: (noteId: string, payload: UpdateNoteDraftPayload) =>
+    request<ConsultationNote>(`/notes/${noteId}/draft`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
     }),
   finalizeMobileConsultation: (patientId: string, noteId: string) =>
     request<MobileFinalizeConsultationResponse>("/mobile/consultations/finalize", {

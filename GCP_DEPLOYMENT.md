@@ -47,7 +47,7 @@ Enable at least:
 - `AUTH_SECRET=...`
 - `GOOGLE_CLOUD_PROJECT=project-e8d0eb79-8682-4bd9-b31`
 - `GOOGLE_CLOUD_LOCATION=global`
-- `GEMINI_MODEL=gemini-2.5-flash`
+- `GEMINI_MODEL=gemini-3.5-flash`
 - `INTERNAL_SCHEDULER_TOKEN=...`
 - `APP_ORIGIN=https://WEB_RUN_URL`
 - `APP_ORIGINS=https://WEB_RUN_URL`
@@ -182,7 +182,7 @@ gcloud run deploy clinic-emr-backend \
   --allow-unauthenticated \
   --add-cloudsql-instances=PROJECT:REGION:INSTANCE \
   --set-secrets=DATABASE_URL=clinic-emr-database-url:latest,AUTH_SECRET=clinic-emr-auth-secret:latest \
-  --set-env-vars=GCS_PATIENT_ATTACHMENTS_BUCKET=clinic-emr-patient-attachments-prod,FOLLOW_UP_REMINDER_RUNNER_ENABLED=false,FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300,APP_ORIGIN=https://WEB_RUN_URL,APP_ORIGINS=https://WEB_RUN_URL,GOOGLE_CLOUD_PROJECT=project-e8d0eb79-8682-4bd9-b31,GOOGLE_CLOUD_LOCATION=global,GEMINI_MODEL=gemini-2.5-flash,SUPER_ADMIN_IDENTIFIERS=REPLACE_ME
+  --set-env-vars=GCS_PATIENT_ATTACHMENTS_BUCKET=clinic-emr-patient-attachments-prod,FOLLOW_UP_REMINDER_RUNNER_ENABLED=false,FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300,APP_ORIGIN=https://WEB_RUN_URL,APP_ORIGINS=https://WEB_RUN_URL,GOOGLE_CLOUD_PROJECT=project-e8d0eb79-8682-4bd9-b31,GOOGLE_CLOUD_LOCATION=global,GEMINI_MODEL=gemini-3.5-flash,SUPER_ADMIN_IDENTIFIERS=REPLACE_ME
 ```
 
 ## Deploy Web

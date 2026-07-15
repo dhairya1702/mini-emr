@@ -282,11 +282,15 @@ async def build_patient_visit_detail_view(
         raise ValueError("Visit timeline could not be resolved.")
 
     visit_day = selected_visit_event.timestamp.date()
-    visit_notes = sorted(
-        [note for note in notes if (note.finalized_at or note.created_at).date() == visit_day],
-        key=lambda note: note.finalized_at or note.created_at,
-        reverse=True,
-    )
+    visit_notes = [note for note in notes if str(note.visit_id or "") == visit_id]
+    if not visit_notes:
+        visits_on_day = [visit for visit in visits if visit["created_at"].date() == visit_day]
+        if len(visits_on_day) == 1:
+            visit_notes = [
+                note for note in notes
+                if note.visit_id is None and (note.finalized_at or note.created_at).date() == visit_day
+            ]
+    visit_notes.sort(key=lambda note: note.finalized_at or note.created_at, reverse=True)
     primary_note = visit_notes[0] if visit_notes else None
 
     attachment_rows: list[PatientVisitAttachmentRowOut] = []
