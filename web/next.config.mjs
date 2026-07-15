@@ -1,6 +1,7 @@
 import path from "path";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
+const backendProxyUrl = (process.env.BACKEND_PROXY_URL || "").replace(/\/$/, "");
 const configuredDevOrigins = (process.env.NEXT_ALLOWED_DEV_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
@@ -87,6 +88,17 @@ const nextConfig = {
   reactStrictMode: true,
   distDir: isDev ? ".next-dev" : ".next",
   allowedDevOrigins: [...new Set([...defaultAllowedDevOrigins, ...configuredDevOrigins])],
+  async rewrites() {
+    if (!backendProxyUrl) {
+      return [];
+    }
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${backendProxyUrl}/:path*`,
+      },
+    ];
+  },
   async headers() {
     return [
       {

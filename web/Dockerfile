@@ -11,7 +11,9 @@ COPY --from=deps /app/node_modules /app/node_modules
 COPY . /app
 
 ARG NEXT_PUBLIC_API_BASE_URL
+ARG BACKEND_PROXY_URL
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+ENV BACKEND_PROXY_URL=${BACKEND_PROXY_URL}
 ENV NODE_ENV=production
 
 RUN mkdir -p /app/public
@@ -22,6 +24,8 @@ FROM node:22-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080
+ARG BACKEND_PROXY_URL
+ENV BACKEND_PROXY_URL=${BACKEND_PROXY_URL}
 
 COPY --from=builder /app/.next /app/.next
 COPY --from=builder /app/public /app/public

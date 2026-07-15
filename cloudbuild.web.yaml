@@ -8,6 +8,8 @@ steps:
       - asia-south1-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/clinic-emr-web:${SHORT_SHA}
       - --build-arg
       - NEXT_PUBLIC_API_BASE_URL=${_API_BASE_URL}
+      - --build-arg
+      - BACKEND_PROXY_URL=${_BACKEND_PROXY_URL}
       - web
 
 images:
@@ -16,3 +18,4 @@ images:
 substitutions:
   _AR_REPO: clinic-emr
   _API_BASE_URL: https://REPLACE_WITH_BACKEND_RUN_URL
+  _BACKEND_PROXY_URL: https://REPLACE_WITH_BACKEND_RUN_URL

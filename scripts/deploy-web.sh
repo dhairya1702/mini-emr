@@ -18,11 +18,12 @@ fi
 
 echo "Building web image with tag: $IMAGE_TAG"
 echo "Using backend URL: $BACKEND_URL"
+echo "Using same-origin browser API proxy: /api"
 gcloud builds submit \
   --project="$PROJECT_ID" \
   --region="$REGION" \
   --config=cloudbuild.web.yaml \
-  --substitutions="_API_BASE_URL=${BACKEND_URL},SHORT_SHA=${IMAGE_TAG}"
+  --substitutions="_API_BASE_URL=/api,_BACKEND_PROXY_URL=${BACKEND_URL},SHORT_SHA=${IMAGE_TAG}"
 
 echo "Deploying web service: $WEB_SERVICE"
 gcloud run deploy "$WEB_SERVICE" \
