@@ -67,7 +67,7 @@ export function TransitionProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="wipe" ref={panel} aria-hidden>
         <span className="wipe__mark">
-          Clinic<span className="nav__brand-thin">EMR</span>
+          Clinic<span className="nav__brand-thin">OS</span>
         </span>
       </div>
     </TransitionContext.Provider>

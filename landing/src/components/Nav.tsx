@@ -8,7 +8,7 @@ export default function Nav() {
         <span className="nav__mark" aria-hidden>
           <span className="nav__pulse" />
         </span>
-        Clinic<span className="nav__brand-thin">EMR</span>
+        Clinic<span className="nav__brand-thin">OS</span>
       </a>
       <nav className="nav__links">
         <a href="#ai">Scribe</a>

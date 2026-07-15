@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
-import { ACCESS_ENDPOINT } from "../access";
+import {
+  ACCESS_EMAIL,
+  ACCESS_LIVE,
+  WEB3FORMS_ACCESS_KEY,
+  WEB3FORMS_ENDPOINT,
+} from "../access";
 import { useTransition } from "../transition-context";
 import "../App.css";
 
-type Status = "idle" | "submitting" | "done";
+type Status = "idle" | "submitting" | "done" | "error";
 const ROLES = ["Doctor", "Clinic admin", "Front desk", "Other"];
 
 const PERKS = [
@@ -37,6 +42,8 @@ export default function EarlyAccess() {
     role: ROLES[0],
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Honeypot: real users never fill this hidden field; bots do.
+  const botField = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -74,23 +81,49 @@ export default function EarlyAccess() {
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     if (status === "submitting" || !validate()) return;
+
+    // Silently drop bot submissions caught by the honeypot.
+    if (botField.current?.value) {
+      setStatus("done");
+      return;
+    }
+
     setStatus("submitting");
+
+    // Demo mode until a real Web3Forms key is set — never breaks the live form.
+    if (!ACCESS_LIVE) {
+      await new Promise((r) => setTimeout(r, 1100));
+      setStatus("done");
+      return;
+    }
+
     try {
-      if (ACCESS_ENDPOINT) {
-        await fetch(ACCESS_ENDPOINT, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify(form),
-        });
+      const res = await fetch(WEB3FORMS_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          access_key: WEB3FORMS_ACCESS_KEY,
+          subject: `ClinicOS early access — ${form.clinic || form.name}`,
+          from_name: "ClinicOS Landing",
+          to: ACCESS_EMAIL,
+          name: form.name,
+          email: form.email,
+          clinic: form.clinic,
+          role: form.role,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        setStatus("done");
       } else {
-        await new Promise((r) => setTimeout(r, 1100));
+        setStatus("error");
       }
-      setStatus("done");
     } catch {
-      setStatus("done");
+      setStatus("error");
     }
   };
 
@@ -105,7 +138,7 @@ export default function EarlyAccess() {
 
       <button className="ea__home" onClick={() => go("/")}>
         <span aria-hidden>←</span> Clinic
-        <span className="nav__brand-thin">EMR</span>
+        <span className="nav__brand-thin">OS</span>
       </button>
 
       <div className="ea__inner">
@@ -164,10 +197,23 @@ export default function EarlyAccess() {
           ) : (
             <>
               <h2 className="ea__card-title">Claim your spot</h2>
-              <p className="ea__card-sub">
-                Takes 20 seconds. No card, no commitment.
-              </p>
               <form className="modal__form" onSubmit={submit} noValidate>
+                {/* honeypot — visually hidden, off-screen, not tabbable */}
+                <input
+                  ref={botField}
+                  type="text"
+                  name="botcheck"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    left: "-9999px",
+                    opacity: 0,
+                    height: 0,
+                    width: 0,
+                  }}
+                />
                 <div className="field">
                   <label>Name</label>
                   <input
@@ -229,13 +275,18 @@ export default function EarlyAccess() {
                 >
                   {status === "submitting" ? (
                     <span className="spinner" aria-hidden />
+                  ) : status === "error" ? (
+                    "Try again"
                   ) : (
                     "Request early access"
                   )}
                 </button>
-                <p className="modal__fine">
-                  No spam. We'll only email you about early access.
-                </p>
+                {status === "error" && (
+                  <p className="modal__err" role="alert">
+                    Something went wrong sending that. Please try again, or
+                    email us at {ACCESS_EMAIL}.
+                  </p>
+                )}
               </form>
             </>
           )}

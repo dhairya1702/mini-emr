@@ -22,18 +22,13 @@ export default function Footer() {
             </svg>
           </span>
           <p>
-            Designed to support India's <strong>DPDP Act, 2023</strong>. Patient
-            data is encrypted in transit and at rest, and is never used to train
-            third-party AI models.
+            Designed to support India's <strong>DPDP Act, 2023</strong>.
           </p>
         </div>
         <div className="footer__base">
           <span>
             © {new Date().getFullYear()} Clinic
-            <span className="nav__brand-thin">EMR</span>
-          </span>
-          <span className="footer__note">
-            This page is an early preview and not an offer of service.
+            <span className="nav__brand-thin">OS</span>
           </span>
         </div>
       </div>

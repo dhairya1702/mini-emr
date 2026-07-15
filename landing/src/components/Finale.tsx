@@ -60,7 +60,7 @@ export default function Finale() {
         </div>
         <div className="finale__foot">
           <span className="finale__brand">
-            Clinic<span className="nav__brand-thin">EMR</span>
+            Clinic<span className="nav__brand-thin">OS</span>
           </span>
           <span className="finale__copy-note">Coming soon</span>
         </div>

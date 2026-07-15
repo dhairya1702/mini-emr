@@ -14,8 +14,8 @@ export type Scene = {
     | "ai"
     | "context"
     | "practice"
-    | "billing"
-    | "followup"
+    | "ops"
+    | "continuity"
     | "none";
 };
 
@@ -46,7 +46,6 @@ export const SCENES: Scene[] = [
     kicker: "01 — The AI Scribe",
     title: "A few words in. A full note out.",
     copy: "Jot the symptoms and findings in shorthand. The AI expands them into a complete, structured clinical note — history, examination, diagnosis, plan — ready for you to review and sign.",
-    chips: ["Type shorthand", "AI expands", "Review & sign"],
     visual: "ai",
   },
   {
@@ -57,7 +56,6 @@ export const SCENES: Scene[] = [
     kicker: "02 — Patient Context",
     title: "It already knows the whole story.",
     copy: "Every visit, note, attachment and result, understood. Walk into the room and the AI surfaces what matters about this patient — before you ask.",
-    chips: ["Timeline", "Summaries", "Recall"],
     visual: "context",
   },
   {
@@ -68,29 +66,26 @@ export const SCENES: Scene[] = [
     kicker: "03 — Practice Management",
     title: "The whole practice, on one schedule.",
     copy: "Appointments, reception, staff and rooms — across every doctor and location, in one live view. The AI books, checks patients in, and keeps the day moving on its own.",
-    chips: ["Scheduling", "Multi-location", "Front desk"],
     visual: "practice",
   },
   {
-    id: "billing",
+    id: "ops",
     background:
       "radial-gradient(110% 100% at 85% 20%, rgba(79,156,247,0.20) 0%, rgba(7,13,24,0) 55%), radial-gradient(80% 80% at 5% 85%, rgba(47,143,211,0.12) 0%, rgba(4,7,13,0) 60%), linear-gradient(180deg, #060c17 0%, #0a1422 100%)",
     glow: "#7fc0ff",
-    kicker: "04 — Runs itself",
-    title: "And the rest takes care of itself.",
-    copy: "Billing, inventory and earnings stay in lockstep. Tracked stock deducts on finalized invoices. Revenue reflects only real, paid work — no spreadsheets.",
-    chips: ["Invoices", "Inventory", "Earnings"],
-    visual: "billing",
+    kicker: "04 — Operations",
+    title: "The back office runs itself.",
+    copy: "Invoices, inventory and earnings stay in lockstep. Stock deducts as bills finalize, revenue reflects only real paid work, and reminders go out on their own — no spreadsheets, no chasing.",
+    visual: "ops",
   },
   {
-    id: "followup",
+    id: "continuity",
     background:
       "radial-gradient(120% 120% at 50% -10%, rgba(103,183,255,0.16) 0%, rgba(7,13,24,0) 55%), radial-gradient(90% 90% at 50% 110%, rgba(47,143,211,0.12) 0%, rgba(4,7,13,0) 60%), linear-gradient(180deg, #060b15 0%, #081020 100%)",
     glow: "#67b7ff",
     kicker: "05 — Continuity",
-    title: "Care that doesn't end at the door.",
-    copy: "The AI schedules follow-ups, sends the reminders, and lets patients re-book within your hours. The loop closes on its own.",
-    chips: ["Schedule", "Remind", "Re-book"],
-    visual: "followup",
+    title: "Care that continues in their pocket.",
+    copy: "The visit doesn't end at the door. Patients get reminders, results and prescriptions on their phone — and re-book with you in one tap, picking up right where they left off.",
+    visual: "continuity",
   },
 ];

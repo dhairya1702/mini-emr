@@ -50,17 +50,23 @@ export default function Scene({ scene, index }: Props) {
           root.current?.querySelector(".viz")?.classList.add("is-writing"),
       });
 
-      // gentle parallax on the visual as the section travels through
-      gsap.to(".scene__visual", {
-        yPercent: -12,
-        ease: "none",
-        scrollTrigger: {
-          trigger: root.current,
-          start: "top bottom",
-          end: "bottom top",
-          scrub: 1,
-        },
-      });
+      // gentle parallax on the visual as the section travels through —
+      // only on wide layouts. When the scene stacks (mobile/tablet) the
+      // visual sits directly below the copy, so shifting it up would overlap
+      // the text.
+      const isStacked = window.matchMedia("(max-width: 860px)").matches;
+      if (!isStacked) {
+        gsap.to(".scene__visual", {
+          yPercent: -12,
+          ease: "none",
+          scrollTrigger: {
+            trigger: root.current,
+            start: "top bottom",
+            end: "bottom top",
+            scrub: 1,
+          },
+        });
+      }
     }, root);
 
     ScrollTrigger.refresh();

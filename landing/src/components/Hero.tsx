@@ -60,8 +60,10 @@ export default function Hero() {
         </h1>
         <p className="hero__sub">
           A scribe that finishes your notes, a context engine that knows every
-          patient, and an assistant for every workflow — one intelligence
-          running your entire clinic.
+          patient, and an assistant for every workflow.
+        </p>
+        <p className="hero__sub hero__sub--accent">
+          One intelligence running your entire clinic
         </p>
       </div>
       <div className="hero__cue">
