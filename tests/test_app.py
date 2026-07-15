@@ -804,7 +804,9 @@ class FakeRepo:
         user["doctor_signature_content_type"] = content_type
         user["doctor_signature_data_base64"] = data_base64
         user["doctor_signature_url"] = f"/users/{user_id}/signature/file"
-        return dict(user)
+        result = dict(user)
+        result.pop("session_version", None)
+        return result
 
     async def clear_user_signature(self, user_id: str) -> dict:
         user = self.users[user_id]
@@ -812,7 +814,9 @@ class FakeRepo:
         user["doctor_signature_content_type"] = None
         user["doctor_signature_data_base64"] = None
         user["doctor_signature_url"] = None
-        return dict(user)
+        result = dict(user)
+        result.pop("session_version", None)
+        return result
 
     async def create_patient(self, org_id: str, payload) -> dict:
         patient_id = str(uuid4())

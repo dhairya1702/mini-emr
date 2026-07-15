@@ -1,5 +1,6 @@
 from fastapi import HTTPException, Response
 
+from app.clinic_timezone import DEFAULT_TIMEZONE
 from app.auth import (
     hash_password,
     issue_session_headers,
@@ -33,7 +34,7 @@ def _session_identity(row: dict) -> dict[str, str | int]:
 
 
 def build_user_out(row: dict) -> UserOut:
-    return UserOut(**{
+    values = {
         key: row.get(key)
         for key in (
             "id",
@@ -49,7 +50,9 @@ def build_user_out(row: dict) -> UserOut:
             "created_at",
             "session_version",
         )
-    })
+    }
+    values["session_version"] = int(row.get("session_version") or 1)
+    return UserOut(**values)
 
 
 def _invalid_customer() -> HTTPException:
@@ -75,6 +78,7 @@ async def register_user_workflow(
         clinic_name=payload.clinic_name,
         clinic_address=payload.clinic_address,
         clinic_phone=payload.clinic_phone,
+        timezone=DEFAULT_TIMEZONE,
         doctor_name=payload.doctor_name,
         onboarding_required=True,
         onboarding_completed_at=None,

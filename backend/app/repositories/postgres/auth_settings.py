@@ -1118,7 +1118,7 @@ class PostgresAuthSettingsRepository:
                         where id = %s
                         returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
-                          doctor_signature_data_base64, created_at
+                          doctor_signature_data_base64, created_at, session_version
                         """,
                         (payload.role, timestamp, user_id),
                     )
@@ -1144,7 +1144,7 @@ class PostgresAuthSettingsRepository:
                         where id = %s
                         returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
-                          doctor_signature_data_base64, created_at
+                          doctor_signature_data_base64, created_at, session_version
                         """,
                         (
                             payload.name.strip(),
@@ -1230,7 +1230,7 @@ class PostgresAuthSettingsRepository:
                         where id = %s
                         returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
-                          doctor_signature_data_base64, created_at
+                          doctor_signature_data_base64, created_at, session_version
                         """,
                         (filename, content_type, data_base64, timestamp, user_id),
                     )
@@ -1257,7 +1257,7 @@ class PostgresAuthSettingsRepository:
                         where id = %s
                         returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
-                          doctor_signature_data_base64, created_at
+                          doctor_signature_data_base64, created_at, session_version
                         """,
                         (timestamp, user_id),
                     )

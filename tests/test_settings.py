@@ -25,7 +25,7 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
     assert initial.json()["appointment_end_time"] == "18:00"
     assert initial.json()["appointments_per_hour"] == 4
     assert initial.json()["clinic_specialty"] is None
-    assert initial.json()["timezone"] == "UTC"
+    assert initial.json()["timezone"] == "Asia/Kolkata"
     assert initial.json()["onboarding_required"] is True
     assert initial.json()["onboarding_completed_at"] is None
     assert initial.json()["workspace_mode"] == "solo"

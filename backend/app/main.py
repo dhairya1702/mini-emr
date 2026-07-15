@@ -83,8 +83,10 @@ async def lifespan(app: FastAPI):
     validate_runtime = getattr(settings, "validate_runtime", None)
     if callable(validate_runtime):
         validate_runtime()
-    postgres_manager = get_postgres_connection_manager()
-    postgres_manager.open()
+    postgres_manager = None
+    if get_repository not in app.dependency_overrides:
+        postgres_manager = get_postgres_connection_manager()
+        postgres_manager.open()
     reminder_runner_enabled = bool(getattr(settings, "follow_up_reminder_runner_enabled", False))
     reminder_task = (
         asyncio.create_task(_run_follow_up_reminders(app))
@@ -98,8 +100,9 @@ async def lifespan(app: FastAPI):
             reminder_task.cancel()
             with suppress(asyncio.CancelledError):
                 await reminder_task
-        with suppress(Exception):
-            postgres_manager.close()
+        if postgres_manager is not None:
+            with suppress(Exception):
+                postgres_manager.close()
 
 
 settings = config_module.get_settings()

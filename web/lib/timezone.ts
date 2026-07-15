@@ -99,14 +99,7 @@ function buildTimeZoneLabel(value: string) {
 }
 
 export function getDefaultClinicTimeZone() {
-  if (typeof Intl === "undefined") {
-    return DEFAULT_CLINIC_TIMEZONE;
-  }
-  try {
-    return normalizeTimeZoneValue(Intl.DateTimeFormat().resolvedOptions().timeZone);
-  } catch {
-    return DEFAULT_CLINIC_TIMEZONE;
-  }
+  return DEFAULT_CLINIC_TIMEZONE;
 }
 
 export function listSupportedTimeZones(selectedTimeZone?: string): TimeZoneOption[] {

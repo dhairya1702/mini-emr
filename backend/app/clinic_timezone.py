@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-DEFAULT_TIMEZONE = "UTC"
+DEFAULT_TIMEZONE = "Asia/Kolkata"
 TIMEZONE_ALIASES = {
     "Asia/Calcutta": "Asia/Kolkata",
 }

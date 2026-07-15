@@ -104,7 +104,7 @@ create table if not exists public.clinic_settings (
   clinic_address text not null default '',
   clinic_phone text not null default '',
   clinic_specialty text check (clinic_specialty in ('optometry', 'general_physician', 'pediatrics', 'dentistry')),
-  timezone text not null default 'UTC',
+  timezone text not null default 'Asia/Kolkata',
   appointment_start_time text not null default '09:00',
   appointment_end_time text not null default '18:00',
   appointments_per_hour integer not null default 4,
@@ -683,7 +683,7 @@ alter table public.clinic_settings
 add column if not exists appointment_start_time text not null default '09:00';
 
 alter table public.clinic_settings
-add column if not exists timezone text not null default 'UTC';
+add column if not exists timezone text not null default 'Asia/Kolkata';
 
 alter table public.clinic_settings
 add column if not exists appointment_end_time text not null default '18:00';
@@ -1082,7 +1082,7 @@ create or replace function public.self_book_follow_up_atomic(
   p_follow_up_id uuid,
   p_scheduled_for timestamptz,
   p_appointments_per_hour integer,
-  p_timezone text default 'UTC'
+  p_timezone text default 'Asia/Kolkata'
 ) returns jsonb
 language plpgsql
 as $$
@@ -1098,7 +1098,7 @@ declare
 begin
   v_scheduled_for := date_trunc('minute', p_scheduled_for);
   v_capacity := least(greatest(coalesce(p_appointments_per_hour, 4), 1), 12);
-  v_timezone := coalesce(nullif(trim(p_timezone), ''), 'UTC');
+  v_timezone := coalesce(nullif(trim(p_timezone), ''), 'Asia/Kolkata');
   v_hour_bucket := date_trunc('hour', v_scheduled_for at time zone v_timezone);
 
   if v_scheduled_for <= now() then
