@@ -1,4 +1,5 @@
 import { useTransition } from "../transition-context";
+import { trackAnalyticsEvent } from "../analytics";
 
 export default function Nav() {
   const { go } = useTransition();
@@ -14,7 +15,16 @@ export default function Nav() {
         <a href="#ai">Scribe</a>
         <a href="#chart">Context</a>
         <a href="#queue">Assistance</a>
-        <button className="nav__cta" onClick={() => go("/early-access")}>
+        <button
+          className="nav__cta"
+          onClick={() => {
+            trackAnalyticsEvent("select_content", {
+              content_type: "cta",
+              content_id: "nav_request_access",
+            });
+            go("/early-access");
+          }}
+        >
           Request access
         </button>
       </nav>

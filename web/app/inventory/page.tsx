@@ -30,6 +30,7 @@ function emptyCatalogForm(itemType: CatalogItemType = "service"): CatalogFormSta
     stock_quantity: "",
     low_stock_threshold: "",
     unit: "",
+    aliases: "",
   };
 }
 
@@ -182,6 +183,7 @@ export default function InventoryPage() {
         stock_quantity: catalogForm.track_inventory ? stockQuantity : 0,
         low_stock_threshold: catalogForm.track_inventory ? lowStockThreshold : 0,
         unit: catalogForm.unit.trim(),
+        aliases: catalogForm.aliases.split(",").map((alias) => alias.trim()).filter(Boolean),
       });
       setCatalogStatus(catalogForm.item_type === "service" ? "Service saved." : "Medicine saved.");
       setCatalogForm(emptyCatalogForm(catalogForm.item_type));
@@ -470,6 +472,16 @@ export default function InventoryPage() {
                     value={catalogForm.unit}
                     onChange={(event) => setCatalogForm((current) => ({ ...current, unit: event.target.value }))}
                     placeholder="per visit, each, strip, bottle"
+                    className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Matching aliases</span>
+                  <input
+                    value={catalogForm.aliases}
+                    onChange={(event) => setCatalogForm((current) => ({ ...current, aliases: event.target.value }))}
+                    placeholder="strep test, rapid antigen test"
                     className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
                   />
                 </label>

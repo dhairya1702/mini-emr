@@ -5,6 +5,7 @@ import "./index.css";
 import { TransitionProvider } from "./transition";
 import Landing from "./pages/Landing";
 import EarlyAccess from "./pages/EarlyAccess";
+import "./analytics";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

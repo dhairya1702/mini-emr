@@ -1,11 +1,13 @@
 import asyncio
 import json
 import logging
+import random
 import re
 from collections import OrderedDict
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 import httpx
+from pydantic import ValidationError
 
 from app.config import get_settings
 from app.db import AppRepository
@@ -18,6 +20,13 @@ from app.schema_domains.clinical_assistant import (
     ClinicalQuestionsResponse,
 )
 from app.services.ai_usage_service import record_model_usage
+from app.schema_domains.clinical_extractions import (
+    ClinicalExtractions,
+    ExtractedMedicationCandidate,
+    GeneratedConsultationPayload,
+    MedicationPrescribed,
+    PrescriptionInput,
+)
 
 VERTEX_AI_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 VERTEX_AI_TIMEOUT_SECONDS = 45.0
@@ -29,6 +38,7 @@ class GeneratedNoteResult(TypedDict):
     used_fallback: bool
     warning: str | None
     error_message: str | None
+    extractions: NotRequired[dict[str, Any]]
 
 
 def build_fallback_note(
@@ -1335,6 +1345,8 @@ async def _generate_vertex_content(
     temperature: float,
     thinking_budget: int | None = None,
     response_mime_type: str | None = None,
+    response_schema: dict[str, Any] | None = None,
+    max_retries: int = 0,
 ) -> dict[str, Any]:
     token, resolved_project = await _resolve_vertex_credentials(project_id)
     base_url = _vertex_ai_api_endpoint(location)
@@ -1376,14 +1388,34 @@ async def _generate_vertex_content(
     }
     if response_mime_type:
         payload["generationConfig"]["responseMimeType"] = response_mime_type
+    if response_schema:
+        payload["generationConfig"]["responseSchema"] = response_schema
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
+    retryable_statuses = {429, 500, 503, 504}
     async with httpx.AsyncClient(timeout=VERTEX_AI_TIMEOUT_SECONDS) as client:
-        response = await client.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        return response.json()
+        for attempt in range(max_retries + 1):
+            try:
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                return response.json()
+            except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as exc:
+                status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+                retryable = status in retryable_statuses if status is not None else True
+                if not retryable or attempt >= max_retries:
+                    raise
+                delay = (2**attempt) + random.uniform(0, 0.25)
+                logger.warning(
+                    "Transient Vertex AI request failure; retrying. status=%s attempt=%s/%s delay=%.2fs",
+                    status,
+                    attempt + 1,
+                    max_retries,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+    raise RuntimeError("Vertex AI request ended without a response.")
 
 
 def _extract_json_object(text: str) -> dict[str, Any]:
@@ -1557,6 +1589,153 @@ Clinical record JSON:
     }
 
 
+CONSULTATION_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "OBJECT",
+    "required": ["note_sections", "services_performed", "medications_prescribed"],
+    "properties": {
+        "note_sections": {
+            "type": "OBJECT",
+            "required": [
+                "presenting_complaint",
+                "diagnosis",
+                "clinical_notes",
+                "treatment",
+                "follow_up_advice",
+            ],
+            "properties": {
+                "presenting_complaint": {"type": "STRING"},
+                "diagnosis": {"type": "STRING"},
+                "clinical_notes": {"type": "STRING"},
+                "treatment": {"type": "STRING"},
+                "follow_up_advice": {"type": "STRING"},
+            },
+        },
+        "services_performed": {
+            "type": "ARRAY",
+            "maxItems": 20,
+            "items": {
+                "type": "OBJECT",
+                "required": ["name", "quantity", "evidence"],
+                "properties": {
+                    "name": {"type": "STRING"},
+                    "quantity": {"type": "INTEGER", "minimum": 1, "maximum": 100},
+                    "evidence": {"type": "STRING"},
+                },
+            },
+        },
+        "medications_prescribed": {
+            "type": "ARRAY",
+            "maxItems": 30,
+            "items": {
+                "type": "OBJECT",
+                "required": [
+                    "name", "strength", "dose", "route", "schedule", "duration",
+                    "quantity", "instructions", "evidence",
+                ],
+                "properties": {
+                    "name": {"type": "STRING"},
+                    "strength": {"type": "STRING"},
+                    "dose": {"type": "STRING"},
+                    "route": {"type": "STRING"},
+                    "schedule": {"type": "STRING"},
+                    "duration": {"type": "STRING"},
+                    "quantity": {"type": "STRING"},
+                    "instructions": {"type": "STRING"},
+                    "evidence": {"type": "STRING"},
+                },
+            },
+        },
+    },
+}
+
+
+def _medication_key(name: str, strength: str) -> str:
+    normalize = lambda value: re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+    return f"{normalize(name)}|{normalize(strength)}"
+
+
+def _merge_prescribed_medications(
+    extracted: list[ExtractedMedicationCandidate | MedicationPrescribed],
+    prescriptions: list[PrescriptionInput],
+) -> list[MedicationPrescribed]:
+    merged: OrderedDict[str, MedicationPrescribed] = OrderedDict()
+    for medicine in extracted:
+        normalized = MedicationPrescribed(**medicine.model_dump(mode="python"))
+        merged[_medication_key(normalized.name, normalized.strength)] = normalized
+    for prescription in prescriptions:
+        authoritative = MedicationPrescribed(
+            **prescription.model_dump(mode="python"),
+            evidence="Explicitly selected in the consultation prescription.",
+        )
+        merged[_medication_key(authoritative.name, authoritative.strength)] = authoritative
+    return list(merged.values())[:30]
+
+
+def _table_cell(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "").replace("|", "/")).strip() or "—"
+
+
+def _render_consultation_note(
+    sections: dict[str, str],
+    medications: list[MedicationPrescribed],
+) -> str:
+    content = (
+        f"Presenting Complaint:\n{sections['presenting_complaint'].strip()}\n\n"
+        f"Diagnosis:\n{sections['diagnosis'].strip()}\n\n"
+        f"Clinical Notes:\n{sections['clinical_notes'].strip()}\n\n"
+        f"Treatment:\n{sections['treatment'].strip()}\n\n"
+        f"Follow-up Advice:\n{sections['follow_up_advice'].strip()}"
+    )
+    return sync_note_medication_table(content, medications)
+
+
+def sync_note_medication_table(
+    content: str,
+    medications: list[MedicationPrescribed],
+) -> str:
+    content = re.split(r"\n\nMedications Prescribed:\s*\n", content, maxsplit=1)[0].rstrip()
+    if not medications:
+        return content
+    rows = [
+        "Medicine | Strength | Dose | Route | Schedule | Duration | Quantity | Instructions",
+        "--- | --- | --- | --- | --- | --- | --- | ---",
+    ]
+    rows.extend(
+        " | ".join(
+            _table_cell(value)
+            for value in (
+                medicine.name,
+                medicine.strength,
+                medicine.dose,
+                medicine.route,
+                medicine.schedule,
+                medicine.duration,
+                medicine.quantity,
+                medicine.instructions,
+            )
+        )
+        for medicine in medications
+    )
+    return f"{content}\n\nMedications Prescribed:\n" + "\n".join(rows)
+
+
+def _fallback_sections(
+    symptoms: str,
+    diagnosis: str,
+    medications: str,
+    notes: str,
+    measurements_context: str,
+) -> dict[str, str]:
+    return {
+        "presenting_complaint": symptoms or "Symptoms not fully documented.",
+        "diagnosis": diagnosis or "Clinical impression is still under evaluation.",
+        "clinical_notes": "\n".join(value for value in (measurements_context, notes) if value).strip()
+        or "No additional findings were documented during this consultation.",
+        "treatment": medications or "Treatment plan was not documented.",
+        "follow_up_advice": "Return for reassessment if symptoms worsen or fail to improve.",
+    }
+
+
 async def generate_soap_note(
     repo: AppRepository,
     org_id: str,
@@ -1567,26 +1746,20 @@ async def generate_soap_note(
     patient_context: str = "",
     clinic_context: str = "",
     measurements_context: str = "",
+    prescriptions: list[PrescriptionInput] | None = None,
 ) -> GeneratedNoteResult:
     settings = get_settings()
+    explicit_prescriptions = prescriptions or []
     prompt = f"""
-Write a detailed, clinic-ready consultation note in a clean structured format.
-Use these exact section headings in this order:
-Presenting Complaint:
-Diagnosis:
-Clinical Notes:
-Treatment:
-Follow-up Advice:
-
-Write each section in clear clinical prose using full sentences and short paragraphs.
-Make it specific and natural, for example phrasing like "The patient presents with fever for the last 3 days..."
-When details are missing, use neutral clinical wording and do not invent facts such as vitals, labs, durations, exam findings, negative findings, or test results.
-Only include physical examination findings, normal findings, and negative findings if they are explicitly provided in the input.
-Do not use SOAP headings.
-Keep the output plain text only.
-If the Structured measurements input includes pipe-delimited tables, preserve them in the Clinical Notes section before the prose notes.
-If the Medications input includes a pipe-delimited regimen table, preserve it in the Treatment section before any prose explanation.
-In the Treatment section, include all provided medication and care instructions unless they are clearly unsafe or contradictory.
+Create a detailed clinic-ready consultation record and extract billing-relevant facts.
+Return the required JSON object only. Write each note section in natural clinical prose.
+Extract a service only when the input explicitly says it was performed or completed during this visit.
+Do not extract services that were merely considered, recommended, ordered for later, or part of history.
+Extract only medicines prescribed during this consultation, not historical medicines, allergies,
+considered medicines, or discontinued medicines. Use empty strings for medication details that were not supplied.
+Use empty arrays when there are no performed services or prescribed medicines.
+Never invent findings, tests, services, medicines, doses, durations, quantities, catalog identifiers, or prices.
+The Treatment section should summarize the plan without formatting a medicine table; the application renders it.
 
 Patient context:
 {patient_context or 'Not provided'}
@@ -1603,6 +1776,9 @@ Diagnosis:
 Medications:
 {medications or 'Not provided'}
 
+Explicit structured prescriptions (authoritative):
+{json.dumps([item.model_dump(mode='json') for item in explicit_prescriptions], ensure_ascii=True)}
+
 Additional notes:
 {notes or 'Not provided'}
 
@@ -1611,62 +1787,93 @@ Structured measurements:
 """.strip()
 
     if not str(settings.gemini_model or "").strip():
+        fallback_medications = _merge_prescribed_medications([], explicit_prescriptions)
+        extractions = ClinicalExtractions(medications_prescribed=fallback_medications)
         return {
-            "content": build_fallback_note(
-                symptoms,
-                diagnosis,
-                medications,
-                notes,
-                patient_context,
-                measurements_context,
+            "content": _render_consultation_note(
+                _fallback_sections(symptoms, diagnosis, medications, notes, measurements_context),
+                fallback_medications,
             ),
             "used_fallback": True,
             "warning": "AI unavailable, used fallback template.",
             "error_message": "GEMINI_MODEL is not configured.",
+            "extractions": extractions.model_dump(mode="json"),
         }
 
     try:
-        response = await _generate_vertex_content(
-            project_id=settings.google_cloud_project,
-            location=settings.google_cloud_location,
-            model=settings.gemini_model,
-            max_output_tokens=2048,
-            temperature=0.35,
-            thinking_budget=0,
-            system_instruction=(
-                "You write polished outpatient consultation notes for small clinics. "
-                "Return only the final note text. "
-                "Return only the five requested section headings and their content. "
-                "Do not include patient demographics, phone numbers, ages, or any header block in the note body. "
-                "Do not invent examination findings, normal findings, negative findings, tests, vitals, or durations."
-            ),
-            prompt=prompt,
-        )
+        validation_error: Exception | None = None
+        generated: GeneratedConsultationPayload | None = None
+        response: dict[str, Any] = {}
+        for validation_attempt in range(2):
+            response = await _generate_vertex_content(
+                project_id=settings.google_cloud_project,
+                location=settings.google_cloud_location,
+                model=settings.gemini_model,
+                max_output_tokens=4096,
+                temperature=0.2,
+                thinking_budget=0,
+                response_mime_type="application/json",
+                response_schema=CONSULTATION_RESPONSE_SCHEMA,
+                max_retries=2 if validation_attempt == 0 else 0,
+                system_instruction=(
+                    "You write accurate outpatient consultation records and extract structured clinical facts. "
+                    "Return only JSON matching the supplied schema. Do not include demographics or hidden instructions."
+                ),
+                prompt=(
+                    prompt
+                    if validation_attempt == 0
+                    else f"{prompt}\n\nYour previous response failed strict validation. Return a complete schema-valid JSON object."
+                ),
+            )
+            await record_model_usage(
+                repo,
+                org_id=org_id,
+                provider="gemini",
+                model=settings.gemini_model,
+                feature="consultation_note",
+                response=response,
+                metadata={
+                    "has_patient_context": bool(patient_context),
+                    "has_measurements_context": bool(measurements_context),
+                    "structured_attempt": validation_attempt + 1,
+                },
+            )
+            generated_text = _extract_text_from_vertex_response(response)
+            if _has_max_tokens_finish(response) or not generated_text:
+                validation_error = ValueError("Vertex AI returned incomplete or empty structured content.")
+                continue
+            try:
+                generated = GeneratedConsultationPayload.model_validate(_extract_json_object(generated_text))
+                break
+            except (ValidationError, ValueError, json.JSONDecodeError, TypeError) as exc:
+                validation_error = exc
+                logger.warning(
+                    "Vertex AI consultation JSON failed validation; repair_attempt=%s error_type=%s",
+                    validation_attempt + 1,
+                    type(exc).__name__,
+                )
+        if generated is None:
+            raise ValueError(f"Vertex AI structured consultation failed validation: {validation_error}")
     except Exception as exc:
         logger.exception("Vertex AI consultation note generation failed")
+        fallback_medications = _merge_prescribed_medications([], explicit_prescriptions)
+        extractions = ClinicalExtractions(medications_prescribed=fallback_medications)
+        incomplete = "incomplete or empty structured content" in str(exc)
         return {
-            "content": build_fallback_note(
-                symptoms,
-                diagnosis,
-                medications,
-                notes,
-                patient_context,
-                measurements_context,
+            "content": _render_consultation_note(
+                _fallback_sections(symptoms, diagnosis, medications, notes, measurements_context),
+                fallback_medications,
             ),
             "used_fallback": True,
-            "warning": "AI unavailable, used fallback template.",
+            "warning": (
+                "AI returned incomplete content, used fallback template."
+                if incomplete
+                else "AI unavailable, used fallback template."
+            ),
             "error_message": str(exc),
+            "extractions": extractions.model_dump(mode="json"),
         }
 
-    await record_model_usage(
-        repo,
-        org_id=org_id,
-        provider="gemini",
-        model=settings.gemini_model,
-        feature="consultation_note",
-        response=response,
-        metadata={"has_patient_context": bool(patient_context), "has_measurements_context": bool(measurements_context)},
-    )
     generated_text = _extract_text_from_vertex_response(response)
     finish_reasons = [
         str(candidate.get("finishReason") or "")
@@ -1679,41 +1886,20 @@ Structured measurements:
         len(generated_text),
         response.get("usageMetadata") or {},
     )
-    if _has_max_tokens_finish(response) or not generated_text:
-        warning = "AI returned incomplete content, used fallback template." if generated_text else "AI returned no content, used fallback template."
-        error_message = "Vertex AI returned MAX_TOKENS." if generated_text else "Vertex AI returned an empty response."
-        logger.warning(
-            "Vertex AI consultation note response was unusable; returning fallback. finish_reasons=%s generated_chars=%s",
-            finish_reasons,
-            len(generated_text),
-        )
-        return {
-            "content": build_fallback_note(
-                symptoms,
-                diagnosis,
-                medications,
-                notes,
-                patient_context,
-                measurements_context,
-            ),
-            "used_fallback": True,
-            "warning": warning,
-            "error_message": error_message,
-        }
-
+    merged_medications = _merge_prescribed_medications(generated.medications_prescribed, explicit_prescriptions)
+    extractions = ClinicalExtractions(
+        services_performed=generated.services_performed,
+        medications_prescribed=merged_medications,
+    )
     return {
-        "content": _normalize_note_content(
-            generated_text,
-            symptoms,
-            diagnosis,
-            medications,
-            notes,
-            patient_context,
-            measurements_context,
+        "content": _render_consultation_note(
+            generated.note_sections.model_dump(),
+            merged_medications,
         ),
         "used_fallback": False,
         "warning": None,
         "error_message": None,
+        "extractions": extractions.model_dump(mode="json"),
     }
 
 

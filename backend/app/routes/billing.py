@@ -15,6 +15,8 @@ from app.schema_domains.billing import (
     InvoiceOut,
     SendInvoiceRequest,
 )
+from app.schema_domains.clinical_extractions import BillingSuggestionsResponse
+from app.services.billing_suggestion_service import build_note_billing_suggestions
 from app.services.billing_workflow import (
     create_invoice_workflow,
     finalize_invoice_workflow,
@@ -25,6 +27,18 @@ from app.services.pdf_service import build_invoice_pdf
 
 
 router = APIRouter()
+
+
+@router.get("/notes/{note_id}/billing-suggestions", response_model=BillingSuggestionsResponse)
+async def get_note_billing_suggestions(
+    note_id: str,
+    current_user: UserOut = Depends(require_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> BillingSuggestionsResponse:
+    try:
+        return await build_note_billing_suggestions(repo, current_user, note_id)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
 
 
 @router.post("/invoices", response_model=InvoiceOut, status_code=201)

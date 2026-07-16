@@ -7,6 +7,7 @@ import {
   WEB3FORMS_ENDPOINT,
 } from "../access";
 import { useTransition } from "../transition-context";
+import { trackAnalyticsEvent } from "../analytics";
 import "../App.css";
 
 type Status = "idle" | "submitting" | "done" | "error";
@@ -94,6 +95,7 @@ export default function EarlyAccess() {
     if (!ACCESS_LIVE) {
       await new Promise((r) => setTimeout(r, 1100));
       setStatus("done");
+      trackAnalyticsEvent("generate_lead", { form_name: "early_access" });
       return;
     }
 
@@ -119,6 +121,7 @@ export default function EarlyAccess() {
       const data = await res.json().catch(() => null);
       if (res.ok && data?.success) {
         setStatus("done");
+        trackAnalyticsEvent("generate_lead", { form_name: "early_access" });
       } else {
         setStatus("error");
       }

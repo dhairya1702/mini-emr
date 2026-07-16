@@ -115,7 +115,13 @@ async def update_note_draft(
     current_user: UserOut = Depends(require_admin),
 ) -> NoteOut:
     try:
-        return await update_note_draft_workflow(repo, current_user, note_id, payload.content)
+        return await update_note_draft_workflow(
+            repo,
+            current_user,
+            note_id,
+            payload.content,
+            payload.extractions.model_dump(mode="json") if payload.extractions else None,
+        )
     except ValueError as exc:
         raise bad_request_error(exc) from exc
 

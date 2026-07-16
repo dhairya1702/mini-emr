@@ -78,6 +78,8 @@ create table if not exists public.notes (
   asset_payload jsonb not null default '[]'::jsonb,
   snapshot_asset_payload jsonb not null default '[]'::jsonb,
   structured_modules jsonb not null default '[]'::jsonb,
+  clinical_extractions jsonb not null default '{"services_performed":[],"medications_prescribed":[]}'::jsonb,
+  snapshot_clinical_extractions jsonb,
   finalized_at timestamptz,
   sent_at timestamptz,
   sent_by uuid references public.clinic_users(id) on delete set null,
@@ -166,6 +168,7 @@ create table if not exists public.catalog_items (
   stock_quantity numeric(14,3) not null default 0,
   low_stock_threshold numeric(14,3) not null default 0,
   unit text not null default '',
+  aliases jsonb not null default '[]'::jsonb check (jsonb_typeof(aliases) = 'array'),
   created_at timestamptz not null default now()
 );
 
@@ -892,6 +895,14 @@ create index if not exists patient_visits_org_patient_created_idx on public.pati
 create index if not exists notes_org_patient_id_idx on public.notes (org_id, patient_id, created_at desc);
 create index if not exists clinic_users_org_role_idx on public.clinic_users (org_id, role, created_at desc);
 create index if not exists catalog_items_org_type_idx on public.catalog_items (org_id, item_type, name);
+
+alter table public.notes
+  add column if not exists clinical_extractions jsonb not null
+    default '{"services_performed":[],"medications_prescribed":[]}'::jsonb,
+  add column if not exists snapshot_clinical_extractions jsonb;
+
+alter table public.catalog_items
+  add column if not exists aliases jsonb not null default '[]'::jsonb;
 create index if not exists invoices_org_patient_idx on public.invoices (org_id, patient_id, created_at desc);
 create index if not exists invoices_org_created_idx on public.invoices (org_id, created_at desc);
 create index if not exists invoice_items_invoice_idx on public.invoice_items (invoice_id, created_at asc);

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schema_domains.common import CatalogItemType, PaymentStatus
 
@@ -14,6 +14,17 @@ class CatalogItemBase(BaseModel):
     stock_quantity: float = Field(default=0, ge=0, le=1000000)
     low_stock_threshold: float = Field(default=0, ge=0, le=1000000)
     unit: str = Field(default="", max_length=40)
+    aliases: list[str] = Field(default_factory=list, max_length=30)
+
+    @field_validator("aliases")
+    @classmethod
+    def normalize_aliases(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for alias in value:
+            cleaned = alias.strip()
+            if cleaned and cleaned.casefold() not in {entry.casefold() for entry in normalized}:
+                normalized.append(cleaned[:120])
+        return normalized
 
 
 class CatalogItemCreate(CatalogItemBase):

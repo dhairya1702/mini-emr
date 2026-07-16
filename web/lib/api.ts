@@ -2,6 +2,7 @@ import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
 import {
   AccountUpdatePayload,
   AuditEvent,
+  BillingSuggestionsResponse,
   Appointment,
   AppointmentCheckInPayload,
   AppointmentCreatePayload,
@@ -733,6 +734,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }, { timeoutMs: LONG_REQUEST_TIMEOUT_MS }),
+  getNoteBillingSuggestions: (noteId: string) =>
+    request<BillingSuggestionsResponse>(`/notes/${noteId}/billing-suggestions`),
   generateClinicalQuestions: (payload: ClinicalQuestionsPayload) =>
     request<ClinicalQuestionsResponse>("/ai/clinical-questions", {
       method: "POST",

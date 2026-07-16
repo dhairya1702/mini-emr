@@ -3,6 +3,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.schema_domains.common import NoteStatus
+from app.schema_domains.clinical_extractions import ClinicalExtractions, PrescriptionInput
 from app.schema_domains.optometry import (
     BinocularVisionInput,
     ContactLensInput,
@@ -35,6 +36,7 @@ class GenerateNoteRequest(BaseModel):
     myopia_measurement: MyopiaMeasurementInput | None = None
     structured_modules: list[StructuredModuleInput] = Field(default_factory=list, max_length=20)
     assets: list[NoteAssetInput] = Field(default_factory=list, max_length=12)
+    prescriptions: list[PrescriptionInput] = Field(default_factory=list, max_length=30)
 
 
 class GenerateNoteResponse(BaseModel):
@@ -43,6 +45,7 @@ class GenerateNoteResponse(BaseModel):
     content: str
     used_fallback: bool = False
     warning: str | None = None
+    extractions: ClinicalExtractions = Field(default_factory=ClinicalExtractions)
 
 
 class FinalizeNoteRequest(BaseModel):
@@ -51,6 +54,7 @@ class FinalizeNoteRequest(BaseModel):
 
 class UpdateNoteDraftRequest(BaseModel):
     content: str = Field(min_length=1, max_length=50000)
+    extractions: ClinicalExtractions | None = None
 
 
 class GenerateLetterRequest(BaseModel):

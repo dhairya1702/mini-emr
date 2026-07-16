@@ -571,6 +571,7 @@ class ScriptedCursor:
         self.fetchall_rows = list(fetchall_rows or [])
         self.executed: list[tuple[str, tuple]] = []
         self.description = self.descriptions[0] if self.descriptions else []
+        self.rowcount = 1
 
     def __enter__(self):
         return self
@@ -1091,6 +1092,8 @@ def _note_row(*, status: str = "draft", content: str = "Visit note", sent_at: st
         [],
         [],
         [],
+        {},
+        None,
         None,
         sent_at,
         None,
@@ -1314,7 +1317,7 @@ def test_postgres_records_repository_finalizes_and_marks_note_sent():
     assert cursor.executed[1][1][0] == "Visit note"
     assert cursor.executed[1][1][1] == "[]"
     assert cursor.executed[3][1][1] == "[]"
-    assert cursor.executed[3][1][3:5] == ("user-1", "patient@example.com")
+    assert cursor.executed[3][1][4:6] == ("user-1", "patient@example.com")
     assert finalized["status"] == "final"
     assert sent["status"] == "sent"
 
@@ -1381,6 +1384,7 @@ def _catalog_item_row(*, stock_quantity: float = 10) -> tuple:
         stock_quantity,
         2,
         "unit",
+        [],
         "2026-06-11T20:00:00+00:00",
     )
 
@@ -1504,7 +1508,7 @@ def test_postgres_billing_repository_catalog_and_stock_flow():
     )
     updated = asyncio.run(repo.update_catalog_stock("org-1", "catalog-1", CatalogStockUpdate(delta=2)))
 
-    assert cursor.executed[0][1] == ("org-1", "Consultation", "service", 500.0, True, 10.0, 2.0, "unit")
+    assert cursor.executed[0][1] == ("org-1", "Consultation", "service", 500.0, True, 10.0, 2.0, "unit", "[]")
     assert cursor.executed[2][1] == (12.0, "org-1", "catalog-1")
     assert created["id"] == "catalog-1"
     assert updated["stock_quantity"] == 12

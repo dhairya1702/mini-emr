@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useTransition } from "../transition-context";
+import { trackAnalyticsEvent } from "../analytics";
 
 export default function Finale() {
   const root = useRef<HTMLDivElement>(null);
@@ -50,7 +51,13 @@ export default function Finale() {
         <div className="finale__cta">
           <button
             className="btn btn--primary"
-            onClick={() => go("/early-access")}
+            onClick={() => {
+              trackAnalyticsEvent("select_content", {
+                content_type: "cta",
+                content_id: "finale_request_access",
+              });
+              go("/early-access");
+            }}
           >
             Request early access
           </button>

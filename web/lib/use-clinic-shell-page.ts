@@ -17,6 +17,7 @@ export type ClinicCatalogItemPayload = {
   stock_quantity: number;
   low_stock_threshold: number;
   unit: string;
+  aliases?: string[];
 };
 
 export type ClinicInvoicePayload = {

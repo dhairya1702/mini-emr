@@ -42,7 +42,7 @@ import {
   writeTrainingPatients,
 } from "@/lib/training-mode";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { CatalogItem, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientVisitDetail, PaymentStatus, SexAtBirth } from "@/lib/types";
+import { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientVisitDetail, PaymentStatus, SexAtBirth } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
 const QUEUE_REFRESH_INTERVAL_MS = 15000;
@@ -148,9 +148,32 @@ function buildAutoDraftInvoiceItems(
   note: ConsultationNote | null,
   serviceItems: CatalogItem[],
   medicineItems: CatalogItem[],
+  suggestions: BillingSuggestionsResponse | null,
 ) {
   if (!patient) {
     return [];
+  }
+
+  if (suggestions) {
+    return suggestions.suggestions
+      .filter((suggestion) => suggestion.status === "auto_add")
+      .map((suggestion) => suggestion.catalog_match
+        ? {
+            id: createId(),
+            catalog_item_id: suggestion.catalog_match.catalog_item_id,
+            item_type: suggestion.catalog_match.item_type,
+            label: suggestion.catalog_match.label,
+            quantity: suggestion.catalog_match.quantity,
+            unit_price: suggestion.catalog_match.unit_price,
+          }
+        : {
+            id: createId(),
+            catalog_item_id: null,
+            item_type: "service" as const,
+            label: "Consultation",
+            quantity: 1,
+            unit_price: 0,
+          });
   }
 
   const items: DraftInvoiceItem[] = [];
@@ -219,6 +242,8 @@ export default function HomePage() {
   const [isInvoiceDirty, setIsInvoiceDirty] = useState(false);
   const [selectedPatientNotes, setSelectedPatientNotes] = useState<ConsultationNote[]>([]);
   const [isBillingNotesLoading, setIsBillingNotesLoading] = useState(false);
+  const [billingSuggestions, setBillingSuggestions] = useState<BillingSuggestionsResponse | null>(null);
+  const [isBillingSuggestionsLoading, setIsBillingSuggestionsLoading] = useState(false);
   const [hasSeededBillingDraft, setHasSeededBillingDraft] = useState(false);
   const [customItemLabel, setCustomItemLabel] = useState("");
   const [customItemQuantity, setCustomItemQuantity] = useState("1");
@@ -430,9 +455,33 @@ export default function HomePage() {
   const medicineItems = useMemo(() => catalogItems.filter((item) => item.item_type === "medicine"), [catalogItems]);
   const latestConsultationNote = useMemo(() => selectedPatientNotes[0] ?? null, [selectedPatientNotes]);
   const autoDraftInvoiceItems = useMemo(
-    () => buildAutoDraftInvoiceItems(selectedBillingPatient, latestConsultationNote, serviceItems, medicineItems),
-    [latestConsultationNote, medicineItems, selectedBillingPatient, serviceItems],
+    () => buildAutoDraftInvoiceItems(selectedBillingPatient, latestConsultationNote, serviceItems, medicineItems, billingSuggestions),
+    [billingSuggestions, latestConsultationNote, medicineItems, selectedBillingPatient, serviceItems],
   );
+
+  useEffect(() => {
+    if (!latestConsultationNote) {
+      setBillingSuggestions(null);
+      setIsBillingSuggestionsLoading(false);
+      return;
+    }
+    let active = true;
+    setIsBillingSuggestionsLoading(true);
+    void api.getNoteBillingSuggestions(latestConsultationNote.id)
+      .then((response) => {
+        if (active) setBillingSuggestions(response);
+      })
+      .catch((error) => {
+        if (active) {
+          setBillingSuggestions(null);
+          setBillingError(error instanceof Error ? error.message : "Failed to load billing suggestions.");
+        }
+      })
+      .finally(() => {
+        if (active) setIsBillingSuggestionsLoading(false);
+      });
+    return () => { active = false; };
+  }, [latestConsultationNote]);
   const invoiceSubtotal = useMemo(
     () => invoiceItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0),
     [invoiceItems],
@@ -479,7 +528,7 @@ export default function HomePage() {
   }, [billingPatientId]);
 
   useEffect(() => {
-    if (!billingPatientId || isBillingNotesLoading || hasSeededBillingDraft || isInvoiceDirty) {
+    if (!billingPatientId || isBillingNotesLoading || isBillingSuggestionsLoading || hasSeededBillingDraft || isInvoiceDirty) {
       return;
     }
     setInvoiceItems(autoDraftInvoiceItems);
@@ -488,12 +537,12 @@ export default function HomePage() {
     setBillingError("");
     setBillingStatus(
       autoDraftInvoiceItems.length
-        ? `Added consultation and ${Math.max(autoDraftInvoiceItems.length - 1, 0)} medicine item${Math.max(autoDraftInvoiceItems.length - 1, 0) === 1 ? "" : "s"} from the latest consultation.`
+        ? `Added ${autoDraftInvoiceItems.length} catalog-backed item${autoDraftInvoiceItems.length === 1 ? "" : "s"} from the latest consultation.`
         : "",
     );
     setAmountPaidInput("");
     setHasSeededBillingDraft(true);
-  }, [autoDraftInvoiceItems, billingPatientId, hasSeededBillingDraft, isBillingNotesLoading, isInvoiceDirty]);
+  }, [autoDraftInvoiceItems, billingPatientId, hasSeededBillingDraft, isBillingNotesLoading, isBillingSuggestionsLoading, isInvoiceDirty]);
 
   function handleClosePatientModal() {
     setIsModalOpen(false);
@@ -1621,7 +1670,14 @@ export default function HomePage() {
         onGenerate={async (payload) => {
           if (isTrainingMode) {
             const response = createTrainingNote(payload);
-            return { content: response.content, noteId: response.noteId, status: response.status, usedFallback: false, warning: null };
+            return {
+              content: response.content,
+              noteId: response.noteId,
+              status: response.status,
+              usedFallback: false,
+              warning: null,
+              extractions: { services_performed: [], medications_prescribed: [] },
+            };
           }
           const response = await api.generateNote(payload);
           return {
@@ -1630,6 +1686,7 @@ export default function HomePage() {
             status: response.status,
             usedFallback: response.used_fallback,
             warning: response.warning,
+            extractions: response.extractions,
           };
         }}
         onGeneratePdf={(payload) => {
@@ -1681,6 +1738,13 @@ export default function HomePage() {
                 paymentStatus={paymentStatus}
                 billingError={billingError}
                 billingStatus={billingStatus}
+                suggestionNotices={(billingSuggestions?.suggestions ?? [])
+                  .filter((suggestion) => suggestion.status !== "auto_add")
+                  .map((suggestion) => suggestion.status === "possible_match" && suggestion.catalog_match
+                    ? `${suggestion.extraction_name}: possible match ${suggestion.catalog_match.label} (not added)`
+                    : suggestion.status === "unavailable"
+                      ? `${suggestion.extraction_name}: matched item is out of stock (not added)`
+                      : `${suggestion.extraction_name}: no catalog match (not added)`)}
                 isSavingInvoice={isSavingInvoice}
                 isFinalizingInvoice={isFinalizingInvoice}
                 isPreparingInvoicePdf={isPreparingInvoicePdf}

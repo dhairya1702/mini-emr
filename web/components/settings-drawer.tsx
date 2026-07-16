@@ -77,6 +77,7 @@ interface SettingsDrawerProps {
     stock_quantity: number;
     low_stock_threshold: number;
     unit: string;
+    aliases?: string[];
   }) => Promise<void>;
   onAdjustCatalogStock: (itemId: string, delta: number) => Promise<void>;
   onDeleteCatalogItem: (itemId: string) => Promise<void>;
@@ -516,6 +517,7 @@ export function SettingsDrawer({
     stock_quantity: "",
     low_stock_threshold: "",
     unit: "",
+    aliases: "",
   });
   const [catalogError, setCatalogError] = useState("");
   const [catalogStatus, setCatalogStatus] = useState("");
@@ -1115,6 +1117,7 @@ export function SettingsDrawer({
         stock_quantity: catalogForm.track_inventory ? stockQuantity : 0,
         low_stock_threshold: catalogForm.track_inventory ? lowStockThreshold : 0,
         unit: catalogForm.unit.trim(),
+        aliases: catalogForm.aliases.split(",").map((alias) => alias.trim()).filter(Boolean),
       });
       setCatalogStatus(
         catalogForm.item_type === "service" ? "Service saved." : "Medicine saved.",
@@ -1127,6 +1130,7 @@ export function SettingsDrawer({
         stock_quantity: "",
         low_stock_threshold: "",
         unit: "",
+        aliases: "",
       });
     } catch (saveError) {
       setCatalogError(saveError instanceof Error ? saveError.message : "Failed to save catalog item.");

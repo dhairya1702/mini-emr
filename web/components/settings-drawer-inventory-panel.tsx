@@ -13,6 +13,7 @@ export type CatalogFormState = {
   stock_quantity: string;
   low_stock_threshold: string;
   unit: string;
+  aliases: string;
 };
 
 interface SettingsDrawerInventoryPanelProps {
@@ -59,6 +60,17 @@ export function SettingsDrawerInventoryPanel({
             Add and manage the services and medicines your clinic uses so staff can bill from inventory quickly.
           </p>
         </div>
+
+        <label className="mt-4 block">
+          <span className="mb-2 block text-sm font-medium text-slate-700">Matching aliases</span>
+          <input
+            value={catalogForm.aliases}
+            onChange={(event) => onCatalogFormChange({ aliases: event.target.value })}
+            placeholder="Comma-separated, e.g. strep test, rapid antigen test"
+            className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+          />
+          <span className="mt-1 block text-xs text-slate-500">Used for exact consultation and billing suggestion matching.</span>
+        </label>
 
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block">

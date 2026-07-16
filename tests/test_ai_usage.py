@@ -108,7 +108,26 @@ async def test_generate_soap_note_records_org_ai_usage(monkeypatch):
 
     async def _fake_generate_note_content(**kwargs):
         seen_kwargs.update(kwargs)
-        return await _fake_generate_vertex_content(**kwargs)
+        return {
+            "candidates": [{
+                "content": {"parts": [{"text": """{
+                  \"note_sections\": {
+                    \"presenting_complaint\": \"Fever\",
+                    \"diagnosis\": \"Viral infection\",
+                    \"clinical_notes\": \"Rest well\",
+                    \"treatment\": \"Paracetamol advised\",
+                    \"follow_up_advice\": \"Review if worse\"
+                  },
+                  \"services_performed\": [],
+                  \"medications_prescribed\": []
+                }"""}]}
+            }],
+            "usageMetadata": {
+                "promptTokenCount": 123,
+                "candidatesTokenCount": 45,
+                "cachedContentTokenCount": 7,
+            },
+        }
 
     monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_generate_note_content)
     monkeypatch.setattr(
@@ -137,7 +156,7 @@ async def test_generate_soap_note_records_org_ai_usage(monkeypatch):
     assert "Fever" in result["content"]
     assert "Diagnosis:" in result["content"]
     assert result["used_fallback"] is False
-    assert seen_kwargs["max_output_tokens"] == 2048
+    assert seen_kwargs["max_output_tokens"] == 4096
     assert seen_kwargs["thinking_budget"] == 0
     assert len(repo.events) == 1
     event = repo.events[0]
@@ -194,9 +213,9 @@ async def test_generate_soap_note_discards_truncated_vertex_output(monkeypatch):
     assert result["warning"] == "AI returned incomplete content, used fallback template."
     assert "Presenting Complaint:" in result["content"]
     assert "Fever" in result["content"]
-    assert len(repo.events) == 1
-    assert repo.events[0]["feature"] == "consultation_note"
-    assert repo.events[0]["output_tokens"] == 8
+    assert len(repo.events) == 2
+    assert all(event["feature"] == "consultation_note" for event in repo.events)
+    assert all(event["output_tokens"] == 8 for event in repo.events)
 
 
 @pytest.mark.anyio

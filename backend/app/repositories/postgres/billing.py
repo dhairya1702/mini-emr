@@ -27,6 +27,7 @@ CATALOG_ITEM_COLUMNS = [
     "stock_quantity",
     "low_stock_threshold",
     "unit",
+    "aliases",
     "created_at",
 ]
 
@@ -117,8 +118,9 @@ class PostgresBillingRepository:
                         insert into public.catalog_items (
                           org_id, name, item_type, default_price, track_inventory,
                           stock_quantity, low_stock_threshold, unit
+                          , aliases
                         )
-                        values (%s, %s, %s, %s, %s, %s, %s, %s)
+                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                         returning {_columns_sql(CATALOG_ITEM_COLUMNS)}
                         """,
                         (
@@ -130,6 +132,7 @@ class PostgresBillingRepository:
                             values["stock_quantity"],
                             values["low_stock_threshold"],
                             values["unit"],
+                            json.dumps(values["aliases"]),
                         ),
                     )
                     row = cursor.fetchone()

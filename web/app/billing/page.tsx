@@ -9,7 +9,7 @@ import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/setti
 import { api } from "@/lib/api";
 import { printBlob } from "@/lib/print";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
+import { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
 const BILLING_REFRESH_INTERVAL_MS = 5000;
 
@@ -100,9 +100,32 @@ function buildAutoDraftInvoiceItems(
   note: ConsultationNote | null,
   serviceItems: CatalogItem[],
   medicineItems: CatalogItem[],
+  suggestions: BillingSuggestionsResponse | null,
 ) {
   if (!patient) {
     return [];
+  }
+
+  if (suggestions) {
+    return suggestions.suggestions
+      .filter((suggestion) => suggestion.status === "auto_add")
+      .map((suggestion) => suggestion.catalog_match
+        ? {
+            id: createId(),
+            catalog_item_id: suggestion.catalog_match.catalog_item_id,
+            item_type: suggestion.catalog_match.item_type,
+            label: suggestion.catalog_match.label,
+            quantity: suggestion.catalog_match.quantity,
+            unit_price: suggestion.catalog_match.unit_price,
+          }
+        : {
+            id: createId(),
+            catalog_item_id: null,
+            item_type: "service" as const,
+            label: "Consultation",
+            quantity: 1,
+            unit_price: 0,
+          });
   }
 
   const items: DraftInvoiceItem[] = [];
@@ -169,6 +192,8 @@ export default function BillingPage() {
   const [isInvoiceDirty, setIsInvoiceDirty] = useState(false);
   const [selectedPatientNotes, setSelectedPatientNotes] = useState<ConsultationNote[]>([]);
   const [isBillingNotesLoading, setIsBillingNotesLoading] = useState(false);
+  const [billingSuggestions, setBillingSuggestions] = useState<BillingSuggestionsResponse | null>(null);
+  const [isBillingSuggestionsLoading, setIsBillingSuggestionsLoading] = useState(false);
   const [hasSeededBillingDraft, setHasSeededBillingDraft] = useState(false);
   const [customItemLabel, setCustomItemLabel] = useState("");
   const [customItemQuantity, setCustomItemQuantity] = useState("1");
@@ -309,9 +334,33 @@ export default function BillingPage() {
   const medicineItems = useMemo(() => catalogItems.filter((item) => item.item_type === "medicine"), [catalogItems]);
   const latestConsultationNote = useMemo(() => selectedPatientNotes[0] ?? null, [selectedPatientNotes]);
   const autoDraftInvoiceItems = useMemo(
-    () => buildAutoDraftInvoiceItems(selectedBillingPatient, latestConsultationNote, serviceItems, medicineItems),
-    [latestConsultationNote, medicineItems, selectedBillingPatient, serviceItems],
+    () => buildAutoDraftInvoiceItems(selectedBillingPatient, latestConsultationNote, serviceItems, medicineItems, billingSuggestions),
+    [billingSuggestions, latestConsultationNote, medicineItems, selectedBillingPatient, serviceItems],
   );
+
+  useEffect(() => {
+    if (!latestConsultationNote) {
+      setBillingSuggestions(null);
+      setIsBillingSuggestionsLoading(false);
+      return;
+    }
+    let active = true;
+    setIsBillingSuggestionsLoading(true);
+    void api.getNoteBillingSuggestions(latestConsultationNote.id)
+      .then((response) => {
+        if (active) setBillingSuggestions(response);
+      })
+      .catch((error) => {
+        if (active) {
+          setBillingSuggestions(null);
+          setBillingError(error instanceof Error ? error.message : "Failed to load billing suggestions.");
+        }
+      })
+      .finally(() => {
+        if (active) setIsBillingSuggestionsLoading(false);
+      });
+    return () => { active = false; };
+  }, [latestConsultationNote]);
 
   useEffect(() => {
     if (!selectedBillingPatientId) {
@@ -346,7 +395,7 @@ export default function BillingPage() {
   }, [selectedBillingPatientId]);
 
   useEffect(() => {
-    if (!selectedBillingPatientId || isBillingNotesLoading || hasSeededBillingDraft || isInvoiceDirty) {
+    if (!selectedBillingPatientId || isBillingNotesLoading || isBillingSuggestionsLoading || hasSeededBillingDraft || isInvoiceDirty) {
       return;
     }
     setInvoiceItems(autoDraftInvoiceItems);
@@ -355,12 +404,12 @@ export default function BillingPage() {
     setBillingError("");
     setBillingStatus(
       autoDraftInvoiceItems.length
-        ? `Added consultation and ${Math.max(autoDraftInvoiceItems.length - 1, 0)} medicine item${Math.max(autoDraftInvoiceItems.length - 1, 0) === 1 ? "" : "s"} from the latest consultation.`
+        ? `Added ${autoDraftInvoiceItems.length} catalog-backed item${autoDraftInvoiceItems.length === 1 ? "" : "s"} from the latest consultation.`
         : "",
     );
     setAmountPaidInput("");
     setHasSeededBillingDraft(true);
-  }, [autoDraftInvoiceItems, hasSeededBillingDraft, isBillingNotesLoading, isInvoiceDirty, selectedBillingPatientId]);
+  }, [autoDraftInvoiceItems, hasSeededBillingDraft, isBillingNotesLoading, isBillingSuggestionsLoading, isInvoiceDirty, selectedBillingPatientId]);
 
   function addCatalogItemToInvoice(item: typeof catalogItems[number]) {
     if (item.track_inventory && item.stock_quantity <= 0) {
@@ -572,6 +621,13 @@ export default function BillingPage() {
           paymentStatus={paymentStatus}
           billingError={billingError}
           billingStatus={billingStatus}
+          suggestionNotices={(billingSuggestions?.suggestions ?? [])
+            .filter((suggestion) => suggestion.status !== "auto_add")
+            .map((suggestion) => suggestion.status === "possible_match" && suggestion.catalog_match
+              ? `${suggestion.extraction_name}: possible match ${suggestion.catalog_match.label} (not added)`
+              : suggestion.status === "unavailable"
+                ? `${suggestion.extraction_name}: matched item is out of stock (not added)`
+                : `${suggestion.extraction_name}: no catalog match (not added)`)}
           isSavingInvoice={isSavingInvoice}
           isFinalizingInvoice={isFinalizingInvoice}
           isPreparingInvoicePdf={isPreparingInvoicePdf}

@@ -199,12 +199,50 @@ export interface ConsultationNote {
   asset_payload?: NoteAsset[];
   snapshot_asset_payload?: NoteAsset[];
   structured_modules?: StructuredModule[];
+  clinical_extractions?: ClinicalExtractions;
+  snapshot_clinical_extractions?: ClinicalExtractions | null;
   finalized_at: string | null;
   sent_at: string | null;
   sent_by: string | null;
   sent_by_name?: string | null;
   sent_to: string | null;
   created_at: string;
+}
+
+export interface ServicePerformedExtraction {
+  name: string;
+  quantity: number;
+  evidence?: string;
+}
+
+export interface MedicationPrescribedExtraction {
+  catalog_item_id?: string | null;
+  name: string;
+  strength?: string;
+  dose?: string;
+  route?: string;
+  schedule?: string;
+  duration?: string;
+  quantity?: string;
+  instructions?: string;
+  evidence?: string;
+}
+
+export interface ClinicalExtractions {
+  services_performed: ServicePerformedExtraction[];
+  medications_prescribed: MedicationPrescribedExtraction[];
+}
+
+export interface PrescriptionInput {
+  catalog_item_id?: string | null;
+  name: string;
+  strength?: string;
+  dose?: string;
+  route?: string;
+  schedule?: string;
+  duration?: string;
+  quantity?: string;
+  instructions?: string;
 }
 
 export interface NoteAsset {
@@ -557,6 +595,7 @@ export interface GenerateNotePayload {
   myopia_measurement?: MyopiaMeasurementPayload | null;
   structured_modules?: StructuredModule[];
   assets?: NoteAsset[];
+  prescriptions?: PrescriptionInput[];
 }
 
 export interface GenerateNoteResponse {
@@ -565,6 +604,7 @@ export interface GenerateNoteResponse {
   content: string;
   used_fallback?: boolean;
   warning?: string | null;
+  extractions: ClinicalExtractions;
 }
 
 export type ClinicalQuestionType =
@@ -725,6 +765,7 @@ export interface CatalogItem {
   stock_quantity: number;
   low_stock_threshold: number;
   unit: string;
+  aliases: string[];
   created_at: string;
 }
 
@@ -1001,6 +1042,7 @@ export interface CatalogItemCreatePayload {
   stock_quantity: number;
   low_stock_threshold: number;
   unit: string;
+  aliases?: string[];
 }
 
 export interface CatalogStockUpdatePayload {
@@ -1114,6 +1156,31 @@ export interface FinalizeNotePayload {
 
 export interface UpdateNoteDraftPayload {
   content: string;
+  extractions?: ClinicalExtractions;
+}
+
+export type BillingSuggestionStatus = "auto_add" | "possible_match" | "unmatched" | "unavailable";
+
+export interface BillingSuggestion {
+  source: "default_consultation" | "extracted_service" | "prescribed_medicine";
+  extraction_name: string;
+  status: BillingSuggestionStatus;
+  catalog_match: null | {
+    catalog_item_id: string;
+    label: string;
+    item_type: CatalogItemType;
+    quantity: number;
+    unit_price: number;
+    match_type: "exact" | "alias" | "fuzzy";
+    confidence: number;
+    available: boolean;
+  };
+}
+
+export interface BillingSuggestionsResponse {
+  note_id: string;
+  visit_id: string | null;
+  suggestions: BillingSuggestion[];
 }
 
 export interface MobileFinalizeConsultationPayload {

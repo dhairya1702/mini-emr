@@ -1555,6 +1555,7 @@ class FakeRepo:
             visit_id=str(getattr(payload, "visit_id", None) or patient.get("current_visit_id") or "") or None,
             asset_payload=getattr(payload, "asset_payload", []),
             structured_modules=getattr(payload, "structured_modules", []),
+            clinical_extractions=getattr(payload, "clinical_extractions", {}),
             version_number=1,
             root_note_id=None,
             amended_from_note_id=None,
@@ -1569,6 +1570,7 @@ class FakeRepo:
         visit_id: str | None,
         asset_payload: list[dict],
         structured_modules: list[dict],
+        clinical_extractions: dict,
         version_number: int,
         root_note_id: str | None,
         amended_from_note_id: str | None,
@@ -1582,6 +1584,8 @@ class FakeRepo:
             "content": content,
             "asset_payload": asset_payload,
             "structured_modules": structured_modules,
+            "clinical_extractions": clinical_extractions,
+            "snapshot_clinical_extractions": None,
             "status": "draft",
             "version_number": version_number,
             "root_note_id": root_note_id,
@@ -1597,7 +1601,7 @@ class FakeRepo:
         self.notes[note_id] = note
         return note
 
-    async def update_note_draft(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None, structured_modules: list[dict] | None = None) -> dict:
+    async def update_note_draft(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None, structured_modules: list[dict] | None = None, clinical_extractions: dict | None = None) -> dict:
         note = await self.get_note(org_id, note_id)
         if note["status"] != "draft":
             raise ValueError("Only draft notes can be updated.")
@@ -1606,6 +1610,8 @@ class FakeRepo:
             note["asset_payload"] = asset_payload
         if structured_modules is not None:
             note["structured_modules"] = structured_modules
+        if clinical_extractions is not None:
+            note["clinical_extractions"] = clinical_extractions
         return note
 
     async def get_note(self, org_id: str, note_id: str) -> dict:
@@ -1623,10 +1629,11 @@ class FakeRepo:
         note["status"] = "final"
         note["snapshot_content"] = note["content"]
         note["snapshot_asset_payload"] = note.get("asset_payload") or []
+        note["snapshot_clinical_extractions"] = note.get("clinical_extractions") or {}
         note["finalized_at"] = _now()
         return note
 
-    async def create_note_amendment(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None, structured_modules: list[dict] | None = None) -> dict:
+    async def create_note_amendment(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None, structured_modules: list[dict] | None = None, clinical_extractions: dict | None = None) -> dict:
         note = await self.get_note(org_id, note_id)
         related = [
             entry for entry in self.notes.values()
@@ -1642,6 +1649,7 @@ class FakeRepo:
             visit_id=note.get("visit_id"),
             asset_payload=asset_payload or note.get("asset_payload") or [],
             structured_modules=structured_modules if structured_modules is not None else note.get("structured_modules") or [],
+            clinical_extractions=clinical_extractions if clinical_extractions is not None else note.get("clinical_extractions") or {},
             version_number=next_version,
             root_note_id=str(note.get("root_note_id") or note["id"]),
             amended_from_note_id=note_id,
@@ -2241,6 +2249,7 @@ def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
     second_slot = first_slot + timedelta(minutes=30)
     repo.clinic_settings[session["user"]["org_id"]].update(
         {
+            "timezone": "UTC",
             "appointment_start_time": "09:00",
             "appointment_end_time": "11:00",
             "appointments_per_hour": 2,

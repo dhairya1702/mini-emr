@@ -14,6 +14,7 @@ import {
   BinocularVisionPayload,
   CatalogItem,
   ClinicalAnalysisResponse,
+  ClinicalExtractions,
   ClinicalAssistantAnswer,
   ClinicalAssistantQuestion,
   ClinicalQuestionsResponse,
@@ -136,12 +137,14 @@ interface ConsultationDrawerProps {
     myopia_measurement?: MyopiaMeasurementPayload | null;
     structured_modules?: Array<{ module_type: string; payload: Record<string, unknown> }>;
     assets?: NoteAsset[];
+    prescriptions?: GenerateNotePayload["prescriptions"];
   }) => Promise<{
     content: string;
     noteId?: string | null;
     status?: "draft" | "final" | "sent" | null;
     usedFallback?: boolean;
     warning?: string | null;
+    extractions?: ClinicalExtractions;
   }>;
   onGeneratePdf: (payload: { note_id?: string; patient_id: string; content: string; assets?: NoteAsset[] }) => Promise<Blob>;
   onSend: (payload: { note_id: string; patient_id: string; recipient_email: string }) => Promise<string>;
@@ -238,6 +241,7 @@ type ConsultationWorkspaceSnapshot = {
   hasGeneratedNote: boolean;
   isFollowUpOpen: boolean;
   isDraftDirty?: boolean;
+  clinicalExtractions?: ClinicalExtractions;
 };
 
 type InlineModuleKey = "vitals" | "medicines";
@@ -449,6 +453,10 @@ export function ConsultationDrawer({
   const [isMyopiaManagementOpen, setIsMyopiaManagementOpen] = useState(false);
   const [hasGeneratedNote, setHasGeneratedNote] = useState(false);
   const [currentNoteId, setCurrentNoteId] = useState("");
+  const [clinicalExtractions, setClinicalExtractions] = useState<ClinicalExtractions>({
+    services_performed: [],
+    medications_prescribed: [],
+  });
   const [noteStatus, setNoteStatus] = useState<"draft" | "final" | "sent" | "">("");
   const [isSent, setIsSent] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState("");
@@ -585,6 +593,7 @@ export function ConsultationDrawer({
     setIsFollowUpOpen(cachedWorkspace?.isFollowUpOpen ?? false);
     setHasGeneratedNote(cachedWorkspace?.hasGeneratedNote ?? false);
     setCurrentNoteId(cachedWorkspace?.currentNoteId ?? "");
+    setClinicalExtractions(cachedWorkspace?.clinicalExtractions ?? { services_performed: [], medications_prescribed: [] });
     setNoteStatus(cachedWorkspace?.noteStatus ?? "");
     setIsSent(cachedWorkspace?.isSent ?? false);
     setRecipientEmail(cachedWorkspace?.recipientEmail ?? patient.email ?? "");
@@ -627,9 +636,11 @@ export function ConsultationDrawer({
       hasGeneratedNote,
       isFollowUpOpen,
       isDraftDirty,
+      clinicalExtractions,
     });
   }, [
     currentNoteId,
+    clinicalExtractions,
     form,
     hasGeneratedNote,
     isFollowUpOpen,
@@ -662,23 +673,8 @@ export function ConsultationDrawer({
     [form.assets],
   );
   const medicationPlan = useMemo(() => {
-    const manualPlan = form.medications.trim();
-    const structuredPlan = form.prescriptions.length
-      ? [
-          "Prescribed medicines:",
-          "Medicine | Quantity | Schedule | Duration | Notes",
-          "--- | --- | --- | --- | ---",
-          ...form.prescriptions.map((entry) => {
-            const quantity = entry.quantity.trim() || "-";
-            const duration = entry.duration.trim() || "-";
-            const notes = entry.notes.trim() || "-";
-            return `${entry.name} | ${quantity} | ${prescriptionScheduleLabel(entry)} | ${duration} | ${notes}`;
-          }),
-        ].join("\n")
-      : "";
-
-    return [manualPlan, structuredPlan].filter(Boolean).join("\n\n");
-  }, [form.medications, form.prescriptions]);
+    return form.medications.trim();
+  }, [form.medications]);
   useEffect(() => {
     const canvas = drawingCanvasRef.current;
     const context = canvas?.getContext("2d");
@@ -800,6 +796,17 @@ export function ConsultationDrawer({
         : null,
       structured_modules: buildStructuredModules(),
       assets: form.assets,
+      prescriptions: form.prescriptions.map((entry) => ({
+        catalog_item_id: entry.itemId,
+        name: entry.name,
+        strength: "",
+        dose: "",
+        route: "",
+        schedule: prescriptionScheduleLabel(entry),
+        duration: entry.duration.trim(),
+        quantity: entry.quantity.trim(),
+        instructions: entry.notes.trim(),
+      })),
     };
   }
 
@@ -816,6 +823,7 @@ export function ConsultationDrawer({
       setForm((current) => ({ ...current, generatedNote: generated.content }));
       setHasGeneratedNote(true);
       setCurrentNoteId(generated.noteId || "");
+      setClinicalExtractions(generated.extractions ?? { services_performed: [], medications_prescribed: [] });
       setNoteStatus(generated.status || "draft");
       setIsDraftDirty(false);
       setIsSent(false);
@@ -839,9 +847,48 @@ export function ConsultationDrawer({
       setIsDraftDirty(false);
       return;
     }
-    const saved = await api.updateNoteDraft(currentNoteId, { content: form.generatedNote.trim() });
+    const saved = await api.updateNoteDraft(currentNoteId, {
+      content: form.generatedNote.trim(),
+      extractions: clinicalExtractions,
+    });
     setForm((current) => ({ ...current, generatedNote: saved.content }));
     setIsDraftDirty(false);
+  }
+
+  function updateExtractedMedication(index: number, patch: Partial<ClinicalExtractions["medications_prescribed"][number]>) {
+    setClinicalExtractions((current) => ({
+      ...current,
+      medications_prescribed: current.medications_prescribed.map((medicine, medicineIndex) =>
+        medicineIndex === index ? { ...medicine, ...patch } : medicine,
+      ),
+    }));
+    setIsDraftDirty(true);
+  }
+
+  function removeExtractedMedication(index: number) {
+    setClinicalExtractions((current) => ({
+      ...current,
+      medications_prescribed: current.medications_prescribed.filter((_medicine, medicineIndex) => medicineIndex !== index),
+    }));
+    setIsDraftDirty(true);
+  }
+
+  function updateExtractedService(index: number, patch: Partial<ClinicalExtractions["services_performed"][number]>) {
+    setClinicalExtractions((current) => ({
+      ...current,
+      services_performed: current.services_performed.map((service, serviceIndex) =>
+        serviceIndex === index ? { ...service, ...patch } : service,
+      ),
+    }));
+    setIsDraftDirty(true);
+  }
+
+  function removeExtractedService(index: number) {
+    setClinicalExtractions((current) => ({
+      ...current,
+      services_performed: current.services_performed.filter((_service, serviceIndex) => serviceIndex !== index),
+    }));
+    setIsDraftDirty(true);
   }
 
   async function handleSaveDraft() {
@@ -2280,8 +2327,79 @@ export function ConsultationDrawer({
                 className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 placeholder="Saved SOAP note will appear here"
               />
+              {hasGeneratedNote && (clinicalExtractions.services_performed.length || clinicalExtractions.medications_prescribed.length) ? (
+                <div className="mt-4 space-y-4 rounded-xl border border-[#dbe7ef] bg-white p-4">
+                  {clinicalExtractions.services_performed.length ? (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Performed services</p>
+                      <div className="mt-2 space-y-2">
+                        {clinicalExtractions.services_performed.map((service, index) => (
+                          <div key={`${service.name}-${index}`} className="grid gap-2 sm:grid-cols-[1fr_110px_auto]">
+                            <input
+                              value={service.name}
+                              readOnly={noteStatus !== "draft"}
+                              onChange={(event) => updateExtractedService(index, { name: event.target.value })}
+                              className="rounded-lg border border-[#dbe7ef] px-3 py-2 text-sm"
+                              aria-label={`Service ${index + 1} name`}
+                            />
+                            <input
+                              type="number"
+                              min={1}
+                              max={100}
+                              value={service.quantity}
+                              readOnly={noteStatus !== "draft"}
+                              onChange={(event) => updateExtractedService(index, { quantity: Math.max(1, Number(event.target.value) || 1) })}
+                              className="rounded-lg border border-[#dbe7ef] px-3 py-2 text-sm"
+                              aria-label={`Service ${index + 1} quantity`}
+                            />
+                            {noteStatus === "draft" ? (
+                              <button type="button" onClick={() => removeExtractedService(index)} className="rounded-lg border border-rose-200 px-3 py-2 text-sm text-rose-700">Remove</button>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {clinicalExtractions.medications_prescribed.length ? (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Prescribed medicines</p>
+                      <div className="mt-2 space-y-3">
+                        {clinicalExtractions.medications_prescribed.map((medicine, index) => (
+                          <div key={`${medicine.name}-${index}`} className="rounded-lg border border-[#dbe7ef] p-3">
+                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                              {([
+                                ["name", "Medicine"],
+                                ["strength", "Strength"],
+                                ["dose", "Dose"],
+                                ["route", "Route"],
+                                ["schedule", "Schedule"],
+                                ["duration", "Duration"],
+                                ["quantity", "Quantity"],
+                                ["instructions", "Instructions"],
+                              ] as const).map(([field, label]) => (
+                                <label key={field} className="block">
+                                  <span className="mb-1 block text-xs text-slate-500">{label}</span>
+                                  <input
+                                    value={medicine[field] ?? ""}
+                                    readOnly={noteStatus !== "draft"}
+                                    onChange={(event) => updateExtractedMedication(index, { [field]: event.target.value })}
+                                    className="w-full rounded-lg border border-[#dbe7ef] px-3 py-2 text-sm"
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                            {noteStatus === "draft" ? (
+                              <button type="button" onClick={() => removeExtractedMedication(index)} className="mt-2 rounded-lg border border-rose-200 px-3 py-1.5 text-sm text-rose-700">Remove medicine</button>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <p className="mt-2 text-xs text-slate-500">
-                {noteStatus === "draft" ? "Edit this draft freely, then save or finalize it." : "Finalized notes are read-only."}
+                {noteStatus === "draft" ? "Edit the note prose here and use the structured fields in this card to change services or the medicine table, then save or finalize." : "Finalized notes are read-only."}
                 {isSent ? " This note has been sent and is locked." : ""}
               </p>
             </div>

@@ -2282,6 +2282,41 @@ button.btn,
    Mobile pass — phones (≤600px) with a tighter tier for tiny screens
    ====================================================================== */
 @media (max-width: 600px) {
+  html {
+    scroll-padding-top: calc(72px + env(safe-area-inset-top, 0px));
+  }
+
+  /* Keep the navigation legible while content moves underneath it. */
+  .nav {
+    min-height: calc(64px + env(safe-area-inset-top, 0px));
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px;
+    background: linear-gradient(180deg, rgba(4, 9, 17, 0.98), rgba(5, 11, 21, 0.94));
+    border-bottom: 1px solid rgba(168, 214, 255, 0.14);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(18px) saturate(125%);
+    -webkit-backdrop-filter: blur(18px) saturate(125%);
+    mix-blend-mode: normal;
+  }
+  .nav__brand {
+    gap: 8px;
+    font-size: 18px;
+  }
+  .nav__mark {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+  }
+  .nav__cta {
+    padding: 8px 13px;
+    font-size: 13px;
+    background: rgba(255, 255, 255, 0.035);
+  }
+  .hero,
+  .scene,
+  .finale {
+    scroll-margin-top: calc(72px + env(safe-area-inset-top, 0px));
+  }
+
   /* Big display titles: lower the floor so long words don't clip */
   .hero__title {
     font-size: clamp(30px, 8.5vw, 44px);
@@ -2331,20 +2366,30 @@ button.btn,
     font-size: 10px;
   }
 
-  /* Context knowledge graph: the dense fragment field + particles overflow
-     and clutter at phone widths, so drop them and keep the clean 8-node
-     graph + core + streaming AI summary (which is the payoff anyway). */
-  .ctx-frag,
-  .ctx-edge--frag,
+  /* Context knowledge graph: keep one high-value clinical fragment from
+     every category on phones while hiding only the lower-priority details. */
+  .ctx-frag:not(.is-mobile-priority),
+  .ctx-edge--frag:not(.is-mobile-priority),
   .ctx-particles {
     display: none;
   }
   .ctx-stage {
-    aspect-ratio: 1 / 1;
+    aspect-ratio: 4 / 3;
+    margin-inline: -4px;
+  }
+  .ctx-graph {
+    inset: 7% 8%;
   }
   .ctx-node__pill {
-    font-size: 11px;
-    padding: 6px 10px;
+    display: none;
+  }
+  .ctx-frag__float {
+    padding: 3px 7px;
+    border-radius: 7px;
+    font-size: 9px;
+    background: rgba(7, 16, 29, 0.88);
+    border-color: rgba(103, 183, 255, 0.25);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
   }
   .ctx-core__orb {
     width: 52px;

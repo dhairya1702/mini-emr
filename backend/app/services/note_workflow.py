@@ -22,7 +22,8 @@ from app.schema_domains.patients import (
     NoteCreate,
     NoteOut,
 )
-from app.services.ai_generation_service import generate_clinic_letter, generate_soap_note
+from app.services.ai_generation_service import generate_clinic_letter, generate_soap_note, sync_note_medication_table
+from app.schema_domains.clinical_extractions import ClinicalExtractions
 from app.services.audit_service import get_actor_name, write_audit_event
 from app.services.auth_flow import enforce_repository_rate_limit
 from app.services.document_helpers import build_document_context_for_user, serialize_note_assets
@@ -176,8 +177,13 @@ async def generate_note_workflow(
         patient_context=patient_context,
         clinic_context=clinic_context,
         measurements_context=measurements_context,
+        prescriptions=payload.prescriptions,
     )
     content = generation["content"]
+    clinical_extractions = generation.get("extractions") or {
+        "services_performed": [],
+        "medications_prescribed": [],
+    }
     if generation["used_fallback"]:
         await repo.create_platform_error(
             org_id=str(current_user.org_id),
@@ -219,6 +225,7 @@ async def generate_note_workflow(
                     content,
                     asset_payload,
                     structured_modules,
+                    clinical_extractions,
                 )
                 await write_audit_event(
                     repo,
@@ -242,6 +249,7 @@ async def generate_note_workflow(
                     content,
                     asset_payload,
                     structured_modules,
+                    clinical_extractions,
                 )
                 await write_audit_event(
                     repo,
@@ -268,6 +276,7 @@ async def generate_note_workflow(
                     content=content,
                     asset_payload=asset_payload,
                     structured_modules=structured_modules,
+                    clinical_extractions=clinical_extractions,
                 ),
             )
             await write_audit_event(
@@ -291,6 +300,7 @@ async def generate_note_workflow(
         status=note.get("status") if note else None,
         used_fallback=generation["used_fallback"],
         warning=generation.get("warning"),
+        extractions=clinical_extractions,
     )
 
 
@@ -519,11 +529,20 @@ async def update_note_draft_workflow(
     current_user: UserOut,
     note_id: str,
     content: str,
+    clinical_extractions: dict[str, Any] | None = None,
 ) -> NoteOut:
+    normalized_content = content.strip()
+    if clinical_extractions is not None:
+        validated_extractions = ClinicalExtractions.model_validate(clinical_extractions)
+        normalized_content = sync_note_medication_table(
+            normalized_content,
+            validated_extractions.medications_prescribed,
+        )
     note = await repo.update_note_draft(
         str(current_user.org_id),
         note_id,
-        content.strip(),
+        normalized_content,
+        clinical_extractions=clinical_extractions,
     )
     patient = await repo.get_patient(str(current_user.org_id), str(note["patient_id"]))
     patient_name = str(patient.get("name") or "").strip() or "Unknown patient"

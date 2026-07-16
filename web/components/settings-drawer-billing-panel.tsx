@@ -28,6 +28,7 @@ interface SettingsDrawerBillingPanelProps {
   paymentStatus: PaymentStatus;
   billingError: string;
   billingStatus: string;
+  suggestionNotices?: string[];
   setupWarnings?: string[];
   isSavingInvoice: boolean;
   isFinalizingInvoice: boolean;
@@ -67,6 +68,7 @@ export function SettingsDrawerBillingPanel({
   paymentStatus,
   billingError,
   billingStatus,
+  suggestionNotices = [],
   setupWarnings = [],
   isSavingInvoice,
   isFinalizingInvoice,
@@ -272,6 +274,14 @@ export function SettingsDrawerBillingPanel({
 
           {billingError ? <p className="mt-4 text-sm font-medium text-rose-600">{billingError}</p> : null}
           {billingStatus ? <p className="mt-4 text-sm font-medium text-emerald-700">{billingStatus}</p> : null}
+          {suggestionNotices.length ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <p className="font-medium">Review consultation suggestions</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5">
+                {suggestionNotices.map((notice) => <li key={notice}>{notice}</li>)}
+              </ul>
+            </div>
+          ) : null}
 
           <div className="mt-5 flex flex-wrap justify-end gap-3">
             <button

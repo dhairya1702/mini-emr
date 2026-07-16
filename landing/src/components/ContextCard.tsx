@@ -8,18 +8,62 @@ const RY1 = 96;
 const RX2 = 196;
 const RY2 = 150;
 
-type Frag = { label: string; warn?: boolean };
+type Frag = { label: string; warn?: boolean; mobilePriority?: boolean };
 type Primary = { id: string; label: string; a: number; frags: Frag[] };
 
 const PRIMARIES: Primary[] = [
-  { id: "vaccines", label: "Vaccines", a: -90, frags: [{ label: "MMR ✓" }, { label: "Tdap" }] },
-  { id: "visits", label: "Visits", a: -45, frags: [{ label: "12d ago" }, { label: "Mar 3" }] },
-  { id: "labs", label: "Labs", a: 0, frags: [{ label: "HbA1c 7.2" }, { label: "Lipids" }, { label: "CBC" }] },
-  { id: "vitals", label: "Vitals", a: 45, frags: [{ label: "BP 148/92" }, { label: "BMI 28" }] },
-  { id: "imaging", label: "Imaging", a: 90, frags: [{ label: "CXR clear" }] },
-  { id: "meds", label: "Meds", a: 135, frags: [{ label: "Metformin" }, { label: "Amlodipine" }] },
-  { id: "allergies", label: "Allergies", a: 180, frags: [{ label: "Penicillin", warn: true }] },
-  { id: "notes", label: "Notes", a: -135, frags: [{ label: "Smoker" }, { label: "F/H cardiac" }] },
+  {
+    id: "vaccines",
+    label: "Vaccines",
+    a: -90,
+    frags: [{ label: "MMR ✓", mobilePriority: true }, { label: "Tdap" }],
+  },
+  {
+    id: "visits",
+    label: "Visits",
+    a: -45,
+    frags: [{ label: "12d ago", mobilePriority: true }, { label: "Mar 3" }],
+  },
+  {
+    id: "labs",
+    label: "Labs",
+    a: 0,
+    frags: [
+      { label: "HbA1c 7.2", mobilePriority: true },
+      { label: "Lipids" },
+      { label: "CBC" },
+    ],
+  },
+  {
+    id: "vitals",
+    label: "Vitals",
+    a: 45,
+    frags: [{ label: "BP 148/92", mobilePriority: true }, { label: "BMI 28" }],
+  },
+  {
+    id: "imaging",
+    label: "Imaging",
+    a: 90,
+    frags: [{ label: "CXR clear", mobilePriority: true }],
+  },
+  {
+    id: "meds",
+    label: "Meds",
+    a: 135,
+    frags: [{ label: "Metformin", mobilePriority: true }, { label: "Amlodipine" }],
+  },
+  {
+    id: "allergies",
+    label: "Allergies",
+    a: 180,
+    frags: [{ label: "Penicillin", warn: true, mobilePriority: true }],
+  },
+  {
+    id: "notes",
+    label: "Notes",
+    a: -135,
+    frags: [{ label: "Smoker", mobilePriority: true }, { label: "F/H cardiac" }],
+  },
 ];
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
@@ -134,7 +178,9 @@ export default function ContextCard() {
                   {n.frags.map((f) => (
                     <line
                       key={f.key}
-                      className="ctx-edge ctx-edge--frag"
+                      className={`ctx-edge ctx-edge--frag${
+                        f.mobilePriority ? " is-mobile-priority" : ""
+                      }`}
                       x1={n.pos.x}
                       y1={n.pos.y}
                       x2={f.pos.x}
@@ -198,7 +244,9 @@ export default function ContextCard() {
             n.frags.map((f, fi) => (
               <span
                 key={f.key}
-                className={`ctx-frag${f.warn ? " is-warn" : ""}`}
+                className={`ctx-frag${f.warn ? " is-warn" : ""}${
+                  f.mobilePriority ? " is-mobile-priority" : ""
+                }`}
                 style={{ ...pct(f.pos.x, f.pos.y), ["--i" as string]: n.i * 2 + fi }}
               >
                 <span
