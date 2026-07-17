@@ -44,6 +44,54 @@ cd web
 npm run test:e2e:headed
 ```
 
+## Backend E2E smoke tests
+
+The web package also includes a Playwright API suite that starts a real FastAPI test server with the in-memory test repository and exercises backend routes over HTTP.
+
+```bash
+cd web
+npm run test:e2e:backend
+```
+
+This covers auth lifecycle, clinic settings, signatures, patient attachments, note/invoice/PDF routes, tenant isolation, user permissions, catalog stock, appointments, follow-ups, public booking, exports, and audit events.
+
+To run the same backend E2E suite against a real disposable Postgres database instead of the in-memory test repository:
+
+```bash
+createdb clinic_e2e_test
+cd web
+E2E_POSTGRES_DATABASE_URL=postgresql://clinic_user:clinic_password@127.0.0.1:5432/clinic_e2e_test \
+E2E_ALLOW_DATABASE_RESET=true \
+npm run test:e2e:postgres
+```
+
+The Postgres E2E server applies `db/schema.sql`, applies tracked migrations, uses the real `PostgresRepository`, and truncates all public tables except `schema_migrations` before each test. It refuses to run unless the database name contains `test`, `e2e`, or `playwright`.
+
+If Docker is available, the repo can start a disposable Postgres container and run that same suite:
+
+```bash
+cd web
+npm run test:e2e:postgres:docker
+```
+
+## Live browser E2E smoke tests
+
+The live browser suite starts the same FastAPI E2E server plus Next.js, then drives Chromium through real browser registration, login, onboarding redirect, patient queue, note generation/finalization, inventory-backed invoice completion, stock deduction verification, and staff/admin route boundaries.
+
+```bash
+cd web
+npm run test:e2e:live
+```
+
+The mobile live suite runs the `/m` workspace under a phone viewport against the same local FastAPI/Next.js stack.
+
+```bash
+cd web
+npm run test:e2e:mobile-live
+```
+
+This covers mobile login, queue patient creation, mobile consultation draft generation/finalization, queue removal after completion, patient search, and chart note persistence.
+
 ## Backend setup
 
 ```bash

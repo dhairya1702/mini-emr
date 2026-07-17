@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from test_app import auth_headers_for_token, client, register_test_clinic, signature_png_bytes
 
 
@@ -290,3 +292,30 @@ def test_admin_cannot_manage_users_across_organizations(client):
         headers=auth_headers_for_token(session_a["token"]),
     )
     assert delete_user.status_code == 404
+
+
+def test_foreign_user_signature_upload_does_not_process_image(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    session_a = register_test_clinic(test_client, identifier="owner-signature-a@clinic.com", clinic_name="Signature Clinic A")
+    session_b = register_test_clinic(test_client, identifier="owner-signature-b@clinic.com", clinic_name="Signature Clinic B")
+
+    create_staff_b = test_client.post(
+        "/users/staff",
+        json={"identifier": "staff-signature-b@clinic.com", "password": "password123!"},
+        headers=auth_headers_for_token(session_b["token"]),
+    )
+    assert create_staff_b.status_code == 201
+    foreign_user_id = create_staff_b.json()["id"]
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("normalize_signature_image should not run for foreign users.")
+
+    monkeypatch.setattr("app.routes.users.normalize_signature_image", fail_if_called)
+
+    upload_signature = test_client.post(
+        f"/users/{foreign_user_id}/signature",
+        headers=auth_headers_for_token(session_a["token"]),
+        files={"file": ("signature.png", signature_png_bytes(), "image/png")},
+    )
+
+    assert upload_signature.status_code == 404

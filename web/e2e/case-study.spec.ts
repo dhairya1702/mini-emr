@@ -28,7 +28,7 @@ test("case study smoke generates and saves a draft for an admin", async ({ page 
 
   await page.goto("/case-study");
 
-  await page.getByPlaceholder("Search patient").fill("Morgan");
+  await page.getByRole("textbox", { name: "Search patient", exact: true }).fill("Morgan");
   await page.getByRole("button", { name: /Morgan Lee/ }).click();
   await page.getByLabel("Title").fill("Interesting blurred vision case");
   await page.getByLabel("Brief").fill("Focus on progression and management decisions.");

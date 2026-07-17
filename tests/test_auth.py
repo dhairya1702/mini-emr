@@ -444,7 +444,7 @@ def test_signature_cleanup_makes_background_transparent():
     normalized = Image.open(BytesIO(normalized_bytes)).convert("RGBA")
     assert normalized.getbbox() is not None
 
-    pixels = list(normalized.get_flattened_data())
+    pixels = list(normalized.getdata())
     transparent_pixels = sum(1 for pixel in pixels if pixel[3] == 0)
     visible_pixels = sum(1 for pixel in pixels if pixel[3] > 0)
 
@@ -473,7 +473,7 @@ def test_signature_cleanup_removes_warm_paper_noise():
 
     transparent_pixels = 0
     retained_warm_pixels = 0
-    for red, green, blue, alpha in normalized.get_flattened_data():
+    for red, green, blue, alpha in normalized.getdata():
         if alpha == 0:
             transparent_pixels += 1
             continue

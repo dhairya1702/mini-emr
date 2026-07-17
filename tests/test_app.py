@@ -1409,7 +1409,9 @@ class FakeRepo:
         return rows
 
     async def get_patient_attachment(self, org_id: str, attachment_id: str) -> dict:
-        row = self.patient_attachments[attachment_id]
+        row = self.patient_attachments.get(attachment_id)
+        if row is None:
+            raise ValueError("Attachment not found for this organization.")
         if row["org_id"] != org_id:
             raise ValueError("Attachment not found for this organization.")
         return row

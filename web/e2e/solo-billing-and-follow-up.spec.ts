@@ -48,7 +48,7 @@ test("solo consultation billing keeps custom items after the old polling interva
   await expect(page.getByText("Plan: Hydration and observation.")).toBeVisible();
   await page.getByRole("button", { name: "Done" }).click();
 
-  await expect(page.getByRole("heading", { name: "Reset Check", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Reset Check", exact: true })).toBeVisible();
   await expect(page.getByText("Invoice Items for Reset Check")).toBeVisible();
 
   await page.getByPlaceholder("e.g. Procedure charge, dressing, emergency fee").fill("Custom fee");

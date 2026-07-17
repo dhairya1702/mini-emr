@@ -52,7 +52,7 @@ test("consultation smoke generates a note and completes the patient flow", async
   await expect(page.getByText("Plan: Hydration and observation.")).toBeVisible();
   await page.getByRole("button", { name: "Done" }).click();
 
-  await expect(page.getByRole("heading", { name: "Avery Stone" })).toHaveCount(0);
+  await expect(page.getByRole("complementary")).toHaveCount(0);
   await expect(
     page.getByRole("region", { name: "Billing queue" }).getByText("Avery Stone", { exact: true }),
   ).toBeVisible();

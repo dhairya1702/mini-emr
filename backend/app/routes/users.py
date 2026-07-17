@@ -83,6 +83,11 @@ async def upload_user_signature(
     current_user: UserOut = Depends(require_admin),
     repo: AppRepository = Depends(get_repository),
 ) -> UserOut:
+    try:
+        await repo.get_user_for_org(str(current_user.org_id), user_id)
+    except (IndexError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail="User not found.") from exc
+
     content_type = (file.content_type or "").strip().lower()
     if content_type not in {"image/jpeg", "image/png"}:
         raise HTTPException(status_code=400, detail="Signature must be a JPG or PNG file.")
@@ -94,7 +99,6 @@ async def upload_user_signature(
     except ValueError as exc:
         raise bad_request_error(exc) from exc
     try:
-        await repo.get_user_for_org(str(current_user.org_id), user_id)
         saved = await repo.set_user_signature(
             user_id,
             filename=(file.filename or "signature").strip() or "signature",

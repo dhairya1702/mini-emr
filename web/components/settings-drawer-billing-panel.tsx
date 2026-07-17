@@ -60,6 +60,8 @@ export function SettingsDrawerBillingPanel({
   selectedBillingPatientId,
   selectedBillingPatient,
   showPatientSelector = true,
+  serviceItems,
+  medicineItems,
   invoiceItems,
   invoiceSubtotal,
   amountPaid,
@@ -79,6 +81,7 @@ export function SettingsDrawerBillingPanel({
   customItemQuantity,
   customItemUnitPrice,
   onSelectPatient,
+  onAddCatalogItem,
   onCustomItemLabelChange,
   onCustomItemQuantityChange,
   onCustomItemUnitPriceChange,
@@ -192,6 +195,41 @@ export function SettingsDrawerBillingPanel({
           </div>
 
           <div className="mt-5 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
+            {serviceItems.length || medicineItems.length ? (
+              <div className="mb-5 grid gap-4 lg:grid-cols-2">
+                <div>
+                  <p className="mb-2 text-sm font-medium text-slate-700">Services</p>
+                  <div className="flex flex-wrap gap-2">
+                    {serviceItems.length ? serviceItems.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => onAddCatalogItem(item)}
+                        className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
+                      >
+                        Add {item.name}
+                      </button>
+                    )) : <p className="text-sm text-slate-500">No services configured.</p>}
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-2 text-sm font-medium text-slate-700">Medicines</p>
+                  <div className="flex flex-wrap gap-2">
+                    {medicineItems.length ? medicineItems.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => onAddCatalogItem(item)}
+                        disabled={item.track_inventory && item.stock_quantity <= 0}
+                        className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Add {item.name}
+                      </button>
+                    )) : <p className="text-sm text-slate-500">No medicines configured.</p>}
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
               <label className="flex-1">
                 <span className="mb-2 block text-sm font-medium text-slate-700">Item</span>

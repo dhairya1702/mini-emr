@@ -86,7 +86,7 @@ def normalize_signature_image(raw_bytes: bytes, content_type: str) -> tuple[byte
     background_brightness = _brightness(background[0], background[1], background[2])
     processed_pixels = []
     has_visible_ink = False
-    for red, green, blue, alpha in image.get_flattened_data():
+    for red, green, blue, alpha in image.getdata():
         if alpha == 0:
             processed_pixels.append((0, 0, 0, 0))
             continue
