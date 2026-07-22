@@ -395,7 +395,7 @@ export function TbiEvaluationModal({
           </aside>
 
           <div className="min-h-0 overflow-y-auto bg-[#d9d9d9] p-4 sm:p-6">
-            <div className="mx-auto w-full max-w-[980px] border-[3px] border-double border-black bg-white px-8 py-8 font-[Arial] text-[15px] leading-normal text-black shadow-sm sm:px-14">
+            <div className="mx-auto w-full max-w-[980px] bg-white px-8 py-8 font-[Arial] text-[15px] leading-normal text-black shadow-sm sm:px-14">
               <div className="mb-5 flex flex-wrap items-center justify-between gap-3 print:hidden">
                 <label className="text-sm font-semibold text-slate-700">
                   Evaluation date
@@ -419,7 +419,7 @@ export function TbiEvaluationModal({
               </div>
               {saveError ? <p className="mb-4 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{saveError}</p> : null}
 
-              <p className="font-bold underline">Traumatic brain injury checklist: (another word document)</p>
+              <p className="font-bold underline">Traumatic brain injury checklist</p>
 
               <SectionHeading>Visual acuity:</SectionHeading>
               <p>Unaided visual acuity:</p>
@@ -455,14 +455,14 @@ export function TbiEvaluationModal({
                 <AxisDiagram />
                 <AxisDiagram />
               </div>
-              <p className="mt-6">Visual field: Central (Amsler) (Attach sheet)</p>
+              <p className="mt-6">Visual field: Central (Amsler)</p>
               <TwoEyeRow basePath={["visual_functions", "central_visual_field"]} value={formValue} onChange={handleChange} />
               <TextLine label="Cover test" path={["visual_functions", "cover_test"]} value={formValue} onChange={handleChange} />
 
               <SectionHeading>Entrance tests:</SectionHeading>
-              <FreeTextTest title="Line bisection test: (Attach sheet)" basePath={["entrance_tests", "line_bisection"]} value={formValue} onChange={handleChange} />
-              <FreeTextTest title="Unilateral special inattention (Crossing out items): (Attach sheet)" basePath={["entrance_tests", "crossing_out_items"]} value={formValue} onChange={handleChange} />
-              <FreeTextTest title="Unilateral special inattention (Copying): (Attach sheet)" basePath={["entrance_tests", "copying"]} value={formValue} onChange={handleChange} />
+              <FreeTextTest title="Line bisection test" basePath={["entrance_tests", "line_bisection"]} value={formValue} onChange={handleChange} />
+              <FreeTextTest title="Unilateral spatial inattention - Crossing out items" basePath={["entrance_tests", "crossing_out_items"]} value={formValue} onChange={handleChange} />
+              <FreeTextTest title="Unilateral spatial inattention - Copying" basePath={["entrance_tests", "copying"]} value={formValue} onChange={handleChange} />
 
               <SectionHeading>Non-motor perception - Visual analysis skills</SectionHeading>
               <TextLine label="TVPS" path={["visual_analysis", "tvps"]} value={formValue} onChange={handleChange} />
@@ -545,7 +545,6 @@ export function TbiEvaluationModal({
               <textarea value={getAtPath(formValue, ["final_comments"])} onChange={(event) => handleChange(["final_comments"], event.target.value)} rows={5} className="w-full resize-y border-b border-black bg-transparent px-1 py-1 outline-none" />
               <SectionHeading>Management and therapy options:</SectionHeading>
               <textarea value={getAtPath(formValue, ["management_and_therapy_options"])} onChange={(event) => handleChange(["management_and_therapy_options"], event.target.value)} rows={5} className="w-full resize-y border-b border-black bg-transparent px-1 py-1 outline-none" />
-              <p className="mt-10 font-semibold">Name and signature of Optometrist</p>
             </div>
           </div>
         </div>

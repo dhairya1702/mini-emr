@@ -27,6 +27,8 @@ import {
   NoteAsset,
   Patient,
   PediatricGrowthMeasurementPayload,
+  TbiEvaluationCreatePayload,
+  TbiEvaluationRecord,
   TestScoreEntry,
   WellChildVisitPayload,
 } from "@/lib/types";
@@ -36,6 +38,7 @@ import { BinocularVisionModal } from "@/components/optometry/binocular-vision-mo
 import { ContactLensModal } from "@/components/optometry/contact-lens-modal";
 import { LowVisionModal } from "@/components/optometry/low-vision-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia-management-modal";
+import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
 import {
   buildBinocularVisionSummary,
   buildLowVisionSummary,
@@ -451,6 +454,10 @@ export function ConsultationDrawer({
   const [isBinocularVisionOpen, setIsBinocularVisionOpen] = useState(false);
   const [isLowVisionOpen, setIsLowVisionOpen] = useState(false);
   const [isMyopiaManagementOpen, setIsMyopiaManagementOpen] = useState(false);
+  const [isTbiEvaluationOpen, setIsTbiEvaluationOpen] = useState(false);
+  const [tbiEvaluations, setTbiEvaluations] = useState<TbiEvaluationRecord[]>([]);
+  const [isTbiLoading, setIsTbiLoading] = useState(false);
+  const [tbiError, setTbiError] = useState("");
   const [hasGeneratedNote, setHasGeneratedNote] = useState(false);
   const [currentNoteId, setCurrentNoteId] = useState("");
   const [clinicalExtractions, setClinicalExtractions] = useState<ClinicalExtractions>({
@@ -524,6 +531,10 @@ export function ConsultationDrawer({
     setIsBinocularVisionOpen(false);
     setIsLowVisionOpen(false);
     setIsMyopiaManagementOpen(false);
+    setIsTbiEvaluationOpen(false);
+    setTbiEvaluations([]);
+    setIsTbiLoading(false);
+    setTbiError("");
     setMedicineSearch(cachedWorkspace?.medicineSearch ?? "");
     setForm(
       cachedForm
@@ -691,6 +702,40 @@ export function ConsultationDrawer({
     };
     image.src = `data:${drawingAsset.content_type};base64,${drawingAsset.data_base64}`;
   }, [drawingAsset, openSections.drawing]);
+
+  useEffect(() => {
+    if (!patientId || !isOptometryClinic || !isTbiEvaluationOpen) {
+      return;
+    }
+    if (isTrainingMode) {
+      setTbiEvaluations([]);
+      return;
+    }
+
+    let active = true;
+    setIsTbiLoading(true);
+    setTbiError("");
+    api.listPatientTbiEvaluations(patientId)
+      .then((rows) => {
+        if (active) {
+          setTbiEvaluations(rows);
+        }
+      })
+      .catch((loadError) => {
+        if (active) {
+          setTbiError(loadError instanceof Error ? loadError.message : "Failed to load TBI evaluations.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsTbiLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isOptometryClinic, isTbiEvaluationOpen, isTrainingMode, patientId]);
 
   if (!patient) {
     return null;
@@ -1147,7 +1192,7 @@ export function ConsultationDrawer({
     }));
   }
 
-  function openOptometryModule(section: "contactLens" | "binocularVision" | "lowVision" | "myopiaManagement") {
+  function openOptometryModule(section: "contactLens" | "binocularVision" | "lowVision" | "myopiaManagement" | "tbiEvaluation") {
     if (section === "contactLens") {
       setIsContactLensOpen(true);
       return;
@@ -1158,6 +1203,10 @@ export function ConsultationDrawer({
     }
     if (section === "lowVision") {
       setIsLowVisionOpen(true);
+      return;
+    }
+    if (section === "tbiEvaluation") {
+      setIsTbiEvaluationOpen(true);
       return;
     }
     setIsMyopiaManagementOpen(true);
@@ -1253,6 +1302,39 @@ export function ConsultationDrawer({
       ...next,
       record_id: saved.id,
     }));
+  }
+
+  async function saveTbiEvaluation(payload: TbiEvaluationCreatePayload) {
+    if (!currentPatient) {
+      return;
+    }
+    setIsTbiLoading(true);
+    setTbiError("");
+    try {
+      if (isTrainingMode) {
+        const saved: TbiEvaluationRecord = {
+          id: createId(),
+          org_id: "training",
+          patient_id: currentPatient.id,
+          measured_at: payload.measured_at,
+          payload: payload.payload,
+          summary_fields: { summary: "Neurovision / TBI evaluation saved." },
+          created_at: new Date().toISOString(),
+        };
+        setTbiEvaluations((current) => [...current, saved]);
+        setStatusMessage("TBI evaluation saved.");
+        return;
+      }
+      const saved = await api.createPatientTbiEvaluation(currentPatient.id, payload);
+      setTbiEvaluations((current) => [...current.filter((record) => record.id !== saved.id), saved]);
+      setStatusMessage("TBI evaluation saved.");
+    } catch (saveError) {
+      const message = saveError instanceof Error ? saveError.message : "Failed to save TBI evaluation.";
+      setTbiError(message);
+      throw saveError;
+    } finally {
+      setIsTbiLoading(false);
+    }
   }
 
   async function saveGrowthMeasurement() {
@@ -2125,6 +2207,7 @@ export function ConsultationDrawer({
                     {renderModuleButton("Binocular vision", "Alignment and vergence", false, () => openOptometryModule("binocularVision"))}
                     {renderModuleButton("Low vision", "Aids and function", false, () => openOptometryModule("lowVision"))}
                     {renderModuleButton("Myopia", "Axial and therapy", false, () => openOptometryModule("myopiaManagement"))}
+                    {renderModuleButton("TBI evaluation", "Neurovision sheet", false, () => openOptometryModule("tbiEvaluation"))}
                   </>
                 ) : null}
                 {isPediatricsClinic ? (
@@ -2635,13 +2718,18 @@ export function ConsultationDrawer({
                     description="Functional vision and aids"
                     onSelect={() => openOptometryModule("lowVision")}
                   />
-                  <ConsultationModuleRailItem
-                    title="Myopia management"
-                    description="Axial length and treatment"
-                    onSelect={() => openOptometryModule("myopiaManagement")}
-                  />
-                </>
-              ) : null}
+	                  <ConsultationModuleRailItem
+	                    title="Myopia management"
+	                    description="Axial length and treatment"
+	                    onSelect={() => openOptometryModule("myopiaManagement")}
+	                  />
+	                  <ConsultationModuleRailItem
+	                    title="TBI evaluation"
+	                    description="Neurovision worksheet"
+	                    onSelect={() => openOptometryModule("tbiEvaluation")}
+	                  />
+	                </>
+	              ) : null}
               {isPediatricsClinic ? (
                 <>
                   <ConsultationModuleRailItem
@@ -2990,6 +3078,19 @@ export function ConsultationDrawer({
         onSave={async (next) => {
           await saveMyopiaManagement(next);
           setIsMyopiaManagementOpen(false);
+        }}
+      />
+      <TbiEvaluationModal
+        open={isOptometryClinic && isTbiEvaluationOpen}
+        patient={currentPatient}
+        evaluations={tbiEvaluations}
+        isLoading={isTbiLoading}
+        error={tbiError}
+        readOnly={false}
+        onClose={() => setIsTbiEvaluationOpen(false)}
+        onSave={async (payload) => {
+          await saveTbiEvaluation(payload);
+          setIsTbiEvaluationOpen(false);
         }}
       />
     </aside>
