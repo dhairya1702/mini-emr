@@ -2185,7 +2185,6 @@ export function ConsultationDrawer({
             <section className="rounded-[18px] border border-[#bfd7e8] bg-white/90 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-600">Modules</p>
-                <p className="text-xs text-slate-500">Add structured details when needed.</p>
               </div>
               <div className="flex gap-3 overflow-x-auto pb-1">
                 {renderModuleButton(
