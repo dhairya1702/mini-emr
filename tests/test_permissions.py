@@ -160,6 +160,13 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
     )
     assert send_invoice.status_code == 403
 
+    send_invoice_whatsapp = test_client.post(
+        "/send-invoice-whatsapp",
+        json={"invoice_id": invoice["id"], "recipient_phone": "9600106623"},
+        headers=staff_headers,
+    )
+    assert send_invoice_whatsapp.status_code == 403
+
     invoice_pdf = test_client.get(f"/invoices/{invoice['id']}/pdf", headers=staff_headers)
     assert invoice_pdf.status_code == 403
 

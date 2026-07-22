@@ -87,6 +87,11 @@ class SendInvoiceRequest(BaseModel):
     recipient_email: str = Field(min_length=5, max_length=200)
 
 
+class SendInvoiceWhatsAppRequest(BaseModel):
+    invoice_id: UUID
+    recipient_phone: str | None = Field(default=None, max_length=40)
+
+
 class FinalizeInvoiceRequest(BaseModel):
     invoice_id: UUID
 

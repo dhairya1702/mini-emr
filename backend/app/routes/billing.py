@@ -14,6 +14,7 @@ from app.schema_domains.billing import (
     InvoiceCreate,
     InvoiceOut,
     SendInvoiceRequest,
+    SendInvoiceWhatsAppRequest,
 )
 from app.schema_domains.clinical_extractions import BillingSuggestionsResponse
 from app.services.billing_suggestion_service import build_note_billing_suggestions
@@ -24,6 +25,7 @@ from app.services.billing_workflow import (
     send_invoice_workflow,
 )
 from app.services.pdf_service import build_invoice_pdf
+from app.services.whatsapp_document_workflow import send_invoice_whatsapp_workflow
 
 
 router = APIRouter()
@@ -88,6 +90,18 @@ async def send_invoice(
 ) -> InvoiceActionResponse:
     try:
         return await send_invoice_workflow(repo, current_user, payload)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+
+
+@router.post("/send-invoice-whatsapp", response_model=InvoiceActionResponse)
+async def send_invoice_whatsapp(
+    payload: SendInvoiceWhatsAppRequest,
+    current_user: UserOut = Depends(require_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> InvoiceActionResponse:
+    try:
+        return await send_invoice_whatsapp_workflow(repo, current_user, payload)
     except ValueError as exc:
         raise bad_request_error(exc) from exc
 

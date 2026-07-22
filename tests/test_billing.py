@@ -1,7 +1,22 @@
 from __future__ import annotations
 
 from test_app import auth_headers_for_token, client, register_test_clinic
-from app.services import billing_workflow
+from app.services import billing_workflow, whatsapp_document_workflow
+from app.services.whatsapp_client import WhatsAppSendResult
+
+
+class FakeWhatsAppDocumentClient:
+    def __init__(self) -> None:
+        self.uploads: list[dict[str, object]] = []
+        self.documents: list[dict[str, object]] = []
+
+    def upload_media(self, *, content: bytes, filename: str, content_type: str) -> str:
+        self.uploads.append({"content": content, "filename": filename, "content_type": content_type})
+        return "media-123"
+
+    def send_document(self, *, to: str, media_id: str, filename: str, caption: str = "") -> WhatsAppSendResult:
+        self.documents.append({"to": to, "media_id": media_id, "filename": filename, "caption": caption})
+        return WhatsAppSendResult(message_id="wamid.invoice", raw={"messages": [{"id": "wamid.invoice"}]})
 
 
 def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypatch):
@@ -104,6 +119,63 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypat
     assert second_send.status_code == 200
     assert repo.catalog_items[item["id"]]["stock_quantity"] == 7
     assert "already emailed" in second_send.json()["message"].lower()
+
+
+def test_invoice_can_be_sent_on_whatsapp_with_patient_phone(client, monkeypatch):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="billing-whatsapp@clinic.com", clinic_name="WhatsApp Billing Clinic")
+    headers = auth_headers_for_token(session["token"])
+    fake_client = FakeWhatsAppDocumentClient()
+    monkeypatch.setattr(whatsapp_document_workflow, "build_whatsapp_client", lambda: fake_client)
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "WhatsApp Patient",
+            "phone": "9600106623",
+            "email": "wa@example.com",
+            "reason": "Consultation",
+            "age": 30,
+            "weight": 65,
+            "height": 170,
+            "temperature": 98.4,
+        },
+        headers=headers,
+    ).json()
+    invoice = test_client.post(
+        "/invoices",
+        json={
+            "patient_id": patient["id"],
+            "payment_status": "paid",
+            "items": [{"item_type": "service", "label": "Consultation", "quantity": 1, "unit_price": 500}],
+        },
+        headers=headers,
+    ).json()
+
+    response = test_client.post(
+        "/send-invoice-whatsapp",
+        json={"invoice_id": invoice["id"]},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["invoice"]["sent_at"] is not None
+    assert fake_client.uploads[0]["filename"] == "WhatsApp_Patient_invoice.pdf"
+    assert fake_client.uploads[0]["content_type"] == "application/pdf"
+    assert fake_client.documents == [
+        {
+            "to": "919600106623",
+            "media_id": "media-123",
+            "filename": "WhatsApp_Patient_invoice.pdf",
+            "caption": "WhatsApp Billing Clinic: invoice for WhatsApp Patient.",
+        }
+    ]
+    events = list(repo.whatsapp_message_events.values())
+    assert len(events) == 1
+    assert events[0]["intent"] == "send_invoice_document"
+    assert events[0]["status"] == "sent"
+    assert events[0]["wa_message_id"] == "wamid.invoice"
+    assert events[0]["recipient_wa_id"] == "919600106623"
 
 
 def test_invoice_can_be_created_with_partial_payment_status(client):

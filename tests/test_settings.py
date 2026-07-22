@@ -7,7 +7,22 @@ from pypdf import PdfWriter
 
 from test_app import auth_headers_for_token, client, register_test_clinic, signature_png_bytes
 from app.services.pdf_service import _page_size_for_template
-from app.services import note_workflow
+from app.services import note_workflow, whatsapp_document_workflow
+from app.services.whatsapp_client import WhatsAppSendResult
+
+
+class FakeWhatsAppDocumentClient:
+    def __init__(self) -> None:
+        self.uploads: list[dict[str, object]] = []
+        self.documents: list[dict[str, object]] = []
+
+    def upload_media(self, *, content: bytes, filename: str, content_type: str) -> str:
+        self.uploads.append({"content": content, "filename": filename, "content_type": content_type})
+        return "media-letter"
+
+    def send_document(self, *, to: str, media_id: str, filename: str, caption: str = "") -> WhatsAppSendResult:
+        self.documents.append({"to": to, "media_id": media_id, "filename": filename, "caption": caption})
+        return WhatsAppSendResult(message_id="wamid.letter", raw={"messages": [{"id": "wamid.letter"}]})
 
 
 def test_clinic_settings_document_template_upload_download_and_remove(client):
@@ -397,6 +412,51 @@ def test_send_letter_emails_generated_content(client, monkeypatch):
     assert response.status_code == 200
     assert sent_messages
     assert sent_messages[0]["recipient"] == "patient@example.com"
+
+
+def test_send_letter_whatsapp_sends_generated_pdf_document(client, monkeypatch):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="settings-send-letter-wa@clinic.com", clinic_name="Letter WA Clinic")
+    headers = auth_headers_for_token(session["token"])
+    fake_client = FakeWhatsAppDocumentClient()
+    monkeypatch.setattr(whatsapp_document_workflow, "build_whatsapp_client", lambda: fake_client)
+
+    saved = test_client.put(
+        "/settings/clinic",
+        headers=headers,
+        json={
+            "clinic_name": "Letter WA Clinic",
+        },
+    )
+    assert saved.status_code == 200
+
+    response = test_client.post(
+        "/send-letter-whatsapp",
+        headers=headers,
+        json={
+            "recipient_phone": "+91 96001 06623",
+            "subject": "Medical Certificate",
+            "content": "This is to certify that the patient attended the clinic.",
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake_client.uploads[0]["filename"] == "clinic_letter.pdf"
+    assert fake_client.uploads[0]["content_type"] == "application/pdf"
+    assert fake_client.documents == [
+        {
+            "to": "919600106623",
+            "media_id": "media-letter",
+            "filename": "clinic_letter.pdf",
+            "caption": "Letter WA Clinic: Medical Certificate.",
+        }
+    ]
+    events = list(repo.whatsapp_message_events.values())
+    assert len(events) == 1
+    assert events[0]["intent"] == "send_letter_document"
+    assert events[0]["status"] == "sent"
+    assert events[0]["wa_message_id"] == "wamid.letter"
+    assert events[0]["recipient_wa_id"] == "919600106623"
 
 
 def test_user_signature_can_be_uploaded_and_removed(client):

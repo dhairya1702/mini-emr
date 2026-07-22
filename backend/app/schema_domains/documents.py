@@ -95,6 +95,12 @@ class SendLetterRequest(BaseModel):
     content: str = Field(min_length=1, max_length=50000)
 
 
+class SendLetterWhatsAppRequest(BaseModel):
+    recipient_phone: str = Field(min_length=5, max_length=40)
+    subject: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=50000)
+
+
 class SendNoteRequest(BaseModel):
     note_id: UUID
     patient_id: UUID

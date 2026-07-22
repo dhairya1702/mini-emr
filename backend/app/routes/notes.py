@@ -20,6 +20,7 @@ from app.schema_domains.documents import (
     GenerateNoteRequest,
     GenerateNoteResponse,
     SendLetterRequest,
+    SendLetterWhatsAppRequest,
     SendNoteRequest,
     SendNoteResponse,
     UpdateNoteDraftRequest,
@@ -37,6 +38,7 @@ from app.services.note_workflow import (
 )
 from app.services.document_helpers import build_document_context_for_user
 from app.services.pdf_service import build_letter_pdf, build_note_pdf
+from app.services.whatsapp_document_workflow import send_letter_whatsapp_workflow
 from app.storage import PatientAttachmentStorage, get_patient_attachment_storage
 
 
@@ -149,6 +151,21 @@ async def send_letter(
         repo,
         current_user,
         recipient_email=payload.recipient_email,
+        subject=payload.subject,
+        content=payload.content,
+    )
+
+
+@router.post("/send-letter-whatsapp", response_model=SendNoteResponse)
+async def send_letter_whatsapp(
+    payload: SendLetterWhatsAppRequest,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> SendNoteResponse:
+    return await send_letter_whatsapp_workflow(
+        repo,
+        current_user,
+        recipient_phone=payload.recipient_phone,
         subject=payload.subject,
         content=payload.content,
     )
