@@ -474,12 +474,20 @@ async def send_letter_workflow(
         letter_content=content.strip(),
         generated_on=generated_on,
     )
+    email_body = "\n\n".join(
+        [
+            "Hi,",
+            f"Thank you for visiting {clinic_name}.",
+            f"Here is your {subject.strip()}.",
+            "Attached for your records.",
+        ]
+    )
     try:
         await send_clinic_email_message(
             clinic_settings=clinic_settings,
             recipient=normalized_email,
             subject=subject.strip(),
-            text_content=content.strip(),
+            text_content=email_body,
             attachments=[("clinic_letter.pdf", pdf_bytes, "application/pdf")],
         )
     except EmailDeliveryError as exc:

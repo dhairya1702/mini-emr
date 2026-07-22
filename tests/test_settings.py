@@ -412,6 +412,14 @@ def test_send_letter_emails_generated_content(client, monkeypatch):
     assert response.status_code == 200
     assert sent_messages
     assert sent_messages[0]["recipient"] == "patient@example.com"
+    assert sent_messages[0]["subject"] == "Medical Certificate"
+    assert sent_messages[0]["text_content"] == (
+        "Hi,\n\n"
+        "Thank you for visiting Letter Send Clinic.\n\n"
+        "Here is your Medical Certificate.\n\n"
+        "Attached for your records."
+    )
+    assert sent_messages[0]["attachments"][0][0] == "clinic_letter.pdf"
 
 
 def test_send_letter_whatsapp_sends_generated_pdf_document(client, monkeypatch):
