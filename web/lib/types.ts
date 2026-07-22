@@ -1074,6 +1074,11 @@ export interface SendInvoicePayload {
   recipient_email: string;
 }
 
+export interface SendInvoiceWhatsAppPayload {
+  invoice_id: string;
+  recipient_phone?: string | null;
+}
+
 export interface InvoiceActionResult {
   success: boolean;
   message: string;
@@ -1194,6 +1199,12 @@ export interface GenerateLetterPdfPayload {
 
 export interface SendLetterPayload {
   recipient_email: string;
+  subject: string;
+  content: string;
+}
+
+export interface SendLetterWhatsAppPayload {
+  recipient_phone: string;
   subject: string;
   content: string;
 }

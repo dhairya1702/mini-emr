@@ -1,6 +1,6 @@
 "use client";
 
-import { Printer, ReceiptIndianRupee, Trash2 } from "lucide-react";
+import { MessageCircle, Printer, ReceiptIndianRupee, Trash2 } from "lucide-react";
 
 import { CatalogItem, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
@@ -34,6 +34,7 @@ interface SettingsDrawerBillingPanelProps {
   isFinalizingInvoice: boolean;
   isPreparingInvoicePdf: boolean;
   isSendingInvoice: boolean;
+  isSendingInvoiceWhatsApp?: boolean;
   savedInvoice: Invoice | null;
   customItemLabel: string;
   customItemQuantity: string;
@@ -53,6 +54,7 @@ interface SettingsDrawerBillingPanelProps {
   onPrintInvoice: () => void | Promise<void>;
   onFinalizeInvoice: () => void | Promise<void>;
   onSendInvoice: () => void | Promise<void>;
+  onSendInvoiceWhatsApp?: () => void | Promise<void>;
 }
 
 export function SettingsDrawerBillingPanel({
@@ -76,6 +78,7 @@ export function SettingsDrawerBillingPanel({
   isFinalizingInvoice,
   isPreparingInvoicePdf,
   isSendingInvoice,
+  isSendingInvoiceWhatsApp = false,
   savedInvoice,
   customItemLabel,
   customItemQuantity,
@@ -95,6 +98,7 @@ export function SettingsDrawerBillingPanel({
   onPrintInvoice,
   onFinalizeInvoice,
   onSendInvoice,
+  onSendInvoiceWhatsApp,
 }: SettingsDrawerBillingPanelProps) {
   return (
     <div className={`grid gap-4 ${showPatientSelector ? "xl:grid-cols-[300px_1fr]" : ""}`}>
@@ -362,6 +366,15 @@ export function SettingsDrawerBillingPanel({
               className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
             >
               {isSendingInvoice ? "Sending..." : "Send Email"}
+            </button>
+            <button
+              type="button"
+              onClick={onSendInvoiceWhatsApp}
+              disabled={!onSendInvoiceWhatsApp || isSendingInvoiceWhatsApp || isSavingInvoice}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#1f9d68] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#18885a] disabled:opacity-60"
+            >
+              <MessageCircle className="h-4 w-4" />
+              {isSendingInvoiceWhatsApp ? "Sending..." : "Send WhatsApp"}
             </button>
           </div>
         </div>

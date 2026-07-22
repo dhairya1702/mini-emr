@@ -69,7 +69,9 @@ import {
   UserRoleUpdatePayload,
   UpdateNoteDraftPayload,
   SendInvoicePayload,
+  SendInvoiceWhatsAppPayload,
   SendLetterPayload,
+  SendLetterWhatsAppPayload,
   SendNotePayload,
   SendPatientAttachmentPayload,
   StaffUserCreatePayload,
@@ -539,6 +541,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  sendInvoiceWhatsApp: (payload: SendInvoiceWhatsAppPayload) =>
+    request<InvoiceActionResult>("/send-invoice-whatsapp", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   listFollowUps: (params?: {
     status?: "scheduled" | "completed" | "cancelled";
     q?: string;
@@ -785,6 +792,11 @@ export const api = {
     }),
   sendLetter: (payload: SendLetterPayload) =>
     request<OperationResult>("/send-letter", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  sendLetterWhatsApp: (payload: SendLetterWhatsAppPayload) =>
+    request<OperationResult>("/send-letter-whatsapp", {
       method: "POST",
       body: JSON.stringify(payload),
     }),

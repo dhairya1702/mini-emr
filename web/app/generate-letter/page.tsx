@@ -16,6 +16,7 @@ const emptyLetterForm: LetterFormState = {
   content: "",
   generated: "",
   recipient_email: "",
+  recipient_phone: "",
 };
 
 export default function GenerateLetterPage() {
@@ -26,6 +27,7 @@ export default function GenerateLetterPage() {
   const [isGeneratingLetter, setIsGeneratingLetter] = useState(false);
   const [isPreparingLetterPdf, setIsPreparingLetterPdf] = useState(false);
   const [isSendingLetter, setIsSendingLetter] = useState(false);
+  const [isSendingLetterWhatsApp, setIsSendingLetterWhatsApp] = useState(false);
   const loadPageData = useCallback(async () => null, []);
   const onPageData = useCallback(() => undefined, []);
   const loadBillablePatients = useCallback(async () => {
@@ -56,7 +58,9 @@ export default function GenerateLetterPage() {
     handleCreateInvoice,
     handleGenerateLetter,
     handleSendLetter,
+    handleSendLetterWhatsApp,
     handleSendInvoice,
+    handleSendInvoiceWhatsApp,
     handleExportPatientsCsv,
     handleExportVisitsCsv,
     handleExportInvoicesCsv,
@@ -156,6 +160,29 @@ export default function GenerateLetterPage() {
     }
   }
 
+  async function handleSendWhatsApp() {
+    const content = letterForm.generated.trim() || letterForm.content.trim();
+    if (!letterForm.recipient_phone.trim() || !letterForm.subject.trim() || !content) {
+      setLetterError("Recipient WhatsApp number, subject, and letter content are required.");
+      return;
+    }
+    setIsSendingLetterWhatsApp(true);
+    setLetterError("");
+    setLetterStatus("");
+    try {
+      const message = await handleSendLetterWhatsApp({
+        recipient_phone: letterForm.recipient_phone.trim(),
+        subject: letterForm.subject.trim(),
+        content,
+      });
+      setLetterStatus(message);
+    } catch (sendError) {
+      setLetterError(sendError instanceof Error ? sendError.message : "Failed to send letter on WhatsApp.");
+    } finally {
+      setIsSendingLetterWhatsApp(false);
+    }
+  }
+
   if (isRedirectingToLogin) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to login...</div></main>;
   if (!isAuthReady) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Loading ClinicOS...</div></main>;
 
@@ -172,11 +199,13 @@ export default function GenerateLetterPage() {
           isGeneratingLetter={isGeneratingLetter}
           isPreparingLetterPdf={isPreparingLetterPdf}
           isSendingLetter={isSendingLetter}
+          isSendingLetterWhatsApp={isSendingLetterWhatsApp}
           onSubmit={handleSubmit}
           onChange={(patch) => setLetterForm((current) => ({ ...current, ...patch }))}
           onPreviewPdf={handlePreviewPdf}
           onPrintPdf={handlePrintPdf}
           onSend={handleSend}
+          onSendWhatsApp={handleSendWhatsApp}
         />
       </div>
 
@@ -205,9 +234,11 @@ export default function GenerateLetterPage() {
           onGenerateLetter={handleGenerateLetter}
           onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
           onSendLetter={handleSendLetter}
+          onSendLetterWhatsApp={handleSendLetterWhatsApp}
           onCreateInvoice={handleCreateInvoice}
           onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
           onSendInvoice={handleSendInvoice}
+          onSendInvoiceWhatsApp={handleSendInvoiceWhatsApp}
           onExportPatientsCsv={handleExportPatientsCsv}
           onExportVisitsCsv={handleExportVisitsCsv}
           onExportInvoicesCsv={handleExportInvoicesCsv}

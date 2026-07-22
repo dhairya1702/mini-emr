@@ -16,6 +16,7 @@ const emptyLetterForm: LetterFormState = {
   content: "",
   generated: "",
   recipient_email: "",
+  recipient_phone: "",
 };
 
 export default function MobileGenerateLetterPage() {
@@ -26,6 +27,7 @@ export default function MobileGenerateLetterPage() {
   const [isGeneratingLetter, setIsGeneratingLetter] = useState(false);
   const [isPreparingLetterPdf, setIsPreparingLetterPdf] = useState(false);
   const [isSendingLetter, setIsSendingLetter] = useState(false);
+  const [isSendingLetterWhatsApp, setIsSendingLetterWhatsApp] = useState(false);
   const setupWarnings = [
     !clinicSettings?.email_configured ? "Clinic sender email is not configured yet." : "",
     !hasUserSignature(currentUser) ? "Your signature is missing." : "",
@@ -120,6 +122,29 @@ export default function MobileGenerateLetterPage() {
     }
   }
 
+  async function handleSendWhatsApp() {
+    const content = letterForm.generated.trim() || letterForm.content.trim();
+    if (!letterForm.recipient_phone.trim() || !letterForm.subject.trim() || !content) {
+      setLetterError("Recipient WhatsApp number, subject, and letter content are required.");
+      return;
+    }
+    setIsSendingLetterWhatsApp(true);
+    setLetterError("");
+    setLetterStatus("");
+    try {
+      await api.sendLetterWhatsApp({
+        recipient_phone: letterForm.recipient_phone.trim(),
+        subject: letterForm.subject.trim(),
+        content,
+      });
+      setLetterStatus("Letter sent on WhatsApp.");
+    } catch (sendError) {
+      setLetterError(sendError instanceof Error ? sendError.message : "Failed to send letter on WhatsApp.");
+    } finally {
+      setIsSendingLetterWhatsApp(false);
+    }
+  }
+
   return (
     <MobileAdminGate title="Generate Letter">
       <MobileShell title="Generate Letter">
@@ -131,11 +156,13 @@ export default function MobileGenerateLetterPage() {
           isGeneratingLetter={isGeneratingLetter}
           isPreparingLetterPdf={isPreparingLetterPdf}
           isSendingLetter={isSendingLetter}
+          isSendingLetterWhatsApp={isSendingLetterWhatsApp}
           onSubmit={handleSubmit}
           onChange={(patch) => setLetterForm((current) => ({ ...current, ...patch }))}
           onPreviewPdf={handlePreviewPdf}
           onPrintPdf={handlePrintPdf}
           onSend={handleSend}
+          onSendWhatsApp={handleSendWhatsApp}
         />
       </MobileShell>
     </MobileAdminGate>

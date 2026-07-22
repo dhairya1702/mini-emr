@@ -239,6 +239,7 @@ export default function HomePage() {
   const [isFinalizingInvoice, setIsFinalizingInvoice] = useState(false);
   const [isPreparingInvoicePdf, setIsPreparingInvoicePdf] = useState(false);
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
+  const [isSendingInvoiceWhatsApp, setIsSendingInvoiceWhatsApp] = useState(false);
   const [isInvoiceDirty, setIsInvoiceDirty] = useState(false);
   const [selectedPatientNotes, setSelectedPatientNotes] = useState<ConsultationNote[]>([]);
   const [isBillingNotesLoading, setIsBillingNotesLoading] = useState(false);
@@ -312,7 +313,9 @@ export default function HomePage() {
     handleFinalizeInvoice,
     handleGenerateLetter,
     handleSendLetter,
+    handleSendLetterWhatsApp,
     handleSendInvoice,
+    handleSendInvoiceWhatsApp,
     handleExportPatientsCsv,
     handleExportVisitsCsv,
     handleExportInvoicesCsv,
@@ -1259,6 +1262,31 @@ export default function HomePage() {
     }
   }
 
+  async function handleShareInvoiceWhatsApp() {
+    if (!selectedBillingPatient) {
+      setBillingError("Select a done patient to bill.");
+      return;
+    }
+    if (!selectedBillingPatient.phone.trim()) {
+      setBillingError("This patient does not have a phone number saved.");
+      return;
+    }
+    setIsSendingInvoiceWhatsApp(true);
+    setBillingError("");
+    setBillingStatus("");
+    try {
+      const invoice = await ensureSavedInvoice();
+      const result = await handleSendInvoiceWhatsApp({ invoice_id: invoice.id, recipient_phone: selectedBillingPatient.phone });
+      setBillingStatus(result.message);
+      setSavedInvoice(result.invoice);
+      await completeBillingWorkflow(true);
+    } catch (sendError) {
+      setBillingError(sendError instanceof Error ? sendError.message : "Failed to send invoice on WhatsApp.");
+    } finally {
+      setIsSendingInvoiceWhatsApp(false);
+    }
+  }
+
   async function handleCompleteInvoice() {
     if (!selectedBillingPatient) {
       setBillingError("Select a done patient to bill.");
@@ -1560,9 +1588,11 @@ export default function HomePage() {
           onGenerateLetter={handleGenerateLetter}
           onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
           onSendLetter={handleSendLetter}
+          onSendLetterWhatsApp={handleSendLetterWhatsApp}
           onCreateInvoice={handleCreateInvoice}
           onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
           onSendInvoice={handleSendInvoice}
+          onSendInvoiceWhatsApp={handleSendInvoiceWhatsApp}
           onExportPatientsCsv={handleExportPatientsCsv}
           onExportVisitsCsv={handleExportVisitsCsv}
           onExportInvoicesCsv={handleExportInvoicesCsv}
@@ -1749,6 +1779,7 @@ export default function HomePage() {
                 isFinalizingInvoice={isFinalizingInvoice}
                 isPreparingInvoicePdf={isPreparingInvoicePdf}
                 isSendingInvoice={isSendingInvoice}
+                isSendingInvoiceWhatsApp={isSendingInvoiceWhatsApp}
                 savedInvoice={savedInvoice}
                 customItemLabel={customItemLabel}
                 customItemQuantity={customItemQuantity}
@@ -1779,6 +1810,7 @@ export default function HomePage() {
                 onPrintInvoice={() => handleInvoicePdf("print")}
                 onFinalizeInvoice={handleCompleteInvoice}
                 onSendInvoice={handleShareInvoice}
+                onSendInvoiceWhatsApp={handleShareInvoiceWhatsApp}
               />
             </div>
           </div>

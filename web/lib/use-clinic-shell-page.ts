@@ -274,8 +274,17 @@ export function useClinicShellPage<T>({
     return response.message;
   }, []);
 
+  const handleSendLetterWhatsApp = useCallback(async (payload: { recipient_phone: string; subject: string; content: string }) => {
+    const response = await api.sendLetterWhatsApp(payload);
+    return response.message;
+  }, []);
+
   const handleSendInvoice = useCallback(async (payload: { invoice_id: string; recipient_email: string }): Promise<InvoiceActionResult> => {
     return api.sendInvoice(payload);
+  }, []);
+
+  const handleSendInvoiceWhatsApp = useCallback(async (payload: { invoice_id: string; recipient_phone?: string | null }): Promise<InvoiceActionResult> => {
+    return api.sendInvoiceWhatsApp(payload);
   }, []);
 
   const handleExportPatientsCsv = useCallback(async () => api.exportPatientsCsv(), []);
@@ -324,7 +333,9 @@ export function useClinicShellPage<T>({
     handleFinalizeInvoice,
     handleGenerateLetter,
     handleSendLetter,
+    handleSendLetterWhatsApp,
     handleSendInvoice,
+    handleSendInvoiceWhatsApp,
     handleExportPatientsCsv,
     handleExportVisitsCsv,
     handleExportInvoicesCsv,

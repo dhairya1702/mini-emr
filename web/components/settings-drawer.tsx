@@ -88,6 +88,7 @@ interface SettingsDrawerProps {
   onGenerateLetter: (payload: { to: string; subject: string; content: string }) => Promise<string>;
   onGenerateLetterPdf: (payload: { content: string }) => Promise<Blob>;
   onSendLetter: (payload: { recipient_email: string; subject: string; content: string }) => Promise<string>;
+  onSendLetterWhatsApp?: (payload: { recipient_phone: string; subject: string; content: string }) => Promise<string>;
   onCreateInvoice: (payload: {
     invoice_id?: string | null;
     patient_id: string;
@@ -104,6 +105,7 @@ interface SettingsDrawerProps {
   onFinalizeInvoice?: (payload: { invoice_id: string }) => Promise<{ success: boolean; message: string; invoice: Invoice }>;
   onGenerateInvoicePdf: (invoiceId: string) => Promise<Blob>;
   onSendInvoice: (payload: { invoice_id: string; recipient_email: string }) => Promise<{ success: boolean; message: string; invoice: Invoice }>;
+  onSendInvoiceWhatsApp?: (payload: { invoice_id: string; recipient_phone?: string | null }) => Promise<{ success: boolean; message: string; invoice: Invoice }>;
   onExportPatientsCsv: () => Promise<Blob>;
   onExportVisitsCsv: () => Promise<Blob>;
   onExportInvoicesCsv: () => Promise<Blob>;
@@ -134,6 +136,7 @@ const emptyLetterForm = {
   content: "",
   generated: "",
   recipient_email: "",
+  recipient_phone: "",
 };
 
 type ClinicFormState = {
@@ -463,10 +466,12 @@ export function SettingsDrawer({
   onGenerateLetter,
   onGenerateLetterPdf,
   onSendLetter,
+  onSendLetterWhatsApp,
   onCreateInvoice,
   onFinalizeInvoice,
   onGenerateInvoicePdf,
   onSendInvoice,
+  onSendInvoiceWhatsApp,
   onExportPatientsCsv,
   onExportVisitsCsv,
   onExportInvoicesCsv,
@@ -537,6 +542,7 @@ export function SettingsDrawer({
   const [isGeneratingLetter, setIsGeneratingLetter] = useState(false);
   const [isPreparingLetterPdf, setIsPreparingLetterPdf] = useState(false);
   const [isSendingLetter, setIsSendingLetter] = useState(false);
+  const [isSendingLetterWhatsApp, setIsSendingLetterWhatsApp] = useState(false);
 
   const [selectedBillingPatientId, setSelectedBillingPatientId] = useState("");
   const [invoiceItems, setInvoiceItems] = useState<DraftInvoiceItem[]>([]);
@@ -555,6 +561,7 @@ export function SettingsDrawer({
   const [isFinalizingInvoice, setIsFinalizingInvoice] = useState(false);
   const [isPreparingInvoicePdf, setIsPreparingInvoicePdf] = useState(false);
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
+  const [isSendingInvoiceWhatsApp, setIsSendingInvoiceWhatsApp] = useState(false);
   const [isInvoiceDirty, setIsInvoiceDirty] = useState(false);
   const [billingPatients, setBillingPatients] = useState<Patient[]>(patients);
   const [isBillingPatientsLoading, setIsBillingPatientsLoading] = useState(false);
@@ -1262,6 +1269,36 @@ export function SettingsDrawer({
     }
   }
 
+  async function handleSendLetterWhatsApp() {
+    if (!onSendLetterWhatsApp) {
+      setLetterError("WhatsApp sending is not available here.");
+      return;
+    }
+    if (!letterForm.generated.trim()) {
+      setLetterError("Generate the letter before sending.");
+      return;
+    }
+    if (!letterForm.recipient_phone.trim()) {
+      setLetterError("Recipient WhatsApp number is required.");
+      return;
+    }
+    setIsSendingLetterWhatsApp(true);
+    setLetterError("");
+    setLetterStatus("");
+    try {
+      const message = await onSendLetterWhatsApp({
+        recipient_phone: letterForm.recipient_phone.trim(),
+        subject: letterForm.subject.trim(),
+        content: letterForm.generated.trim(),
+      });
+      setLetterStatus(message);
+    } catch (sendError) {
+      setLetterError(sendError instanceof Error ? sendError.message : "Failed to send letter on WhatsApp.");
+    } finally {
+      setIsSendingLetterWhatsApp(false);
+    }
+  }
+
   function addCatalogItemToInvoice(item: CatalogItem) {
     if (item.track_inventory && item.stock_quantity <= 0) {
       setBillingError(`No stock left for ${item.name}.`);
@@ -1446,6 +1483,40 @@ export function SettingsDrawer({
       setBillingError(sendError instanceof Error ? sendError.message : "Failed to mark invoice as shared.");
     } finally {
       setIsSendingInvoice(false);
+    }
+  }
+
+  async function handleSendInvoiceWhatsApp() {
+    if (!onSendInvoiceWhatsApp) {
+      setBillingError("WhatsApp sending is not available here.");
+      return;
+    }
+    if (!selectedBillingPatient) {
+      setBillingError("Select a done patient to bill.");
+      return;
+    }
+    if (!selectedBillingPatient.phone.trim()) {
+      setBillingError("This patient does not have a phone number saved.");
+      return;
+    }
+
+    setIsSendingInvoiceWhatsApp(true);
+    setBillingError("");
+    setBillingStatus("");
+    try {
+      const invoice = await ensureSavedInvoice();
+      const result = await onSendInvoiceWhatsApp({
+        invoice_id: invoice.id,
+        recipient_phone: selectedBillingPatient.phone,
+      });
+      setSavedInvoice(result.invoice);
+      setIsInvoiceDirty(false);
+      setBillingStatus(result.message);
+      onBillingComplete(selectedBillingPatient.id);
+    } catch (sendError) {
+      setBillingError(sendError instanceof Error ? sendError.message : "Failed to send invoice on WhatsApp.");
+    } finally {
+      setIsSendingInvoiceWhatsApp(false);
     }
   }
 
@@ -1964,11 +2035,13 @@ export function SettingsDrawer({
           isGeneratingLetter={isGeneratingLetter}
           isPreparingLetterPdf={isPreparingLetterPdf}
           isSendingLetter={isSendingLetter}
+          isSendingLetterWhatsApp={isSendingLetterWhatsApp}
           onSubmit={handleGenerateLetter}
           onChange={(patch) => setLetterForm((current) => ({ ...current, ...patch }))}
           onPreviewPdf={() => void handleLetterPdf()}
           onPrintPdf={() => void handleLetterPdf("print")}
           onSend={() => void handleSendLetter()}
+          onSendWhatsApp={() => void handleSendLetterWhatsApp()}
         />
 
         <div className="xl:sticky xl:top-0 xl:self-start">
@@ -2021,6 +2094,7 @@ export function SettingsDrawer({
         isFinalizingInvoice={isFinalizingInvoice}
         isPreparingInvoicePdf={isPreparingInvoicePdf}
         isSendingInvoice={isSendingInvoice}
+        isSendingInvoiceWhatsApp={isSendingInvoiceWhatsApp}
         savedInvoice={savedInvoice}
         customItemLabel={customItemLabel}
         customItemQuantity={customItemQuantity}
@@ -2059,6 +2133,7 @@ export function SettingsDrawer({
         onPrintInvoice={() => handleInvoicePdf("print")}
         onFinalizeInvoice={handleCompleteInvoice}
         onSendInvoice={handleSendInvoice}
+        onSendInvoiceWhatsApp={handleSendInvoiceWhatsApp}
       />
     );
   }

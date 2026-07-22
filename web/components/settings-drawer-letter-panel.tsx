@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent } from "react";
+import { MessageCircle } from "lucide-react";
 
 export type LetterFormState = {
   to: string;
@@ -8,6 +9,7 @@ export type LetterFormState = {
   content: string;
   generated: string;
   recipient_email: string;
+  recipient_phone: string;
 };
 
 interface SettingsDrawerLetterPanelProps {
@@ -18,11 +20,13 @@ interface SettingsDrawerLetterPanelProps {
   isGeneratingLetter: boolean;
   isPreparingLetterPdf: boolean;
   isSendingLetter: boolean;
+  isSendingLetterWhatsApp?: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
   onChange: (patch: Partial<LetterFormState>) => void;
   onPreviewPdf: () => void | Promise<void>;
   onPrintPdf: () => void | Promise<void>;
   onSend: () => void | Promise<void>;
+  onSendWhatsApp?: () => void | Promise<void>;
 }
 
 export function SettingsDrawerLetterPanel({
@@ -33,11 +37,13 @@ export function SettingsDrawerLetterPanel({
   isGeneratingLetter,
   isPreparingLetterPdf,
   isSendingLetter,
+  isSendingLetterWhatsApp = false,
   onSubmit,
   onChange,
   onPreviewPdf,
   onPrintPdf,
   onSend,
+  onSendWhatsApp,
 }: SettingsDrawerLetterPanelProps) {
   return (
     <div className="space-y-4">
@@ -92,6 +98,16 @@ export function SettingsDrawerLetterPanel({
               className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
             />
           </label>
+          <label className="block rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+            <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Recipient WhatsApp</span>
+            <span className="mt-1 block text-xs leading-5 text-emerald-700">Used only when sending the letter as a WhatsApp PDF.</span>
+            <input
+              value={letterForm.recipient_phone}
+              onChange={(event) => onChange({ recipient_phone: event.target.value })}
+              placeholder="+91 98765 43210"
+              className="mt-3 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-emerald-500"
+            />
+          </label>
         </div>
 
         {letterError ? <p className="mt-4 text-sm font-medium text-rose-600">{letterError}</p> : null}
@@ -128,6 +144,15 @@ export function SettingsDrawerLetterPanel({
             className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
           >
             {isSendingLetter ? "Sending..." : "Send Email"}
+          </button>
+          <button
+            type="button"
+            disabled={!onSendWhatsApp || isSendingLetterWhatsApp}
+            onClick={onSendWhatsApp}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#1f9d68] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#18885a] disabled:opacity-60"
+          >
+            <MessageCircle className="h-4 w-4" />
+            {isSendingLetterWhatsApp ? "Sending..." : "Send WhatsApp"}
           </button>
         </div>
       </form>

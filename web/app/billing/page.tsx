@@ -189,6 +189,7 @@ export default function BillingPage() {
   const [isFinalizingInvoice, setIsFinalizingInvoice] = useState(false);
   const [isPreparingInvoicePdf, setIsPreparingInvoicePdf] = useState(false);
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
+  const [isSendingInvoiceWhatsApp, setIsSendingInvoiceWhatsApp] = useState(false);
   const [isInvoiceDirty, setIsInvoiceDirty] = useState(false);
   const [selectedPatientNotes, setSelectedPatientNotes] = useState<ConsultationNote[]>([]);
   const [isBillingNotesLoading, setIsBillingNotesLoading] = useState(false);
@@ -232,7 +233,9 @@ export default function BillingPage() {
     handleFinalizeInvoice,
     handleGenerateLetter,
     handleSendLetter,
+    handleSendLetterWhatsApp,
     handleSendInvoice,
+    handleSendInvoiceWhatsApp,
     handleExportPatientsCsv,
     handleExportVisitsCsv,
     handleExportInvoicesCsv,
@@ -575,6 +578,33 @@ export default function BillingPage() {
     }
   }
 
+  async function handleShareInvoiceWhatsApp() {
+    if (!selectedBillingPatient) {
+      setBillingError("Select a done patient to bill.");
+      return;
+    }
+    if (!selectedBillingPatient.phone.trim()) {
+      setBillingError("This patient does not have a phone number saved.");
+      return;
+    }
+    setIsSendingInvoiceWhatsApp(true);
+    setBillingError("");
+    setBillingStatus("");
+    try {
+      const invoice = await ensureSavedInvoice();
+      const result = await handleSendInvoiceWhatsApp({ invoice_id: invoice.id, recipient_phone: selectedBillingPatient.phone });
+      setBillingStatus(result.message);
+      setSavedInvoice(result.invoice);
+      setInvoices((current) => upsertInvoice(current, result.invoice));
+      setIsInvoiceDirty(false);
+      setPatients((current) => current.map((patient) => patient.id === selectedBillingPatient.id ? { ...patient, billed: true } : patient));
+    } catch (sendError) {
+      setBillingError(sendError instanceof Error ? sendError.message : "Failed to send invoice on WhatsApp.");
+    } finally {
+      setIsSendingInvoiceWhatsApp(false);
+    }
+  }
+
   async function handleCompleteInvoice() {
     if (!selectedBillingPatient) {
       setBillingError("Select a done patient to bill.");
@@ -632,6 +662,7 @@ export default function BillingPage() {
           isFinalizingInvoice={isFinalizingInvoice}
           isPreparingInvoicePdf={isPreparingInvoicePdf}
           isSendingInvoice={isSendingInvoice}
+          isSendingInvoiceWhatsApp={isSendingInvoiceWhatsApp}
           savedInvoice={savedInvoice}
           customItemLabel={customItemLabel}
           customItemQuantity={customItemQuantity}
@@ -673,6 +704,7 @@ export default function BillingPage() {
           onPrintInvoice={() => handleInvoicePdf("print")}
           onFinalizeInvoice={handleCompleteInvoice}
           onSendInvoice={handleShareInvoice}
+          onSendInvoiceWhatsApp={handleShareInvoiceWhatsApp}
         />
         <section className="mt-4 rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -759,10 +791,12 @@ export default function BillingPage() {
           onGenerateLetter={handleGenerateLetter}
           onGenerateLetterPdf={(payload) => api.generateLetterPdf(payload)}
           onSendLetter={handleSendLetter}
+          onSendLetterWhatsApp={handleSendLetterWhatsApp}
           onCreateInvoice={handleCreateInvoice}
           onFinalizeInvoice={handleFinalizeInvoice}
           onGenerateInvoicePdf={(invoiceId) => api.generateInvoicePdf(invoiceId)}
           onSendInvoice={handleSendInvoice}
+          onSendInvoiceWhatsApp={handleSendInvoiceWhatsApp}
           onExportPatientsCsv={handleExportPatientsCsv}
           onExportVisitsCsv={handleExportVisitsCsv}
           onExportInvoicesCsv={handleExportInvoicesCsv}
