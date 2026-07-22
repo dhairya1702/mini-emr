@@ -273,7 +273,7 @@ test("live workspace flow signs in, adds a patient, generates a note, and moves 
   await page.getByRole("button", { name: "Add Live Paracetamol" }).click();
   await expect(page.getByText("Live Paracetamol").first()).toBeVisible();
   await page.getByRole("button", { name: "Create Invoice" }).click();
-  await expect(page.getByText("Invoice draft created.")).toBeVisible();
+  await expect(page.getByText("Invoice Created")).toBeVisible();
   await expect(page.getByRole("row", { name: /Live Patient.*Paid.*75\.00/ })).toBeVisible();
   await page.getByRole("button", { name: "Done" }).click();
   await expect(page.getByRole("row", { name: /Live Patient.*Paid.*75\.00/ })).toBeVisible();

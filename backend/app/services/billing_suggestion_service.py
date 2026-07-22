@@ -32,6 +32,96 @@ def _is_available(item: dict[str, Any]) -> bool:
     return not bool(item.get("track_inventory")) or float(item.get("stock_quantity") or 0) > 0
 
 
+SERVICE_NAME_EXPANSIONS: tuple[tuple[set[str], tuple[str, ...]], ...] = (
+    (
+        {"eye", "exam"},
+        (
+            "eye exam",
+            "eye examination",
+            "eye check up",
+            "routine eye exam",
+            "routine eye examination",
+            "refraction",
+            "vision test",
+            "vision examination",
+        ),
+    ),
+    (
+        {"eye", "check"},
+        (
+            "eye check up",
+            "eye exam",
+            "eye examination",
+            "refraction",
+            "vision test",
+        ),
+    ),
+    (
+        {"refraction"},
+        (
+            "refraction",
+            "eye exam",
+            "eye examination",
+            "vision test",
+        ),
+    ),
+    (
+        {"contact", "lens"},
+        (
+            "contact lens",
+            "contact lens trial",
+            "contact lens fitting",
+        ),
+    ),
+    (
+        {"binocular", "vision"},
+        (
+            "binocular vision",
+            "binocular vision assessment",
+        ),
+    ),
+    (
+        {"low", "vision"},
+        (
+            "low vision",
+            "low vision assessment",
+        ),
+    ),
+    (
+        {"myopia"},
+        (
+            "myopia",
+            "myopia management",
+        ),
+    ),
+    (
+        {"tbi"},
+        (
+            "tbi evaluation",
+            "neurovision",
+            "neurovision tbi",
+        ),
+    ),
+)
+
+
+def _expanded_service_names(name: str) -> list[str]:
+    normalized = _normalize(name)
+    tokens = set(normalized.split())
+    candidates = [name]
+    for required_tokens, expansions in SERVICE_NAME_EXPANSIONS:
+        if required_tokens.issubset(tokens) or normalized in {_normalize(expansion) for expansion in expansions}:
+            candidates.extend(expansions)
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = _normalize(candidate)
+        if key and key not in seen:
+            deduped.append(candidate)
+            seen.add(key)
+    return deduped
+
+
 def _match_payload(
     item: dict[str, Any],
     *,
@@ -56,26 +146,33 @@ def _find_catalog_match(
     items: list[dict[str, Any]],
     *,
     catalog_item_id: str | None = None,
+    expand_service_names: bool = False,
 ) -> tuple[dict[str, Any] | None, str | None, float]:
     if catalog_item_id:
         direct = next((item for item in items if str(item.get("id")) == catalog_item_id), None)
         if direct:
             return direct, "exact", 1.0
-    normalized = _normalize(name)
-    if not normalized:
+    candidate_names = _expanded_service_names(name) if expand_service_names else [name]
+    normalized_candidates = [_normalize(candidate) for candidate in candidate_names]
+    normalized_candidates = [candidate for candidate in normalized_candidates if candidate]
+    if not normalized_candidates:
         return None, None, 0
     for item in items:
-        if _normalize(str(item.get("name") or "")) == normalized:
+        if _normalize(str(item.get("name") or "")) in normalized_candidates:
             return item, "exact", 1.0
     for item in items:
-        if normalized in {_normalize(alias) for alias in _aliases(item)}:
+        if set(normalized_candidates).intersection({_normalize(alias) for alias in _aliases(item)}):
             return item, "alias", 1.0
 
     ranked = sorted(
         [(
             max(
-                [SequenceMatcher(None, normalized, _normalize(str(item.get("name") or ""))).ratio()]
-                + [SequenceMatcher(None, normalized, _normalize(alias)).ratio() for alias in _aliases(item)]
+                [SequenceMatcher(None, candidate, _normalize(str(item.get("name") or ""))).ratio() for candidate in normalized_candidates]
+                + [
+                    SequenceMatcher(None, candidate, _normalize(alias)).ratio()
+                    for candidate in normalized_candidates
+                    for alias in _aliases(item)
+                ]
             ),
             item,
         ) for item in items],
@@ -87,6 +184,8 @@ def _find_catalog_match(
     runner_up = ranked[-2][0] if len(ranked) > 1 else 0
     if best_score >= 0.88 and best_score - runner_up >= 0.05:
         return best_item, "fuzzy", best_score
+    if expand_service_names and best_score >= 0.82 and best_score - runner_up >= 0.08:
+        return best_item, "related", best_score
     return None, None, best_score
 
 
@@ -138,7 +237,7 @@ async def build_note_billing_suggestions(
     seen_catalog_ids: set[str] = {str(consultation["id"])} if consultation else set()
     for extracted in extractions.get("services_performed") or []:
         name = str(extracted.get("name") or "").strip()
-        item, match_type, confidence = _find_catalog_match(name, services)
+        item, match_type, confidence = _find_catalog_match(name, services, expand_service_names=True)
         quantity = _numeric_quantity(extracted.get("quantity"))
         match = _match_payload(item, quantity=quantity, match_type=match_type or "exact", confidence=confidence) if item else None
         status = "unmatched"

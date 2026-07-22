@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageCircle, Printer, ReceiptIndianRupee, Sparkles, Trash2 } from "lucide-react";
+import { MessageCircle, Printer, ReceiptIndianRupee, Sparkles, Trash2, X } from "lucide-react";
 
 import { CatalogItem, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
@@ -28,7 +28,6 @@ interface SettingsDrawerBillingPanelProps {
   paymentStatus: PaymentStatus;
   billingError: string;
   billingStatus: string;
-  suggestionNotices?: string[];
   setupWarnings?: string[];
   isSavingInvoice: boolean;
   isFinalizingInvoice: boolean;
@@ -39,11 +38,13 @@ interface SettingsDrawerBillingPanelProps {
   customItemLabel: string;
   customItemQuantity: string;
   customItemUnitPrice: string;
+  recipientEmail?: string;
   onSelectPatient: (patientId: string) => void;
   onAddCatalogItem: (item: CatalogItem) => void;
   onCustomItemLabelChange: (value: string) => void;
   onCustomItemQuantityChange: (value: string) => void;
   onCustomItemUnitPriceChange: (value: string) => void;
+  onRecipientEmailChange?: (value: string) => void;
   onAddCustomItem: () => void | Promise<void>;
   onUpdateInvoiceItem: (itemId: string, patch: Partial<DraftInvoiceItem>) => void;
   onRemoveInvoiceItem: (itemId: string) => void;
@@ -55,6 +56,7 @@ interface SettingsDrawerBillingPanelProps {
   onFinalizeInvoice: () => void | Promise<void>;
   onSendInvoice: () => void | Promise<void>;
   onSendInvoiceWhatsApp?: () => void | Promise<void>;
+  onClose?: () => void;
 }
 
 export function SettingsDrawerBillingPanel({
@@ -72,7 +74,6 @@ export function SettingsDrawerBillingPanel({
   paymentStatus,
   billingError,
   billingStatus,
-  suggestionNotices = [],
   setupWarnings = [],
   isSavingInvoice,
   isFinalizingInvoice,
@@ -83,11 +84,13 @@ export function SettingsDrawerBillingPanel({
   customItemLabel,
   customItemQuantity,
   customItemUnitPrice,
+  recipientEmail,
   onSelectPatient,
   onAddCatalogItem,
   onCustomItemLabelChange,
   onCustomItemQuantityChange,
   onCustomItemUnitPriceChange,
+  onRecipientEmailChange,
   onAddCustomItem,
   onUpdateInvoiceItem,
   onRemoveInvoiceItem,
@@ -99,7 +102,22 @@ export function SettingsDrawerBillingPanel({
   onFinalizeInvoice,
   onSendInvoice,
   onSendInvoiceWhatsApp,
+  onClose,
 }: SettingsDrawerBillingPanelProps) {
+  const displayedRecipientEmail = recipientEmail ?? selectedBillingPatient?.email ?? "";
+
+  function lineAmount(item: DraftInvoiceItem) {
+    return item.quantity * item.unit_price;
+  }
+
+  function updateLineAmount(item: DraftInvoiceItem, rawValue: string) {
+    const amount = Number(rawValue);
+    const quantity = item.quantity > 0 ? item.quantity : 1;
+    onUpdateInvoiceItem(item.id, {
+      unit_price: Number.isFinite(amount) && amount >= 0 ? amount / quantity : 0,
+    });
+  }
+
   const invoiceCatalogItemIds = new Set(
     invoiceItems
       .map((item) => item.catalog_item_id)
@@ -118,14 +136,13 @@ export function SettingsDrawerBillingPanel({
   });
 
   return (
-    <div className={`grid gap-4 ${showPatientSelector ? "xl:grid-cols-[300px_1fr]" : ""}`}>
+    <div className={`grid gap-4 ${showPatientSelector ? "xl:grid-cols-[300px_1fr]" : "h-full"}`}>
       {showPatientSelector ? (
         <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
           <div className="mb-4 flex items-center gap-2">
             <ReceiptIndianRupee className="h-4 w-4 text-[#2a6fa8]" />
             <div>
               <h3 className="text-base font-semibold text-slate-900">Patients</h3>
-              <p className="mt-1 text-sm text-slate-600">Select a patient to prepare billing.</p>
             </div>
           </div>
           <div className="space-y-3">
@@ -149,70 +166,104 @@ export function SettingsDrawerBillingPanel({
         </div>
       ) : null}
 
-      <div className="space-y-4">
-        <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
-          <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className={showPatientSelector ? "space-y-4" : "min-h-0"}>
+        <div className={`bg-white ${showPatientSelector ? "rounded-[18px] border border-[#bfd7e8] p-5" : "flex h-full min-h-0 flex-col p-1"}`}>
+          <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h3 className="text-base font-semibold text-slate-900">
-                {selectedBillingPatient ? `Invoice Items for ${selectedBillingPatient.name}` : "Invoice Items"}
-              </h3>
+              {selectedBillingPatient ? (
+                <h3 className="text-base font-semibold text-slate-900">{selectedBillingPatient.name} Invoice</h3>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {(["paid", "partial", "unpaid"] as PaymentStatus[]).map((status) => (
+              {onClose ? (
                 <button
-                  key={status}
                   type="button"
-                  onClick={() => onPaymentStatusChange(status)}
-                  className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
-                    paymentStatus === status
-                      ? "border-[#9fc7e1] bg-[#dbeaf4] text-[#235f8e]"
-                      : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"
-                  }`}
+                  onClick={onClose}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#dbe7ef] bg-white text-slate-500 shadow-sm transition hover:text-slate-800"
+                  aria-label="Close billing"
                 >
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                  <X className="h-4 w-4" />
                 </button>
-              ))}
-              <span className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-3 py-1 text-xs font-medium text-[#2a6fa8]">
-                {invoiceItems.length} item{invoiceItems.length === 1 ? "" : "s"}
-              </span>
+              ) : null}
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="flex min-h-[480px] flex-1 flex-col overflow-hidden rounded-[14px] border border-[#dbe7ef] bg-white">
             {setupWarnings.length ? (
-              <div className="rounded-[16px] border border-amber-200 bg-amber-50/80 p-4 text-sm leading-6 text-amber-900">
+              <div className="border-b border-amber-200 bg-amber-50/80 p-3 text-sm leading-6 text-amber-900">
                 {setupWarnings.map((warning) => (
                   <p key={warning}>{warning}</p>
                 ))}
               </div>
             ) : null}
-            {invoiceItems.length ? invoiceItems.map((item) => (
-              <div key={item.id} className="grid gap-3 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/30 p-4 md:grid-cols-[1.3fr_120px_140px_44px]">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">{item.label}</p>
-                  <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{item.item_type}</p>
+            <div className="grid grid-cols-[minmax(0,1fr)_88px_120px_36px] border-b border-[#dbe7ef] bg-[#f3f8fb]/70 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              <span>Item</span>
+              <span>Qty</span>
+              <span>Amount</span>
+              <span />
+            </div>
+            <div>
+              {invoiceItems.length ? invoiceItems.map((item) => (
+                <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_88px_120px_36px] items-center gap-3 border-b border-[#edf3f7] px-3 py-2">
+                  <p className="min-w-0 truncate text-sm font-medium text-slate-900">{item.label}</p>
+                  <input
+                    value={item.quantity}
+                    inputMode="decimal"
+                    aria-label={`${item.label} quantity`}
+                    onChange={(event) => onUpdateInvoiceItem(item.id, { quantity: Number(event.target.value) || 0 })}
+                    className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-slate-800 outline-none transition hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
+                  />
+                  <input
+                    value={lineAmount(item)}
+                    inputMode="decimal"
+                    aria-label={`${item.label} amount`}
+                    onChange={(event) => updateLineAmount(item, event.target.value)}
+                    className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-slate-800 outline-none transition hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onRemoveInvoiceItem(item.id)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-slate-500 transition hover:border-[#dbe7ef] hover:bg-[#f3f8fb] hover:text-slate-800"
+                    aria-label={`Remove ${item.label}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
-                <input
-                  value={item.quantity}
-                  inputMode="decimal"
-                  onChange={(event) => onUpdateInvoiceItem(item.id, { quantity: Number(event.target.value) || 0 })}
-                  className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm text-slate-800 outline-none"
-                />
-                <input
-                  value={item.unit_price}
-                  inputMode="decimal"
-                  onChange={(event) => onUpdateInvoiceItem(item.id, { unit_price: Number(event.target.value) || 0 })}
-                  className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm text-slate-800 outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => onRemoveInvoiceItem(item.id)}
-                  className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-white"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            )) : <p className="text-sm text-slate-600">Add services or medicines from the inventory to start billing.</p>}
+              )) : (
+                <p className="border-b border-[#edf3f7] px-3 py-4 text-sm text-slate-600">Add services or medicines from the inventory to start billing.</p>
+              )}
+            </div>
+            <div className="min-h-[220px] flex-1 border-b border-[#edf3f7]" aria-hidden="true" />
+            <div className="grid grid-cols-[minmax(0,1fr)_88px_120px_72px] items-center gap-3 px-3 py-2.5">
+              <input
+                value={customItemLabel}
+                onChange={(event) => onCustomItemLabelChange(event.target.value)}
+                placeholder="Manual item"
+                className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
+              />
+              <input
+                value={customItemQuantity}
+                inputMode="decimal"
+                aria-label="Manual item quantity"
+                onChange={(event) => onCustomItemQuantityChange(event.target.value)}
+                className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-slate-800 outline-none transition hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
+              />
+              <input
+                value={customItemUnitPrice}
+                inputMode="decimal"
+                aria-label="Manual item amount"
+                onChange={(event) => onCustomItemUnitPriceChange(event.target.value)}
+                placeholder="Amount"
+                className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
+              />
+              <button
+                type="button"
+                onClick={onAddCustomItem}
+                className="h-8 rounded-md bg-[#2f8fd3] px-4 text-sm font-medium text-white transition hover:bg-[#287fc0]"
+              >
+                Add
+              </button>
+            </div>
           </div>
 
           {recommendationItems.length ? (
@@ -238,62 +289,71 @@ export function SettingsDrawerBillingPanel({
             </div>
           ) : null}
 
-          <div className="mt-5 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
-            <p className="mb-3 text-sm font-medium text-slate-700">Manual item</p>
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
-              <label className="flex-1">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Item</span>
-                <input
-                  value={customItemLabel}
-                  onChange={(event) => onCustomItemLabelChange(event.target.value)}
-                  placeholder="e.g. Procedure charge, dressing, emergency fee"
-                  className="w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
-                />
-              </label>
-              <label>
-                <span className="mb-2 block text-sm font-medium text-slate-700">Qty</span>
-                <input
-                  value={customItemQuantity}
-                  inputMode="decimal"
-                  onChange={(event) => onCustomItemQuantityChange(event.target.value)}
-                  className="w-24 rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
-                />
-              </label>
-              <label>
-                <span className="mb-2 block text-sm font-medium text-slate-700">Price</span>
-                <input
-                  value={customItemUnitPrice}
-                  inputMode="decimal"
-                  onChange={(event) => onCustomItemUnitPriceChange(event.target.value)}
-                  className="w-32 rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={onAddCustomItem}
-                className="rounded-xl bg-[#2f8fd3] px-4 py-3 text-sm font-medium text-white transition hover:bg-[#287fc0]"
-              >
-                Add
-              </button>
+          <div className="mt-4 grid gap-6 px-3 lg:grid-cols-[minmax(0,360px)_minmax(260px,360px)_minmax(280px,380px)] lg:justify-between">
+            <div className="w-full border-t border-[#dbe7ef] pt-3">
+              <div className="flex items-center justify-between gap-4 text-sm text-slate-700">
+                <span>Email</span>
+                {onRecipientEmailChange ? (
+                  <input
+                    value={displayedRecipientEmail}
+                    onChange={(event) => onRecipientEmailChange(event.target.value)}
+                    placeholder="-"
+                    aria-label="Recipient email"
+                    className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-right text-sm text-slate-700 outline-none transition placeholder:text-slate-500 hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
+                  />
+                ) : (
+                  <span className={`truncate text-right ${displayedRecipientEmail ? "text-slate-700" : "text-slate-500"}`}>
+                    {displayedRecipientEmail || "-"}
+                  </span>
+                )}
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-4 text-sm text-slate-700">
+                <span>Number</span>
+                <span className={`truncate text-right ${selectedBillingPatient?.phone ? "text-slate-700" : "text-slate-500"}`}>
+                  {selectedBillingPatient?.phone || "-"}
+                </span>
+              </div>
             </div>
-          </div>
 
-          <div className="mt-5 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
-            <div className="flex items-center justify-between text-sm text-slate-700">
-              <span>Subtotal</span>
-              <span>{invoiceSubtotal.toFixed(2)}</span>
+            <div className="w-full border-t border-[#dbe7ef] pt-3">
+              <div className="flex items-center justify-between gap-4 text-sm text-slate-700">
+                <span>Payment</span>
+                <div className="flex items-center justify-end gap-2">
+                  {(["paid", "partial", "unpaid"] as PaymentStatus[]).map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => onPaymentStatusChange(status)}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                        paymentStatus === status
+                          ? "border-[#9fc7e1] bg-[#dbeaf4] text-[#235f8e]"
+                          : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"
+                      }`}
+                    >
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
-              <span>Amount Paid</span>
-              <span>{amountPaid.toFixed(2)}</span>
-            </div>
-            <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
-              <span>Balance Due</span>
-              <span>{balanceDue.toFixed(2)}</span>
-            </div>
-            <div className="mt-2 flex items-center justify-between text-base font-semibold text-slate-900">
-              <span>Total</span>
-              <span>{invoiceSubtotal.toFixed(2)}</span>
+
+            <div className="w-full border-t border-[#dbe7ef] pt-3">
+              <div className="flex items-center justify-between text-sm text-slate-700">
+                <span>Subtotal</span>
+                <span>{invoiceSubtotal.toFixed(2)}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
+                <span>Amount Paid</span>
+                <span>{amountPaid.toFixed(2)}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
+                <span>Balance Due</span>
+                <span>{balanceDue.toFixed(2)}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-base font-semibold text-slate-900">
+                <span>Total</span>
+                <span>{invoiceSubtotal.toFixed(2)}</span>
+              </div>
             </div>
           </div>
 
@@ -312,24 +372,8 @@ export function SettingsDrawerBillingPanel({
             </div>
           ) : null}
 
-          {selectedBillingPatient ? (
-            <div className="mt-4 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
-              <p className="text-sm font-medium text-slate-700">Patient Recipient</p>
-              <p className="mt-2 text-sm text-slate-900">{selectedBillingPatient.email || "No patient email saved."}</p>
-            </div>
-          ) : null}
-
           {billingError ? <p className="mt-4 text-sm font-medium text-rose-600">{billingError}</p> : null}
           {billingStatus ? <p className="mt-4 text-sm font-medium text-emerald-700">{billingStatus}</p> : null}
-          {suggestionNotices.length ? (
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              <p className="font-medium">Review consultation suggestions</p>
-              <ul className="mt-1 list-disc space-y-1 pl-5">
-                {suggestionNotices.map((notice) => <li key={notice}>{notice}</li>)}
-              </ul>
-            </div>
-          ) : null}
-
           <div className="mt-5 flex flex-wrap justify-end gap-3">
             <button
               type="button"

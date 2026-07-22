@@ -1230,7 +1230,7 @@ export function ConsultationDrawer({
         generatedNote: finalized.snapshot_content || finalized.content || current.generatedNote,
         assets: (finalized.snapshot_asset_payload || finalized.asset_payload || current.assets) as NoteAsset[],
       }));
-      setStatusMessage("Note finalized. You can mark the patient done without sending.");
+      setStatusMessage("Note Finalized");
     } catch (finalizeError) {
       setStatusMessage(finalizeError instanceof Error ? finalizeError.message : "Failed to finalize note.");
     } finally {

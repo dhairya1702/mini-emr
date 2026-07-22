@@ -442,7 +442,7 @@ export default function BillingPage() {
   function addCustomInvoiceItem() {
     const label = customItemLabel.trim();
     const quantity = Number(customItemQuantity);
-    const unitPrice = Number(customItemUnitPrice);
+    const amount = Number(customItemUnitPrice);
 
     if (!label) {
       setBillingError("Enter a label for the custom item.");
@@ -452,10 +452,11 @@ export default function BillingPage() {
       setBillingError("Custom item quantity must be greater than zero.");
       return;
     }
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-      setBillingError("Custom item price must be zero or more.");
+    if (!Number.isFinite(amount) || amount < 0) {
+      setBillingError("Custom item amount must be zero or more.");
       return;
     }
+    const unitPrice = quantity > 0 ? amount / quantity : 0;
 
     setInvoiceItems((current) => [
       ...current,
@@ -519,7 +520,7 @@ export default function BillingPage() {
     setBillingStatus("");
     try {
       await saveInvoiceDraft();
-      setBillingStatus(savedInvoice ? "Invoice draft updated." : "Invoice draft created.");
+      setBillingStatus(savedInvoice ? "Invoice Updated" : "Invoice Created");
     } catch (createError) {
       setBillingError(createError instanceof Error ? createError.message : "Failed to create bill.");
     } finally {

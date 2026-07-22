@@ -179,6 +179,46 @@ def _find_exact_catalog_item(
     return None
 
 
+SERVICE_NAME_EXPANSIONS: tuple[tuple[set[str], tuple[str, ...]], ...] = (
+    (
+        {"eye", "exam"},
+        ("eye exam", "eye examination", "eye check up", "routine eye exam", "routine eye examination", "refraction", "vision test", "vision examination"),
+    ),
+    ({"eye", "check"}, ("eye check up", "eye exam", "eye examination", "refraction", "vision test")),
+    ({"refraction"}, ("refraction", "eye exam", "eye examination", "vision test")),
+    ({"contact", "lens"}, ("contact lens", "contact lens trial", "contact lens fitting")),
+    ({"binocular", "vision"}, ("binocular vision", "binocular vision assessment")),
+    ({"low", "vision"}, ("low vision", "low vision assessment")),
+    ({"myopia"}, ("myopia", "myopia management")),
+    ({"tbi"}, ("tbi evaluation", "neurovision", "neurovision tbi")),
+)
+
+
+def _expanded_service_names(name: str) -> list[str]:
+    normalized = _normalize_catalog_text(name)
+    tokens = set(normalized.split())
+    candidates = [name]
+    for required_tokens, expansions in SERVICE_NAME_EXPANSIONS:
+        if required_tokens.issubset(tokens) or normalized in {_normalize_catalog_text(expansion) for expansion in expansions}:
+            candidates.extend(expansions)
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = _normalize_catalog_text(candidate)
+        if key and key not in seen:
+            deduped.append(candidate)
+            seen.add(key)
+    return deduped
+
+
+def _find_service_catalog_item(name: str, services: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for candidate in _expanded_service_names(name):
+        item = _find_exact_catalog_item(candidate, services)
+        if item:
+            return item
+    return None
+
+
 def _estimate_from_note_and_catalog(
     note: dict[str, Any] | None,
     catalog_items: list[dict[str, Any]],
@@ -206,7 +246,7 @@ def _estimate_from_note_and_catalog(
 
     for extracted in extractions.get("services_performed") or []:
         name = str(extracted.get("name") or "").strip()
-        item = _find_exact_catalog_item(name, services)
+        item = _find_service_catalog_item(name, services)
         quantity = _numeric_quantity(extracted.get("quantity"))
         if item and _catalog_item_available(item, quantity) and str(item["id"]) not in line_items:
             line_items[str(item["id"])] = {"item": item, "quantity": quantity}

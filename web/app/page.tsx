@@ -13,7 +13,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AddPatientModal } from "@/components/add-patient-modal";
@@ -249,6 +249,7 @@ export default function HomePage() {
   const [customItemLabel, setCustomItemLabel] = useState("");
   const [customItemQuantity, setCustomItemQuantity] = useState("1");
   const [customItemUnitPrice, setCustomItemUnitPrice] = useState("");
+  const [billingRecipientEmail, setBillingRecipientEmail] = useState("");
   const queueRefreshInFlightRef = useRef(false);
   const queueRefreshFailureCountRef = useRef(0);
   const nextQueueRefreshAllowedAtRef = useRef(0);
@@ -538,11 +539,7 @@ export default function HomePage() {
     setSavedInvoice(null);
     setIsInvoiceDirty(false);
     setBillingError("");
-    setBillingStatus(
-      autoDraftInvoiceItems.length
-        ? `Added ${autoDraftInvoiceItems.length} catalog-backed item${autoDraftInvoiceItems.length === 1 ? "" : "s"} from the latest consultation.`
-        : "",
-    );
+    setBillingStatus("");
     setAmountPaidInput("");
     setHasSeededBillingDraft(true);
   }, [autoDraftInvoiceItems, billingPatientId, hasSeededBillingDraft, isBillingNotesLoading, isBillingSuggestionsLoading, isInvoiceDirty]);
@@ -565,11 +562,14 @@ export default function HomePage() {
     setCustomItemLabel("");
     setCustomItemQuantity("1");
     setCustomItemUnitPrice("");
+    setBillingRecipientEmail("");
   }
 
   function openBillingWorkspace(patientId: string) {
+    const patient = patients.find((entry) => entry.id === patientId);
     setBillingPatientId(patientId);
     resetBillingWorkspaceState();
+    setBillingRecipientEmail(patient?.email ?? "");
     setSelectedPatient(null);
     setDrawerMode(null);
   }
@@ -1072,7 +1072,7 @@ export default function HomePage() {
   function addCustomInvoiceItem() {
     const label = customItemLabel.trim();
     const quantity = Number(customItemQuantity);
-    const unitPrice = Number(customItemUnitPrice);
+    const amount = Number(customItemUnitPrice);
 
     if (!label) {
       setBillingError("Enter a label for the custom item.");
@@ -1082,10 +1082,11 @@ export default function HomePage() {
       setBillingError("Custom item quantity must be greater than zero.");
       return;
     }
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-      setBillingError("Custom item price must be zero or more.");
+    if (!Number.isFinite(amount) || amount < 0) {
+      setBillingError("Custom item amount must be zero or more.");
       return;
     }
+    const unitPrice = quantity > 0 ? amount / quantity : 0;
 
     setInvoiceItems((current) => [
       ...current,
@@ -1183,7 +1184,7 @@ export default function HomePage() {
     setBillingStatus("");
     try {
       await saveInvoiceDraft();
-      setBillingStatus(savedInvoice ? "Invoice draft updated." : "Invoice draft created.");
+      setBillingStatus(savedInvoice ? "Invoice Updated" : "Invoice Created");
     } catch (createError) {
       setBillingError(createError instanceof Error ? createError.message : "Failed to create bill.");
     } finally {
@@ -1242,7 +1243,8 @@ export default function HomePage() {
       setBillingError("Select a done patient to bill.");
       return;
     }
-    if (!selectedBillingPatient.email.trim()) {
+    const recipientEmail = billingRecipientEmail.trim();
+    if (!recipientEmail) {
       setBillingError("This patient does not have an email address saved.");
       return;
     }
@@ -1251,7 +1253,7 @@ export default function HomePage() {
     setBillingStatus("");
     try {
       const invoice = await ensureSavedInvoice();
-      const result = await handleSendInvoice({ invoice_id: invoice.id, recipient_email: selectedBillingPatient.email });
+      const result = await handleSendInvoice({ invoice_id: invoice.id, recipient_email: recipientEmail });
       setBillingStatus(result.message);
       setSavedInvoice(result.invoice);
       await completeBillingWorkflow(true);
@@ -1745,23 +1747,8 @@ export default function HomePage() {
 
       {billingPatientId && selectedBillingPatient ? (
         <div className="fixed inset-0 z-30 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5">
-          <div className="mx-auto flex h-full max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-[20px] border border-[#dbe7ef] bg-white shadow-[0_35px_90px_rgba(15,23,42,0.18)]">
-            <div className="flex items-start justify-between gap-4 border-b border-[#dbe7ef] px-5 py-4 sm:px-7">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Billing</p>
-                <h2 className="mt-2 truncate text-3xl font-semibold text-slate-900">{selectedBillingPatient.name}</h2>
-                <p className="mt-2 text-sm text-slate-500">{selectedBillingPatient.reason}</p>
-              </div>
-              <button
-                type="button"
-                onClick={closeBillingWorkspace}
-                className="rounded-xl border border-[#dbe7ef] p-2 text-slate-500 transition hover:text-slate-800"
-                aria-label="Close billing"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7">
+          <div className="mx-auto flex h-full max-h-[96vh] w-full max-w-[min(96vw,1560px)] flex-col overflow-hidden rounded-[20px] border border-[#dbe7ef] bg-white shadow-[0_35px_90px_rgba(15,23,42,0.18)]">
+            <div className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-3">
               <SettingsDrawerBillingPanel
                 patients={[selectedBillingPatient]}
                 selectedBillingPatientId={billingPatientId}
@@ -1777,13 +1764,6 @@ export default function HomePage() {
                 paymentStatus={paymentStatus}
                 billingError={billingError}
                 billingStatus={billingStatus}
-                suggestionNotices={(billingSuggestions?.suggestions ?? [])
-                  .filter((suggestion) => suggestion.status !== "auto_add")
-                  .map((suggestion) => suggestion.status === "possible_match" && suggestion.catalog_match
-                    ? `${suggestion.extraction_name}: possible match ${suggestion.catalog_match.label} (not added)`
-                    : suggestion.status === "unavailable"
-                      ? `${suggestion.extraction_name}: matched item is out of stock (not added)`
-                      : `${suggestion.extraction_name}: no catalog match (not added)`)}
                 isSavingInvoice={isSavingInvoice}
                 isFinalizingInvoice={isFinalizingInvoice}
                 isPreparingInvoicePdf={isPreparingInvoicePdf}
@@ -1793,11 +1773,17 @@ export default function HomePage() {
                 customItemLabel={customItemLabel}
                 customItemQuantity={customItemQuantity}
                 customItemUnitPrice={customItemUnitPrice}
+                recipientEmail={billingRecipientEmail}
                 onSelectPatient={() => undefined}
                 onAddCatalogItem={addCatalogItemToInvoice}
                 onCustomItemLabelChange={setCustomItemLabel}
                 onCustomItemQuantityChange={setCustomItemQuantity}
                 onCustomItemUnitPriceChange={setCustomItemUnitPrice}
+                onRecipientEmailChange={(value) => {
+                  setBillingRecipientEmail(value);
+                  setBillingStatus("");
+                  setBillingError("");
+                }}
                 onAddCustomItem={addCustomInvoiceItem}
                 onUpdateInvoiceItem={updateInvoiceItem}
                 onRemoveInvoiceItem={removeInvoiceItem}
@@ -1820,6 +1806,7 @@ export default function HomePage() {
                 onFinalizeInvoice={handleCompleteInvoice}
                 onSendInvoice={handleShareInvoice}
                 onSendInvoiceWhatsApp={handleShareInvoiceWhatsApp}
+                onClose={closeBillingWorkspace}
               />
             </div>
           </div>

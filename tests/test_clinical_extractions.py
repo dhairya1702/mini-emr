@@ -97,6 +97,22 @@ def test_catalog_matching_auto_match_is_exact_or_alias_only():
     assert unmatched is None and unmatched_type is None
 
 
+def test_catalog_matching_maps_eye_exam_service_language_to_refraction():
+    items = [
+        {"id": "1", "name": "Refraction", "aliases": [], "item_type": "service"},
+        {"id": "2", "name": "Consultation", "aliases": [], "item_type": "service"},
+    ]
+
+    matched, match_type, _ = _find_catalog_match(
+        "Routine Eye Examination",
+        items,
+        expand_service_names=True,
+    )
+
+    assert matched["id"] == "1"
+    assert match_type == "exact"
+
+
 class _VertexResponse:
     def __init__(self, status_code: int):
         self.status_code = status_code
