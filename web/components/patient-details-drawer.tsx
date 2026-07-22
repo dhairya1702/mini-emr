@@ -60,10 +60,6 @@ interface PatientDetailsDrawerProps {
   }) => Promise<void>;
 }
 
-function detailText(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString([], {
     month: "short",
@@ -163,6 +159,14 @@ function getTimelineIcon(type: PatientTimelineEvent["type"]) {
   return <Clock3 className="h-4 w-4 text-[#2f8fd3]" />;
 }
 
+function timelineDescription(event: PatientTimelineEvent) {
+  if (event.type !== "consultation_note") {
+    return event.description;
+  }
+  const [summary] = event.description.split(" · status ");
+  return summary.trim() || "Consultation note recorded.";
+}
+
 function getPhoneDigits(value: string) {
   return value.replace(/\D/g, "");
 }
@@ -246,7 +250,6 @@ function SummaryField({
 }
 
 function EventSummaryCard({ event }: { event: PatientTimelineEvent }) {
-  const details = (event.details ?? {}) as Record<string, unknown>;
   return (
     <article className="rounded-xl border border-[#dbe7ef] bg-white px-3 py-3">
       <div className="flex items-start gap-3">
@@ -258,12 +261,7 @@ function EventSummaryCard({ event }: { event: PatientTimelineEvent }) {
             <p className="text-sm font-semibold text-slate-900">{getEventTitle(event)}</p>
             <p className="text-xs text-slate-500">{formatDateTime(event.timestamp)}</p>
           </div>
-          <p className="mt-2 text-sm leading-6 text-slate-600">{event.description}</p>
-          {event.type === "consultation_note" && detailText(details.content) ? (
-            <div className="mt-3 max-h-44 overflow-y-auto whitespace-pre-wrap rounded-xl border border-[#dbe7ef] bg-[#f7fbfd] px-3 py-2 text-sm leading-6 text-slate-700">
-              {detailText(details.content)}
-            </div>
-          ) : null}
+          <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{timelineDescription(event)}</p>
         </div>
       </div>
     </article>
@@ -1421,8 +1419,8 @@ export function PatientDetailsDrawer({
   }
 
   return (
-    <div className="fixed inset-0 z-30 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5">
-      <div className="mx-auto flex h-full max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-[20px] border border-[#dbe7ef] bg-white shadow-[0_35px_90px_rgba(15,23,42,0.18)]">
+    <div className="fixed inset-0 z-30 bg-slate-950/35 p-2 backdrop-blur-sm sm:p-4">
+      <div className="mx-auto flex h-full max-h-[97vh] w-full max-w-[1700px] flex-col overflow-hidden rounded-[20px] border border-[#dbe7ef] bg-white shadow-[0_35px_90px_rgba(15,23,42,0.18)]">
         <div className="border-b border-[#dbe7ef] px-5 py-4 sm:px-7">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 flex-1 items-start gap-4">
