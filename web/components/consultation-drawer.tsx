@@ -292,7 +292,7 @@ function ConsultationExpandableCard({
   children,
 }: {
   title: string;
-  description: string;
+  description?: string;
   open: boolean;
   onToggle: () => void;
   badge?: ReactNode;
@@ -324,7 +324,7 @@ function ConsultationExpandableCard({
       >
         <div>
           <p className="text-sm font-medium text-slate-900">{title}</p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
+          {description ? <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p> : null}
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {badge}
@@ -2222,67 +2222,70 @@ export function ConsultationDrawer({
               <div className="mt-4">{renderInlineModuleDetail()}</div>
             </section>
 
-            <div className="grid gap-4 xl:grid-cols-2">
-              <ConsultationExpandableCard
-                title="Attachments"
-                description="Upload JPG, PNG, or PDF files. Images are appended to the PDF, PDFs are emailed as attachments."
-                open={openSections.attachments}
-                onToggle={() => toggleConsultationSection("attachments")}
-                badge={
-                  attachmentAssets.length ? (
-                    <span className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[#2a6fa8]">
-                      {attachmentAssets.length} file{attachmentAssets.length === 1 ? "" : "s"}
-                    </span>
-                  ) : null
-                }
-              >
-                <label className="mb-3 inline-flex rounded-xl border border-[#9fc7e1] bg-[#f3f8fb] px-3 py-1.5 text-xs font-medium text-[#235f8e] transition hover:bg-[#dbeaf4]">
-                  Add files
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    multiple
-                    onChange={handleAttachmentSelect}
-                    className="hidden"
-                  />
-                </label>
-                <div className="space-y-2">
-                  {attachmentAssets.length ? attachmentAssets.map((asset) => (
-                    <div key={asset.id} className="flex items-center justify-between gap-3 rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/40 px-3 py-2">
-                      <div className="flex min-w-0 items-center gap-3">
-                        {asset.content_type.startsWith("image/") && asset.data_base64 ? (
-                          <NextImage
-                            src={`data:${asset.content_type};base64,${asset.data_base64}`}
-                            alt={asset.name}
-                            width={48}
-                            height={48}
-                            className="h-12 w-12 rounded-xl border border-[#dbe7ef] object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#dbe7ef] bg-white text-slate-500">
-                            <Paperclip className="h-4 w-4" />
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-slate-900">{asset.name}</p>
-                          <p className="text-xs text-slate-500">{asset.content_type}</p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeAsset(asset.id)}
-                        className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-white"
+              <div className="grid gap-4 xl:grid-cols-2">
+                <section className="rounded-[18px] border border-[#bfd7e8] bg-white/80 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-sm font-medium text-slate-900">Attachments</p>
+                    <div className="flex shrink-0 items-center gap-3">
+                      {attachmentAssets.length ? (
+                        <span className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[#2a6fa8]">
+                          {attachmentAssets.length} file{attachmentAssets.length === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
+                      <label
+                        className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] text-slate-900 transition hover:bg-[#dbeaf4]"
+                        aria-label="Add attachment"
+                        title="Add attachment"
                       >
-                        <X className="h-3 w-3" />
-                      </button>
+                        <Plus className="h-6 w-6" />
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          multiple
+                          onChange={handleAttachmentSelect}
+                          className="hidden"
+                        />
+                      </label>
                     </div>
-                  )) : (
-                    <p className="rounded-[18px] border border-dashed border-[#bfd7e8] bg-[#f3f8fb]/20 px-4 py-5 text-sm text-slate-500">
-                      No consultation attachments yet.
-                    </p>
-                  )}
-                </div>
-              </ConsultationExpandableCard>
+                  </div>
+                  {attachmentAssets.length ? (
+                    <div className="mt-4 space-y-2">
+                      {attachmentAssets.map((asset) => (
+                        <div
+                          key={asset.id}
+                          className="flex items-center justify-between gap-3 rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/40 px-3 py-2"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            {asset.content_type.startsWith("image/") && asset.data_base64 ? (
+                              <NextImage
+                                src={`data:${asset.content_type};base64,${asset.data_base64}`}
+                                alt={asset.name}
+                                width={48}
+                                height={48}
+                                className="h-12 w-12 rounded-xl border border-[#dbe7ef] object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#dbe7ef] bg-white text-slate-500">
+                                <Paperclip className="h-4 w-4" />
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-slate-900">{asset.name}</p>
+                              <p className="text-xs text-slate-500">{asset.content_type}</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeAsset(asset.id)}
+                            className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-white"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
 
               <ConsultationExpandableCard
                 title="Drawing"
