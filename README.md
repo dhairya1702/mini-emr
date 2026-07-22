@@ -111,7 +111,23 @@ From the project root:
 ./dev.sh
 ```
 
-This starts the backend on `http://127.0.0.1:8001` and the frontend dev server from `web/`. Press `Ctrl+C` once to stop both.
+This starts the backend on `http://127.0.0.1:8001`, the frontend dev server from `web/`, and the ngrok tunnel for WhatsApp webhook testing. Press `Ctrl+C` once to stop all local processes.
+
+```bash
+./dev.sh
+```
+
+The dev WhatsApp webhook URL is:
+
+```txt
+https://terrell-unrightful-belinda.ngrok-free.dev/webhooks/whatsapp
+```
+
+To run without ngrok:
+
+```bash
+NGROK_ENABLED=0 ./dev.sh
+```
 
 ## GCP Deploy Scripts
 

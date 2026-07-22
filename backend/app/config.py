@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     db_pool_max_lifetime_seconds: float = 1800.0
     db_pool_max_idle_seconds: float = 300.0
     db_pool_check_connections: bool = True
+    whatsapp_enabled: bool = False
+    whatsapp_verify_token: str = ""
+    whatsapp_app_secret: str = ""
+    whatsapp_access_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_graph_api_version: str = "v23.0"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

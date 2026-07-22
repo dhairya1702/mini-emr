@@ -16,6 +16,7 @@ from app.repositories.postgres import (
     PostgresPlatformErrorsRepository,
     PostgresRecordsRepository,
     PostgresSpecialtyTracksRepository,
+    PostgresWhatsAppRepository,
 )
 
 
@@ -31,6 +32,7 @@ class PostgresRepository(
     PostgresPlatformErrorsRepository,
     PostgresRecordsRepository,
     PostgresSpecialtyTracksRepository,
+    PostgresWhatsAppRepository,
 ):
     def __init__(self, connection_manager: PostgresConnectionManager | None = None) -> None:
         self.connection_manager = connection_manager or get_postgres_connection_manager()

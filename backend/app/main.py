@@ -39,6 +39,7 @@ from app.routes import (
     settings_router,
     superuser_router,
     users_router,
+    whatsapp_router,
 )
 from app.schema_domains.auth_settings import UserOut
 from app.services.auth_flow import RATE_LIMIT_BUCKETS, RATE_LIMIT_WINDOWS
@@ -204,5 +205,6 @@ for router in (
     notes_router,
     billing_router,
     case_studies_router,
+    whatsapp_router,
 ):
     app.include_router(router)

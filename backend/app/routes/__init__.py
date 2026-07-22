@@ -16,6 +16,7 @@ from app.routes.public import router as public_router
 from app.routes.settings import router as settings_router
 from app.routes.superuser import router as superuser_router
 from app.routes.users import router as users_router
+from app.routes.whatsapp import router as whatsapp_router
 
 __all__ = [
     "appointments_router",
@@ -36,4 +37,5 @@ __all__ = [
     "settings_router",
     "superuser_router",
     "users_router",
+    "whatsapp_router",
 ]

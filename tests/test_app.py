@@ -142,6 +142,8 @@ class FakeRepo:
         self.audit_events: dict[str, dict] = {}
         self.ai_usage_events: dict[str, dict] = {}
         self.platform_errors: dict[str, dict] = {}
+        self.whatsapp_owner_bindings: dict[str, dict] = {}
+        self.whatsapp_message_events: dict[str, dict] = {}
         self.api_request_metrics: list[dict] = []
         self.customer_onboarding: dict[str, dict] = {}
         self.rate_limits: dict[tuple[str, str], tuple[float, int]] = {}
@@ -206,6 +208,77 @@ class FakeRepo:
         ]
         rows.sort(key=lambda row: row["created_at"], reverse=True)
         return rows[:limit]
+
+    async def upsert_whatsapp_owner_binding(
+        self,
+        *,
+        org_id: str,
+        wa_id: str,
+        phone: str = "",
+        display_name: str = "",
+        role: str = "owner",
+        user_id: str | None = None,
+        is_active: bool = True,
+    ) -> dict:
+        existing = next(
+            (row for row in self.whatsapp_owner_bindings.values() if row["wa_id"] == wa_id and row["is_active"]),
+            None,
+        )
+        binding_id = existing["id"] if existing else str(uuid4())
+        row = {
+            "id": binding_id,
+            "org_id": org_id,
+            "user_id": user_id,
+            "wa_id": wa_id,
+            "phone": phone,
+            "display_name": display_name,
+            "role": role,
+            "is_active": is_active,
+            "created_at": existing["created_at"] if existing else _now(),
+            "updated_at": _now(),
+        }
+        self.whatsapp_owner_bindings[binding_id] = row
+        return dict(row)
+
+    async def get_whatsapp_owner_binding(self, wa_id: str) -> dict | None:
+        for row in self.whatsapp_owner_bindings.values():
+            if row["wa_id"] == wa_id and row["is_active"]:
+                return dict(row)
+        return None
+
+    async def record_whatsapp_message_event(
+        self,
+        *,
+        org_id: str | None,
+        binding_id: str | None,
+        direction: str,
+        wa_message_id: str = "",
+        sender_wa_id: str = "",
+        recipient_wa_id: str = "",
+        message_text: str = "",
+        intent: str = "",
+        status: str,
+        error: str = "",
+        raw_payload: dict | None = None,
+    ) -> dict:
+        event_id = str(uuid4())
+        row = {
+            "id": event_id,
+            "org_id": org_id,
+            "binding_id": binding_id,
+            "direction": direction,
+            "wa_message_id": wa_message_id,
+            "sender_wa_id": sender_wa_id,
+            "recipient_wa_id": recipient_wa_id,
+            "message_text": message_text,
+            "intent": intent,
+            "status": status,
+            "error": error,
+            "raw_payload": raw_payload or {},
+            "created_at": _now(),
+        }
+        self.whatsapp_message_events[event_id] = row
+        return dict(row)
 
     async def create_ai_usage_event(
         self,
