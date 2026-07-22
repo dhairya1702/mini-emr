@@ -1,19 +1,35 @@
 "use client";
 
-import type { ChangeEvent, ReactNode } from "react";
+import { Fragment, type ChangeEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Mail, Pencil, Plus, Sparkles, Upload, UserRound, X } from "lucide-react";
+import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Mail, Pencil, Sparkles, Upload, UserRound, X } from "lucide-react";
 
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
+import { BinocularVisionModal } from "@/components/optometry/binocular-vision-modal";
+import { ContactLensModal } from "@/components/optometry/contact-lens-modal";
+import { LowVisionModal } from "@/components/optometry/low-vision-modal";
 import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-myopia-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia/myopia-management-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
 import { api } from "@/lib/api";
+import {
+  buildBinocularVisionSummary,
+  buildLowVisionSummary,
+  createEmptyBinocularVision,
+  createEmptyContactLens,
+  createEmptyLowVision,
+  hasContactLensEyeData,
+} from "@/lib/optometry/consultation";
 import { getSpecialtyModules, specialtyHasModule, type SpecialtyModuleKey } from "@/lib/specialty";
 import { createTrainingId } from "@/lib/training-mode";
 import {
+  BinocularVisionPayload,
   ConsultationNote,
+  ContactLensEyeEntry,
+  ContactLensPayload,
+  EyeExamEntry,
   LongitudinalTrackRecord,
+  LowVisionPayload,
   MyopiaHistory,
   MyopiaMeasurementPayload,
   NoteAsset,
@@ -87,6 +103,54 @@ const MODULE_LABELS: Record<SpecialtyModuleKey, string> = {
 
 function moduleLabel(moduleKey: SpecialtyModuleKey) {
   return MODULE_LABELS[moduleKey] ?? moduleKey.replaceAll("_", " ");
+}
+
+function createEmptyEyeExam(): EyeExamEntry[] {
+  return [
+    { eye: "right", sphere: "", cylinder: "", axis: "", vision: "" },
+    { eye: "left", sphere: "", cylinder: "", axis: "", vision: "" },
+  ];
+}
+
+function hasEyeExamData(entries: EyeExamEntry[]) {
+  return entries.some((entry) =>
+    entry.sphere.trim() ||
+    entry.cylinder.trim() ||
+    entry.axis.trim() ||
+    entry.vision.trim(),
+  );
+}
+
+function buildEyeExamSummary(entries: EyeExamEntry[]) {
+  const parts = entries
+    .filter((entry) => entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim())
+    .map((entry) => {
+      const eye = entry.eye === "right" ? "OD" : "OS";
+      const refraction = [entry.sphere, entry.cylinder, entry.axis ? `x ${entry.axis}` : ""]
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .join(" ");
+      return [eye, refraction, entry.vision.trim() ? `VA ${entry.vision.trim()}` : ""].filter(Boolean).join(" ");
+    });
+  return parts.join(" · ") || "Eye exam saved.";
+}
+
+function formatModuleSummary(entry: LongitudinalTrackRecord) {
+  const summary = entry.summary_fields?.summary;
+  if (typeof summary === "string" && summary.trim()) {
+    return summary.trim();
+  }
+  const result = entry.summary_fields?.result;
+  if (typeof result === "string" && result.trim()) {
+    return result.trim();
+  }
+  return `${moduleLabel(entry.track_type as SpecialtyModuleKey)} saved.`;
+}
+
+function moduleEntriesFor(moduleEntries: LongitudinalTrackRecord[], moduleKey: SpecialtyModuleKey) {
+  return moduleEntries
+    .filter((entry) => entry.track_type === moduleKey)
+    .sort((left, right) => new Date(right.measured_at).getTime() - new Date(left.measured_at).getTime());
 }
 
 const PROFILE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
@@ -533,149 +597,181 @@ function GrowthHistoryModal({
   );
 }
 
-function GenericModuleEntryModal({
-  error,
-  isSaving,
+function PatientStructuredModuleShell({
+  children,
+  entries,
   moduleKey,
   onClose,
-  onSave,
+  onNew,
+  onSelectEntry,
+  open,
+  patient,
+  selectedEntryId,
 }: {
-  error: string;
-  isSaving: boolean;
-  moduleKey: SpecialtyModuleKey | null;
+  children: ReactNode;
+  entries: LongitudinalTrackRecord[];
+  moduleKey: SpecialtyModuleKey;
   onClose: () => void;
-  onSave: (payload: { measuredAt: string; notes: string; result: string }) => Promise<void>;
+  onNew: () => void;
+  onSelectEntry: (entry: LongitudinalTrackRecord) => void;
+  open: boolean;
+  patient: Patient;
+  selectedEntryId: string;
 }) {
-  const [measuredAt, setMeasuredAt] = useState("");
-  const [result, setResult] = useState("");
-  const [notes, setNotes] = useState("");
-
-  useEffect(() => {
-    if (!moduleKey) {
-      return;
-    }
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    setMeasuredAt(now.toISOString().slice(0, 16));
-    setResult("");
-    setNotes("");
-  }, [moduleKey]);
-
-  if (!moduleKey) {
+  if (!open) {
     return null;
   }
-
-  async function handleSubmit() {
-    try {
-      await onSave({ measuredAt, notes, result });
-    } catch {
-      // The parent owns and displays the save error.
-    }
-  }
-
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/35 px-4">
-      <div className="w-full max-w-xl rounded-[20px] border border-[#bfd7e8] bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.25)]">
-        <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 py-6">
+      <div className="flex max-h-[95vh] w-full max-w-7xl flex-col overflow-hidden rounded-[18px] border border-slate-300 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Add Entry</p>
-            <h3 className="mt-1 text-lg font-semibold text-slate-900">{moduleLabel(moduleKey)}</h3>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Optometry Module</p>
+            <h3 className="text-xl font-semibold text-slate-900">{moduleLabel(moduleKey)}</h3>
+            <p className="text-sm text-slate-500">{patient.name} · {patient.phone}</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-[#dbe7ef] p-2 text-slate-500 transition hover:text-slate-800"
-            aria-label="Close entry"
-          >
+          <button type="button" onClick={onClose} className="rounded-xl border border-slate-300 p-2 text-slate-600">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="mt-5 space-y-4">
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-800">Date</span>
-            <input
-              type="datetime-local"
-              value={measuredAt}
-              onChange={(event) => setMeasuredAt(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2f8fd3] focus:ring-2 focus:ring-[#2f8fd3]/15"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-800">Result</span>
-            <input
-              value={result}
-              onChange={(event) => setResult(event.target.value)}
-              placeholder="e.g. Normal, review advised, updated prescription"
-              className="mt-2 w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2f8fd3] focus:ring-2 focus:ring-[#2f8fd3]/15"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-800">Notes</span>
-            <textarea
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              rows={4}
-              placeholder="Add concise findings or follow-up context"
-              className="mt-2 w-full resize-none rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2f8fd3] focus:ring-2 focus:ring-[#2f8fd3]/15"
-            />
-          </label>
-          {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
-        </div>
-        <div className="mt-5 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={isSaving}
-            onClick={handleSubmit}
-            className="rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
-          >
-            {isSaving ? "Saving..." : "Save Entry"}
-          </button>
+
+        <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="overflow-y-auto border-b border-slate-200 bg-slate-50 p-4 lg:border-b-0 lg:border-r">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-slate-900">Previous Evaluations</h4>
+              <button type="button" onClick={onNew} className="rounded-lg border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-[#f3f8fb]">
+                New
+              </button>
+            </div>
+            <div className="mt-3 space-y-2">
+              {entries.length ? entries.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => onSelectEntry(entry)}
+                  className={`block w-full rounded-lg border p-3 text-left transition ${
+                    selectedEntryId === entry.id
+                      ? "border-[#9fc7e1] bg-white shadow-[inset_3px_0_0_#2f8fd3]"
+                      : "border-slate-200 bg-white hover:border-[#bfd7e8]"
+                  }`}
+                >
+                  <p className="text-sm font-medium text-slate-900">
+                    {new Date(entry.measured_at).toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </p>
+                  <p className="mt-1 line-clamp-2 text-xs text-slate-500">{formatModuleSummary(entry)}</p>
+                </button>
+              )) : (
+                <p className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-5 text-center text-sm text-slate-500">
+                  No evaluations yet.
+                </p>
+              )}
+            </div>
+          </aside>
+
+          <div className="min-h-0 overflow-y-auto bg-[#f4f8fb] p-4 sm:p-6">
+            <div className="mx-auto w-full max-w-6xl rounded-[18px] border border-[#dbe7ef] bg-white p-5 shadow-sm">
+              {children}
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
+function EyeExamFields({
+  open,
+  value,
+  onChange,
+  onSave,
+}: {
+  open: boolean;
+  value: EyeExamEntry[];
+  onChange: (eye: "right" | "left", patch: Partial<EyeExamEntry>) => void;
+  onSave: () => void;
+}) {
+  if (!open) {
+    return null;
+  }
+  return (
+    <div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Structured Module</p>
+        <h3 className="mt-2 text-2xl font-semibold text-slate-900">Eye Exam</h3>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+          Capture refraction and vision entries for the right and left eye.
+        </p>
+      </div>
+        <div className="mt-6 grid gap-3 md:grid-cols-[110px_repeat(4,minmax(0,1fr))]">
+          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Eye</div>
+          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Sphere</div>
+          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Cylinder</div>
+          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Axis</div>
+          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Vision</div>
+          {value.map((entry) => (
+            <Fragment key={entry.eye}>
+              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm font-medium capitalize text-slate-700">{entry.eye}</div>
+              <input value={entry.sphere} onChange={(event) => onChange(entry.eye, { sphere: event.target.value })} placeholder="-1.25" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
+              <input value={entry.cylinder} onChange={(event) => onChange(entry.eye, { cylinder: event.target.value })} placeholder="-0.50" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
+              <input value={entry.axis} onChange={(event) => onChange(entry.eye, { axis: event.target.value })} placeholder="90" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
+              <input value={entry.vision} onChange={(event) => onChange(entry.eye, { vision: event.target.value })} placeholder="6/6" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
+            </Fragment>
+          ))}
+        </div>
+        <div className="mt-6 flex justify-end">
+          <button type="button" onClick={onSave} className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+            Save Eye Exam
+          </button>
+        </div>
+    </div>
+  );
+}
+
 function TestsPanel({
   latestGrowthRecord,
+  moduleEntryError,
   moduleEntries,
   modules,
   myopiaError,
   myopiaRecords,
   tbiError,
   tbiEvaluations,
-  onOpenGenericEntry,
+  onOpenBinocularVision,
+  onOpenContactLens,
+  onOpenEyeExam,
   onOpenGrowthHistory,
+  onOpenLowVision,
   onOpenMyopiaManagement,
   onOpenTbiEvaluation,
 }: {
   latestGrowthRecord: PediatricGrowthSummary["records"][number] | null;
+  moduleEntryError: string;
   moduleEntries: LongitudinalTrackRecord[];
   modules: SpecialtyModuleKey[];
   myopiaError: string;
   myopiaRecords: MyopiaHistory["records"];
   tbiError: string;
   tbiEvaluations: TbiEvaluationRecord[];
-  onOpenGenericEntry: (moduleKey: SpecialtyModuleKey) => void;
+  onOpenBinocularVision: () => void;
+  onOpenContactLens: () => void;
+  onOpenEyeExam: () => void;
   onOpenGrowthHistory: () => void;
+  onOpenLowVision: () => void;
   onOpenMyopiaManagement: () => void;
   onOpenTbiEvaluation: () => void;
 }) {
-  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
   const latestMyopiaRecord = myopiaRecords[myopiaRecords.length - 1] ?? null;
   const latestTbiEvaluation = tbiEvaluations[tbiEvaluations.length - 1] ?? null;
   const entriesByModule = moduleEntries.reduce<Record<string, LongitudinalTrackRecord[]>>((grouped, entry) => {
     grouped[entry.track_type] = [...(grouped[entry.track_type] ?? []), entry];
     return grouped;
   }, {});
+  const structuredOpeners: Partial<Record<SpecialtyModuleKey, () => void>> = {
+    eye_exam: onOpenEyeExam,
+    contact_lens: onOpenContactLens,
+    binocular_vision: onOpenBinocularVision,
+    low_vision: onOpenLowVision,
+  };
   const rows = modules.map((moduleKey) => {
     const latestGenericEntry = entriesByModule[moduleKey]?.at(-1) ?? null;
     if (moduleKey === "myopia_management") {
@@ -710,71 +806,23 @@ function TestsPanel({
       label: moduleLabel(moduleKey),
       date: latestGenericEntry ? formatDateTime(latestGenericEntry.measured_at) : "—",
       error: "",
-      open: () => onOpenGenericEntry(moduleKey),
+      open: structuredOpeners[moduleKey] ?? (() => {}),
     };
   });
 
-  useEffect(() => {
-    if (!isAddMenuOpen) {
-      return;
-    }
-    function handlePointerDown(event: PointerEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsAddMenuOpen(false);
-      }
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setIsAddMenuOpen(false);
-      }
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isAddMenuOpen]);
-
   function handleOpen(row: typeof rows[number]) {
-    setIsAddMenuOpen(false);
     row.open();
   }
 
   return (
     <section className="rounded-xl border border-[#dbe7ef] bg-white">
-      <div className="flex justify-end border-b border-[#dbe7ef] px-4 py-3">
-        {rows.length ? (
-          <div ref={menuRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setIsAddMenuOpen((current) => !current)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#bfd7e8] bg-white text-slate-700 transition hover:bg-[#f3f8fb]"
-              aria-label="Add test"
-              title="Add test"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-            {isAddMenuOpen ? (
-              <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-xl border border-[#dbe7ef] bg-white shadow-[0_18px_46px_rgba(15,23,42,0.16)]">
-                {rows.map((row) => (
-                  <button
-                    key={row.key}
-                    type="button"
-                    onClick={() => handleOpen(row)}
-                    className="block w-full px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
-                  >
-                    {row.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
       {rows.length ? (
         <div className="overflow-x-auto">
+          {moduleEntryError ? (
+            <p className="border-b border-[#dbe7ef] px-4 py-3 text-xs font-medium text-amber-700">
+              Saved module dates could not be loaded. Restart the backend if this just changed.
+            </p>
+          ) : null}
           <table className="min-w-full border-separate border-spacing-0">
             <thead className="bg-[#f3f8fb]/80">
               <tr className="text-left">
@@ -1003,10 +1051,15 @@ export function PatientDetailsDrawer({
   const [growthHistory, setGrowthHistory] = useState<PediatricGrowthSummary | null>(null);
   const [moduleEntries, setModuleEntries] = useState<LongitudinalTrackRecord[]>([]);
   const [tbiEvaluations, setTbiEvaluations] = useState<TbiEvaluationRecord[]>([]);
+  const [eyeExam, setEyeExam] = useState<EyeExamEntry[]>(createEmptyEyeExam);
+  const [contactLens, setContactLens] = useState<ContactLensPayload>(createEmptyContactLens);
+  const [binocularVision, setBinocularVision] = useState<BinocularVisionPayload>(createEmptyBinocularVision);
+  const [lowVision, setLowVision] = useState<LowVisionPayload>(createEmptyLowVision);
   const [isMyopiaLoading, setIsMyopiaLoading] = useState(false);
   const [myopiaError, setMyopiaError] = useState("");
   const [isTbiLoading, setIsTbiLoading] = useState(false);
   const [tbiError, setTbiError] = useState("");
+  const [moduleEntryError, setModuleEntryError] = useState("");
   const [patientTimeline, setPatientTimeline] = useState<PatientTimelineEvent[]>([]);
   const [isTimelineLoading, setIsTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState("");
@@ -1017,8 +1070,14 @@ export function PatientDetailsDrawer({
   const [isMyopiaManagementOpen, setIsMyopiaManagementOpen] = useState(false);
   const [isTbiEvaluationOpen, setIsTbiEvaluationOpen] = useState(false);
   const [isGrowthHistoryOpen, setIsGrowthHistoryOpen] = useState(false);
-  const [genericModuleEntry, setGenericModuleEntry] = useState<SpecialtyModuleKey | null>(null);
-  const [isSavingGenericModuleEntry, setIsSavingGenericModuleEntry] = useState(false);
+  const [isEyeExamOpen, setIsEyeExamOpen] = useState(false);
+  const [isContactLensOpen, setIsContactLensOpen] = useState(false);
+  const [isBinocularVisionOpen, setIsBinocularVisionOpen] = useState(false);
+  const [isLowVisionOpen, setIsLowVisionOpen] = useState(false);
+  const [selectedEyeExamEntryId, setSelectedEyeExamEntryId] = useState("");
+  const [selectedContactLensEntryId, setSelectedContactLensEntryId] = useState("");
+  const [selectedBinocularVisionEntryId, setSelectedBinocularVisionEntryId] = useState("");
+  const [selectedLowVisionEntryId, setSelectedLowVisionEntryId] = useState("");
   const [genericModuleEntryError, setGenericModuleEntryError] = useState("");
   const [openVisitSections, setOpenVisitSections] = useState<Record<"note" | "attachments", boolean>>({
     note: false,
@@ -1323,41 +1382,57 @@ export function PatientDetailsDrawer({
       setIsTbiLoading(hasTbiEvaluation);
       setMyopiaError("");
       setTbiError("");
+      setModuleEntryError("");
       try {
-        const [nextMyopiaHistory, nextGrowthHistory, nextTbiEvaluations, nextModuleEntries] = await Promise.all([
-          hasMyopiaManagement && onLoadMyopiaHistory
-            ? onLoadMyopiaHistory(patientId)
-            : Promise.resolve({
-                patient_id: patientId,
-                records: [],
-                baseline_delta: null,
-                last_delta: null,
-                annualized_growth: null,
-                overlay_version: "clinic-reference-v1",
-              } satisfies MyopiaHistory),
-          hasGrowthMeasurement && onLoadGrowthHistory
-            ? onLoadGrowthHistory(patientId)
-            : Promise.resolve({
-                patient_id: patientId,
-                latest_measurement: null,
-                previous_measurement: null,
-                interval_change: null,
-                trend_summary: "",
-                flags: [],
-                records: [],
-              } satisfies PediatricGrowthSummary),
-          hasTbiEvaluation && !isTrainingMode
-            ? api.listPatientTbiEvaluations(patientId)
-            : Promise.resolve([] as TbiEvaluationRecord[]),
+        const emptyMyopiaHistory = {
+          patient_id: patientId,
+          records: [],
+          baseline_delta: null,
+          last_delta: null,
+          annualized_growth: null,
+          overlay_version: "clinic-reference-v1",
+        } satisfies MyopiaHistory;
+        const emptyGrowthHistory = {
+          patient_id: patientId,
+          latest_measurement: null,
+          previous_measurement: null,
+          interval_change: null,
+          trend_summary: "",
+          flags: [],
+          records: [],
+        } satisfies PediatricGrowthSummary;
+        const [nextMyopiaHistory, nextGrowthHistory, nextTbiEvaluations, nextModuleEntries] = await Promise.allSettled([
+          hasMyopiaManagement && onLoadMyopiaHistory ? onLoadMyopiaHistory(patientId) : Promise.resolve(emptyMyopiaHistory),
+          hasGrowthMeasurement && onLoadGrowthHistory ? onLoadGrowthHistory(patientId) : Promise.resolve(emptyGrowthHistory),
+          hasTbiEvaluation && !isTrainingMode ? api.listPatientTbiEvaluations(patientId) : Promise.resolve([] as TbiEvaluationRecord[]),
           isTrainingMode ? Promise.resolve([] as LongitudinalTrackRecord[]) : api.listPatientModuleEntries(patientId),
         ]);
         if (!active) {
           return;
         }
-        setMyopiaHistory(nextMyopiaHistory);
-        setGrowthHistory(nextGrowthHistory);
-        setTbiEvaluations(nextTbiEvaluations);
-        setModuleEntries(nextModuleEntries);
+        if (nextMyopiaHistory.status === "fulfilled") {
+          setMyopiaHistory(nextMyopiaHistory.value);
+        } else {
+          setMyopiaHistory(emptyMyopiaHistory);
+          setMyopiaError(nextMyopiaHistory.reason instanceof Error ? nextMyopiaHistory.reason.message : "Failed to load myopia history.");
+        }
+        if (nextGrowthHistory.status === "fulfilled") {
+          setGrowthHistory(nextGrowthHistory.value);
+        } else {
+          setGrowthHistory(emptyGrowthHistory);
+        }
+        if (nextTbiEvaluations.status === "fulfilled") {
+          setTbiEvaluations(nextTbiEvaluations.value);
+        } else {
+          setTbiEvaluations([]);
+          setTbiError(nextTbiEvaluations.reason instanceof Error ? nextTbiEvaluations.reason.message : "Failed to load TBI evaluations.");
+        }
+        if (nextModuleEntries.status === "fulfilled") {
+          setModuleEntries(nextModuleEntries.value);
+        } else {
+          setModuleEntries([]);
+          setModuleEntryError(nextModuleEntries.reason instanceof Error ? nextModuleEntries.reason.message : "Failed to load module entries.");
+        }
         setHasLoadedTestsTab(true);
       } catch (loadError) {
         if (!active) {
@@ -1448,6 +1523,10 @@ export function PatientDetailsDrawer({
   const myopiaRecords = myopiaHistory?.records ?? [];
   const growthRecords = growthHistory?.records ?? [];
   const latestGrowthRecord = growthRecords[growthRecords.length - 1] ?? null;
+  const eyeExamEntries = moduleEntriesFor(moduleEntries, "eye_exam");
+  const contactLensEntries = moduleEntriesFor(moduleEntries, "contact_lens");
+  const binocularVisionEntries = moduleEntriesFor(moduleEntries, "binocular_vision");
+  const lowVisionEntries = moduleEntriesFor(moduleEntries, "low_vision");
 
   function toggleVisitSection(section: "note" | "attachments") {
     setOpenVisitSections((current) => ({ ...current, [section]: !current[section] }));
@@ -1534,50 +1613,159 @@ export function PatientDetailsDrawer({
     }
   }
 
-  async function handleSaveGenericModuleEntry(payload: { measuredAt: string; notes: string; result: string }) {
-    if (!currentPatient || !genericModuleEntry) {
+  function updateEyeExam(eye: "right" | "left", patch: Partial<EyeExamEntry>) {
+    setEyeExam((current) => current.map((entry) => (entry.eye === eye ? { ...entry, ...patch } : entry)));
+  }
+
+  function updateContactLens(patch: Partial<ContactLensPayload>) {
+    setContactLens((current) => ({ ...current, ...patch }));
+  }
+
+  function updateContactLensEye(eye: "right" | "left", patch: Partial<ContactLensEyeEntry>) {
+    setContactLens((current) => ({
+      ...current,
+      eyes: current.eyes.map((entry) => (entry.eye === eye ? { ...entry, ...patch } : entry)),
+    }));
+  }
+
+  function startNewStructuredModule(moduleKey: SpecialtyModuleKey) {
+    if (moduleKey === "eye_exam") {
+      setEyeExam(createEmptyEyeExam());
+      setSelectedEyeExamEntryId("");
+    } else if (moduleKey === "contact_lens") {
+      setContactLens(createEmptyContactLens());
+      setSelectedContactLensEntryId("");
+    } else if (moduleKey === "binocular_vision") {
+      setBinocularVision(createEmptyBinocularVision());
+      setSelectedBinocularVisionEntryId("");
+    } else if (moduleKey === "low_vision") {
+      setLowVision(createEmptyLowVision());
+      setSelectedLowVisionEntryId("");
+    }
+  }
+
+  function selectEyeExamEntry(entry: LongitudinalTrackRecord) {
+    const entries = Array.isArray(entry.raw_payload?.entries) ? entry.raw_payload.entries : [];
+    const normalized = createEmptyEyeExam().map((emptyEntry) => {
+      const saved = entries.find((candidate) =>
+        typeof candidate === "object" &&
+        candidate !== null &&
+        "eye" in candidate &&
+        (candidate as { eye?: unknown }).eye === emptyEntry.eye,
+      ) as Partial<EyeExamEntry> | undefined;
+      return { ...emptyEntry, ...saved };
+    });
+    setEyeExam(normalized);
+    setSelectedEyeExamEntryId(entry.id);
+  }
+
+  function selectContactLensEntry(entry: LongitudinalTrackRecord) {
+    const savedPayload = entry.raw_payload as Partial<ContactLensPayload>;
+    const savedEyes = Array.isArray(savedPayload.eyes) ? savedPayload.eyes : [];
+    const nextContactLens = {
+      ...createEmptyContactLens(),
+      ...savedPayload,
+      eyes: createEmptyContactLens().eyes.map((emptyEntry) => {
+        const saved = savedEyes.find((candidate) => candidate.eye === emptyEntry.eye);
+        return saved ? { ...emptyEntry, ...saved } : emptyEntry;
+      }),
+    };
+    setContactLens(nextContactLens);
+    setSelectedContactLensEntryId(entry.id);
+  }
+
+  function selectBinocularVisionEntry(entry: LongitudinalTrackRecord) {
+    setBinocularVision({ ...createEmptyBinocularVision(), ...(entry.raw_payload as Partial<BinocularVisionPayload>) });
+    setSelectedBinocularVisionEntryId(entry.id);
+  }
+
+  function selectLowVisionEntry(entry: LongitudinalTrackRecord) {
+    setLowVision({ ...createEmptyLowVision(), ...(entry.raw_payload as Partial<LowVisionPayload>) });
+    setSelectedLowVisionEntryId(entry.id);
+  }
+
+  async function saveStructuredModuleEntry(
+    moduleKey: SpecialtyModuleKey,
+    payload: Record<string, unknown>,
+    summary: string,
+  ) {
+    if (!currentPatient) {
       return;
     }
     const patientId = currentPatient.id;
-    const measuredAtIso = payload.measuredAt ? new Date(payload.measuredAt).toISOString() : new Date().toISOString();
-    const result = payload.result.trim();
-    const notes = payload.notes.trim();
-    setIsSavingGenericModuleEntry(true);
+    const measuredAtIso = new Date().toISOString();
     setGenericModuleEntryError("");
     try {
+      let saved: LongitudinalTrackRecord;
       if (isTrainingMode) {
-        const saved: LongitudinalTrackRecord = {
+        saved = {
           id: createTrainingId("module"),
           org_id: "training",
           patient_id: patientId,
-          track_type: genericModuleEntry,
+          track_type: moduleKey,
           measured_at: measuredAtIso,
-          summary_fields: { result, notes },
-          raw_payload: { result, notes },
+          summary_fields: { summary },
+          raw_payload: payload,
           derived_metrics: {},
           created_at: new Date().toISOString(),
         };
         setModuleEntries((current) => [...current, saved]);
       } else {
-        const saved = await api.createPatientModuleEntry(patientId, {
-          track_type: genericModuleEntry,
+        saved = await api.createPatientModuleEntry(patientId, {
+          track_type: moduleKey,
           measured_at: measuredAtIso,
-          summary_fields: { result, notes },
-          raw_payload: { result, notes },
+          summary_fields: { summary },
+          raw_payload: payload,
           derived_metrics: {},
         });
         setModuleEntries((current) => [...current.filter((entry) => entry.id !== saved.id), saved]);
       }
-      setGenericModuleEntry(null);
+      setModuleEntryError("");
       setHasLoadedTimelineTab(false);
       setPatientTimeline([]);
       setHasLoadedTestsTab(true);
       setActiveTab("tests");
+      return saved;
     } catch (saveError) {
       setGenericModuleEntryError(saveError instanceof Error ? saveError.message : "Failed to save entry.");
       throw saveError;
-    } finally {
-      setIsSavingGenericModuleEntry(false);
+    }
+  }
+
+  async function handleSaveEyeExam() {
+    const saved = await saveStructuredModuleEntry("eye_exam", { entries: eyeExam.filter((entry) => hasEyeExamData([entry])) }, buildEyeExamSummary(eyeExam));
+    if (saved) {
+      setSelectedEyeExamEntryId(saved.id);
+    }
+  }
+
+  async function handleSaveContactLens() {
+    const saved = await saveStructuredModuleEntry(
+      "contact_lens",
+      {
+        ...contactLens,
+        eyes: contactLens.eyes.filter((entry) => hasContactLensEyeData(entry)),
+      },
+      "Contact lens details saved.",
+    );
+    if (saved) {
+      setSelectedContactLensEntryId(saved.id);
+    }
+  }
+
+  async function handleSaveBinocularVision(next: BinocularVisionPayload) {
+    setBinocularVision(next);
+    const saved = await saveStructuredModuleEntry("binocular_vision", next as unknown as Record<string, unknown>, buildBinocularVisionSummary(next));
+    if (saved) {
+      setSelectedBinocularVisionEntryId(saved.id);
+    }
+  }
+
+  async function handleSaveLowVision(next: LowVisionPayload) {
+    setLowVision(next);
+    const saved = await saveStructuredModuleEntry("low_vision", next as unknown as Record<string, unknown>, buildLowVisionSummary(next));
+    if (saved) {
+      setSelectedLowVisionEntryId(saved.id);
     }
   }
 
@@ -2066,18 +2254,19 @@ export function PatientDetailsDrawer({
             {activeTab === "tests" ? (
               <TestsPanel
                 latestGrowthRecord={latestGrowthRecord}
+                moduleEntryError={moduleEntryError}
                 moduleEntries={moduleEntries}
                 modules={specialtyModules}
                 myopiaError={myopiaError}
                 myopiaRecords={myopiaRecords}
                 tbiError={tbiError}
                 tbiEvaluations={tbiEvaluations}
-                onOpenGenericEntry={(moduleKey) => {
-                  setGenericModuleEntryError("");
-                  setGenericModuleEntry(moduleKey);
-                }}
+                onOpenBinocularVision={() => setIsBinocularVisionOpen(true)}
+                onOpenContactLens={() => setIsContactLensOpen(true)}
+                onOpenEyeExam={() => setIsEyeExamOpen(true)}
                 onOpenTbiEvaluation={() => setIsTbiEvaluationOpen(true)}
                 onOpenGrowthHistory={() => setIsGrowthHistoryOpen(true)}
+                onOpenLowVision={() => setIsLowVisionOpen(true)}
                 onOpenMyopiaManagement={() => setIsMyopiaManagementOpen(true)}
               />
             ) : null}
@@ -2237,16 +2426,89 @@ export function PatientDetailsDrawer({
           onClose={() => setIsGrowthHistoryOpen(false)}
         />
       ) : null}
-      <GenericModuleEntryModal
-        moduleKey={genericModuleEntry}
-        error={genericModuleEntryError}
-        isSaving={isSavingGenericModuleEntry}
-        onClose={() => {
-          setGenericModuleEntry(null);
-          setGenericModuleEntryError("");
-        }}
-        onSave={handleSaveGenericModuleEntry}
-      />
+      <PatientStructuredModuleShell
+        open={isEyeExamOpen}
+        patient={currentPatient}
+        moduleKey="eye_exam"
+        entries={eyeExamEntries}
+        selectedEntryId={selectedEyeExamEntryId}
+        onClose={() => setIsEyeExamOpen(false)}
+        onNew={() => startNewStructuredModule("eye_exam")}
+        onSelectEntry={selectEyeExamEntry}
+      >
+        <EyeExamFields
+          open
+          value={eyeExam}
+          onChange={updateEyeExam}
+          onSave={handleSaveEyeExam}
+        />
+        {genericModuleEntryError ? <p className="mt-3 text-sm font-medium text-rose-600">{genericModuleEntryError}</p> : null}
+      </PatientStructuredModuleShell>
+      <PatientStructuredModuleShell
+        open={isContactLensOpen}
+        patient={currentPatient}
+        moduleKey="contact_lens"
+        entries={contactLensEntries}
+        selectedEntryId={selectedContactLensEntryId}
+        onClose={() => setIsContactLensOpen(false)}
+        onNew={() => startNewStructuredModule("contact_lens")}
+        onSelectEntry={selectContactLensEntry}
+      >
+        <ContactLensModal
+          open
+          inline
+          value={contactLens}
+          onClose={() => {}}
+          onSave={() => {
+            void handleSaveContactLens();
+          }}
+          onChange={updateContactLens}
+          onEyeChange={updateContactLensEye}
+        />
+        {genericModuleEntryError ? <p className="mt-3 text-sm font-medium text-rose-600">{genericModuleEntryError}</p> : null}
+      </PatientStructuredModuleShell>
+      <PatientStructuredModuleShell
+        open={isBinocularVisionOpen}
+        patient={currentPatient}
+        moduleKey="binocular_vision"
+        entries={binocularVisionEntries}
+        selectedEntryId={selectedBinocularVisionEntryId}
+        onClose={() => setIsBinocularVisionOpen(false)}
+        onNew={() => startNewStructuredModule("binocular_vision")}
+        onSelectEntry={selectBinocularVisionEntry}
+      >
+        <BinocularVisionModal
+          open
+          inline
+          value={binocularVision}
+          onClose={() => {}}
+          onSave={(next) => {
+            void handleSaveBinocularVision(next);
+          }}
+        />
+        {genericModuleEntryError ? <p className="mt-3 text-sm font-medium text-rose-600">{genericModuleEntryError}</p> : null}
+      </PatientStructuredModuleShell>
+      <PatientStructuredModuleShell
+        open={isLowVisionOpen}
+        patient={currentPatient}
+        moduleKey="low_vision"
+        entries={lowVisionEntries}
+        selectedEntryId={selectedLowVisionEntryId}
+        onClose={() => setIsLowVisionOpen(false)}
+        onNew={() => startNewStructuredModule("low_vision")}
+        onSelectEntry={selectLowVisionEntry}
+      >
+        <LowVisionModal
+          open
+          inline
+          value={lowVision}
+          onClose={() => {}}
+          onSave={(next) => {
+            void handleSaveLowVision(next);
+          }}
+        />
+        {genericModuleEntryError ? <p className="mt-3 text-sm font-medium text-rose-600">{genericModuleEntryError}</p> : null}
+      </PatientStructuredModuleShell>
     </div>
   );
 }

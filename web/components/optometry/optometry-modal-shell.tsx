@@ -9,10 +9,11 @@ type OptometryModalShellProps = {
   description: string;
   saveLabel: string;
   onClose: () => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   children: ReactNode;
   isSaving?: boolean;
   inline?: boolean;
+  sidebar?: ReactNode;
 };
 
 export function OptometryModalShell({
@@ -25,6 +26,7 @@ export function OptometryModalShell({
   children,
   isSaving = false,
   inline = false,
+  sidebar,
 }: OptometryModalShellProps) {
   if (!open) {
     return null;
@@ -57,7 +59,16 @@ export function OptometryModalShell({
           </button>
         </div>
 
-        <div className="mt-6 space-y-5">{children}</div>
+        {sidebar ? (
+          <div className="mt-6 grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+            <aside className="max-h-[68vh] overflow-y-auto rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/50 p-4">
+              {sidebar}
+            </aside>
+            <div className="min-w-0 space-y-5">{children}</div>
+          </div>
+        ) : (
+          <div className="mt-6 space-y-5">{children}</div>
+        )}
 
         <div className="mt-6 flex justify-end gap-3">
           <button type="button" onClick={onClose} className="rounded-xl border border-[#bfd7e8] bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]">

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import type { ContactLensEyeEntry, ContactLensPayload } from "@/lib/types";
 
@@ -10,10 +10,11 @@ type ContactLensModalProps = {
   open: boolean;
   value: ContactLensPayload;
   onClose: () => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   onChange: (patch: Partial<ContactLensPayload>) => void;
   onEyeChange: (eye: "right" | "left", patch: Partial<ContactLensEyeEntry>) => void;
   inline?: boolean;
+  sidebar?: ReactNode;
 };
 
 export function ContactLensModal({
@@ -24,6 +25,7 @@ export function ContactLensModal({
   onChange,
   onEyeChange,
   inline = false,
+  sidebar,
 }: ContactLensModalProps) {
   return (
     <OptometryModalShell
@@ -34,6 +36,7 @@ export function ContactLensModal({
       onClose={onClose}
       onSave={onSave}
       inline={inline}
+      sidebar={sidebar}
     >
       <div>
         <p className="mb-3 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Assessment</p>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import type { BinocularVisionPayload } from "@/lib/types";
 
@@ -10,8 +10,9 @@ type BinocularVisionModalProps = {
   open: boolean;
   value: BinocularVisionPayload;
   onClose: () => void;
-  onSave: (next: BinocularVisionPayload) => void;
+  onSave: (next: BinocularVisionPayload) => void | Promise<void>;
   inline?: boolean;
+  sidebar?: ReactNode;
 };
 
 export function BinocularVisionModal({
@@ -20,6 +21,7 @@ export function BinocularVisionModal({
   onClose,
   onSave,
   inline = false,
+  sidebar,
 }: BinocularVisionModalProps) {
   const [draft, setDraft] = useState<BinocularVisionPayload>(value);
 
@@ -40,11 +42,12 @@ export function BinocularVisionModal({
       description="Capture symptoms, alignment, convergence, vergence, stereopsis, accommodation, and the management plan."
       saveLabel="Save Binocular Vision"
       onClose={onClose}
-      onSave={() => {
-        onSave(draft);
+      onSave={async () => {
+        await onSave(draft);
         onClose();
       }}
       inline={inline}
+      sidebar={sidebar}
     >
       <section className="rounded-[18px] border border-[#bfd7e8] bg-[#f3f8fb]/30 p-4">
         <p className="text-sm font-medium text-slate-900">Symptoms</p>
