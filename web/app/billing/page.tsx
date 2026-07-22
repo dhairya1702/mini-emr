@@ -739,7 +739,7 @@ export default function BillingPage() {
                   </thead>
                   <tbody>
                     {filteredInvoiceHistory.slice(0, 12).map((invoice) => {
-                      const patientName = patients.find((patient) => patient.id === invoice.patient_id)?.name || "Patient";
+                      const patientName = invoice.patient_name || patients.find((patient) => patient.id === invoice.patient_id)?.name || "Patient";
                       const statusLabel = invoice.payment_status.charAt(0).toUpperCase() + invoice.payment_status.slice(1);
                       return (
                         <tr key={invoice.id} className="transition hover:bg-[#f3f8fb]/60">

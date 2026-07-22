@@ -6,6 +6,7 @@ import asyncio
 from types import SimpleNamespace
 
 from test_app import auth_headers_for_token, client, register_test_clinic
+from app.repositories.postgres.patient_flow import _estimate_from_note_and_catalog
 from app.services import billing_workflow
 
 
@@ -23,6 +24,26 @@ def _create_queue_patient(test_client, headers, name: str, phone: str):
     )
     assert response.status_code == 201, response.json()
     return response.json()
+
+
+def test_queue_billing_estimate_uses_consultation_and_exact_extractions():
+    estimate = _estimate_from_note_and_catalog(
+        {
+            "status": "final",
+            "clinical_extractions": {},
+            "snapshot_clinical_extractions": {
+                "services_performed": [{"name": "Nebulization", "quantity": 2}],
+                "medications_prescribed": [{"name": "Paracetamol", "strength": "500 mg", "quantity": "6 tablets"}],
+            },
+        },
+        [
+            {"id": "consult", "name": "Consultation", "item_type": "service", "default_price": 500, "aliases": []},
+            {"id": "neb", "name": "Nebulization", "item_type": "service", "default_price": 150, "aliases": []},
+            {"id": "med", "name": "Paracetamol 500 mg", "item_type": "medicine", "default_price": 5, "aliases": [], "track_inventory": True, "stock_quantity": 10},
+        ],
+    )
+
+    assert estimate == {"total": 830.0, "item_count": 3, "medicine_count": 1}
 
 
 def test_queue_priority_and_shared_order_are_authoritative(client):

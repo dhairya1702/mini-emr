@@ -100,6 +100,7 @@ def test_catalog_matching_auto_match_is_exact_or_alias_only():
 class _VertexResponse:
     def __init__(self, status_code: int):
         self.status_code = status_code
+        self.text = '{"error": {"message": "test error"}}'
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -109,6 +110,23 @@ class _VertexResponse:
 
     def json(self):
         return {"candidates": []}
+
+
+def _walk_schema(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _walk_schema(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_schema(child)
+
+
+def test_consultation_vertex_schema_avoids_rejected_constraint_keywords():
+    rejected_keywords = {"maxItems", "minimum", "maximum"}
+
+    for node in _walk_schema(ai_generation_service.CONSULTATION_RESPONSE_SCHEMA):
+        assert rejected_keywords.isdisjoint(node)
 
 
 class _VertexClient:

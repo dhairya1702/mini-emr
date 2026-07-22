@@ -51,6 +51,10 @@ function avatarPaletteForPatient(patient: Patient) {
   return avatarPalettes[seed % avatarPalettes.length];
 }
 
+function formatRupees(value: number) {
+  return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+}
+
 export function formatStageElapsed(stageEnteredAt: string, now: number) {
   const enteredAt = new Date(stageEnteredAt).getTime();
   if (!Number.isFinite(enteredAt)) return "Just now";
@@ -65,7 +69,9 @@ export function formatStageElapsed(stageEnteredAt: string, now: number) {
 function patientChips(patient: Patient) {
   if (patient.status === "done") {
     const billing = patient.billing_summary;
-    if (!billing) return ["Ready for invoice"];
+    if (!billing) {
+      return [patient.billing_estimate ? `Est. ${formatRupees(patient.billing_estimate.total)}` : "Estimate pending"];
+    }
     const chips = [
       `${billing.item_count} item${billing.item_count === 1 ? "" : "s"}`,
       billing.medicine_count ? `${billing.medicine_count} medicine${billing.medicine_count === 1 ? "" : "s"}` : "Consultation",
@@ -150,7 +156,7 @@ export function PatientCard({
   const warningElapsed = patient.status === "waiting" && elapsedMinutes >= 30;
   const billing = patient.billing_summary;
   const badgeLabel = patient.status === "done"
-    ? billing ? `₹${billing.total.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "Ready"
+    ? billing ? formatRupees(billing.total) : "Ready"
     : elapsed;
   const [profilePhotoObjectUrl, setProfilePhotoObjectUrl] = useState("");
 
@@ -242,7 +248,9 @@ export function PatientCard({
       <div className="mt-2.5 flex flex-wrap gap-1.5">
         {patientChips(patient).map((chip, index) => (
           <span key={`${chip}-${index}`} className={`rounded-lg border px-2 py-1 text-[11px] font-semibold ${
-            patient.status === "done" && index === 2
+            patient.status === "done" && !patient.billing_summary && index === 0
+              ? "border-[#bce8cd] bg-[#ecfaf1] text-[#15803d]"
+              : patient.status === "done" && index === 2
               ? patient.billing_summary?.payment_status === "paid"
                 ? "border-[#bce8cd] bg-[#ecfaf1] text-[#15803d]"
                 : "border-amber-200 bg-[#fff7ea] text-amber-700"
@@ -261,7 +269,7 @@ export function PatientCard({
             {patient.status === "done" ? billing ? billing.payment_status === "paid" ? "Paid" : "Ready" : "Ready" : visitContext(patient)}
           </b>
           {patient.status === "done" ? (
-            <span> · {billing ? billing.completed_at ? "invoice finalized" : "invoice drafted" : "create invoice"}</span>
+            billing ? <span> · {billing.completed_at ? "invoice finalized" : "invoice drafted"}</span> : null
           ) : null}
         </span>
         <div className="flex shrink-0 gap-1.5">

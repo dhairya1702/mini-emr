@@ -33,6 +33,10 @@ function formatCurrency(value: number) {
   return value.toFixed(2);
 }
 
+function invoiceCollectedAmount(invoice: Invoice) {
+  return invoice.payment_status === "partial" ? Number(invoice.amount_paid || 0) : invoice.total;
+}
+
 export default function EarningsPage() {
   const router = useRouter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -98,7 +102,7 @@ export default function EarningsPage() {
   const paidInvoices = useMemo(
     () =>
       invoices
-        .filter((invoice) => invoice.payment_status === "paid" && Boolean(invoice.completed_at))
+        .filter((invoice) => invoice.payment_status !== "unpaid" && Boolean(invoice.completed_at) && invoiceCollectedAmount(invoice) > 0)
         .sort((left, right) => (right.paid_at || right.created_at).localeCompare(left.paid_at || left.created_at)),
     [invoices],
   );
@@ -137,7 +141,7 @@ export default function EarningsPage() {
             / 86_400_000,
         );
         if (dayIndex >= 0 && dayIndex < 7) {
-          buckets[dayIndex].total += invoice.total;
+          buckets[dayIndex].total += invoiceCollectedAmount(invoice);
           buckets[dayIndex].invoiceCount += 1;
         }
       }
@@ -167,7 +171,7 @@ export default function EarningsPage() {
         const sourceDate = new Date(invoice.paid_at || invoice.created_at);
         if (sourceDate >= monthStart && sourceDate.getMonth() === now.getMonth() && sourceDate.getFullYear() === now.getFullYear()) {
           const dayIndex = sourceDate.getDate() - 1;
-          buckets[dayIndex].total += invoice.total;
+          buckets[dayIndex].total += invoiceCollectedAmount(invoice);
           buckets[dayIndex].invoiceCount += 1;
         }
       }
@@ -192,7 +196,7 @@ export default function EarningsPage() {
       const sourceDate = new Date(invoice.paid_at || invoice.created_at);
       if (sourceDate >= yearStart && sourceDate.getFullYear() === now.getFullYear()) {
         const monthIndex = sourceDate.getMonth();
-        buckets[monthIndex].total += invoice.total;
+        buckets[monthIndex].total += invoiceCollectedAmount(invoice);
         buckets[monthIndex].invoiceCount += 1;
       }
     }
@@ -266,19 +270,25 @@ export default function EarningsPage() {
     let today = 0;
     let week = 0;
     let month = 0;
+    let pending = 0;
+    for (const invoice of invoices) {
+      if (invoice.payment_status !== "paid" && invoice.balance_due > 0) {
+        pending += invoice.balance_due;
+      }
+    }
     for (const invoice of paidInvoices) {
       const sourceDate = new Date(invoice.paid_at || invoice.created_at);
       const dayStart = new Date(sourceDate.getFullYear(), sourceDate.getMonth(), sourceDate.getDate()).toISOString();
       const weekStart = startOfWeek(sourceDate).toISOString();
       const monthStart = startOfMonth(sourceDate).toISOString();
 
-      if (dayStart === todayKey) today += invoice.total;
-      if (weekStart === weekKey) week += invoice.total;
-      if (monthStart === monthKey) month += invoice.total;
+      if (dayStart === todayKey) today += invoiceCollectedAmount(invoice);
+      if (weekStart === weekKey) week += invoiceCollectedAmount(invoice);
+      if (monthStart === monthKey) month += invoiceCollectedAmount(invoice);
     }
 
-    return { today, week, month };
-  }, [paidInvoices]);
+    return { today, week, month, pending };
+  }, [invoices, paidInvoices]);
 
   async function handleCreateInvoice(payload: {
     patient_id: string;
@@ -394,7 +404,7 @@ export default function EarningsPage() {
           </div>
         ) : null}
 
-        <section className="grid gap-4 lg:grid-cols-3">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-[16px] border border-[#dbe7ef] bg-white/95 px-4 py-3.5 shadow-[0_16px_44px_rgba(64,131,181,0.08)]">
             <div className="flex items-center gap-2.5 text-[#2a6fa8]">
               <CalendarDays className="h-4.5 w-4.5" />
@@ -405,16 +415,23 @@ export default function EarningsPage() {
           <div className="rounded-[16px] border border-[#dbe7ef] bg-white/95 px-4 py-3.5 shadow-[0_16px_44px_rgba(64,131,181,0.08)]">
             <div className="flex items-center gap-2.5 text-[#2a6fa8]">
               <CalendarDays className="h-4.5 w-4.5" />
-              <p className="text-xs font-medium uppercase tracking-[0.16em]">This Week</p>
+              <p className="text-xs font-medium uppercase tracking-[0.16em]">Week</p>
             </div>
             <p className="mt-2 text-[1.45rem] font-semibold leading-none text-slate-900">{formatCurrency(summary.week)}</p>
           </div>
           <div className="rounded-[16px] border border-[#dbe7ef] bg-white/95 px-4 py-3.5 shadow-[0_16px_44px_rgba(64,131,181,0.08)]">
             <div className="flex items-center gap-2.5 text-[#2a6fa8]">
               <CalendarDays className="h-4.5 w-4.5" />
-              <p className="text-xs font-medium uppercase tracking-[0.16em]">This Month</p>
+              <p className="text-xs font-medium uppercase tracking-[0.16em]">Month</p>
             </div>
             <p className="mt-2 text-[1.45rem] font-semibold leading-none text-slate-900">{formatCurrency(summary.month)}</p>
+          </div>
+          <div className="rounded-[16px] border border-rose-200 bg-rose-50/80 px-4 py-3.5 shadow-[0_16px_44px_rgba(127,29,29,0.08)]">
+            <div className="flex items-center gap-2.5 text-rose-700">
+              <ReceiptIndianRupee className="h-4.5 w-4.5" />
+              <p className="text-xs font-medium uppercase tracking-[0.16em]">Pending</p>
+            </div>
+            <p className="mt-2 text-[1.45rem] font-semibold leading-none text-rose-950">{formatCurrency(summary.pending)}</p>
           </div>
         </section>
 
@@ -629,7 +646,7 @@ export default function EarningsPage() {
                         })}
                       </p>
                       <p className="text-right text-base font-semibold text-slate-900">
-                        {openingInvoiceId === invoice.id ? "Opening..." : formatCurrency(invoice.total)}
+                        {openingInvoiceId === invoice.id ? "Opening..." : formatCurrency(invoiceCollectedAmount(invoice))}
                       </p>
                     </button>
                   ))}

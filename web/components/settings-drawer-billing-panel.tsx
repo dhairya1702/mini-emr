@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageCircle, Printer, ReceiptIndianRupee, Trash2 } from "lucide-react";
+import { MessageCircle, Printer, ReceiptIndianRupee, Sparkles, Trash2 } from "lucide-react";
 
 import { CatalogItem, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
@@ -100,6 +100,23 @@ export function SettingsDrawerBillingPanel({
   onSendInvoice,
   onSendInvoiceWhatsApp,
 }: SettingsDrawerBillingPanelProps) {
+  const invoiceCatalogItemIds = new Set(
+    invoiceItems
+      .map((item) => item.catalog_item_id)
+      .filter((itemId): itemId is string => Boolean(itemId)),
+  );
+  const recommendationItems = [...serviceItems, ...medicineItems].filter((item) => {
+    const normalizedName = item.name.trim().toLowerCase();
+    const normalizedAliases = item.aliases.map((alias) => alias.trim().toLowerCase());
+    if (normalizedName === "consultation" || normalizedAliases.includes("consultation")) {
+      return false;
+    }
+    if (invoiceCatalogItemIds.has(item.id)) {
+      return false;
+    }
+    return !item.track_inventory || item.stock_quantity > 0;
+  });
+
   return (
     <div className={`grid gap-4 ${showPatientSelector ? "xl:grid-cols-[300px_1fr]" : ""}`}>
       {showPatientSelector ? (
@@ -198,42 +215,31 @@ export function SettingsDrawerBillingPanel({
             )) : <p className="text-sm text-slate-600">Add services or medicines from the inventory to start billing.</p>}
           </div>
 
-          <div className="mt-5 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
-            {serviceItems.length || medicineItems.length ? (
-              <div className="mb-5 grid gap-4 lg:grid-cols-2">
-                <div>
-                  <p className="mb-2 text-sm font-medium text-slate-700">Services</p>
-                  <div className="flex flex-wrap gap-2">
-                    {serviceItems.length ? serviceItems.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => onAddCatalogItem(item)}
-                        className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
-                      >
-                        Add {item.name}
-                      </button>
-                    )) : <p className="text-sm text-slate-500">No services configured.</p>}
-                  </div>
-                </div>
-                <div>
-                  <p className="mb-2 text-sm font-medium text-slate-700">Medicines</p>
-                  <div className="flex flex-wrap gap-2">
-                    {medicineItems.length ? medicineItems.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => onAddCatalogItem(item)}
-                        disabled={item.track_inventory && item.stock_quantity <= 0}
-                        className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Add {item.name}
-                      </button>
-                    )) : <p className="text-sm text-slate-500">No medicines configured.</p>}
-                  </div>
-                </div>
+          {recommendationItems.length ? (
+            <div className="mt-5 rounded-[16px] border border-[#cfe3f3] bg-gradient-to-br from-[#f3f9fe] to-[#eaf4fc] p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#2f8fd3]/10 text-[#2f8fd3]">
+                  <Sparkles className="h-3.5 w-3.5" />
+                </span>
+                <p className="text-sm font-semibold text-[#1d4d72]">Recommendation</p>
               </div>
-            ) : null}
+              <div className="flex flex-wrap gap-2">
+                {recommendationItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => onAddCatalogItem(item)}
+                    className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 shadow-sm shadow-[#2f8fd3]/5 transition hover:bg-[#f8fcff]"
+                  >
+                    Add {item.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-5 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
+            <p className="mb-3 text-sm font-medium text-slate-700">Manual item</p>
             <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
               <label className="flex-1">
                 <span className="mb-2 block text-sm font-medium text-slate-700">Item</span>
@@ -303,7 +309,6 @@ export function SettingsDrawerBillingPanel({
                   className="mt-2 w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
                 />
               </label>
-              <p className="mt-2 text-xs text-amber-800">Partial invoices require an amount greater than zero and less than the total.</p>
             </div>
           ) : null}
 

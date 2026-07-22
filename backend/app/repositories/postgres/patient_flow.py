@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -130,6 +131,112 @@ def _json_payload(value: Any) -> dict[str, Any]:
     return value or {}
 
 
+def _normalize_catalog_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
+
+
+def _catalog_aliases(item: dict[str, Any]) -> list[str]:
+    value = item.get("aliases") or []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    return [str(alias) for alias in value if str(alias).strip()] if isinstance(value, list) else []
+
+
+def _numeric_quantity(value: Any, default: float = 1) -> float:
+    match = re.search(r"\d+(?:\.\d+)?", str(value or ""))
+    if not match:
+        return default
+    quantity = float(match.group(0))
+    return quantity if 0 < quantity <= 10000 else default
+
+
+def _catalog_item_available(item: dict[str, Any], quantity: float) -> bool:
+    return not bool(item.get("track_inventory")) or float(item.get("stock_quantity") or 0) >= quantity
+
+
+def _find_exact_catalog_item(
+    name: str,
+    items: list[dict[str, Any]],
+    *,
+    catalog_item_id: str | None = None,
+) -> dict[str, Any] | None:
+    if catalog_item_id:
+        direct = next((item for item in items if str(item.get("id")) == catalog_item_id), None)
+        if direct:
+            return direct
+    normalized = _normalize_catalog_text(name)
+    if not normalized:
+        return None
+    for item in items:
+        if _normalize_catalog_text(str(item.get("name") or "")) == normalized:
+            return item
+    for item in items:
+        if normalized in {_normalize_catalog_text(alias) for alias in _catalog_aliases(item)}:
+            return item
+    return None
+
+
+def _estimate_from_note_and_catalog(
+    note: dict[str, Any] | None,
+    catalog_items: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    services = [item for item in catalog_items if item.get("item_type") == "service"]
+    medicines = [item for item in catalog_items if item.get("item_type") == "medicine"]
+    line_items: dict[str, dict[str, Any]] = {}
+
+    consultation = next(
+        (
+            item for item in services
+            if _normalize_catalog_text(str(item.get("name") or "")) == "consultation"
+            or "consultation" in {_normalize_catalog_text(alias) for alias in _catalog_aliases(item)}
+        ),
+        None,
+    )
+    if consultation and _catalog_item_available(consultation, 1):
+        line_items[str(consultation["id"])] = {"item": consultation, "quantity": 1}
+
+    extractions = _json_payload(
+        note.get("snapshot_clinical_extractions")
+        if note and note.get("status") in {"final", "sent"} and note.get("snapshot_clinical_extractions")
+        else note.get("clinical_extractions") if note else {}
+    )
+
+    for extracted in extractions.get("services_performed") or []:
+        name = str(extracted.get("name") or "").strip()
+        item = _find_exact_catalog_item(name, services)
+        quantity = _numeric_quantity(extracted.get("quantity"))
+        if item and _catalog_item_available(item, quantity) and str(item["id"]) not in line_items:
+            line_items[str(item["id"])] = {"item": item, "quantity": quantity}
+
+    for extracted in extractions.get("medications_prescribed") or []:
+        name = str(extracted.get("name") or "").strip()
+        strength = str(extracted.get("strength") or "").strip()
+        lookup_name = f"{name} {strength}".strip() if strength else name
+        item = _find_exact_catalog_item(
+            lookup_name,
+            medicines,
+            catalog_item_id=str(extracted.get("catalog_item_id")) if extracted.get("catalog_item_id") else None,
+        )
+        if not item and strength:
+            item = _find_exact_catalog_item(name, medicines)
+        quantity = _numeric_quantity(extracted.get("quantity"))
+        if item and _catalog_item_available(item, quantity) and str(item["id"]) not in line_items:
+            line_items[str(item["id"])] = {"item": item, "quantity": quantity}
+
+    if not line_items:
+        return None
+    total = sum(float(row["item"].get("default_price") or 0) * float(row["quantity"]) for row in line_items.values())
+    medicine_count = sum(1 for row in line_items.values() if row["item"].get("item_type") == "medicine")
+    return {
+        "total": total,
+        "item_count": len(line_items),
+        "medicine_count": medicine_count,
+    }
+
+
 def _patient_with_profile_photo_url(patient: dict[str, Any]) -> dict[str, Any]:
     storage_path = str(patient.get("profile_photo_storage_path") or "").strip()
     return {
@@ -147,6 +254,7 @@ class PostgresPatientFlowRepository:
         visit_ids = [str(patient["current_visit_id"]) for patient in patients if patient.get("current_visit_id")]
         visits: dict[str, dict[str, Any]] = {}
         billing: dict[str, dict[str, Any]] = {}
+        estimates: dict[str, dict[str, Any]] = {}
         if visit_ids:
             cursor.execute(
                 """
@@ -197,11 +305,59 @@ class PostgresPatientFlowRepository:
                 }
                 for row in cursor.fetchall()
             }
+            org_ids = list({str(patient["org_id"]) for patient in patients if patient.get("org_id")})
+            cursor.execute(
+                """
+                select id::text, org_id::text, name, item_type, default_price,
+                  track_inventory, stock_quantity, aliases
+                from public.catalog_items
+                where org_id = any(%s::uuid[])
+                """,
+                (org_ids,),
+            )
+            catalog_by_org: dict[str, list[dict[str, Any]]] = {}
+            for row in cursor.fetchall():
+                item = {
+                    "id": str(row[0]),
+                    "org_id": str(row[1]),
+                    "name": str(row[2]),
+                    "item_type": str(row[3]),
+                    "default_price": float(row[4] or 0),
+                    "track_inventory": bool(row[5]),
+                    "stock_quantity": float(row[6] or 0),
+                    "aliases": row[7],
+                }
+                catalog_by_org.setdefault(str(row[1]), []).append(item)
+            cursor.execute(
+                """
+                select distinct on (visit_id)
+                  visit_id::text, org_id::text, status, clinical_extractions,
+                  snapshot_clinical_extractions
+                from public.notes
+                where visit_id = any(%s::uuid[])
+                order by visit_id, created_at desc
+                """,
+                (visit_ids,),
+            )
+            notes = {
+                str(row[0]): {
+                    "org_id": str(row[1]),
+                    "status": str(row[2]),
+                    "clinical_extractions": row[3],
+                    "snapshot_clinical_extractions": row[4],
+                }
+                for row in cursor.fetchall()
+            }
+            for visit_id, note in notes.items():
+                estimate = _estimate_from_note_and_catalog(note, catalog_by_org.get(str(note.get("org_id")), []))
+                if estimate:
+                    estimates[visit_id] = estimate
         return [
             {
                 **patient,
                 "current_visit": visits.get(str(patient.get("current_visit_id") or "")),
                 "billing_summary": billing.get(str(patient.get("current_visit_id") or "")),
+                "billing_estimate": estimates.get(str(patient.get("current_visit_id") or "")),
             }
             for patient in patients
         ]

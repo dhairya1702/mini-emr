@@ -81,6 +81,7 @@ class PatientOut(BaseModel):
     last_visit_at: datetime
     current_visit: "CurrentVisitSummaryOut | None" = None
     billing_summary: "QueueBillingSummaryOut | None" = None
+    billing_estimate: "QueueBillingEstimateOut | None" = None
 
 
 class CurrentVisitSummaryOut(BaseModel):
@@ -99,6 +100,12 @@ class QueueBillingSummaryOut(BaseModel):
     medicine_count: int = 0
     completed_at: datetime | None = None
     sent_at: datetime | None = None
+
+
+class QueueBillingEstimateOut(BaseModel):
+    total: float = 0
+    item_count: int = 0
+    medicine_count: int = 0
 
 
 class QueueOrderColumns(BaseModel):

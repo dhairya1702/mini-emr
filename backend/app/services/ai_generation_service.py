@@ -1334,6 +1334,10 @@ def _vertex_generation_config(
     return generation_config
 
 
+def _vertex_error_body(response: httpx.Response) -> str:
+    return re.sub(r"\s+", " ", response.text).strip()[:1200]
+
+
 async def _generate_vertex_content(
     *,
     project_id: str,
@@ -1399,6 +1403,14 @@ async def _generate_vertex_content(
         for attempt in range(max_retries + 1):
             try:
                 response = await client.post(url, headers=headers, json=payload)
+                if response.status_code >= 400:
+                    logger.warning(
+                        "Vertex AI request rejected. status=%s model=%s location=%s body=%s",
+                        response.status_code,
+                        model,
+                        location,
+                        _vertex_error_body(response),
+                    )
                 response.raise_for_status()
                 return response.json()
             except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as exc:
@@ -1612,20 +1624,18 @@ CONSULTATION_RESPONSE_SCHEMA: dict[str, Any] = {
         },
         "services_performed": {
             "type": "ARRAY",
-            "maxItems": 20,
             "items": {
                 "type": "OBJECT",
                 "required": ["name", "quantity", "evidence"],
                 "properties": {
                     "name": {"type": "STRING"},
-                    "quantity": {"type": "INTEGER", "minimum": 1, "maximum": 100},
+                    "quantity": {"type": "INTEGER"},
                     "evidence": {"type": "STRING"},
                 },
             },
         },
         "medications_prescribed": {
             "type": "ARRAY",
-            "maxItems": 30,
             "items": {
                 "type": "OBJECT",
                 "required": [

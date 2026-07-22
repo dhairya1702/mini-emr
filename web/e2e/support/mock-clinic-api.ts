@@ -80,6 +80,7 @@ export type MockPatient = {
     scheduled_for: string | null;
   } | null;
   billing_summary: null;
+  billing_estimate: null;
   created_at: string;
   last_visit_at: string;
 };
@@ -205,6 +206,7 @@ export function buildPatient(overrides: Partial<MockPatient> = {}): MockPatient 
     queue_position: 1,
     current_visit: { id: "visit-1", kind: "new", source: "queue", scheduled_for: null },
     billing_summary: null,
+    billing_estimate: null,
     created_at: nowIso(),
     last_visit_at: nowIso(),
     ...overrides,

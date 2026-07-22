@@ -24,6 +24,12 @@ export interface QueueBillingSummary {
   sent_at: string | null;
 }
 
+export interface QueueBillingEstimate {
+  total: number;
+  item_count: number;
+  medicine_count: number;
+}
+
 export interface Patient {
   id: string;
   name: string;
@@ -45,6 +51,7 @@ export interface Patient {
   queue_position: number;
   current_visit?: CurrentVisitSummary | null;
   billing_summary?: QueueBillingSummary | null;
+  billing_estimate?: QueueBillingEstimate | null;
   profile_photo_url?: string | null;
   profile_photo_content_type?: string | null;
   profile_photo_updated_at?: string | null;
