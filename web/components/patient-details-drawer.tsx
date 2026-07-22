@@ -1471,18 +1471,20 @@ export function PatientDetailsDrawer({
               </div>
             </div>
           ) : null}
-          <div className="mt-4 flex flex-wrap gap-2">
-            <ChartTabButton active={activeTab === "visits"} label="Visits" onClick={() => setActiveTab("visits")} />
-            <ChartTabButton
-              active={activeTab === "tests"}
-              label="Tests"
-              onClick={() => setActiveTab("tests")}
-            />
-            <ChartTabButton
-              active={activeTab === "attachments"}
-              label="Attachments"
-              onClick={() => setActiveTab("attachments")}
-            />
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap gap-2">
+              <ChartTabButton active={activeTab === "visits"} label="Visits" onClick={() => setActiveTab("visits")} />
+              <ChartTabButton
+                active={activeTab === "tests"}
+                label="Tests"
+                onClick={() => setActiveTab("tests")}
+              />
+              <ChartTabButton
+                active={activeTab === "attachments"}
+                label="Attachments"
+                onClick={() => setActiveTab("attachments")}
+              />
+            </div>
             {workflowActionLabel && onWorkflowAction ? (
               <button
                 type="button"
@@ -1491,7 +1493,7 @@ export function PatientDetailsDrawer({
                   void onWorkflowAction();
                 }}
                 disabled={workflowActionDisabled}
-                className="inline-flex h-10 items-center rounded-xl bg-[#2f8fd3] px-4 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+                className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#14a38b] px-4 text-sm font-medium text-white shadow-sm shadow-teal-900/10 transition hover:bg-[#108873] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#14a38b]/30 disabled:opacity-60 sm:ml-auto sm:w-auto"
               >
                 {workflowActionLabel}
               </button>
