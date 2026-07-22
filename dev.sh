@@ -31,6 +31,8 @@ NGROK_BIN="${NGROK_BIN:-ngrok}"
 NGROK_URL="${NGROK_URL:-https://terrell-unrightful-belinda.ngrok-free.dev}"
 NGROK_API_URL="${NGROK_API_URL:-http://127.0.0.1:4040/api/tunnels}"
 NGROK_STARTUP_TIMEOUT_SECONDS="${NGROK_STARTUP_TIMEOUT_SECONDS:-15}"
+NGROK_SEPARATE_TERMINAL="${NGROK_SEPARATE_TERMINAL:-0}"
+NGROK_PID_FILE="${NGROK_PID_FILE:-/tmp/clinic-emr-ngrok.pid}"
 WHATSAPP_SKIP_SIGNATURE_CHECK="${WHATSAPP_SKIP_SIGNATURE_CHECK:-1}"
 
 if [[ ! -d "$BACKEND_VENV" ]]; then
@@ -52,6 +54,14 @@ cleanup() {
   if [[ -n "${NGROK_PID:-}" ]]; then
     kill "$NGROK_PID" 2>/dev/null || true
   fi
+  if [[ -n "${NGROK_PID_FILE:-}" && -f "$NGROK_PID_FILE" ]]; then
+    local file_pid
+    file_pid="$(cat "$NGROK_PID_FILE" 2>/dev/null || true)"
+    if [[ "$file_pid" =~ ^[0-9]+$ ]]; then
+      kill "$file_pid" 2>/dev/null || true
+    fi
+    rm -f "$NGROK_PID_FILE"
+  fi
   local deadline=$((SECONDS + SHUTDOWN_GRACE_SECONDS))
   while (( SECONDS < deadline )); do
     local proxy_alive=0
@@ -70,6 +80,13 @@ cleanup() {
     if [[ -n "${NGROK_PID:-}" ]] && kill -0 "$NGROK_PID" 2>/dev/null; then
       ngrok_alive=1
     fi
+    if [[ "$ngrok_alive" == "0" && -n "${NGROK_PID_FILE:-}" && -f "$NGROK_PID_FILE" ]]; then
+      local file_pid
+      file_pid="$(cat "$NGROK_PID_FILE" 2>/dev/null || true)"
+      if [[ "$file_pid" =~ ^[0-9]+$ ]] && kill -0 "$file_pid" 2>/dev/null; then
+        ngrok_alive=1
+      fi
+    fi
     if [[ "$proxy_alive" == "0" && "$backend_alive" == "0" && "$web_alive" == "0" && "$ngrok_alive" == "0" ]]; then
       break
     fi
@@ -86,6 +103,14 @@ cleanup() {
   fi
   if [[ -n "${NGROK_PID:-}" ]] && kill -0 "$NGROK_PID" 2>/dev/null; then
     kill -9 "$NGROK_PID" 2>/dev/null || true
+  fi
+  if [[ -n "${NGROK_PID_FILE:-}" && -f "$NGROK_PID_FILE" ]]; then
+    local file_pid
+    file_pid="$(cat "$NGROK_PID_FILE" 2>/dev/null || true)"
+    if [[ "$file_pid" =~ ^[0-9]+$ ]] && kill -0 "$file_pid" 2>/dev/null; then
+      kill -9 "$file_pid" 2>/dev/null || true
+    fi
+    rm -f "$NGROK_PID_FILE"
   fi
   wait 2>/dev/null || true
   exit "$exit_code"
@@ -142,17 +167,52 @@ if [[ "$NGROK_ENABLED" == "1" ]]; then
     echo "ngrok binary not found: $NGROK_BIN" >&2
     exit 1
   fi
+  if [[ "$NGROK_SEPARATE_TERMINAL" == "1" && "$(uname -s)" != "Darwin" ]]; then
+    echo "NGROK_SEPARATE_TERMINAL=1 is only supported on macOS Terminal.app." >&2
+    exit 1
+  fi
+  if [[ "$NGROK_SEPARATE_TERMINAL" == "1" && ! -d "/System/Applications/Utilities/Terminal.app" && ! -d "/Applications/Utilities/Terminal.app" ]]; then
+    echo "Terminal.app not found; cannot launch ngrok in a separate tab." >&2
+    exit 1
+  fi
   ngrok_cmd=("$NGROK_BIN" http "$BACKEND_PORT")
   if [[ -n "$NGROK_URL" ]]; then
     ngrok_cmd+=("--url" "$NGROK_URL")
   fi
-  "${ngrok_cmd[@]}" &
-  NGROK_PID=$!
+  if [[ "$NGROK_SEPARATE_TERMINAL" == "1" ]]; then
+    rm -f "$NGROK_PID_FILE"
+    ngrok_shell_cmd="cd $(printf '%q' "$ROOT_DIR"); echo \$\$ > $(printf '%q' "$NGROK_PID_FILE"); exec $(printf '%q ' "${ngrok_cmd[@]}")"
+    osascript >/dev/null <<OSA
+tell application "Terminal"
+  activate
+  if not (exists window 1) then
+    do script "$(printf '%s' "$ngrok_shell_cmd" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  else
+    tell application "System Events" to keystroke "t" using command down
+    delay 0.2
+    do script "$(printf '%s' "$ngrok_shell_cmd" | sed 's/\\/\\\\/g; s/"/\\"/g')" in selected tab of front window
+  end if
+end tell
+OSA
+    echo "ngrok launched in a separate Terminal tab."
+  else
+    "${ngrok_cmd[@]}" &
+    NGROK_PID=$!
+  fi
   ngrok_public_url=""
   for ((attempt = 1; attempt <= NGROK_STARTUP_TIMEOUT_SECONDS; attempt += 1)); do
-    if ! kill -0 "$NGROK_PID" 2>/dev/null; then
-      echo "ngrok process exited before exposing the backend."
-      exit 1
+    if [[ "$NGROK_SEPARATE_TERMINAL" != "1" ]]; then
+      if ! kill -0 "$NGROK_PID" 2>/dev/null; then
+        echo "ngrok process exited before exposing the backend."
+        exit 1
+      fi
+    fi
+    if [[ "$NGROK_SEPARATE_TERMINAL" == "1" && -f "$NGROK_PID_FILE" ]]; then
+      NGROK_PID="$(cat "$NGROK_PID_FILE" 2>/dev/null || true)"
+      if [[ "$NGROK_PID" =~ ^[0-9]+$ ]] && ! kill -0 "$NGROK_PID" 2>/dev/null; then
+        echo "ngrok process exited before exposing the backend."
+        exit 1
+      fi
     fi
     ngrok_public_url="$(
       python3 - "$NGROK_API_URL" <<'PY' 2>/dev/null || true
@@ -189,7 +249,7 @@ fi
 WEB_PID=$!
 
 while kill -0 "$BACKEND_PID" 2>/dev/null && kill -0 "$WEB_PID" 2>/dev/null; do
-  if [[ "$NGROK_ENABLED" == "1" ]] && ! kill -0 "$NGROK_PID" 2>/dev/null; then
+  if [[ "$NGROK_ENABLED" == "1" && -n "${NGROK_PID:-}" ]] && ! kill -0 "$NGROK_PID" 2>/dev/null; then
     echo "ngrok process exited."
     exit 1
   fi

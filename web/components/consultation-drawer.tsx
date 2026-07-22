@@ -2672,34 +2672,6 @@ export function ConsultationDrawer({
               <div className="flex flex-col gap-4">
                 <p className="text-sm text-slate-700">{statusMessage || "Ready to generate and send."}</p>
                 <div className="flex flex-col gap-3">
-                  {isFollowUpOpen ? (
-                    <div className="rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/40 p-4">
-                      <div className="grid gap-3">
-                        <label className="block">
-                          <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Date</span>
-                          <input
-                            type="date"
-                            value={form.followUpDate}
-                            onChange={(event) =>
-                              setForm((current) => ({ ...current, followUpDate: event.target.value }))
-                            }
-                            className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="mb-2 block text-sm font-medium text-slate-700">Follow-up Notes</span>
-                          <input
-                            value={form.followUpNotes}
-                            onChange={(event) =>
-                              setForm((current) => ({ ...current, followUpNotes: event.target.value }))
-                            }
-                            placeholder="Review symptoms, BP check, lab result review"
-                            className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  ) : null}
                   <div className="rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/40 p-4">
                     <label className="block">
                       <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
@@ -2753,14 +2725,48 @@ export function ConsultationDrawer({
                           <Printer className="h-4 w-4" />
                           Print
                         </button>
+                      </div>
+                      <div className="w-full sm:max-w-[320px]">
                         <button
                           type="button"
                           onClick={() => setIsFollowUpOpen((current) => !current)}
-                          className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                          className={`inline-flex w-full min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl border px-5 py-2.5 text-sm font-medium transition disabled:opacity-60 ${
+                            isFollowUpOpen
+                              ? "border-[#2b60c6] bg-white text-slate-900 shadow-sm shadow-blue-900/10"
+                              : "border-[#9fc7e1] bg-white text-slate-800 hover:bg-[#f3f8fb]"
+                          }`}
                         >
                           <CalendarPlus2 className="h-4 w-4" />
-                          {isFollowUpOpen ? "Hide" : "Follow-up"}
+                          Follow-up
                         </button>
+                        {isFollowUpOpen ? (
+                          <div className="mt-3 rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/40 p-4">
+                            <div className="grid gap-3">
+                              <label className="block">
+                                <span className="mb-2 block text-sm font-medium text-slate-700">Date</span>
+                                <input
+                                  type="date"
+                                  value={form.followUpDate}
+                                  onChange={(event) =>
+                                    setForm((current) => ({ ...current, followUpDate: event.target.value }))
+                                  }
+                                  className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="mb-2 block text-sm font-medium text-slate-700">Notes</span>
+                                <input
+                                  value={form.followUpNotes}
+                                  onChange={(event) =>
+                                    setForm((current) => ({ ...current, followUpNotes: event.target.value }))
+                                  }
+                                  placeholder="Review symptoms, BP check, lab result review"
+                                  className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                                />
+                              </label>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                       <button
                         type="button"

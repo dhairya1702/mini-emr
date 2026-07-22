@@ -129,6 +129,12 @@ To run without ngrok:
 NGROK_ENABLED=0 ./dev.sh
 ```
 
+To keep app logs in the original terminal and open only ngrok in a new macOS Terminal tab:
+
+```bash
+NGROK_SEPARATE_TERMINAL=1 ./dev.sh
+```
+
 ## GCP Deploy Scripts
 
 The repo includes manual deploy helpers under [scripts/](/Users/dhairyalalwani/PycharmProjects/mr/scripts):

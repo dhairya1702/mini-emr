@@ -47,6 +47,12 @@ https://terrell-unrightful-belinda.ngrok-free.dev/webhooks/whatsapp
 
 `dev.sh` starts the backend on `127.0.0.1:8001`, starts ngrok against that backend port, and prints the WhatsApp webhook URL on launch.
 
+To keep backend/frontend/proxy logs in the original terminal and open only ngrok in a new macOS Terminal tab:
+
+```bash
+NGROK_SEPARATE_TERMINAL=1 ./dev.sh
+```
+
 For direct database access during local testing, the Cloud SQL proxy target is:
 
 ```text
