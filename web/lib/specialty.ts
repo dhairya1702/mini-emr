@@ -6,6 +6,7 @@ export type SpecialtyModuleKey =
   | "binocular_vision"
   | "low_vision"
   | "myopia_management"
+  | "tbi_evaluation"
   | "pediatric_growth_measurement"
   | "well_child_visit"
   | "parent_handout_request"
@@ -20,6 +21,7 @@ const SPECIALTY_MODULES: Record<Exclude<ClinicSpecialty, null>, SpecialtyModuleK
     "binocular_vision",
     "low_vision",
     "myopia_management",
+    "tbi_evaluation",
   ],
   pediatrics: [
     "pediatric_growth_measurement",

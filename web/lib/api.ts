@@ -82,6 +82,8 @@ import {
   SuperuserOrgDetail,
   SuperuserOrgSummary,
   SuperuserOrgUser,
+  TbiEvaluationCreatePayload,
+  TbiEvaluationRecord,
   PlatformError,
 } from "@/lib/types";
 
@@ -669,6 +671,13 @@ export const api = {
     request<MyopiaHistory>(`/patients/${patientId}/myopia-history`),
   getPatientGrowthHistory: (patientId: string) =>
     request<PediatricGrowthSummary>(`/patients/${patientId}/growth-history`),
+  listPatientTbiEvaluations: (patientId: string) =>
+    request<TbiEvaluationRecord[]>(`/patients/${patientId}/tbi-evaluations`),
+  createPatientTbiEvaluation: (patientId: string, payload: TbiEvaluationCreatePayload) =>
+    request<TbiEvaluationRecord>(`/patients/${patientId}/tbi-evaluations`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   createPatientMyopiaRecord: (patientId: string, payload: MyopiaMeasurementPayload) =>
     request<MyopiaMeasurementRecord>(`/patients/${patientId}/myopia-records`, {
       method: "POST",

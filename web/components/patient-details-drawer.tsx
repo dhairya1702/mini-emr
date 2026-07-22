@@ -7,6 +7,7 @@ import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Mail,
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-myopia-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia/myopia-management-modal";
+import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
 import { api } from "@/lib/api";
 import { formatMillimeterDelta } from "@/lib/optometry/myopia/shared";
 import { specialtyHasModule } from "@/lib/specialty";
@@ -25,6 +26,8 @@ import {
   PatientTimelineEvent,
   PediatricGrowthSummary,
   SexAtBirth,
+  TbiEvaluationCreatePayload,
+  TbiEvaluationRecord,
 } from "@/lib/types";
 
 type ChartTab = "visits" | "attachments" | "tests" | "timeline";
@@ -454,6 +457,9 @@ function TestsPanel({
   measurementCount,
   myopiaError,
   myopiaHistory,
+  tbiError,
+  tbiEvaluations,
+  onOpenTbiEvaluation,
   onOpenMyopiaManagement,
 }: {
   growthHistory: PediatricGrowthSummary | null;
@@ -464,6 +470,9 @@ function TestsPanel({
   measurementCount: number;
   myopiaError: string;
   myopiaHistory: MyopiaHistory | null;
+  tbiError: string;
+  tbiEvaluations: TbiEvaluationRecord[];
+  onOpenTbiEvaluation: () => void;
   onOpenMyopiaManagement: () => void;
 }) {
   return (
@@ -481,6 +490,27 @@ function TestsPanel({
             <button
               type="button"
               onClick={onOpenMyopiaManagement}
+              className="shrink-0 rounded-lg border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
+            >
+              Open
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {isOptometryClinic ? (
+        <section className="rounded-xl border border-[#dbe7ef] bg-white p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Neurovision / TBI</p>
+              <h4 className="mt-1 text-xl font-semibold text-slate-900">
+                {tbiEvaluations.length} evaluations
+              </h4>
+              {tbiError ? <p className="mt-2 text-sm text-rose-600">{tbiError}</p> : null}
+            </div>
+            <button
+              type="button"
+              onClick={onOpenTbiEvaluation}
               className="shrink-0 rounded-lg border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
             >
               Open
@@ -699,8 +729,11 @@ export function PatientDetailsDrawer({
   const [attachmentError, setAttachmentError] = useState("");
   const [myopiaHistory, setMyopiaHistory] = useState<MyopiaHistory | null>(null);
   const [growthHistory, setGrowthHistory] = useState<PediatricGrowthSummary | null>(null);
+  const [tbiEvaluations, setTbiEvaluations] = useState<TbiEvaluationRecord[]>([]);
   const [isMyopiaLoading, setIsMyopiaLoading] = useState(false);
   const [myopiaError, setMyopiaError] = useState("");
+  const [isTbiLoading, setIsTbiLoading] = useState(false);
+  const [tbiError, setTbiError] = useState("");
   const [patientTimeline, setPatientTimeline] = useState<PatientTimelineEvent[]>([]);
   const [isTimelineLoading, setIsTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState("");
@@ -709,6 +742,7 @@ export function PatientDetailsDrawer({
   const [hasLoadedTimelineTab, setHasLoadedTimelineTab] = useState(false);
   const [isHistoricalMyopiaOpen, setIsHistoricalMyopiaOpen] = useState(false);
   const [isMyopiaManagementOpen, setIsMyopiaManagementOpen] = useState(false);
+  const [isTbiEvaluationOpen, setIsTbiEvaluationOpen] = useState(false);
   const [openVisitSections, setOpenVisitSections] = useState<Record<"note" | "attachments", boolean>>({
     note: false,
     attachments: false,
@@ -806,8 +840,11 @@ export function PatientDetailsDrawer({
     setHasLoadedAttachmentsTab(false);
     setMyopiaHistory(null);
     setGrowthHistory(null);
+    setTbiEvaluations([]);
     setMyopiaError("");
+    setTbiError("");
     setIsMyopiaLoading(false);
+    setIsTbiLoading(false);
     setHasLoadedTestsTab(false);
     setPatientTimeline([]);
     setTimelineError("");
@@ -818,6 +855,7 @@ export function PatientDetailsDrawer({
     setSummaryError("");
     setIsSummaryLoading(false);
     setIsRegeneratingSummary(false);
+    setIsTbiEvaluationOpen(false);
   }, [patient]);
 
   useEffect(() => {
@@ -1005,9 +1043,11 @@ export function PatientDetailsDrawer({
 
     async function loadTests() {
       setIsMyopiaLoading(true);
+      setIsTbiLoading(isOptometryClinic);
       setMyopiaError("");
+      setTbiError("");
       try {
-        const [nextMyopiaHistory, nextGrowthHistory] = await Promise.all([
+        const [nextMyopiaHistory, nextGrowthHistory, nextTbiEvaluations] = await Promise.all([
           isOptometryClinic && onLoadMyopiaHistory
             ? onLoadMyopiaHistory(patientId)
             : Promise.resolve({
@@ -1029,12 +1069,16 @@ export function PatientDetailsDrawer({
                 flags: [],
                 records: [],
               } satisfies PediatricGrowthSummary),
+          isOptometryClinic && !isTrainingMode
+            ? api.listPatientTbiEvaluations(patientId)
+            : Promise.resolve([] as TbiEvaluationRecord[]),
         ]);
         if (!active) {
           return;
         }
         setMyopiaHistory(nextMyopiaHistory);
         setGrowthHistory(nextGrowthHistory);
+        setTbiEvaluations(nextTbiEvaluations);
         setHasLoadedTestsTab(true);
       } catch (loadError) {
         if (!active) {
@@ -1042,10 +1086,13 @@ export function PatientDetailsDrawer({
         }
         setMyopiaHistory(null);
         setGrowthHistory(null);
+        setTbiEvaluations([]);
         setMyopiaError(loadError instanceof Error ? loadError.message : "Failed to load tests.");
+        setTbiError(loadError instanceof Error ? loadError.message : "Failed to load TBI evaluations.");
       } finally {
         if (active) {
           setIsMyopiaLoading(false);
+          setIsTbiLoading(false);
         }
       }
     }
@@ -1054,7 +1101,7 @@ export function PatientDetailsDrawer({
     return () => {
       active = false;
     };
-  }, [activeTab, hasLoadedTestsTab, isOptometryClinic, isPediatricsClinic, onLoadGrowthHistory, onLoadMyopiaHistory, patient]);
+  }, [activeTab, hasLoadedTestsTab, isOptometryClinic, isPediatricsClinic, isTrainingMode, onLoadGrowthHistory, onLoadMyopiaHistory, patient]);
 
   useEffect(() => {
     if (!patient || activeTab !== "timeline" || hasLoadedTimelineTab) {
@@ -1167,6 +1214,44 @@ export function PatientDetailsDrawer({
       throw saveError;
     } finally {
       setIsMyopiaLoading(false);
+    }
+  }
+
+  async function handleSaveTbiEvaluation(payload: TbiEvaluationCreatePayload) {
+    if (!currentPatient) {
+      return;
+    }
+    const patientId = currentPatient.id;
+    setIsTbiLoading(true);
+    setTbiError("");
+    try {
+      if (isTrainingMode) {
+        const saved: TbiEvaluationRecord = {
+          id: createTrainingId("tbi"),
+          org_id: "training",
+          patient_id: patientId,
+          measured_at: payload.measured_at,
+          payload: payload.payload,
+          summary_fields: { summary: "Neurovision / TBI evaluation saved." },
+          created_at: new Date().toISOString(),
+        };
+        setTbiEvaluations((current) => [...current, saved]);
+        setHasLoadedTestsTab(true);
+        setActiveTab("tests");
+        return;
+      }
+      const saved = await api.createPatientTbiEvaluation(patientId, payload);
+      setTbiEvaluations((current) => [...current.filter((record) => record.id !== saved.id), saved]);
+      setHasLoadedTimelineTab(false);
+      setPatientTimeline([]);
+      setHasLoadedTestsTab(true);
+      setActiveTab("tests");
+    } catch (saveError) {
+      const message = saveError instanceof Error ? saveError.message : "Failed to save TBI evaluation.";
+      setTbiError(message);
+      throw saveError;
+    } finally {
+      setIsTbiLoading(false);
     }
   }
 
@@ -1662,6 +1747,9 @@ export function PatientDetailsDrawer({
                 measurementCount={measurementCount}
                 myopiaError={myopiaError}
                 myopiaHistory={myopiaHistory}
+                tbiError={tbiError}
+                tbiEvaluations={tbiEvaluations}
+                onOpenTbiEvaluation={() => setIsTbiEvaluationOpen(true)}
                 onOpenMyopiaManagement={() => setIsMyopiaManagementOpen(true)}
               />
             ) : null}
@@ -1800,6 +1888,18 @@ export function PatientDetailsDrawer({
             setIsMyopiaManagementOpen(false);
             setIsHistoricalMyopiaOpen(true);
           }}
+        />
+      ) : null}
+      {isOptometryClinic ? (
+        <TbiEvaluationModal
+          open={isTbiEvaluationOpen}
+          patient={currentPatient}
+          evaluations={tbiEvaluations}
+          isLoading={isTbiLoading}
+          error={tbiError}
+          readOnly={readOnly}
+          onClose={() => setIsTbiEvaluationOpen(false)}
+          onSave={handleSaveTbiEvaluation}
         />
       ) : null}
     </div>

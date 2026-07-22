@@ -2671,6 +2671,73 @@ def test_myopia_measurements_create_history_and_timeline(client):
     assert any("OD 24.22 mm" in event["description"] for event in myopia_events)
 
 
+def test_tbi_evaluation_is_optometry_only_and_appears_in_timeline(client):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="tbi@example.com", clinic_name="TBI Clinic")
+    token = session["token"]
+
+    patient_response = test_client.post(
+        "/patients",
+        headers=auth_headers_for_token(token),
+        json={
+            "name": "Rit Shah",
+            "phone": "5550109999",
+            "email": "rit@example.com",
+            "address": "14 Vision Lane",
+            "reason": "TBI evaluation",
+            "age": 29,
+            "weight": 70,
+            "height": 174,
+            "temperature": 98.2,
+        },
+    )
+    assert patient_response.status_code == 201
+    patient = patient_response.json()
+
+    blocked_response = test_client.post(
+        f"/patients/{patient['id']}/tbi-evaluations",
+        headers=auth_headers_for_token(token),
+        json={
+            "measured_at": "2026-07-22T10:00:00+00:00",
+            "payload": {"visual_acuity": {"unaided": {"od": "6/9 +1", "os": "N6"}}},
+        },
+    )
+    assert blocked_response.status_code == 400
+
+    repo.clinic_settings[session["user"]["org_id"]]["clinic_specialty"] = "optometry"
+    payload = {
+        "visual_acuity": {
+            "unaided": {"od": "6/9 +1", "os": "CF @ 2m?", "ou": "N6 / 20∆ BO"},
+        },
+        "final_comments": "Symbols ok: + - / @ ? ∆",
+        "management_and_therapy_options": "VT review in 2 weeks.",
+    }
+    created_response = test_client.post(
+        f"/patients/{patient['id']}/tbi-evaluations",
+        headers=auth_headers_for_token(token),
+        json={"measured_at": "2026-07-22T10:00:00+00:00", "payload": payload},
+    )
+    assert created_response.status_code == 201
+    created = created_response.json()
+    assert created["payload"]["visual_acuity"]["unaided"]["ou"] == "N6 / 20∆ BO"
+
+    list_response = test_client.get(
+        f"/patients/{patient['id']}/tbi-evaluations",
+        headers=auth_headers_for_token(token),
+    )
+    assert list_response.status_code == 200
+    assert len(list_response.json()) == 1
+
+    timeline_response = test_client.get(
+        f"/patients/{patient['id']}/timeline",
+        headers=auth_headers_for_token(token),
+    )
+    assert timeline_response.status_code == 200
+    tbi_events = [event for event in timeline_response.json() if event["type"] == "tbi_evaluation"]
+    assert len(tbi_events) == 1
+    assert "Unaided VA" in tbi_events[0]["description"]
+
+
 def test_case_study_generation_storage_and_pdf(client):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="case-study@example.com", clinic_name="Case Study Clinic")

@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { MobileShell } from "@/components/mobile/mobile-shell";
+import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
 import { api } from "@/lib/api";
 import type {
   ConsultationNote,
@@ -20,6 +21,8 @@ import type {
   PatientVisitDetail,
   PediatricGrowthSummary,
   MyopiaHistory,
+  TbiEvaluationCreatePayload,
+  TbiEvaluationRecord,
 } from "@/lib/types";
 import { specialtyHasModule } from "@/lib/specialty";
 
@@ -142,12 +145,18 @@ function TestsTab({
   isLoading,
   myopiaError,
   myopiaHistory,
+  onOpenTbiEvaluation,
+  tbiError,
+  tbiEvaluations,
 }: {
   clinicSpecialty: Patient["status"] | string | null | undefined;
   growthHistory: PediatricGrowthSummary | null;
   isLoading: boolean;
   myopiaError: string;
   myopiaHistory: MyopiaHistory | null;
+  onOpenTbiEvaluation: () => void;
+  tbiError: string;
+  tbiEvaluations: TbiEvaluationRecord[];
 }) {
   const isOptometryClinic = specialtyHasModule(clinicSpecialty as never, "myopia_management");
   const isPediatricsClinic = specialtyHasModule(clinicSpecialty as never, "pediatric_growth_measurement");
@@ -170,6 +179,22 @@ function TestsTab({
           <p className="mt-2 text-sm text-slate-600">
             OD {myopiaHistory?.baseline_delta?.right_mm ?? "—"} · OS {myopiaHistory?.baseline_delta?.left_mm ?? "—"}
           </p>
+        </section>
+      ) : null}
+      {isOptometryClinic ? (
+        <section className="rounded-[22px] border border-[#dbe7ef] bg-white p-5 shadow-[0_12px_30px_rgba(47,61,50,0.08)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Neurovision / TBI</p>
+          <p className="mt-2 text-lg font-semibold text-slate-900">
+            {tbiEvaluations.length} evaluations
+          </p>
+          {tbiError ? <p className="mt-2 text-sm text-rose-600">{tbiError}</p> : null}
+          <button
+            type="button"
+            onClick={onOpenTbiEvaluation}
+            className="mt-4 rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700"
+          >
+            Open
+          </button>
         </section>
       ) : null}
       {isPediatricsClinic ? (
@@ -215,9 +240,13 @@ export default function MobilePatientPage() {
   const [hasLoadedAttachmentsTab, setHasLoadedAttachmentsTab] = useState(false);
   const [myopiaHistory, setMyopiaHistory] = useState<MyopiaHistory | null>(null);
   const [growthHistory, setGrowthHistory] = useState<PediatricGrowthSummary | null>(null);
+  const [tbiEvaluations, setTbiEvaluations] = useState<TbiEvaluationRecord[]>([]);
   const [isTestsLoading, setIsTestsLoading] = useState(false);
   const [testsError, setTestsError] = useState("");
   const [hasLoadedTestsTab, setHasLoadedTestsTab] = useState(false);
+  const [tbiError, setTbiError] = useState("");
+  const [isTbiLoading, setIsTbiLoading] = useState(false);
+  const [isTbiEvaluationOpen, setIsTbiEvaluationOpen] = useState(false);
   const [patientTimeline, setPatientTimeline] = useState<PatientTimelineEvent[]>([]);
   const [isTimelineLoading, setIsTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState("");
@@ -237,6 +266,10 @@ export default function MobilePatientPage() {
     setTimelineError("");
     setIsTimelineLoading(false);
     setHasLoadedTimelineTab(false);
+    setTbiEvaluations([]);
+    setTbiError("");
+    setIsTbiLoading(false);
+    setIsTbiEvaluationOpen(false);
   }, [patientId]);
 
   useEffect(() => {
@@ -403,20 +436,25 @@ export default function MobilePatientPage() {
     let active = true;
     const clinicSpecialty = clinicSettings?.clinic_specialty ?? null;
     const shouldLoadMyopia = specialtyHasModule(clinicSpecialty, "myopia_management");
+    const shouldLoadTbi = specialtyHasModule(clinicSpecialty, "tbi_evaluation");
     const shouldLoadGrowth = specialtyHasModule(clinicSpecialty, "pediatric_growth_measurement");
     setIsTestsLoading(true);
+    setIsTbiLoading(shouldLoadTbi);
     setTestsError("");
+    setTbiError("");
 
     Promise.all([
       shouldLoadMyopia ? api.getPatientMyopiaHistory(patientId) : Promise.resolve(null),
       shouldLoadGrowth ? api.getPatientGrowthHistory(patientId) : Promise.resolve(null),
+      shouldLoadTbi ? api.listPatientTbiEvaluations(patientId) : Promise.resolve([] as TbiEvaluationRecord[]),
     ])
-      .then(([myopia, growth]) => {
+      .then(([myopia, growth, tbi]) => {
         if (!active) {
           return;
         }
         setMyopiaHistory(myopia);
         setGrowthHistory(growth);
+        setTbiEvaluations(tbi);
         setHasLoadedTestsTab(true);
       })
       .catch((loadError) => {
@@ -424,10 +462,12 @@ export default function MobilePatientPage() {
           return;
         }
         setTestsError(loadError instanceof Error ? loadError.message : "Failed to load tests.");
+        setTbiError(loadError instanceof Error ? loadError.message : "Failed to load TBI evaluations.");
       })
       .finally(() => {
         if (active) {
           setIsTestsLoading(false);
+          setIsTbiLoading(false);
         }
       });
 
@@ -534,6 +574,28 @@ export default function MobilePatientPage() {
       }
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : "Failed to open attachment.");
+    }
+  }
+
+  async function saveTbiEvaluation(payload: TbiEvaluationCreatePayload) {
+    if (!patientId) {
+      return;
+    }
+    setIsTbiLoading(true);
+    setTbiError("");
+    try {
+      const saved = await api.createPatientTbiEvaluation(patientId, payload);
+      setTbiEvaluations((current) => [...current.filter((record) => record.id !== saved.id), saved]);
+      setHasLoadedTimelineTab(false);
+      setPatientTimeline([]);
+      setHasLoadedTestsTab(true);
+      setActiveTab("tests");
+    } catch (saveError) {
+      const message = saveError instanceof Error ? saveError.message : "Failed to save TBI evaluation.";
+      setTbiError(message);
+      throw saveError;
+    } finally {
+      setIsTbiLoading(false);
     }
   }
 
@@ -704,13 +766,16 @@ export default function MobilePatientPage() {
             {activeTab === "tests" ? (
               <>
                 {testsError ? <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{testsError}</p> : null}
-                <TestsTab
-                  clinicSpecialty={clinicSettings?.clinic_specialty ?? null}
-                  growthHistory={growthHistory}
-                  isLoading={isTestsLoading}
-                  myopiaError=""
-                  myopiaHistory={myopiaHistory}
-                />
+	                <TestsTab
+	                  clinicSpecialty={clinicSettings?.clinic_specialty ?? null}
+	                  growthHistory={growthHistory}
+	                  isLoading={isTestsLoading}
+	                  myopiaError=""
+	                  myopiaHistory={myopiaHistory}
+	                  onOpenTbiEvaluation={() => setIsTbiEvaluationOpen(true)}
+	                  tbiError={tbiError}
+	                  tbiEvaluations={tbiEvaluations}
+	                />
               </>
             ) : null}
 
@@ -756,12 +821,22 @@ export default function MobilePatientPage() {
               </section>
             ) : null}
           </div>
-        </>
-      ) : isVisitsLoading ? (
+	        </>
+	      ) : isVisitsLoading ? (
         <p className="clinic-empty-state">Loading chart...</p>
       ) : (
         <p className="clinic-empty-state">Patient not found.</p>
-      )}
-    </MobileShell>
-  );
-}
+	      )}
+	      <TbiEvaluationModal
+	        open={isTbiEvaluationOpen}
+	        patient={patient}
+	        evaluations={tbiEvaluations}
+	        isLoading={isTbiLoading}
+	        error={tbiError}
+	        readOnly={false}
+	        onClose={() => setIsTbiEvaluationOpen(false)}
+	        onSave={saveTbiEvaluation}
+	      />
+	    </MobileShell>
+	  );
+	}

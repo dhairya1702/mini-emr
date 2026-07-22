@@ -137,6 +137,7 @@ export type PatientTimelineEventType =
   | "appointment_checked_in"
   | "consultation_note"
   | "myopia_measurement"
+  | "tbi_evaluation"
   | "growth_measurement"
   | "well_child_visit"
   | "invoice_created"
@@ -167,6 +168,23 @@ export interface PatientSummary {
   updated_at: string | null;
   stale: boolean;
   used_fallback: boolean;
+}
+
+export type TbiEvaluationPayload = Record<string, unknown>;
+
+export interface TbiEvaluationRecord {
+  id: string;
+  org_id: string;
+  patient_id: string;
+  measured_at: string;
+  payload: TbiEvaluationPayload;
+  summary_fields: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface TbiEvaluationCreatePayload {
+  measured_at: string;
+  payload: TbiEvaluationPayload;
 }
 
 export interface PatientVisitAttachmentRow {

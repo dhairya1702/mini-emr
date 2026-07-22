@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -36,6 +37,28 @@ class LongitudinalTrackCreate(BaseModel):
     summary_fields: dict[str, Any] = Field(default_factory=dict)
     raw_payload: dict[str, Any] = Field(default_factory=dict)
     derived_metrics: dict[str, Any] = Field(default_factory=dict)
+
+
+class TbiEvaluationInput(BaseModel):
+    measured_at: datetime
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("payload")
+    @classmethod
+    def validate_payload_size(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(value, separators=(",", ":"), default=str)) > 200_000:
+            raise ValueError("TBI evaluation payload must be 200 KB or smaller.")
+        return value
+
+
+class TbiEvaluationOut(BaseModel):
+    id: str
+    org_id: str
+    patient_id: str
+    measured_at: datetime
+    payload: dict[str, Any] = Field(default_factory=dict)
+    summary_fields: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
 
 
 class PediatricGrowthMeasurementInput(BaseModel):

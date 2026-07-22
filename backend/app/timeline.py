@@ -143,6 +143,25 @@ def build_patient_timeline(
         )
 
     for track in longitudinal_tracks:
+        if track.get("track_type") == "tbi_evaluation":
+            summary = track.get("summary_fields") or {}
+            events.append(
+                PatientTimelineEvent(
+                    id=f"tbi-evaluation-{track['id']}",
+                    type="tbi_evaluation",
+                    title="Neurovision / TBI evaluation recorded",
+                    timestamp=track["measured_at"],
+                    description=str(summary.get("summary") or "Paper-style TBI evaluation saved."),
+                    entity_type="longitudinal_track",
+                    entity_id=str(track["id"]),
+                    details={
+                        "track_type": "tbi_evaluation",
+                        "measured_at": track.get("measured_at"),
+                        "payload": track.get("raw_payload") or {},
+                    },
+                )
+            )
+            continue
         if track.get("track_type") != "growth_measurement":
             continue
         raw = track.get("raw_payload") or {}

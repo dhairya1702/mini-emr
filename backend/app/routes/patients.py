@@ -33,6 +33,8 @@ from app.schema_domains.specialty import (
     PediatricGrowthMeasurementInput,
     PediatricGrowthMeasurementOut,
     PediatricGrowthSummaryOut,
+    TbiEvaluationInput,
+    TbiEvaluationOut,
 )
 from app.services.case_study_workflow import build_case_study_source_view
 from app.services.patient_summary_workflow import generate_patient_summary_workflow, load_patient_summary_source
@@ -41,6 +43,7 @@ from app.services.patient_views import (
     build_patient_growth_history_view,
     build_patient_myopia_history_view,
     build_patient_timeline_view,
+    list_patient_tbi_evaluations_view,
     list_patient_invoices_view,
     list_patient_chart_visits_view,
     list_patient_notes_view,
@@ -69,6 +72,33 @@ ALLOWED_PATIENT_PROFILE_PHOTO_EXTENSIONS = {
     ".webp": "image/webp",
 }
 MAX_PATIENT_PROFILE_PHOTO_BYTES = 5 * 1024 * 1024
+
+
+async def _require_optometry_clinic(repo: AppRepository, org_id: str) -> None:
+    settings = await repo.get_clinic_settings(org_id)
+    if str(settings.get("clinic_specialty") or "").strip() != "optometry":
+        raise ValueError("TBI evaluation is only available for optometry clinics.")
+
+
+def _tbi_summary_fields(payload: dict) -> dict:
+    visual_acuity = payload.get("visual_acuity") if isinstance(payload.get("visual_acuity"), dict) else {}
+    final_comments = str(payload.get("final_comments") or "").strip()
+    management = str(payload.get("management_and_therapy_options") or "").strip()
+    unaided = visual_acuity.get("unaided") if isinstance(visual_acuity.get("unaided"), dict) else {}
+    summary_bits = []
+    if any(str(unaided.get(eye) or "").strip() for eye in ("od", "os", "ou")):
+        summary_bits.append(
+            "Unaided VA "
+            + " · ".join(
+                f"{eye.upper()} {str(unaided.get(eye) or '').strip() or '-'}"
+                for eye in ("od", "os", "ou")
+            )
+        )
+    if final_comments:
+        summary_bits.append(final_comments[:140])
+    elif management:
+        summary_bits.append(management[:140])
+    return {"summary": " · ".join(summary_bits) or "Neurovision / TBI evaluation saved."}
 
 
 def _resolve_profile_photo_content_type(upload: UploadFile) -> str:
@@ -490,6 +520,58 @@ async def get_patient_growth_history(
         raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="get_patient_growth_history") from exc
+
+
+@router.get("/patients/{patient_id}/tbi-evaluations", response_model=list[TbiEvaluationOut])
+async def list_patient_tbi_evaluations(
+    patient_id: str,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> list[TbiEvaluationOut]:
+    try:
+        org_id = str(current_user.org_id)
+        await _require_optometry_clinic(repo, org_id)
+        return await list_patient_tbi_evaluations_view(repo, org_id, patient_id)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="list_patient_tbi_evaluations") from exc
+
+
+@router.post("/patients/{patient_id}/tbi-evaluations", response_model=TbiEvaluationOut, status_code=201)
+async def create_patient_tbi_evaluation(
+    patient_id: str,
+    payload: TbiEvaluationInput,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> TbiEvaluationOut:
+    try:
+        org_id = str(current_user.org_id)
+        await _require_optometry_clinic(repo, org_id)
+        track = await repo.create_longitudinal_track(
+            org_id,
+            patient_id,
+            LongitudinalTrackCreate(
+                track_type="tbi_evaluation",
+                measured_at=payload.measured_at,
+                summary_fields=_tbi_summary_fields(payload.payload),
+                raw_payload=payload.payload,
+                derived_metrics={},
+            ),
+        )
+        return TbiEvaluationOut(
+            id=str(track["id"]),
+            org_id=str(track["org_id"]),
+            patient_id=str(track["patient_id"]),
+            measured_at=track["measured_at"],
+            payload=track.get("raw_payload") or {},
+            summary_fields=track.get("summary_fields") or {},
+            created_at=track["created_at"],
+        )
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="create_patient_tbi_evaluation") from exc
 
 
 @router.post("/patients/{patient_id}/growth-records", response_model=PediatricGrowthMeasurementOut, status_code=201)
