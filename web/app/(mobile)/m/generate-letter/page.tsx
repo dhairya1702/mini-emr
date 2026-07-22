@@ -17,6 +17,7 @@ const emptyLetterForm: LetterFormState = {
   generated: "",
   recipient_email: "",
   recipient_phone: "",
+  recipient_name: "",
 };
 
 export default function MobileGenerateLetterPage() {
@@ -124,8 +125,8 @@ export default function MobileGenerateLetterPage() {
 
   async function handleSendWhatsApp() {
     const content = letterForm.generated.trim() || letterForm.content.trim();
-    if (!letterForm.recipient_phone.trim() || !letterForm.subject.trim() || !content) {
-      setLetterError("Recipient WhatsApp number, subject, and letter content are required.");
+    if (!letterForm.recipient_phone.trim() || !letterForm.recipient_name.trim() || !letterForm.subject.trim() || !content) {
+      setLetterError("Recipient WhatsApp number, patient name, subject, and letter content are required.");
       return;
     }
     setIsSendingLetterWhatsApp(true);
@@ -134,6 +135,7 @@ export default function MobileGenerateLetterPage() {
     try {
       await api.sendLetterWhatsApp({
         recipient_phone: letterForm.recipient_phone.trim(),
+        recipient_name: letterForm.recipient_name.trim(),
         subject: letterForm.subject.trim(),
         content,
       });

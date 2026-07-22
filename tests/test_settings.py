@@ -435,6 +435,7 @@ def test_send_letter_whatsapp_sends_generated_pdf_document(client, monkeypatch):
         headers=headers,
         json={
             "recipient_phone": "+91 96001 06623",
+            "recipient_name": "Letter Patient",
             "subject": "Medical Certificate",
             "content": "This is to certify that the patient attended the clinic.",
         },
@@ -448,7 +449,12 @@ def test_send_letter_whatsapp_sends_generated_pdf_document(client, monkeypatch):
             "to": "919600106623",
             "media_id": "media-letter",
             "filename": "clinic_letter.pdf",
-            "caption": "Letter WA Clinic: Medical Certificate.",
+            "caption": (
+                "Hi Letter,\n\n"
+                "Thank you for visiting Letter WA Clinic.\n\n"
+                "Here is your Medical Certificate.\n\n"
+                "Attached for your records."
+            ),
         }
     ]
     events = list(repo.whatsapp_message_events.values())

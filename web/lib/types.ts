@@ -1205,6 +1205,7 @@ export interface SendLetterPayload {
 
 export interface SendLetterWhatsAppPayload {
   recipient_phone: string;
+  recipient_name: string;
   subject: string;
   content: string;
 }

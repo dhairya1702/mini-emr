@@ -167,7 +167,13 @@ def test_invoice_can_be_sent_on_whatsapp_with_patient_phone(client, monkeypatch)
             "to": "919600106623",
             "media_id": "media-123",
             "filename": "WhatsApp_Patient_invoice.pdf",
-            "caption": "WhatsApp Billing Clinic: invoice for WhatsApp Patient.",
+            "caption": (
+                "Hi WhatsApp,\n\n"
+                "Thank you for visiting WhatsApp Billing Clinic.\n\n"
+                "Here is your receipt for today's visit.\n"
+                "Amount paid: Rs. 500.00\n\n"
+                "Attached for your records."
+            ),
         }
     ]
     events = list(repo.whatsapp_message_events.values())

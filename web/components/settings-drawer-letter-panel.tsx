@@ -10,6 +10,7 @@ export type LetterFormState = {
   generated: string;
   recipient_email: string;
   recipient_phone: string;
+  recipient_name: string;
 };
 
 interface SettingsDrawerLetterPanelProps {
@@ -105,6 +106,16 @@ export function SettingsDrawerLetterPanel({
               value={letterForm.recipient_phone}
               onChange={(event) => onChange({ recipient_phone: event.target.value })}
               placeholder="+91 98765 43210"
+              className="mt-3 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-emerald-500"
+            />
+          </label>
+          <label className="block rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+            <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Patient name</span>
+            <span className="mt-1 block text-xs leading-5 text-emerald-700">Used only for the WhatsApp greeting.</span>
+            <input
+              value={letterForm.recipient_name}
+              onChange={(event) => onChange({ recipient_name: event.target.value })}
+              placeholder="Patient name"
               className="mt-3 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-emerald-500"
             />
           </label>

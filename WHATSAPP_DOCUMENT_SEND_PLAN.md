@@ -23,6 +23,19 @@ New WhatsApp-specific endpoints are added:
 
 These endpoints generate the same PDF artifacts already used for email/PDF preview, upload the PDF to WhatsApp Cloud API as media, and send the media as a WhatsApp document message.
 
+WhatsApp captions use patient-facing clinic copy:
+
+```text
+Hi {patient_first_name},
+
+Thank you for visiting {clinic_name}.
+
+Here is your {invoice_or_receipt/document_subject}.
+{amount_line_if_invoice}
+
+Attached for your records.
+```
+
 ## Why Separate Endpoints
 
 Separate endpoints are the most backward-compatible option:
@@ -49,6 +62,8 @@ Input accepts either:
 
 - explicit `recipient_phone`
 - invoice patient phone fallback for invoice sends
+
+Letter WhatsApp sends also require `recipient_name`; the existing letter `To` field is not used for greetings because it may contain an institution or generic addressee.
 
 Phone numbers are normalized to WhatsApp IDs:
 

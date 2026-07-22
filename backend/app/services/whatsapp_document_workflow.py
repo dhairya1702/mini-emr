@@ -26,6 +26,24 @@ def normalize_whatsapp_recipient(raw_phone: str) -> str:
     return digits
 
 
+def _format_rupees(value: Any) -> str:
+    try:
+        amount = float(value or 0)
+    except (TypeError, ValueError):
+        amount = 0
+    return f"Rs. {amount:,.2f}"
+
+
+def _first_name(name: str) -> str:
+    cleaned = " ".join(str(name or "").strip().split())
+    return cleaned.split(" ", 1)[0] if cleaned else "there"
+
+
+def _document_label(subject: str) -> str:
+    cleaned = " ".join(str(subject or "").strip().split())
+    return cleaned or "document"
+
+
 def build_whatsapp_client() -> WhatsAppClient:
     settings = get_settings()
     if not settings.whatsapp_enabled:
@@ -162,7 +180,18 @@ async def send_invoice_whatsapp_workflow(
     )
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
     filename = f"{patient_name.replace(' ', '_') or 'patient'}_invoice.pdf"
-    caption = f"{clinic_name}: invoice for {patient_name}."
+    paid = str(refreshed_invoice.get("payment_status") or "").lower() == "paid"
+    document_kind = "receipt" if paid else "invoice"
+    amount_label = "Amount paid" if paid else "Balance due"
+    amount_value = refreshed_invoice.get("amount_paid") if paid else refreshed_invoice.get("balance_due")
+    caption = "\n\n".join(
+        [
+            f"Hi {_first_name(patient_name)},",
+            f"Thank you for visiting {clinic_name}.",
+            f"Here is your {document_kind} for today's visit.\n{amount_label}: {_format_rupees(amount_value)}",
+            "Attached for your records.",
+        ]
+    )
     await _send_pdf_document(
         repo,
         org_id=str(current_user.org_id),
@@ -224,10 +253,14 @@ async def send_letter_whatsapp_workflow(
     current_user: UserOut,
     *,
     recipient_phone: str,
+    recipient_name: str,
     subject: str,
     content: str,
 ) -> SendNoteResponse:
     recipient_wa_id = normalize_whatsapp_recipient(recipient_phone)
+    normalized_name = " ".join(recipient_name.strip().split())
+    if not normalized_name:
+        raise HTTPException(status_code=400, detail="Recipient name is required.")
     clinic_settings = await build_document_context_for_user(repo, current_user)
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
     generated_on = datetime.now().strftime("%b %d, %Y")
@@ -237,7 +270,14 @@ async def send_letter_whatsapp_workflow(
         generated_on=generated_on,
     )
     filename = "clinic_letter.pdf"
-    caption = f"{clinic_name}: {subject.strip()}."
+    caption = "\n\n".join(
+        [
+            f"Hi {_first_name(normalized_name)},",
+            f"Thank you for visiting {clinic_name}.",
+            f"Here is your {_document_label(subject)}.",
+            "Attached for your records.",
+        ]
+    )
     await _send_pdf_document(
         repo,
         org_id=str(current_user.org_id),
@@ -249,6 +289,7 @@ async def send_letter_whatsapp_workflow(
         raw_context={
             "subject": subject.strip(),
             "recipient_phone": recipient_phone.strip(),
+            "recipient_name": normalized_name,
             "recipient_wa_id": recipient_wa_id,
             "filename": filename,
         },

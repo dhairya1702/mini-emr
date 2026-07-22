@@ -97,6 +97,7 @@ class SendLetterRequest(BaseModel):
 
 class SendLetterWhatsAppRequest(BaseModel):
     recipient_phone: str = Field(min_length=5, max_length=40)
+    recipient_name: str = Field(min_length=1, max_length=120)
     subject: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1, max_length=50000)
 

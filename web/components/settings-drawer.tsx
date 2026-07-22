@@ -88,7 +88,7 @@ interface SettingsDrawerProps {
   onGenerateLetter: (payload: { to: string; subject: string; content: string }) => Promise<string>;
   onGenerateLetterPdf: (payload: { content: string }) => Promise<Blob>;
   onSendLetter: (payload: { recipient_email: string; subject: string; content: string }) => Promise<string>;
-  onSendLetterWhatsApp?: (payload: { recipient_phone: string; subject: string; content: string }) => Promise<string>;
+  onSendLetterWhatsApp?: (payload: { recipient_phone: string; recipient_name: string; subject: string; content: string }) => Promise<string>;
   onCreateInvoice: (payload: {
     invoice_id?: string | null;
     patient_id: string;
@@ -137,6 +137,7 @@ const emptyLetterForm = {
   generated: "",
   recipient_email: "",
   recipient_phone: "",
+  recipient_name: "",
 };
 
 type ClinicFormState = {
@@ -1282,12 +1283,17 @@ export function SettingsDrawer({
       setLetterError("Recipient WhatsApp number is required.");
       return;
     }
+    if (!letterForm.recipient_name.trim()) {
+      setLetterError("Patient name is required for WhatsApp.");
+      return;
+    }
     setIsSendingLetterWhatsApp(true);
     setLetterError("");
     setLetterStatus("");
     try {
       const message = await onSendLetterWhatsApp({
         recipient_phone: letterForm.recipient_phone.trim(),
+        recipient_name: letterForm.recipient_name.trim(),
         subject: letterForm.subject.trim(),
         content: letterForm.generated.trim(),
       });

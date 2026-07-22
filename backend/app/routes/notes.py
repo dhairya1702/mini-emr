@@ -166,6 +166,7 @@ async def send_letter_whatsapp(
         repo,
         current_user,
         recipient_phone=payload.recipient_phone,
+        recipient_name=payload.recipient_name,
         subject=payload.subject,
         content=payload.content,
     )

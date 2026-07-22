@@ -274,7 +274,7 @@ export function useClinicShellPage<T>({
     return response.message;
   }, []);
 
-  const handleSendLetterWhatsApp = useCallback(async (payload: { recipient_phone: string; subject: string; content: string }) => {
+  const handleSendLetterWhatsApp = useCallback(async (payload: { recipient_phone: string; recipient_name: string; subject: string; content: string }) => {
     const response = await api.sendLetterWhatsApp(payload);
     return response.message;
   }, []);
