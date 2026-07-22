@@ -652,13 +652,6 @@ export default function BillingPage() {
           paymentStatus={paymentStatus}
           billingError={billingError}
           billingStatus={billingStatus}
-          suggestionNotices={(billingSuggestions?.suggestions ?? [])
-            .filter((suggestion) => suggestion.status !== "auto_add")
-            .map((suggestion) => suggestion.status === "possible_match" && suggestion.catalog_match
-              ? `${suggestion.extraction_name}: possible match ${suggestion.catalog_match.label} (not added)`
-              : suggestion.status === "unavailable"
-                ? `${suggestion.extraction_name}: matched item is out of stock (not added)`
-                : `${suggestion.extraction_name}: no catalog match (not added)`)}
           isSavingInvoice={isSavingInvoice}
           isFinalizingInvoice={isFinalizingInvoice}
           isPreparingInvoicePdf={isPreparingInvoicePdf}
