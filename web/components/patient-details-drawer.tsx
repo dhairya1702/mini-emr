@@ -2,18 +2,18 @@
 
 import type { ChangeEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Mail, Pencil, Sparkles, Upload, UserRound, X } from "lucide-react";
+import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Mail, Pencil, Plus, Sparkles, Upload, UserRound, X } from "lucide-react";
 
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-myopia-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia/myopia-management-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
 import { api } from "@/lib/api";
-import { formatMillimeterDelta } from "@/lib/optometry/myopia/shared";
-import { specialtyHasModule } from "@/lib/specialty";
+import { getSpecialtyModules, specialtyHasModule, type SpecialtyModuleKey } from "@/lib/specialty";
 import { createTrainingId } from "@/lib/training-mode";
 import {
   ConsultationNote,
+  LongitudinalTrackRecord,
   MyopiaHistory,
   MyopiaMeasurementPayload,
   NoteAsset,
@@ -70,6 +70,23 @@ function formatDateTime(value: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+const MODULE_LABELS: Record<SpecialtyModuleKey, string> = {
+  eye_exam: "Eye exam / Refraction",
+  contact_lens: "Contact lens",
+  binocular_vision: "Binocular vision",
+  low_vision: "Low vision",
+  myopia_management: "Myopia",
+  tbi_evaluation: "Neurovision / TBI",
+  pediatric_growth_measurement: "Pediatric growth",
+  well_child_visit: "Well-child visit",
+  parent_handout_request: "Parent handout",
+  pediatric_follow_up_plan: "Pediatric follow-up",
+};
+
+function moduleLabel(moduleKey: SpecialtyModuleKey) {
+  return MODULE_LABELS[moduleKey] ?? moduleKey.replaceAll("_", " ");
 }
 
 const PROFILE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
@@ -448,93 +465,346 @@ function TimelinePanel({
   );
 }
 
-function TestsPanel({
+function GrowthHistoryModal({
   growthHistory,
-  growthRecords,
-  isOptometryClinic,
-  isPediatricsClinic,
-  latestGrowthRecord,
-  measurementCount,
-  myopiaError,
-  myopiaHistory,
-  tbiError,
-  tbiEvaluations,
-  onOpenTbiEvaluation,
-  onOpenMyopiaManagement,
+  onClose,
+  open,
 }: {
   growthHistory: PediatricGrowthSummary | null;
-  growthRecords: PediatricGrowthSummary["records"];
-  isOptometryClinic: boolean;
-  isPediatricsClinic: boolean;
+  onClose: () => void;
+  open: boolean;
+}) {
+  if (!open) {
+    return null;
+  }
+  const records = growthHistory?.records ?? [];
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/35 px-4">
+      <div className="w-full max-w-3xl rounded-[20px] border border-[#bfd7e8] bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.25)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Pediatric Growth</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-900">Growth history</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-[#dbe7ef] p-2 text-slate-500 transition hover:text-slate-800"
+            aria-label="Close growth history"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        {growthHistory?.trend_summary ? (
+          <p className="mt-4 rounded-xl border border-amber-100 bg-amber-50/50 px-4 py-3 text-sm text-slate-700">
+            {growthHistory.trend_summary}
+          </p>
+        ) : null}
+        {records.length ? (
+          <div className="mt-4 overflow-hidden rounded-xl border border-[#dbe7ef]">
+            <table className="min-w-full border-separate border-spacing-0">
+              <thead className="bg-[#f3f8fb]/80">
+                <tr className="text-left">
+                  <th className="border-b border-[#dbe7ef] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Date</th>
+                  <th className="border-b border-[#dbe7ef] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Height</th>
+                  <th className="border-b border-[#dbe7ef] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Weight</th>
+                  <th className="border-b border-[#dbe7ef] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">BMI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.map((record) => (
+                  <tr key={`${record.measured_at}-${record.height_cm}-${record.weight_kg}`}>
+                    <td className="border-b border-[#dbe7ef] px-4 py-3 text-sm text-slate-700">{formatDateTime(record.measured_at)}</td>
+                    <td className="border-b border-[#dbe7ef] px-4 py-3 text-sm text-slate-700">{record.height_cm} cm</td>
+                    <td className="border-b border-[#dbe7ef] px-4 py-3 text-sm text-slate-700">{record.weight_kg} kg</td>
+                    <td className="border-b border-[#dbe7ef] px-4 py-3 text-sm text-slate-700">{record.bmi.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-6 py-10 text-center text-sm text-slate-500">
+            No growth readings recorded yet.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GenericModuleEntryModal({
+  error,
+  isSaving,
+  moduleKey,
+  onClose,
+  onSave,
+}: {
+  error: string;
+  isSaving: boolean;
+  moduleKey: SpecialtyModuleKey | null;
+  onClose: () => void;
+  onSave: (payload: { measuredAt: string; notes: string; result: string }) => Promise<void>;
+}) {
+  const [measuredAt, setMeasuredAt] = useState("");
+  const [result, setResult] = useState("");
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    if (!moduleKey) {
+      return;
+    }
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    setMeasuredAt(now.toISOString().slice(0, 16));
+    setResult("");
+    setNotes("");
+  }, [moduleKey]);
+
+  if (!moduleKey) {
+    return null;
+  }
+
+  async function handleSubmit() {
+    try {
+      await onSave({ measuredAt, notes, result });
+    } catch {
+      // The parent owns and displays the save error.
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/35 px-4">
+      <div className="w-full max-w-xl rounded-[20px] border border-[#bfd7e8] bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.25)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Add Entry</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-900">{moduleLabel(moduleKey)}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-[#dbe7ef] p-2 text-slate-500 transition hover:text-slate-800"
+            aria-label="Close entry"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="mt-5 space-y-4">
+          <label className="block">
+            <span className="text-sm font-semibold text-slate-800">Date</span>
+            <input
+              type="datetime-local"
+              value={measuredAt}
+              onChange={(event) => setMeasuredAt(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2f8fd3] focus:ring-2 focus:ring-[#2f8fd3]/15"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-semibold text-slate-800">Result</span>
+            <input
+              value={result}
+              onChange={(event) => setResult(event.target.value)}
+              placeholder="e.g. Normal, review advised, updated prescription"
+              className="mt-2 w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2f8fd3] focus:ring-2 focus:ring-[#2f8fd3]/15"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-semibold text-slate-800">Notes</span>
+            <textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              rows={4}
+              placeholder="Add concise findings or follow-up context"
+              className="mt-2 w-full resize-none rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2f8fd3] focus:ring-2 focus:ring-[#2f8fd3]/15"
+            />
+          </label>
+          {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
+        </div>
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={handleSubmit}
+            className="rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+          >
+            {isSaving ? "Saving..." : "Save Entry"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TestsPanel({
+  latestGrowthRecord,
+  moduleEntries,
+  modules,
+  myopiaError,
+  myopiaRecords,
+  tbiError,
+  tbiEvaluations,
+  onOpenGenericEntry,
+  onOpenGrowthHistory,
+  onOpenMyopiaManagement,
+  onOpenTbiEvaluation,
+}: {
   latestGrowthRecord: PediatricGrowthSummary["records"][number] | null;
-  measurementCount: number;
+  moduleEntries: LongitudinalTrackRecord[];
+  modules: SpecialtyModuleKey[];
   myopiaError: string;
-  myopiaHistory: MyopiaHistory | null;
+  myopiaRecords: MyopiaHistory["records"];
   tbiError: string;
   tbiEvaluations: TbiEvaluationRecord[];
-  onOpenTbiEvaluation: () => void;
+  onOpenGenericEntry: (moduleKey: SpecialtyModuleKey) => void;
+  onOpenGrowthHistory: () => void;
   onOpenMyopiaManagement: () => void;
+  onOpenTbiEvaluation: () => void;
 }) {
+  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const latestMyopiaRecord = myopiaRecords[myopiaRecords.length - 1] ?? null;
+  const latestTbiEvaluation = tbiEvaluations[tbiEvaluations.length - 1] ?? null;
+  const entriesByModule = moduleEntries.reduce<Record<string, LongitudinalTrackRecord[]>>((grouped, entry) => {
+    grouped[entry.track_type] = [...(grouped[entry.track_type] ?? []), entry];
+    return grouped;
+  }, {});
+  const rows = modules.map((moduleKey) => {
+    const latestGenericEntry = entriesByModule[moduleKey]?.at(-1) ?? null;
+    if (moduleKey === "myopia_management") {
+      return {
+        key: moduleKey,
+        label: moduleLabel(moduleKey),
+        date: latestMyopiaRecord ? formatDateTime(latestMyopiaRecord.measured_at) : "—",
+        error: myopiaError,
+        open: onOpenMyopiaManagement,
+      };
+    }
+    if (moduleKey === "tbi_evaluation") {
+      return {
+        key: moduleKey,
+        label: moduleLabel(moduleKey),
+        date: latestTbiEvaluation ? formatDateTime(latestTbiEvaluation.measured_at || latestTbiEvaluation.created_at) : "—",
+        error: tbiError,
+        open: onOpenTbiEvaluation,
+      };
+    }
+    if (moduleKey === "pediatric_growth_measurement") {
+      return {
+        key: moduleKey,
+        label: moduleLabel(moduleKey),
+        date: latestGrowthRecord ? formatDateTime(latestGrowthRecord.measured_at) : "—",
+        error: "",
+        open: onOpenGrowthHistory,
+      };
+    }
+    return {
+      key: moduleKey,
+      label: moduleLabel(moduleKey),
+      date: latestGenericEntry ? formatDateTime(latestGenericEntry.measured_at) : "—",
+      error: "",
+      open: () => onOpenGenericEntry(moduleKey),
+    };
+  });
+
+  useEffect(() => {
+    if (!isAddMenuOpen) {
+      return;
+    }
+    function handlePointerDown(event: PointerEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsAddMenuOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsAddMenuOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isAddMenuOpen]);
+
+  function handleOpen(row: typeof rows[number]) {
+    setIsAddMenuOpen(false);
+    row.open();
+  }
+
   return (
-    <div className="space-y-5">
-      {isOptometryClinic ? (
-        <section className="rounded-xl border border-[#dbe7ef] bg-white p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Myopia</p>
-              <h4 className="mt-1 text-xl font-semibold text-slate-900">
-                {measurementCount} readings · OD {formatMillimeterDelta(myopiaHistory?.baseline_delta?.right_mm)} · OS {formatMillimeterDelta(myopiaHistory?.baseline_delta?.left_mm)}
-              </h4>
-              {myopiaError ? <p className="mt-2 text-sm text-rose-600">{myopiaError}</p> : null}
-            </div>
+    <section className="rounded-xl border border-[#dbe7ef] bg-white">
+      <div className="flex justify-end border-b border-[#dbe7ef] px-4 py-3">
+        {rows.length ? (
+          <div ref={menuRef} className="relative">
             <button
               type="button"
-              onClick={onOpenMyopiaManagement}
-              className="shrink-0 rounded-lg border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
+              onClick={() => setIsAddMenuOpen((current) => !current)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#bfd7e8] bg-white text-slate-700 transition hover:bg-[#f3f8fb]"
+              aria-label="Add test"
+              title="Add test"
             >
-              Open
+              <Plus className="h-4 w-4" />
             </button>
+            {isAddMenuOpen ? (
+              <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-xl border border-[#dbe7ef] bg-white shadow-[0_18px_46px_rgba(15,23,42,0.16)]">
+                {rows.map((row) => (
+                  <button
+                    key={row.key}
+                    type="button"
+                    onClick={() => handleOpen(row)}
+                    className="block w-full px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
+                  >
+                    {row.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
-        </section>
-      ) : null}
+        ) : null}
+      </div>
 
-      {isOptometryClinic ? (
-        <section className="rounded-xl border border-[#dbe7ef] bg-white p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Neurovision / TBI</p>
-              <h4 className="mt-1 text-xl font-semibold text-slate-900">
-                {tbiEvaluations.length} evaluations
-              </h4>
-              {tbiError ? <p className="mt-2 text-sm text-rose-600">{tbiError}</p> : null}
-            </div>
-            <button
-              type="button"
-              onClick={onOpenTbiEvaluation}
-              className="shrink-0 rounded-lg border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
-            >
-              Open
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {isPediatricsClinic ? (
-        <section className="rounded-xl border border-amber-100 bg-white p-5">
-          <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Pediatric growth</p>
-          <h4 className="mt-1 text-xl font-semibold text-slate-900">
-            {growthRecords.length} readings · {latestGrowthRecord ? `${latestGrowthRecord.height_cm} cm · ${latestGrowthRecord.weight_kg} kg` : "No latest measurement"}
-          </h4>
-          <p className="mt-2 text-sm text-slate-500">{growthHistory?.trend_summary || "No trend yet"}</p>
-        </section>
-      ) : null}
-
-      {!isOptometryClinic && !isPediatricsClinic ? (
-        <section className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-6 py-10 text-center text-sm text-slate-500">
-          No tests available for this patient yet.
-        </section>
-      ) : null}
-    </div>
+      {rows.length ? (
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-separate border-spacing-0">
+            <thead className="bg-[#f3f8fb]/80">
+              <tr className="text-left">
+                <th className="border-b border-[#dbe7ef] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Type</th>
+                <th className="border-b border-[#dbe7ef] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr
+                  key={row.key}
+                  onClick={() => handleOpen(row)}
+                  className="cursor-pointer transition hover:bg-[#f3f8fb]/70"
+                >
+                  <td className="border-b border-[#dbe7ef] px-4 py-3.5 text-sm font-semibold text-slate-900">
+                    {row.label}
+                    {row.error ? <p className="mt-1 text-xs font-medium text-rose-600">{row.error}</p> : null}
+                  </td>
+                  <td className="border-b border-[#dbe7ef] px-4 py-3.5 text-sm text-slate-600">{row.date}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="px-6 py-10 text-center text-sm text-slate-500">
+          No tests available for this specialty yet.
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -685,8 +955,10 @@ export function PatientDetailsDrawer({
   onPatientUpdated,
   onSave,
 }: PatientDetailsDrawerProps) {
-  const isOptometryClinic = specialtyHasModule(clinicSpecialty, "myopia_management");
-  const isPediatricsClinic = specialtyHasModule(clinicSpecialty, "pediatric_growth_measurement");
+  const hasMyopiaManagement = specialtyHasModule(clinicSpecialty, "myopia_management");
+  const hasTbiEvaluation = specialtyHasModule(clinicSpecialty, "tbi_evaluation");
+  const hasGrowthMeasurement = specialtyHasModule(clinicSpecialty, "pediatric_growth_measurement");
+  const specialtyModules = getSpecialtyModules(clinicSpecialty);
   const [activeTab, setActiveTab] = useState<ChartTab>("visits");
   const [isEditingPatient, setIsEditingPatient] = useState(false);
   const [form, setForm] = useState({
@@ -729,6 +1001,7 @@ export function PatientDetailsDrawer({
   const [attachmentError, setAttachmentError] = useState("");
   const [myopiaHistory, setMyopiaHistory] = useState<MyopiaHistory | null>(null);
   const [growthHistory, setGrowthHistory] = useState<PediatricGrowthSummary | null>(null);
+  const [moduleEntries, setModuleEntries] = useState<LongitudinalTrackRecord[]>([]);
   const [tbiEvaluations, setTbiEvaluations] = useState<TbiEvaluationRecord[]>([]);
   const [isMyopiaLoading, setIsMyopiaLoading] = useState(false);
   const [myopiaError, setMyopiaError] = useState("");
@@ -743,6 +1016,10 @@ export function PatientDetailsDrawer({
   const [isHistoricalMyopiaOpen, setIsHistoricalMyopiaOpen] = useState(false);
   const [isMyopiaManagementOpen, setIsMyopiaManagementOpen] = useState(false);
   const [isTbiEvaluationOpen, setIsTbiEvaluationOpen] = useState(false);
+  const [isGrowthHistoryOpen, setIsGrowthHistoryOpen] = useState(false);
+  const [genericModuleEntry, setGenericModuleEntry] = useState<SpecialtyModuleKey | null>(null);
+  const [isSavingGenericModuleEntry, setIsSavingGenericModuleEntry] = useState(false);
+  const [genericModuleEntryError, setGenericModuleEntryError] = useState("");
   const [openVisitSections, setOpenVisitSections] = useState<Record<"note" | "attachments", boolean>>({
     note: false,
     attachments: false,
@@ -1042,13 +1319,13 @@ export function PatientDetailsDrawer({
     let active = true;
 
     async function loadTests() {
-      setIsMyopiaLoading(true);
-      setIsTbiLoading(isOptometryClinic);
+      setIsMyopiaLoading(hasMyopiaManagement);
+      setIsTbiLoading(hasTbiEvaluation);
       setMyopiaError("");
       setTbiError("");
       try {
-        const [nextMyopiaHistory, nextGrowthHistory, nextTbiEvaluations] = await Promise.all([
-          isOptometryClinic && onLoadMyopiaHistory
+        const [nextMyopiaHistory, nextGrowthHistory, nextTbiEvaluations, nextModuleEntries] = await Promise.all([
+          hasMyopiaManagement && onLoadMyopiaHistory
             ? onLoadMyopiaHistory(patientId)
             : Promise.resolve({
                 patient_id: patientId,
@@ -1058,7 +1335,7 @@ export function PatientDetailsDrawer({
                 annualized_growth: null,
                 overlay_version: "clinic-reference-v1",
               } satisfies MyopiaHistory),
-          isPediatricsClinic && onLoadGrowthHistory
+          hasGrowthMeasurement && onLoadGrowthHistory
             ? onLoadGrowthHistory(patientId)
             : Promise.resolve({
                 patient_id: patientId,
@@ -1069,9 +1346,10 @@ export function PatientDetailsDrawer({
                 flags: [],
                 records: [],
               } satisfies PediatricGrowthSummary),
-          isOptometryClinic && !isTrainingMode
+          hasTbiEvaluation && !isTrainingMode
             ? api.listPatientTbiEvaluations(patientId)
             : Promise.resolve([] as TbiEvaluationRecord[]),
+          isTrainingMode ? Promise.resolve([] as LongitudinalTrackRecord[]) : api.listPatientModuleEntries(patientId),
         ]);
         if (!active) {
           return;
@@ -1079,6 +1357,7 @@ export function PatientDetailsDrawer({
         setMyopiaHistory(nextMyopiaHistory);
         setGrowthHistory(nextGrowthHistory);
         setTbiEvaluations(nextTbiEvaluations);
+        setModuleEntries(nextModuleEntries);
         setHasLoadedTestsTab(true);
       } catch (loadError) {
         if (!active) {
@@ -1086,6 +1365,7 @@ export function PatientDetailsDrawer({
         }
         setMyopiaHistory(null);
         setGrowthHistory(null);
+        setModuleEntries([]);
         setTbiEvaluations([]);
         setMyopiaError(loadError instanceof Error ? loadError.message : "Failed to load tests.");
         setTbiError(loadError instanceof Error ? loadError.message : "Failed to load TBI evaluations.");
@@ -1101,7 +1381,7 @@ export function PatientDetailsDrawer({
     return () => {
       active = false;
     };
-  }, [activeTab, hasLoadedTestsTab, isOptometryClinic, isPediatricsClinic, isTrainingMode, onLoadGrowthHistory, onLoadMyopiaHistory, patient]);
+  }, [activeTab, hasGrowthMeasurement, hasLoadedTestsTab, hasMyopiaManagement, hasTbiEvaluation, isTrainingMode, onLoadGrowthHistory, onLoadMyopiaHistory, patient]);
 
   useEffect(() => {
     if (!patient || activeTab !== "timeline" || hasLoadedTimelineTab) {
@@ -1167,7 +1447,6 @@ export function PatientDetailsDrawer({
   const selectedVisitDetail = selectedVisit ? visitDetailsById[selectedVisit.id] ?? null : null;
   const myopiaRecords = myopiaHistory?.records ?? [];
   const growthRecords = growthHistory?.records ?? [];
-  const measurementCount = myopiaRecords.length;
   const latestGrowthRecord = growthRecords[growthRecords.length - 1] ?? null;
 
   function toggleVisitSection(section: "note" | "attachments") {
@@ -1252,6 +1531,53 @@ export function PatientDetailsDrawer({
       throw saveError;
     } finally {
       setIsTbiLoading(false);
+    }
+  }
+
+  async function handleSaveGenericModuleEntry(payload: { measuredAt: string; notes: string; result: string }) {
+    if (!currentPatient || !genericModuleEntry) {
+      return;
+    }
+    const patientId = currentPatient.id;
+    const measuredAtIso = payload.measuredAt ? new Date(payload.measuredAt).toISOString() : new Date().toISOString();
+    const result = payload.result.trim();
+    const notes = payload.notes.trim();
+    setIsSavingGenericModuleEntry(true);
+    setGenericModuleEntryError("");
+    try {
+      if (isTrainingMode) {
+        const saved: LongitudinalTrackRecord = {
+          id: createTrainingId("module"),
+          org_id: "training",
+          patient_id: patientId,
+          track_type: genericModuleEntry,
+          measured_at: measuredAtIso,
+          summary_fields: { result, notes },
+          raw_payload: { result, notes },
+          derived_metrics: {},
+          created_at: new Date().toISOString(),
+        };
+        setModuleEntries((current) => [...current, saved]);
+      } else {
+        const saved = await api.createPatientModuleEntry(patientId, {
+          track_type: genericModuleEntry,
+          measured_at: measuredAtIso,
+          summary_fields: { result, notes },
+          raw_payload: { result, notes },
+          derived_metrics: {},
+        });
+        setModuleEntries((current) => [...current.filter((entry) => entry.id !== saved.id), saved]);
+      }
+      setGenericModuleEntry(null);
+      setHasLoadedTimelineTab(false);
+      setPatientTimeline([]);
+      setHasLoadedTestsTab(true);
+      setActiveTab("tests");
+    } catch (saveError) {
+      setGenericModuleEntryError(saveError instanceof Error ? saveError.message : "Failed to save entry.");
+      throw saveError;
+    } finally {
+      setIsSavingGenericModuleEntry(false);
     }
   }
 
@@ -1739,17 +2065,19 @@ export function PatientDetailsDrawer({
 
             {activeTab === "tests" ? (
               <TestsPanel
-                growthHistory={growthHistory}
-                growthRecords={growthRecords}
-                isOptometryClinic={isOptometryClinic}
-                isPediatricsClinic={isPediatricsClinic}
                 latestGrowthRecord={latestGrowthRecord}
-                measurementCount={measurementCount}
+                moduleEntries={moduleEntries}
+                modules={specialtyModules}
                 myopiaError={myopiaError}
-                myopiaHistory={myopiaHistory}
+                myopiaRecords={myopiaRecords}
                 tbiError={tbiError}
                 tbiEvaluations={tbiEvaluations}
+                onOpenGenericEntry={(moduleKey) => {
+                  setGenericModuleEntryError("");
+                  setGenericModuleEntry(moduleKey);
+                }}
                 onOpenTbiEvaluation={() => setIsTbiEvaluationOpen(true)}
+                onOpenGrowthHistory={() => setIsGrowthHistoryOpen(true)}
                 onOpenMyopiaManagement={() => setIsMyopiaManagementOpen(true)}
               />
             ) : null}
@@ -1868,7 +2196,7 @@ export function PatientDetailsDrawer({
           </div>
         ) : null}
       </div>
-      {isOptometryClinic ? (
+      {hasMyopiaManagement ? (
         <HistoricalMyopiaModal
           open={isHistoricalMyopiaOpen}
           patientAge={currentPatient.age}
@@ -1876,7 +2204,7 @@ export function PatientDetailsDrawer({
           onSave={handleSaveHistoricalMyopia}
         />
       ) : null}
-      {isOptometryClinic ? (
+      {hasMyopiaManagement ? (
         <MyopiaManagementModal
           open={isMyopiaManagementOpen}
           readOnly={readOnly}
@@ -1890,7 +2218,7 @@ export function PatientDetailsDrawer({
           }}
         />
       ) : null}
-      {isOptometryClinic ? (
+      {hasTbiEvaluation ? (
         <TbiEvaluationModal
           open={isTbiEvaluationOpen}
           patient={currentPatient}
@@ -1902,6 +2230,23 @@ export function PatientDetailsDrawer({
           onSave={handleSaveTbiEvaluation}
         />
       ) : null}
+      {hasGrowthMeasurement ? (
+        <GrowthHistoryModal
+          open={isGrowthHistoryOpen}
+          growthHistory={growthHistory}
+          onClose={() => setIsGrowthHistoryOpen(false)}
+        />
+      ) : null}
+      <GenericModuleEntryModal
+        moduleKey={genericModuleEntry}
+        error={genericModuleEntryError}
+        isSaving={isSavingGenericModuleEntry}
+        onClose={() => {
+          setGenericModuleEntry(null);
+          setGenericModuleEntryError("");
+        }}
+        onSave={handleSaveGenericModuleEntry}
+      />
     </div>
   );
 }

@@ -42,6 +42,8 @@ import {
   InvoiceCreatePayload,
   GenerateNotePayload,
   GenerateNoteResponse,
+  LongitudinalTrackCreatePayload,
+  LongitudinalTrackRecord,
   MobileFinalizeConsultationPayload,
   MobileFinalizeConsultationResponse,
   MyopiaHistory,
@@ -673,6 +675,13 @@ export const api = {
     request<PediatricGrowthSummary>(`/patients/${patientId}/growth-history`),
   listPatientTbiEvaluations: (patientId: string) =>
     request<TbiEvaluationRecord[]>(`/patients/${patientId}/tbi-evaluations`),
+  listPatientModuleEntries: (patientId: string) =>
+    request<LongitudinalTrackRecord[]>(`/patients/${patientId}/module-entries`),
+  createPatientModuleEntry: (patientId: string, payload: LongitudinalTrackCreatePayload) =>
+    request<LongitudinalTrackRecord>(`/patients/${patientId}/module-entries`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   createPatientTbiEvaluation: (patientId: string, payload: TbiEvaluationCreatePayload) =>
     request<TbiEvaluationRecord>(`/patients/${patientId}/tbi-evaluations`, {
       method: "POST",

@@ -484,6 +484,26 @@ export interface StructuredModule {
   payload: Record<string, unknown>;
 }
 
+export interface LongitudinalTrackRecord {
+  id: string;
+  track_type: string;
+  patient_id: string;
+  org_id: string;
+  measured_at: string;
+  summary_fields: Record<string, unknown>;
+  raw_payload: Record<string, unknown>;
+  derived_metrics: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface LongitudinalTrackCreatePayload {
+  track_type: string;
+  measured_at: string;
+  summary_fields?: Record<string, unknown>;
+  raw_payload?: Record<string, unknown>;
+  derived_metrics?: Record<string, unknown>;
+}
+
 export interface PediatricGrowthMeasurementPayload {
   measured_at: string;
   height_cm: number;

@@ -30,6 +30,7 @@ from app.schema_domains.patients import (
 )
 from app.schema_domains.specialty import (
     LongitudinalTrackCreate,
+    LongitudinalTrackRecordOut,
     PediatricGrowthMeasurementInput,
     PediatricGrowthMeasurementOut,
     PediatricGrowthSummaryOut,
@@ -73,11 +74,37 @@ ALLOWED_PATIENT_PROFILE_PHOTO_EXTENSIONS = {
 }
 MAX_PATIENT_PROFILE_PHOTO_BYTES = 5 * 1024 * 1024
 
+SPECIALTY_MODULE_TRACKS = {
+    "optometry": {
+        "eye_exam",
+        "contact_lens",
+        "binocular_vision",
+        "low_vision",
+        "myopia_management",
+        "tbi_evaluation",
+    },
+    "pediatrics": {
+        "pediatric_growth_measurement",
+        "well_child_visit",
+        "parent_handout_request",
+        "pediatric_follow_up_plan",
+    },
+    "general_physician": set(),
+    "dentistry": set(),
+}
+
 
 async def _require_optometry_clinic(repo: AppRepository, org_id: str) -> None:
     settings = await repo.get_clinic_settings(org_id)
     if str(settings.get("clinic_specialty") or "").strip() != "optometry":
         raise ValueError("TBI evaluation is only available for optometry clinics.")
+
+
+async def _require_specialty_module(repo: AppRepository, org_id: str, module_type: str) -> None:
+    settings = await repo.get_clinic_settings(org_id)
+    clinic_specialty = str(settings.get("clinic_specialty") or "").strip()
+    if module_type not in SPECIALTY_MODULE_TRACKS.get(clinic_specialty, set()):
+        raise ValueError("This module is not available for the clinic specialty.")
 
 
 def _tbi_summary_fields(payload: dict) -> dict:
@@ -536,6 +563,39 @@ async def list_patient_tbi_evaluations(
         raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="list_patient_tbi_evaluations") from exc
+
+
+@router.get("/patients/{patient_id}/module-entries", response_model=list[LongitudinalTrackRecordOut])
+async def list_patient_module_entries(
+    patient_id: str,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> list[LongitudinalTrackRecordOut]:
+    try:
+        rows = await repo.list_longitudinal_tracks_for_patient(str(current_user.org_id), patient_id)
+        return [LongitudinalTrackRecordOut.model_validate(row) for row in rows]
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="list_patient_module_entries") from exc
+
+
+@router.post("/patients/{patient_id}/module-entries", response_model=LongitudinalTrackRecordOut, status_code=201)
+async def create_patient_module_entry(
+    patient_id: str,
+    payload: LongitudinalTrackCreate,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> LongitudinalTrackRecordOut:
+    try:
+        org_id = str(current_user.org_id)
+        await _require_specialty_module(repo, org_id, payload.track_type)
+        row = await repo.create_longitudinal_track(org_id, patient_id, payload)
+        return LongitudinalTrackRecordOut.model_validate(row)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="create_patient_module_entry") from exc
 
 
 @router.post("/patients/{patient_id}/tbi-evaluations", response_model=TbiEvaluationOut, status_code=201)
