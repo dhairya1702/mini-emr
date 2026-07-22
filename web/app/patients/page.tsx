@@ -9,7 +9,7 @@ import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
 import { api } from "@/lib/api";
 import { loadRecentPatients, saveRecentPatient } from "@/lib/recent-patients";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { Patient, PatientChartVisit, PatientVisitDetail } from "@/lib/types";
+import { Patient, PatientChartVisit, PatientTimelineEvent, PatientVisitDetail } from "@/lib/types";
 
 function formatVisitDate(value: string) {
   return new Date(value).toLocaleString([], {
@@ -148,6 +148,10 @@ export default function PatientsPage() {
 
   async function handleLoadPatientVisitDetail(patientId: string, visitId: string): Promise<PatientVisitDetail> {
     return api.getPatientVisitDetail(patientId, visitId);
+  }
+
+  async function handleLoadPatientTimeline(patientId: string): Promise<PatientTimelineEvent[]> {
+    return api.getPatientTimeline(patientId);
   }
 
   async function handleExport() {
@@ -366,6 +370,7 @@ export default function PatientsPage() {
         clinicSpecialty={clinicSettings?.clinic_specialty ?? null}
         onLoadVisits={handleLoadPatientVisits}
         onLoadVisitDetail={handleLoadPatientVisitDetail}
+        onLoadTimeline={handleLoadPatientTimeline}
         onLoadMyopiaHistory={(patientId) => api.getPatientMyopiaHistory(patientId)}
         onLoadGrowthHistory={(patientId) => api.getPatientGrowthHistory(patientId)}
         onSave={handleUpdatePatient}

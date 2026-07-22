@@ -8,7 +8,7 @@ import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
 import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { Patient, PatientChartVisit, PatientVisit, PatientVisitDetail } from "@/lib/types";
+import { Patient, PatientChartVisit, PatientTimelineEvent, PatientVisit, PatientVisitDetail } from "@/lib/types";
 
 type HistoryFilter = "all" | "waiting" | "consultation" | "done" | "billed";
 type HistoryExportRange = "today" | "7d" | "30d" | "month" | "all";
@@ -197,6 +197,10 @@ export default function HistoryPage() {
 
   async function handleLoadPatientVisitDetail(patientId: string, visitId: string): Promise<PatientVisitDetail> {
     return api.getPatientVisitDetail(patientId, visitId);
+  }
+
+  async function handleLoadPatientTimeline(patientId: string): Promise<PatientTimelineEvent[]> {
+    return api.getPatientTimeline(patientId);
   }
 
   async function handleExport(range: HistoryExportRange) {
@@ -436,6 +440,7 @@ export default function HistoryPage() {
         clinicSpecialty={clinicSettings?.clinic_specialty ?? null}
         onLoadVisits={handleLoadPatientVisits}
         onLoadVisitDetail={handleLoadPatientVisitDetail}
+        onLoadTimeline={handleLoadPatientTimeline}
         onLoadMyopiaHistory={(patientId) => api.getPatientMyopiaHistory(patientId)}
         onLoadGrowthHistory={(patientId) => api.getPatientGrowthHistory(patientId)}
         readOnly

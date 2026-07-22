@@ -23,8 +23,8 @@ import type {
 } from "@/lib/types";
 import { specialtyHasModule } from "@/lib/specialty";
 
-type MobileTab = "visits" | "tests" | "attachments";
-type VisitSectionKey = "note" | "attachments" | "timeline";
+type MobileTab = "visits" | "tests" | "attachments" | "timeline";
+type VisitSectionKey = "note" | "attachments";
 
 function formatDate(value: string | null | undefined) {
   if (!value) {
@@ -207,7 +207,6 @@ export default function MobilePatientPage() {
   const [openSections, setOpenSections] = useState<Record<VisitSectionKey, boolean>>({
     note: false,
     attachments: false,
-    timeline: false,
   });
   const [notes, setNotes] = useState<ConsultationNote[]>([]);
   const [attachments, setAttachments] = useState<PatientAttachment[]>([]);
@@ -219,6 +218,10 @@ export default function MobilePatientPage() {
   const [isTestsLoading, setIsTestsLoading] = useState(false);
   const [testsError, setTestsError] = useState("");
   const [hasLoadedTestsTab, setHasLoadedTestsTab] = useState(false);
+  const [patientTimeline, setPatientTimeline] = useState<PatientTimelineEvent[]>([]);
+  const [isTimelineLoading, setIsTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState("");
+  const [hasLoadedTimelineTab, setHasLoadedTimelineTab] = useState(false);
   const [error, setError] = useState("");
   const [aiSummary, setAiSummary] = useState<PatientSummary | null>(null);
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
@@ -226,8 +229,15 @@ export default function MobilePatientPage() {
   const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false);
 
   useEffect(() => {
-    setOpenSections({ note: false, attachments: false, timeline: false });
+    setOpenSections({ note: false, attachments: false });
   }, [selectedVisitId]);
+
+  useEffect(() => {
+    setPatientTimeline([]);
+    setTimelineError("");
+    setIsTimelineLoading(false);
+    setHasLoadedTimelineTab(false);
+  }, [patientId]);
 
   useEffect(() => {
     if (!isAuthReady || isRedirectingToLogin || !currentUser || !patientId) {
@@ -426,6 +436,41 @@ export default function MobilePatientPage() {
     };
   }, [activeTab, clinicSettings?.clinic_specialty, hasLoadedTestsTab, patientId]);
 
+  useEffect(() => {
+    if (!patientId || activeTab !== "timeline" || hasLoadedTimelineTab) {
+      return;
+    }
+
+    let active = true;
+    setIsTimelineLoading(true);
+    setTimelineError("");
+
+    api.getPatientTimeline(patientId)
+      .then((rows) => {
+        if (!active) {
+          return;
+        }
+        setPatientTimeline(rows);
+        setHasLoadedTimelineTab(true);
+      })
+      .catch((loadError) => {
+        if (!active) {
+          return;
+        }
+        setPatientTimeline([]);
+        setTimelineError(loadError instanceof Error ? loadError.message : "Failed to load timeline.");
+      })
+      .finally(() => {
+        if (active) {
+          setIsTimelineLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeTab, hasLoadedTimelineTab, patientId]);
+
   const patient = useMemo(() => patients.find((row) => row.id === patientId) ?? null, [patientId, patients]);
   const selectedVisit = useMemo(
     () => visits.find((visit) => visit.id === selectedVisitId) ?? visits[0] ?? null,
@@ -527,6 +572,11 @@ export default function MobilePatientPage() {
                 active={activeTab === "attachments"}
                 label="Attachments"
                 onClick={() => setActiveTab("attachments")}
+              />
+              <ChartTabButton
+                active={activeTab === "timeline"}
+                label="Timeline"
+                onClick={() => setActiveTab("timeline")}
               />
             </div>
           </section>
@@ -646,23 +696,6 @@ export default function MobilePatientPage() {
                         <p className="clinic-empty-state">No attachments on this visit yet.</p>
                       )}
                     </MobileAccordion>
-
-                    <MobileAccordion
-                      title="Timeline"
-                      count={selectedVisitDetail?.timeline.length ?? 0}
-                      isOpen={openSections.timeline}
-                      onToggle={() => toggleSection("timeline")}
-                    >
-                      {loadingVisitDetailId === selectedVisit.id ? (
-                        <p className="clinic-empty-state">Loading timeline...</p>
-                      ) : selectedVisitDetail?.timeline.length ? (
-                        <div className="grid gap-3">
-                          {selectedVisitDetail.timeline.map((event) => <TimelineCard key={event.id} event={event} />)}
-                        </div>
-                      ) : (
-                        <p className="clinic-empty-state">No related records on this visit yet.</p>
-                      )}
-                    </MobileAccordion>
                   </div>
                 ) : null}
               </>
@@ -703,6 +736,22 @@ export default function MobilePatientPage() {
                       <p className="py-8 text-center text-sm text-slate-500">No attachments yet.</p>
                     )}
                   </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            {activeTab === "timeline" ? (
+              <section className="rounded-[22px] border border-[#dbe7ef] bg-white p-5 shadow-[0_12px_30px_rgba(47,61,50,0.08)]">
+                {isTimelineLoading ? <p className="clinic-empty-state">Loading timeline...</p> : null}
+                {timelineError ? <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{timelineError}</p> : null}
+                {!isTimelineLoading && !timelineError ? (
+                  patientTimeline.length ? (
+                    <div className="grid gap-3">
+                      {patientTimeline.map((event) => <TimelineCard key={event.id} event={event} />)}
+                    </div>
+                  ) : (
+                    <p className="py-8 text-center text-sm text-slate-500">No timeline records yet.</p>
+                  )
                 ) : null}
               </section>
             ) : null}

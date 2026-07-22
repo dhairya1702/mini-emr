@@ -42,7 +42,7 @@ import {
   writeTrainingPatients,
 } from "@/lib/training-mode";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientVisitDetail, PaymentStatus, SexAtBirth } from "@/lib/types";
+import { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientTimelineEvent, PatientVisitDetail, PaymentStatus, SexAtBirth } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
 const QUEUE_REFRESH_INTERVAL_MS = 15000;
@@ -1366,6 +1366,14 @@ export default function HomePage() {
     return api.getPatientVisitDetail(patientId, visitId);
   }
 
+  async function handleLoadPatientTimeline(patientId: string): Promise<PatientTimelineEvent[]> {
+    if (isTrainingMode) {
+      const patient = patients.find((entry) => entry.id === patientId);
+      return patient ? createTrainingTimeline(patient) : [];
+    }
+    return api.getPatientTimeline(patientId);
+  }
+
   const patientChartActionLabel = selectedPatient
     ? selectedPatient.status === "waiting"
       ? "Start consultation"
@@ -1635,6 +1643,7 @@ export default function HomePage() {
         isTrainingMode={isTrainingMode}
         onLoadVisits={handleLoadPatientVisits}
         onLoadVisitDetail={handleLoadPatientVisitDetail}
+        onLoadTimeline={handleLoadPatientTimeline}
         onLoadMyopiaHistory={(patientId) => (
           isTrainingMode
             ? Promise.resolve({

@@ -27,7 +27,7 @@ import {
   SexAtBirth,
 } from "@/lib/types";
 
-type ChartTab = "visits" | "attachments" | "tests";
+type ChartTab = "visits" | "attachments" | "tests" | "timeline";
 
 interface PatientDetailsDrawerProps {
   patient: Patient | null;
@@ -38,6 +38,7 @@ interface PatientDetailsDrawerProps {
   onClose: () => void;
   onLoadVisits: (patientId: string) => Promise<PatientChartVisit[]>;
   onLoadVisitDetail: (patientId: string, visitId: string) => Promise<PatientVisitDetail>;
+  onLoadTimeline: (patientId: string) => Promise<PatientTimelineEvent[]>;
   onLoadMyopiaHistory?: (patientId: string) => Promise<MyopiaHistory>;
   onLoadGrowthHistory?: (patientId: string) => Promise<PediatricGrowthSummary>;
   isTrainingMode?: boolean;
@@ -321,9 +322,9 @@ function VisitDetailPanel({
   detailError: string;
   isLoadingDetail: boolean;
   onOpenVisitAttachment: (attachment: PatientVisitAttachmentRow) => void;
-  openSections: Record<"note" | "attachments" | "other", boolean>;
+  openSections: Record<"note" | "attachments", boolean>;
   selectedVisit: PatientChartVisit | null;
-  toggleSection: (section: "note" | "attachments" | "other") => void;
+  toggleSection: (section: "note" | "attachments") => void;
 }) {
   if (!selectedVisit) {
     return (
@@ -334,7 +335,6 @@ function VisitDetailPanel({
   }
 
   const attachments = detail?.attachments ?? [];
-  const relatedTimeline = detail?.timeline ?? [];
   const noteContent = detail?.consultation_note?.content?.trim() || "";
   const reason = detail?.reason || selectedVisit.reason || "Recorded visit";
 
@@ -403,29 +403,46 @@ function VisitDetailPanel({
           ) : null}
         </div>
       </CollapsibleSection>
+    </div>
+  );
+}
 
-      {relatedTimeline.length || isLoadingDetail ? (
-        <CollapsibleSection
-          description="Timeline"
-          count={relatedTimeline.length}
-          isOpen={openSections.other}
-          onToggle={() => toggleSection("other")}
-        >
-          {isLoadingDetail ? (
-            <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-4 py-8 text-center text-sm text-slate-500">
-              Loading timeline...
-            </div>
-          ) : relatedTimeline.length ? (
-            <div className="space-y-2.5">
-              {relatedTimeline.map((event) => <EventSummaryCard key={event.id} event={event} />)}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-4 py-8 text-center text-sm text-slate-500">
-              No related records on this visit yet.
-            </div>
-          )}
-        </CollapsibleSection>
-      ) : null}
+function TimelinePanel({
+  error,
+  isLoading,
+  timeline,
+}: {
+  error: string;
+  isLoading: boolean;
+  timeline: PatientTimelineEvent[];
+}) {
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-4 py-10 text-center text-sm text-slate-500">
+        Loading timeline...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+        {error}
+      </div>
+    );
+  }
+
+  if (!timeline.length) {
+    return (
+      <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-white px-4 py-10 text-center text-sm text-slate-500">
+        No timeline records yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {timeline.map((event) => <EventSummaryCard key={event.id} event={event} />)}
     </div>
   );
 }
@@ -632,6 +649,7 @@ export function PatientDetailsDrawer({
   onClose,
   onLoadVisits,
   onLoadVisitDetail,
+  onLoadTimeline,
   onLoadMyopiaHistory,
   onLoadGrowthHistory,
   isTrainingMode = false,
@@ -685,14 +703,17 @@ export function PatientDetailsDrawer({
   const [growthHistory, setGrowthHistory] = useState<PediatricGrowthSummary | null>(null);
   const [isMyopiaLoading, setIsMyopiaLoading] = useState(false);
   const [myopiaError, setMyopiaError] = useState("");
+  const [patientTimeline, setPatientTimeline] = useState<PatientTimelineEvent[]>([]);
+  const [isTimelineLoading, setIsTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState("");
   const [hasLoadedAttachmentsTab, setHasLoadedAttachmentsTab] = useState(false);
   const [hasLoadedTestsTab, setHasLoadedTestsTab] = useState(false);
+  const [hasLoadedTimelineTab, setHasLoadedTimelineTab] = useState(false);
   const [isHistoricalMyopiaOpen, setIsHistoricalMyopiaOpen] = useState(false);
   const [isMyopiaManagementOpen, setIsMyopiaManagementOpen] = useState(false);
-  const [openVisitSections, setOpenVisitSections] = useState<Record<"note" | "attachments" | "other", boolean>>({
+  const [openVisitSections, setOpenVisitSections] = useState<Record<"note" | "attachments", boolean>>({
     note: false,
     attachments: false,
-    other: false,
   });
   const [selectedVisitId, setSelectedVisitId] = useState("");
   const [currentPatient, setCurrentPatient] = useState<Patient | null>(patient);
@@ -702,12 +723,14 @@ export function PatientDetailsDrawer({
   const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false);
   const onLoadVisitsRef = useRef(onLoadVisits);
   const onLoadVisitDetailRef = useRef(onLoadVisitDetail);
+  const onLoadTimelineRef = useRef(onLoadTimeline);
   const visitsPatientId = patient?.id ?? "";
   onLoadVisitsRef.current = onLoadVisits;
   onLoadVisitDetailRef.current = onLoadVisitDetail;
+  onLoadTimelineRef.current = onLoadTimeline;
 
   useEffect(() => {
-    setOpenVisitSections({ note: false, attachments: false, other: false });
+    setOpenVisitSections({ note: false, attachments: false });
   }, [selectedVisitId]);
 
   useEffect(() => {
@@ -788,6 +811,10 @@ export function PatientDetailsDrawer({
     setMyopiaError("");
     setIsMyopiaLoading(false);
     setHasLoadedTestsTab(false);
+    setPatientTimeline([]);
+    setTimelineError("");
+    setIsTimelineLoading(false);
+    setHasLoadedTimelineTab(false);
     setSelectedVisitId("");
     setAiSummary(null);
     setSummaryError("");
@@ -1031,6 +1058,43 @@ export function PatientDetailsDrawer({
     };
   }, [activeTab, hasLoadedTestsTab, isOptometryClinic, isPediatricsClinic, onLoadGrowthHistory, onLoadMyopiaHistory, patient]);
 
+  useEffect(() => {
+    if (!patient || activeTab !== "timeline" || hasLoadedTimelineTab) {
+      return;
+    }
+
+    const patientId = patient.id;
+    let active = true;
+
+    async function loadTimeline() {
+      setIsTimelineLoading(true);
+      setTimelineError("");
+      try {
+        const rows = await onLoadTimelineRef.current(patientId);
+        if (!active) {
+          return;
+        }
+        setPatientTimeline(rows);
+        setHasLoadedTimelineTab(true);
+      } catch (loadError) {
+        if (!active) {
+          return;
+        }
+        setPatientTimeline([]);
+        setTimelineError(loadError instanceof Error ? loadError.message : "Failed to load timeline.");
+      } finally {
+        if (active) {
+          setIsTimelineLoading(false);
+        }
+      }
+    }
+
+    void loadTimeline();
+    return () => {
+      active = false;
+    };
+  }, [activeTab, hasLoadedTimelineTab, patient]);
+
   const noteAssets = useMemo(() => {
     const seen = new Set<string>();
     const rows: Array<NoteAsset & { note_id: string; note_created_at: string }> = [];
@@ -1061,7 +1125,7 @@ export function PatientDetailsDrawer({
   const measurementCount = myopiaRecords.length;
   const latestGrowthRecord = growthRecords[growthRecords.length - 1] ?? null;
 
-  function toggleVisitSection(section: "note" | "attachments" | "other") {
+  function toggleVisitSection(section: "note" | "attachments") {
     setOpenVisitSections((current) => ({ ...current, [section]: !current[section] }));
   }
 
@@ -1484,6 +1548,11 @@ export function PatientDetailsDrawer({
                 label="Attachments"
                 onClick={() => setActiveTab("attachments")}
               />
+              <ChartTabButton
+                active={activeTab === "timeline"}
+                label="Timeline"
+                onClick={() => setActiveTab("timeline")}
+              />
             </div>
             {workflowActionLabel && onWorkflowAction ? (
               <button
@@ -1612,6 +1681,14 @@ export function PatientDetailsDrawer({
                 isDeletingAttachmentId={isDeletingAttachmentId}
                 isSendingAttachmentId={isSendingAttachmentId}
                 isUploadingAttachment={isUploadingAttachment}
+              />
+            ) : null}
+
+            {activeTab === "timeline" ? (
+              <TimelinePanel
+                error={timelineError}
+                isLoading={isTimelineLoading}
+                timeline={patientTimeline}
               />
             ) : null}
           </div>
