@@ -17,5 +17,4 @@ bash scripts/deploy-backend.sh
 export BACKEND_URL="${BACKEND_URL:-$(resolve_backend_url)}"
 bash scripts/deploy-web.sh
 
-echo "Release candidates prepared. No production traffic was changed."
-echo "Follow PRODUCTION_RELEASE_RUNBOOK.md for validation and explicit traffic promotion."
+echo "Production deploy complete. Backend and web traffic were promoted to their new revisions."

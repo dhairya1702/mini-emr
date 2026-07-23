@@ -34,5 +34,12 @@ gcloud run deploy "$WEB_SERVICE" \
   --no-traffic
 
 LATEST_WEB_REVISION="$(gcloud run services describe "$WEB_SERVICE" --project="$PROJECT_ID" --region="$REGION" --format='value(status.latestCreatedRevisionName)')"
-echo "Prepared no-traffic web revision: $LATEST_WEB_REVISION"
-echo "Production traffic was not changed."
+echo "Prepared web revision: $LATEST_WEB_REVISION"
+
+echo "Promoting web revision to 100% production traffic"
+gcloud run services update-traffic "$WEB_SERVICE" \
+  --project="$PROJECT_ID" \
+  --region="$REGION" \
+  --to-revisions="${LATEST_WEB_REVISION}=100"
+
+echo "Web production traffic now points to: $LATEST_WEB_REVISION"

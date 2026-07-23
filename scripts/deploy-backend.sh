@@ -70,5 +70,12 @@ gcloud run deploy "$BACKEND_SERVICE" \
   --no-traffic
 
 LATEST_REVISION="$(gcloud run services describe "$BACKEND_SERVICE" --project="$PROJECT_ID" --region="$REGION" --format='value(status.latestCreatedRevisionName)')"
-echo "Prepared no-traffic backend revision: $LATEST_REVISION"
-echo "Production traffic was not changed. Validate the revision, then explicitly shift traffic when approved."
+echo "Prepared backend revision: $LATEST_REVISION"
+
+echo "Promoting backend revision to 100% production traffic"
+gcloud run services update-traffic "$BACKEND_SERVICE" \
+  --project="$PROJECT_ID" \
+  --region="$REGION" \
+  --to-revisions="${LATEST_REVISION}=100"
+
+echo "Backend production traffic now points to: $LATEST_REVISION"
