@@ -44,7 +44,7 @@ export default function MobileQueuePage() {
   const queuePatients = useMemo(() => getMobileQueuePatients(patients), [patients]);
 
   async function handleCreatePatient(payload: MobileQueuePatientPayload) {
-    const created = payload.existingPatientId
+    let created = payload.existingPatientId
       ? await api.createPatientVisit(payload.existingPatientId, {
           name: payload.name,
           phone: payload.phone,
@@ -69,6 +69,15 @@ export default function MobileQueuePage() {
           email: payload.email,
           address: payload.address,
         });
+    if (payload.photo) {
+      try {
+        created = await api.uploadPatientProfilePhoto(created.id, payload.photo);
+      } catch (photoError) {
+        setError(photoError instanceof Error ? photoError.message : "The patient was added, but the photo upload failed.");
+      }
+    } else {
+      setError("");
+    }
     setPatients((current) => [created, ...current]);
   }
 

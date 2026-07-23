@@ -16,9 +16,10 @@ fi
 BACKEND_DIR="$ROOT_DIR/backend"
 WEB_DIR="$ROOT_DIR/web"
 BACKEND_VENV="$BACKEND_DIR/.venv"
-BACKEND_HOST="127.0.0.1"
+BACKEND_HOST="${BACKEND_HOST:-0.0.0.0}"
+BACKEND_HEALTH_HOST="${BACKEND_HEALTH_HOST:-127.0.0.1}"
 BACKEND_PORT="8001"
-BACKEND_HEALTH_URL="http://$BACKEND_HOST:$BACKEND_PORT/health/live"
+BACKEND_HEALTH_URL="http://$BACKEND_HEALTH_HOST:$BACKEND_PORT/health/live"
 BACKEND_STARTUP_TIMEOUT_SECONDS="${BACKEND_STARTUP_TIMEOUT_SECONDS:-20}"
 BACKEND_RELOAD="${BACKEND_RELOAD:-0}"
 SHUTDOWN_GRACE_SECONDS="${SHUTDOWN_GRACE_SECONDS:-5}"
@@ -34,6 +35,29 @@ NGROK_STARTUP_TIMEOUT_SECONDS="${NGROK_STARTUP_TIMEOUT_SECONDS:-15}"
 NGROK_SEPARATE_TERMINAL="${NGROK_SEPARATE_TERMINAL:-0}"
 NGROK_PID_FILE="${NGROK_PID_FILE:-/tmp/clinic-emr-ngrok.pid}"
 WHATSAPP_SKIP_SIGNATURE_CHECK="${WHATSAPP_SKIP_SIGNATURE_CHECK:-1}"
+
+detect_lan_host() {
+  if command -v ipconfig >/dev/null 2>&1; then
+    ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true
+    return
+  fi
+  hostname -I 2>/dev/null | awk '{print $1}' || true
+}
+
+DEV_LAN_HOST="${DEV_LAN_HOST:-$(detect_lan_host)}"
+if [[ -n "$DEV_LAN_HOST" ]]; then
+  LAN_WEB_ORIGIN="http://$DEV_LAN_HOST:3000"
+  if [[ -n "${APP_ORIGINS:-}" ]]; then
+    export APP_ORIGINS="$APP_ORIGINS,$LAN_WEB_ORIGIN"
+  else
+    export APP_ORIGINS="$LAN_WEB_ORIGIN"
+  fi
+  if [[ -n "${NEXT_ALLOWED_DEV_ORIGINS:-}" ]]; then
+    export NEXT_ALLOWED_DEV_ORIGINS="$NEXT_ALLOWED_DEV_ORIGINS,$DEV_LAN_HOST,$LAN_WEB_ORIGIN"
+  else
+    export NEXT_ALLOWED_DEV_ORIGINS="$DEV_LAN_HOST,$LAN_WEB_ORIGIN"
+  fi
+fi
 
 if [[ ! -d "$BACKEND_VENV" ]]; then
   python3 -m venv "$BACKEND_VENV"

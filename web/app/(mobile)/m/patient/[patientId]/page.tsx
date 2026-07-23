@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import NextImage from "next/image";
 import {
   Activity,
   ArrowLeft,
@@ -479,6 +480,9 @@ export default function MobilePatientPage() {
   const [timelineError, setTimelineError] = useState("");
   const [hasLoadedTimelineTab, setHasLoadedTimelineTab] = useState(false);
   const [error, setError] = useState("");
+  const [isUploadingProfilePhoto, setIsUploadingProfilePhoto] = useState(false);
+  const [profilePhotoVersion, setProfilePhotoVersion] = useState(0);
+  const [profilePhotoObjectUrl, setProfilePhotoObjectUrl] = useState("");
   const [aiSummary, setAiSummary] = useState<PatientSummary | null>(null);
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
@@ -754,6 +758,38 @@ export default function MobilePatientPage() {
   }, [activeTab, hasLoadedTimelineTab, patientId]);
 
   const patient = useMemo(() => patients.find((row) => row.id === patientId) ?? null, [patientId, patients]);
+
+  useEffect(() => {
+    if (!patient?.profile_photo_url) {
+      setProfilePhotoObjectUrl("");
+      return;
+    }
+
+    let active = true;
+    let objectUrl = "";
+
+    api.getPatientProfilePhoto(patient.id)
+      .then((blob) => {
+        if (!active) {
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setProfilePhotoObjectUrl(objectUrl);
+      })
+      .catch(() => {
+        if (active) {
+          setProfilePhotoObjectUrl("");
+        }
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [patient?.id, patient?.profile_photo_url, patient?.profile_photo_updated_at, profilePhotoVersion]);
+
   const selectedVisit = useMemo(
     () => visits.find((visit) => visit.id === selectedVisitId) ?? visits[0] ?? null,
     [selectedVisitId, visits],
@@ -833,6 +869,32 @@ export default function MobilePatientPage() {
       }
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : "Failed to open attachment.");
+    }
+  }
+
+  async function uploadProfilePhoto(file: File | null | undefined) {
+    if (!patient || !file) {
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Only JPG, PNG, and WEBP patient photos are supported.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Patient photo must be 5 MB or smaller.");
+      return;
+    }
+
+    setIsUploadingProfilePhoto(true);
+    setError("");
+    try {
+      const updated = await api.uploadPatientProfilePhoto(patient.id, file);
+      setPatients((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+      setProfilePhotoVersion((version) => version + 1);
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Failed to upload patient photo.");
+    } finally {
+      setIsUploadingProfilePhoto(false);
     }
   }
 
@@ -942,14 +1004,52 @@ export default function MobilePatientPage() {
             {patient ? (
               <>
                 <div className="mt-3.5 flex items-center gap-3">
-                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[13px] border border-white/35 bg-white/20 text-[15px] font-bold">
-                    {initials}
+                  <div className="relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-[14px] border border-white/35 bg-white/20 text-[15px] font-bold">
+                    {profilePhotoObjectUrl ? (
+                      <NextImage unoptimized src={profilePhotoObjectUrl} alt={`${patient.name} profile photo`} width={48} height={48} className="h-full w-full object-cover" />
+                    ) : (
+                      initials
+                    )}
+                    <span className="absolute inset-x-0 bottom-0 bg-slate-950/35 py-0.5 text-center text-[8.5px] font-bold uppercase tracking-[0.08em] text-white">
+                      {isUploadingProfilePhoto ? "..." : "Photo"}
+                    </span>
                   </div>
                   <div className="min-w-0">
                     <h1 className="truncate text-lg font-bold leading-tight">{patient.name}</h1>
                     <p className="mt-0.5 truncate text-xs text-white/80">
                       {patient.phone || "No phone"} · {patient.address || "No address on file"}
                     </p>
+                    <div className="mt-1.5 flex gap-2">
+                      <label className="rounded-full border border-white/25 bg-white/15 px-2.5 py-1 text-[10.5px] font-bold text-white">
+                        Upload
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="sr-only"
+                          aria-label="Upload patient photo"
+                          disabled={isUploadingProfilePhoto}
+                          onChange={(event) => {
+                            void uploadProfilePhoto(event.target.files?.[0]);
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+                      <label className="rounded-full border border-white/25 bg-white/15 px-2.5 py-1 text-[10.5px] font-bold text-white">
+                        Camera
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="sr-only"
+                          aria-label="Take patient photo"
+                          disabled={isUploadingProfilePhoto}
+                          onChange={(event) => {
+                            void uploadProfilePhoto(event.target.files?.[0]);
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
                 <div className="mt-3.5 flex border-t border-white/20 pt-2.5">

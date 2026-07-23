@@ -6,7 +6,7 @@ const configuredDevOrigins = (process.env.NEXT_ALLOWED_DEV_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
-const defaultAllowedDevOrigins = ["127.0.0.1", "localhost", "192.168.0.102"];
+const defaultAllowedDevOrigins = ["127.0.0.1", "localhost", "192.168.0.102", "192.168.0.148"];
 const isDev = process.env.NODE_ENV === "development";
 
 function unique(values) {

@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { X } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
+import { Camera, X } from "lucide-react";
+import Image from "next/image";
 
 import { api } from "@/lib/api";
 import type { PatientMatch } from "@/lib/types";
@@ -29,6 +30,7 @@ export type MobileQueuePatientPayload = {
   height: number | null;
   email: string;
   address: string;
+  photo?: File | null;
 };
 
 function phoneDigits(value: string) {
@@ -52,10 +54,8 @@ export function MobileAddPatientModal({
   const [selectedMatchId, setSelectedMatchId] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-
-  if (!open) {
-    return null;
-  }
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
 
   function resetAndClose() {
     setForm(initialForm);
@@ -64,7 +64,31 @@ export function MobileAddPatientModal({
     setFeedback("");
     setMatches([]);
     setSelectedMatchId("");
+    setPhotoFile(null);
     onClose();
+  }
+
+  useEffect(() => {
+    if (!photoFile) {
+      setPhotoPreviewUrl("");
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(photoFile);
+    setPhotoPreviewUrl(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [photoFile]);
+
+  function selectPhotoFile(file: File | null | undefined) {
+    setError("");
+    setPhotoFile(file ?? null);
+  }
+
+  if (!open) {
+    return null;
   }
 
   function loadExisting(match: PatientMatch) {
@@ -138,6 +162,14 @@ export function MobileAddPatientModal({
       setError("Height must be valid.");
       return;
     }
+    if (photoFile && !["image/jpeg", "image/png", "image/webp"].includes(photoFile.type)) {
+      setError("Only JPG, PNG, and WEBP patient photos are supported.");
+      return;
+    }
+    if (photoFile && photoFile.size > 5 * 1024 * 1024) {
+      setError("Patient photo must be 5 MB or smaller.");
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -153,6 +185,7 @@ export function MobileAddPatientModal({
         height,
         email: form.email.trim().toLowerCase(),
         address: "",
+        photo: photoFile,
       });
       resetAndClose();
     } catch (submitError) {
@@ -215,6 +248,46 @@ export function MobileAddPatientModal({
         ) : null}
 
         <div className="mt-4 grid grid-cols-1 gap-3">
+          <div className="flex items-center gap-3 rounded-[16px] border border-[#dbe7ef] bg-[#f7fbfd] px-3 py-2.5 text-sm font-semibold text-slate-700">
+            <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-[14px] border border-[#bfd7e8] bg-white text-[#2f8fd3]">
+              {photoPreviewUrl ? (
+                <Image unoptimized src={photoPreviewUrl} alt="Patient photo preview" width={48} height={48} className="h-full w-full object-cover" />
+              ) : (
+                <Camera className="h-5 w-5" />
+              )}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block">{photoFile ? "Photo selected" : "Photo"}</span>
+              <span className="block text-xs font-normal text-slate-400">JPG, PNG, or WEBP</span>
+            </span>
+            <div className="flex shrink-0 gap-2">
+              <label className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-xs font-semibold text-[#2a6fa8]">
+                Upload
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  onChange={(event) => {
+                    selectPhotoFile(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+              <label className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-xs font-semibold text-[#2a6fa8]">
+                Camera
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="sr-only"
+                  onChange={(event) => {
+                    selectPhotoFile(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+          </div>
           <label className="grid gap-1 text-sm font-medium text-slate-700">
             Name
             <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" />
