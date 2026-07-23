@@ -196,10 +196,10 @@ export function MobileAddPatientModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/35 p-3">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/35 p-2">
       <form
         onSubmit={submitPatient}
-        className="mx-auto mt-3 w-full max-w-md rounded-[22px] border border-[#bfd7e8] bg-white p-4 shadow-[0_18px_50px_rgba(64,131,181,0.18)] max-h-[calc(100dvh-1.5rem)] overflow-y-auto sm:mt-6 sm:p-5"
+        className="mx-auto mt-2 max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto rounded-[20px] border border-[#bfd7e8] bg-white p-3 shadow-[0_18px_50px_rgba(64,131,181,0.18)] sm:mt-6 sm:p-5"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -210,7 +210,7 @@ export function MobileAddPatientModal({
           </button>
         </div>
 
-        <div className="mt-4 flex gap-2">
+        <div className="mt-3 flex gap-2">
           <input
             value={searchPhone}
             onChange={(event) => {
@@ -220,11 +220,11 @@ export function MobileAddPatientModal({
               setSelectedMatchId("");
               setSearchPhone(phoneDigits(event.target.value));
             }}
-            className="clinic-input h-11 min-w-0 flex-1 rounded-xl text-base"
+            className="clinic-input h-10 min-w-0 flex-1 rounded-xl text-sm"
             inputMode="tel"
             placeholder="Search 10-digit phone"
           />
-          <button type="button" onClick={() => void searchExisting()} disabled={isSearching} className="clinic-button-primary h-11 px-4 text-sm">
+          <button type="button" onClick={() => void searchExisting()} disabled={isSearching} className="clinic-button-primary h-10 px-4 text-sm">
             {isSearching ? "..." : "Search"}
           </button>
         </div>
@@ -247,21 +247,20 @@ export function MobileAddPatientModal({
           </div>
         ) : null}
 
-        <div className="mt-4 grid grid-cols-1 gap-3">
-          <div className="flex items-center gap-3 rounded-[16px] border border-[#dbe7ef] bg-[#f7fbfd] px-3 py-2.5 text-sm font-semibold text-slate-700">
-            <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-[14px] border border-[#bfd7e8] bg-white text-[#2f8fd3]">
+        <div className="mt-3 grid grid-cols-1 gap-2.5">
+          <div className="flex items-center gap-2.5 rounded-[14px] border border-[#dbe7ef] bg-[#f7fbfd] px-2.5 py-2 text-sm font-semibold text-slate-700">
+            <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl border border-[#bfd7e8] bg-white text-[#2f8fd3]">
               {photoPreviewUrl ? (
-                <Image unoptimized src={photoPreviewUrl} alt="Patient photo preview" width={48} height={48} className="h-full w-full object-cover" />
+                <Image unoptimized src={photoPreviewUrl} alt="Patient photo preview" width={40} height={40} className="h-full w-full object-cover" />
               ) : (
-                <Camera className="h-5 w-5" />
+                <Camera className="h-4 w-4" />
               )}
             </span>
             <span className="min-w-0 flex-1">
               <span className="block">{photoFile ? "Photo selected" : "Photo"}</span>
-              <span className="block text-xs font-normal text-slate-400">JPG, PNG, or WEBP</span>
             </span>
             <div className="flex shrink-0 gap-2">
-              <label className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-xs font-semibold text-[#2a6fa8]">
+              <label className="rounded-xl border border-[#bfd7e8] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#2a6fa8]">
                 Upload
                 <input
                   type="file"
@@ -273,7 +272,7 @@ export function MobileAddPatientModal({
                   }}
                 />
               </label>
-              <label className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-xs font-semibold text-[#2a6fa8]">
+              <label className="rounded-xl border border-[#bfd7e8] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#2a6fa8]">
                 Camera
                 <input
                   type="file"
@@ -290,7 +289,7 @@ export function MobileAddPatientModal({
           </div>
           <label className="grid gap-1 text-sm font-medium text-slate-700">
             Name
-            <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" />
+            <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="clinic-input h-10 min-w-0 rounded-xl text-sm" />
           </label>
           <label className="grid gap-1 text-sm font-medium text-slate-700">
             Phone
@@ -301,44 +300,44 @@ export function MobileAddPatientModal({
                 setSelectedMatchId("");
                 setForm((current) => ({ ...current, phone: phoneDigits(event.target.value) }));
               }}
-              className="clinic-input h-11 min-w-0 rounded-xl text-base"
+              className="clinic-input h-10 min-w-0 rounded-xl text-sm"
               inputMode="tel"
               placeholder="10-digit phone number"
             />
           </label>
           <label className="grid gap-1 text-sm font-medium text-slate-700">
             Reason
-            <input value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" />
+            <input value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} className="clinic-input h-10 min-w-0 rounded-xl text-sm" />
           </label>
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
             <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-700">
               DOB
-              <input type="date" value={form.dateOfBirth} onChange={(event) => setForm((current) => ({ ...current, dateOfBirth: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" />
+              <input type="date" value={form.dateOfBirth} onChange={(event) => setForm((current) => ({ ...current, dateOfBirth: event.target.value }))} className="clinic-input h-10 min-w-0 rounded-xl px-2 text-sm" />
             </label>
             <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-700">
               Temp
-              <input value={form.temperature} onChange={(event) => setForm((current) => ({ ...current, temperature: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" inputMode="decimal" />
+              <input value={form.temperature} onChange={(event) => setForm((current) => ({ ...current, temperature: event.target.value }))} className="clinic-input h-10 min-w-0 rounded-xl px-2 text-sm" inputMode="decimal" />
             </label>
           </div>
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
             <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-700">
               Height
-              <input value={form.height} onChange={(event) => setForm((current) => ({ ...current, height: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" inputMode="decimal" />
+              <input value={form.height} onChange={(event) => setForm((current) => ({ ...current, height: event.target.value }))} className="clinic-input h-10 min-w-0 rounded-xl px-2 text-sm" inputMode="decimal" />
             </label>
             <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-700">
               Weight
-              <input value={form.weight} onChange={(event) => setForm((current) => ({ ...current, weight: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" inputMode="decimal" />
+              <input value={form.weight} onChange={(event) => setForm((current) => ({ ...current, weight: event.target.value }))} className="clinic-input h-10 min-w-0 rounded-xl px-2 text-sm" inputMode="decimal" />
             </label>
           </div>
           <label className="grid gap-1 text-sm font-medium text-slate-700">
             Email
-            <input value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} className="clinic-input h-11 min-w-0 rounded-xl text-base" type="email" />
+            <input value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} className="clinic-input h-10 min-w-0 rounded-xl text-sm" type="email" />
           </label>
         </div>
 
         {error ? <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
 
-        <button type="submit" disabled={isSaving} className="clinic-button-primary mt-4 h-11 w-full">
+        <button type="submit" disabled={isSaving} className="clinic-button-primary mt-3 h-10 w-full">
           {isSaving ? "Adding..." : selectedMatchId ? "Add existing to queue" : "Add to queue"}
         </button>
       </form>

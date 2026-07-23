@@ -46,35 +46,35 @@ export function OptometryModalShell({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
-      <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-[20px] border border-[#bfd7e8] bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Optometry Module</p>
-            <h3 className="mt-2 text-2xl font-semibold text-slate-900">{title}</h3>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{description}</p>
+    <div className="fixed inset-0 z-40 flex items-stretch justify-center bg-slate-950/45 p-0 sm:items-center sm:px-4 sm:py-6">
+      <div className="flex h-[100dvh] w-full max-w-6xl flex-col overflow-hidden border-0 border-[#bfd7e8] bg-white shadow-[0_28px_90px_rgba(15,23,42,0.35)] sm:max-h-[92vh] sm:rounded-[20px] sm:border">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#dbe7ef] px-3 py-3 sm:gap-4 sm:border-b-0 sm:px-6 sm:pt-6">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 sm:text-xs sm:tracking-[0.22em]">Optometry Module</p>
+            <h3 className="mt-1 truncate text-xl font-semibold text-slate-900 sm:mt-2 sm:text-2xl">{title}</h3>
+            <p className="mt-1 line-clamp-2 max-w-3xl text-xs leading-5 text-slate-600 sm:mt-2 sm:text-sm sm:leading-6">{description}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-[#f3f8fb]">
+          <button type="button" onClick={onClose} className="shrink-0 rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-[#f3f8fb]">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {sidebar ? (
-          <div className="mt-6 grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <aside className="max-h-[68vh] overflow-y-auto rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/50 p-4">
+          <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[280px_minmax(0,1fr)]">
+            <aside className="max-h-[145px] overflow-y-auto border-b border-[#dbe7ef] bg-[#f3f8fb]/50 p-3 sm:max-h-[180px] sm:p-4 lg:max-h-none lg:border-b-0 lg:border-r">
               {sidebar}
             </aside>
-            <div className="min-w-0 space-y-5">{children}</div>
+            <div className="min-w-0 flex-1 space-y-3 overflow-y-auto px-2 py-3 max-sm:[&_input]:rounded-lg max-sm:[&_input]:px-3 max-sm:[&_input]:py-2 max-sm:[&_input]:text-sm max-sm:[&_label_span]:mb-1 max-sm:[&_section]:rounded-xl max-sm:[&_section]:p-3 max-sm:[&_textarea]:rounded-lg max-sm:[&_textarea]:px-3 max-sm:[&_textarea]:py-2 max-sm:[&_textarea]:text-sm sm:space-y-5 sm:px-6 sm:py-5">{children}</div>
           </div>
         ) : (
-          <div className="mt-6 space-y-5">{children}</div>
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-2 py-3 max-sm:[&_input]:rounded-lg max-sm:[&_input]:px-3 max-sm:[&_input]:py-2 max-sm:[&_input]:text-sm max-sm:[&_label_span]:mb-1 max-sm:[&_section]:rounded-xl max-sm:[&_section]:p-3 max-sm:[&_textarea]:rounded-lg max-sm:[&_textarea]:px-3 max-sm:[&_textarea]:py-2 max-sm:[&_textarea]:text-sm sm:space-y-5 sm:px-6 sm:py-5">{children}</div>
         )}
 
-        <div className="mt-6 flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="rounded-xl border border-[#bfd7e8] bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]">
+        <div className="flex shrink-0 justify-end gap-2 border-t border-[#dbe7ef] px-3 py-3 sm:gap-3 sm:px-6">
+          <button type="button" onClick={onClose} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] sm:px-5 sm:py-3">
             Cancel
           </button>
-          <button type="button" disabled={isSaving} onClick={onSave} className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60">
+          <button type="button" disabled={isSaving} onClick={onSave} className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60 sm:px-5 sm:py-3">
             {isSaving ? "Saving..." : saveLabel}
           </button>
         </div>

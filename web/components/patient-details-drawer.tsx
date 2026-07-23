@@ -48,6 +48,14 @@ import {
 
 type ChartTab = "visits" | "attachments" | "tests" | "timeline";
 
+type PhotoPreview = {
+  src: string;
+  alt: string;
+  title: string;
+  isLoading?: boolean;
+  revokeOnClose?: boolean;
+};
+
 interface PatientDetailsDrawerProps {
   patient: Patient | null;
   clinicSpecialty?: ClinicSpecialty | null;
@@ -199,11 +207,67 @@ function openNoteAttachmentViewer(asset: NoteAsset) {
   window.open(`/attachment-view/note?key=${encodeURIComponent(key)}`, "_blank");
 }
 
+function isImageContentType(contentType: string) {
+  return contentType.startsWith("image/");
+}
+
+function noteAssetImageSrc(asset: NoteAsset) {
+  return asset.data_base64 ? `data:${asset.content_type || "image/jpeg"};base64,${asset.data_base64}` : "";
+}
+
+function PhotoPreviewModal({
+  preview,
+  onClose,
+}: {
+  preview: PhotoPreview | null;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!preview) {
+      return;
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, preview]);
+
+  if (!preview) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/85 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label={preview.title}>
+      <button type="button" className="absolute inset-0 cursor-zoom-out" onClick={onClose} aria-label="Close photo preview" />
+      <div className="relative z-10 flex max-h-full w-full max-w-6xl flex-col items-center gap-3">
+        <div className="flex w-full items-center justify-between gap-4 text-white">
+          <p className="truncate text-sm font-semibold sm:text-base">{preview.title}</p>
+          <button type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/20 bg-white/10 text-white transition hover:bg-white/20" aria-label="Close photo preview">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="relative flex min-h-[240px] w-full items-center justify-center overflow-hidden rounded-[18px] bg-slate-950/60">
+          {preview.isLoading ? (
+            <p className="px-6 py-16 text-sm text-slate-200">Opening photo...</p>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={preview.src} alt={preview.alt} className="max-h-[82dvh] max-w-full object-contain" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type AttachmentPanelNoteRow = {
   id: string;
   label: string;
   timestamp: string;
   attachmentId?: string;
+  contentType: string;
   open: () => void;
 };
 
@@ -1000,6 +1064,8 @@ function AttachmentsPanel({
   onDeletePatientAttachment,
   onPatientAttachmentFileChange,
   onOpenPatientAttachment,
+  onOpenLinkedAttachment,
+  onOpenNoteImage,
   onStartSendAttachment,
   patientAttachments,
 }: {
@@ -1012,6 +1078,8 @@ function AttachmentsPanel({
   onDeletePatientAttachment: (attachment: PatientAttachment) => Promise<void>;
   onPatientAttachmentFileChange: (file: File | null) => Promise<void>;
   onOpenPatientAttachment: (attachment: PatientAttachment) => void;
+  onOpenLinkedAttachment: (attachmentId: string, label: string, contentType: string, timestamp: string) => void;
+  onOpenNoteImage: (asset: NoteAsset) => void;
   onStartSendAttachment: (attachment: Pick<PatientAttachment, "id" | "file_name" | "content_type">) => void;
   patientAttachments: PatientAttachment[];
 }) {
@@ -1021,7 +1089,18 @@ function AttachmentsPanel({
       label: asset.name,
       timestamp: asset.note_created_at,
       attachmentId: asset.attachment_id,
-      open: () => asset.attachment_id ? openPatientAttachmentViewer(asset.attachment_id) : openNoteAttachmentViewer(asset),
+      contentType: asset.content_type,
+      open: () => {
+        if (asset.attachment_id) {
+          onOpenLinkedAttachment(asset.attachment_id, asset.name, asset.content_type, asset.note_created_at);
+          return;
+        }
+        if (isImageContentType(asset.content_type) && asset.data_base64) {
+          onOpenNoteImage(asset);
+          return;
+        }
+        openNoteAttachmentViewer(asset);
+      },
     })),
   ];
   const noteAttachmentIds = new Set(noteAssets.map((asset) => asset.attachment_id).filter(Boolean));
@@ -1177,6 +1256,7 @@ export function PatientDetailsDrawer({
   const [isUploadingProfilePhoto, setIsUploadingProfilePhoto] = useState(false);
   const [profilePhotoVersion, setProfilePhotoVersion] = useState(0);
   const [profilePhotoObjectUrl, setProfilePhotoObjectUrl] = useState("");
+  const [photoPreview, setPhotoPreview] = useState<PhotoPreview | null>(null);
   const [attachmentSendDraft, setAttachmentSendDraft] = useState<{
     attachmentId: string;
     fileName: string;
@@ -1310,6 +1390,12 @@ export function PatientDetailsDrawer({
     setPatientAttachments([]);
     setAttachmentError("");
     setAttachmentSendDraft(null);
+    setPhotoPreview((current) => {
+      if (current?.revokeOnClose && current.src.startsWith("blob:")) {
+        URL.revokeObjectURL(current.src);
+      }
+      return null;
+    });
     setIsSendingAttachmentId("");
     setIsAttachmentsLoading(false);
     setHasLoadedAttachmentsTab(false);
@@ -1945,31 +2031,55 @@ export function PatientDetailsDrawer({
 
   async function handleOpenPatientAttachment(attachment: PatientAttachment) {
     try {
+      if (isImageContentType(attachment.content_type)) {
+        setPhotoPreview({
+          src: "",
+          alt: attachment.file_name || "Patient attachment",
+          title: attachment.file_name || "Patient attachment",
+          isLoading: true,
+        });
+        const blob = await api.downloadPatientAttachment(attachment.id);
+        const objectUrl = URL.createObjectURL(blob);
+        setPhotoPreview((current) => {
+          if (!current?.isLoading) {
+            URL.revokeObjectURL(objectUrl);
+            return current;
+          }
+          if (current.revokeOnClose && current.src.startsWith("blob:")) {
+            URL.revokeObjectURL(current.src);
+          }
+          return {
+            src: objectUrl,
+            alt: attachment.file_name || "Patient attachment",
+            title: attachment.file_name || "Patient attachment",
+            revokeOnClose: true,
+          };
+        });
+        return;
+      }
       openPatientAttachmentViewer(attachment.id);
     } catch (downloadError) {
+      setPhotoPreview(null);
       setAttachmentError(downloadError instanceof Error ? downloadError.message : "Failed to open attachment.");
     }
   }
 
   async function handleOpenVisitAttachment(attachment: PatientVisitAttachmentRow) {
     if (attachment.attachment_id) {
-      if (!currentPatient) {
-        return;
-      }
-      await handleOpenPatientAttachment({
-        id: attachment.attachment_id,
-        org_id: "",
-        patient_id: currentPatient.id,
-        uploaded_by: null,
-        file_name: attachment.label,
-        content_type: attachment.content_type,
-        file_size: 0,
-        storage_path: "",
-        created_at: attachment.timestamp,
-      });
+      await handleOpenLinkedAttachment(attachment.attachment_id, attachment.label, attachment.content_type, attachment.timestamp);
       return;
     }
     if (attachment.source_type === "note_attachment" && attachment.data_base64) {
+      if (isImageContentType(attachment.content_type)) {
+        handleOpenNoteImage({
+          id: attachment.id,
+          kind: "attachment",
+          name: attachment.label,
+          content_type: attachment.content_type,
+          data_base64: attachment.data_base64,
+        });
+        return;
+      }
       openNoteAttachmentViewer({
         id: attachment.id,
         kind: "attachment",
@@ -1979,6 +2089,56 @@ export function PatientDetailsDrawer({
       });
       return;
     }
+  }
+
+  async function handleOpenLinkedAttachment(attachmentId: string, label: string, contentType: string, timestamp: string) {
+    if (!currentPatient) {
+      return;
+    }
+    await handleOpenPatientAttachment({
+      id: attachmentId,
+      org_id: "",
+      patient_id: currentPatient.id,
+      uploaded_by: null,
+      file_name: label,
+      content_type: contentType,
+      file_size: 0,
+      storage_path: "",
+      created_at: timestamp,
+    });
+  }
+
+  function closePhotoPreview() {
+    setPhotoPreview((current) => {
+      if (current?.revokeOnClose && current.src.startsWith("blob:")) {
+        URL.revokeObjectURL(current.src);
+      }
+      return null;
+    });
+  }
+
+  function handleOpenProfilePhotoPreview() {
+    if (!profilePhotoObjectUrl || !currentPatient) {
+      return;
+    }
+    setPhotoPreview({
+      src: profilePhotoObjectUrl,
+      alt: `${currentPatient.name} profile photo`,
+      title: `${currentPatient.name} profile photo`,
+    });
+  }
+
+  function handleOpenNoteImage(asset: NoteAsset) {
+    const src = noteAssetImageSrc(asset);
+    if (!src) {
+      openNoteAttachmentViewer(asset);
+      return;
+    }
+    setPhotoPreview({
+      src,
+      alt: asset.name || "Patient attachment",
+      title: asset.name || "Patient attachment",
+    });
   }
 
   async function handleDeletePatientAttachment(attachment: PatientAttachment) {
@@ -2215,14 +2375,21 @@ export function PatientDetailsDrawer({
               <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 flex-1 items-start gap-4">
                   <div className="shrink-0">
-                    <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[18px] bg-gradient-to-br from-[#2f8fd3] to-[#245f92] text-xl font-bold text-white shadow-[0_10px_22px_rgba(37,111,168,0.28)]">
-                      {profilePhotoObjectUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
+                    {profilePhotoObjectUrl ? (
+                      <button
+                        type="button"
+                        onClick={handleOpenProfilePhotoPreview}
+                        className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[18px] bg-gradient-to-br from-[#2f8fd3] to-[#245f92] text-xl font-bold text-white shadow-[0_10px_22px_rgba(37,111,168,0.28)] transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#6daed8]"
+                        aria-label="Open patient photo"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={profilePhotoObjectUrl} alt={`${currentPatient.name} profile photo`} className="h-full w-full object-cover" />
-                      ) : (
+                      </button>
+                    ) : (
+                      <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[18px] bg-gradient-to-br from-[#2f8fd3] to-[#245f92] text-xl font-bold text-white shadow-[0_10px_22px_rgba(37,111,168,0.28)]">
                         <span aria-hidden="true">{patientInitials(currentPatient)}</span>
-                      )}
-                    </div>
+                      </div>
+                    )}
                     {!readOnly && !isTrainingMode ? (
                       <div className="mt-2 flex flex-col gap-1.5">
                         <label className="cursor-pointer rounded-lg border border-[#dbe7ef] px-2.5 py-1 text-center text-[11px] font-medium text-[#2a6fa8] transition hover:border-[#9fc7e1] hover:bg-[#f3f8fb]">
@@ -2383,18 +2550,25 @@ export function PatientDetailsDrawer({
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 flex-1 items-start gap-4">
               <div className="shrink-0">
-                <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-[#dbe7ef] bg-[#f3f8fb] text-2xl font-semibold text-[#2a6fa8] shadow-[0_10px_26px_rgba(64,131,181,0.08)]">
-                  {profilePhotoObjectUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
+                {profilePhotoObjectUrl ? (
+                  <button
+                    type="button"
+                    onClick={handleOpenProfilePhotoPreview}
+                    className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-[#dbe7ef] bg-[#f3f8fb] text-2xl font-semibold text-[#2a6fa8] shadow-[0_10px_26px_rgba(64,131,181,0.08)] transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#6daed8]"
+                    aria-label="Open patient photo"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={profilePhotoObjectUrl}
                       alt={`${currentPatient.name} profile photo`}
                       className="h-full w-full object-cover"
                     />
-                  ) : (
+                  </button>
+                ) : (
+                  <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-[#dbe7ef] bg-[#f3f8fb] text-2xl font-semibold text-[#2a6fa8] shadow-[0_10px_26px_rgba(64,131,181,0.08)]">
                     <span aria-hidden="true">{patientInitials(currentPatient)}</span>
-                  )}
-                </div>
+                  </div>
+                )}
                 {!readOnly && !isTrainingMode ? (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     <label className="cursor-pointer rounded-lg border border-[#dbe7ef] px-2.5 py-1.5 text-xs font-medium text-[#2a6fa8] transition hover:border-[#9fc7e1] hover:bg-[#f3f8fb]">
@@ -2640,6 +2814,8 @@ export function PatientDetailsDrawer({
                 isLoading={isAttachmentsLoading}
                 noteAssets={noteAssets}
                 onOpenPatientAttachment={handleOpenPatientAttachment}
+                onOpenLinkedAttachment={handleOpenLinkedAttachment}
+                onOpenNoteImage={handleOpenNoteImage}
                 onDeletePatientAttachment={handleDeletePatientAttachment}
                 onPatientAttachmentFileChange={handlePatientAttachmentFileChange}
                 onStartSendAttachment={handleStartSendAttachment}
@@ -2749,6 +2925,7 @@ export function PatientDetailsDrawer({
           </div>
         ) : null}
       </div>
+      <PhotoPreviewModal preview={photoPreview} onClose={closePhotoPreview} />
       {hasMyopiaManagement ? (
         <HistoricalMyopiaModal
           open={isHistoricalMyopiaOpen}

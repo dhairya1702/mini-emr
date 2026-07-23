@@ -173,3 +173,42 @@ def test_build_note_pdf_does_not_template_merge_combined_assets_bundle(monkeypat
     assert result == b"combined"
     assert apply_calls == [b"canvas-pdf"]
     assert append_calls == [(b"templated-base", b"assets-pdf")]
+
+
+def test_build_note_pdf_skips_missing_optional_patient_details(monkeypatch) -> None:
+    monkeypatch.setattr(pdf_service.canvas, "Canvas", _RecordingCanvas)
+    monkeypatch.setattr(pdf_service, "_resolve_template", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_wrap_text", lambda text, *_args, **_kwargs: [text])
+    monkeypatch.setattr(pdf_service, "_draw_label_value_line", lambda *_args, **_kwargs: 620.0)
+    monkeypatch.setattr(pdf_service, "_draw_doctor_signature", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_build_note_assets_pdf", lambda *_args, **_kwargs: None)
+
+    detail_rows: list[tuple[tuple[str, str], tuple[str, str] | None]] = []
+
+    def fake_draw_detail_pair_row(_pdf, _x, y, left, right, _max_width):
+        detail_rows.append((left, right))
+        return y - 18
+
+    monkeypatch.setattr(pdf_service, "_draw_detail_pair_row", fake_draw_detail_pair_row)
+
+    build_note_pdf(
+        patient={
+            "name": "L Venkatesh",
+            "phone": "9840221676",
+            "age": None,
+            "height": None,
+            "weight": None,
+            "temperature": None,
+            "reason": "Routine ocular examination",
+        },
+        note_content="Presenting Complaint:\nRoutine ocular examination.",
+        generated_on="Jul 23, 2026 2:30 PM",
+    )
+
+    flattened = [item for row in detail_rows for item in row if item is not None]
+
+    assert ("Name", "L Venkatesh") in flattened
+    assert ("Phone", "9840221676") in flattened
+    assert ("Reason for Visit", "Routine ocular examination") in flattened
+    assert all(label not in {"Age", "Height", "Weight", "Temperature"} for label, _value in flattened)
+    assert all(value != "Not recorded" for _label, value in flattened)

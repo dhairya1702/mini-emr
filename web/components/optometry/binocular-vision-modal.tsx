@@ -388,21 +388,21 @@ export function BinocularVisionModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-2 py-4">
-      <div className="flex max-h-[95vh] w-full max-w-7xl flex-col overflow-hidden rounded-[18px] border border-slate-300 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
-        <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Optometry Module</p>
-            <h3 className="text-xl font-semibold text-slate-900">Binocular Vision Assessment</h3>
-            {patient ? <p className="text-sm text-slate-500">{patient.name} · {patient.phone}</p> : null}
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-950/50 p-0 sm:items-center sm:px-2 sm:py-4">
+      <div className="flex h-[100dvh] w-full max-w-7xl flex-col overflow-hidden border-0 border-slate-300 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.35)] sm:max-h-[95vh] sm:rounded-[18px] sm:border">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-3 py-2.5 sm:gap-4 sm:px-5 sm:py-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 sm:text-xs sm:tracking-[0.18em]">Optometry Module</p>
+            <h3 className="truncate text-lg font-semibold text-slate-900 sm:text-xl">Binocular Vision Assessment</h3>
+            {patient ? <p className="truncate text-xs text-slate-500 sm:text-sm">{patient.name} · {patient.phone}</p> : null}
           </div>
-          <button type="button" onClick={onClose} className="rounded-xl border border-slate-300 p-2 text-slate-600">
+          <button type="button" onClick={onClose} className="shrink-0 rounded-xl border border-slate-300 p-2 text-slate-600">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="overflow-y-auto border-b border-slate-200 bg-slate-50 p-4 lg:border-b-0 lg:border-r">
+          <aside className="max-h-[142px] overflow-y-auto border-b border-slate-200 bg-slate-50 p-3 sm:max-h-[180px] sm:p-4 lg:max-h-none lg:border-b-0 lg:border-r">
             <div className="flex items-center justify-between gap-2">
               <h4 className="text-sm font-semibold text-slate-900">Previous Evaluations</h4>
               {isLoading ? <span className="text-xs text-slate-500">Loading...</span> : null}
@@ -424,8 +424,9 @@ export function BinocularVisionModal({
             </div>
           </aside>
 
-          <div className="min-h-0 overflow-y-auto bg-[#d9d9d9] p-4 sm:p-6">
-            <div className="mx-auto w-full max-w-[980px] bg-white px-8 py-8 font-[Arial] text-[15px] leading-normal text-black shadow-sm sm:px-14">
+          <div className="min-h-0 overflow-auto overscroll-contain bg-[#d9d9d9] p-0 [-webkit-overflow-scrolling:touch] sm:p-6">
+            <div className="min-h-full w-[412px] max-w-none p-2 sm:w-auto sm:p-0">
+              <div className="w-[980px] max-w-none origin-top-left scale-[0.39] bg-white px-10 py-8 font-[Arial] text-[15px] leading-normal text-black shadow-sm sm:mx-auto sm:scale-100 sm:px-14">
               <div className="mb-5 flex flex-wrap items-center justify-between gap-3 print:hidden">
                 <label className="text-sm font-semibold text-slate-700">
                   Evaluation date
@@ -557,6 +558,7 @@ export function BinocularVisionModal({
               <textarea value={getAtPath(formValue, ["advice"])} onChange={(event) => handleChange(["advice"], event.target.value)} rows={4} className="w-full resize-y border-b border-black bg-transparent px-1 py-1 outline-none" />
               <SectionHeading>8. Follow up</SectionHeading>
               <textarea value={getAtPath(formValue, ["follow_up"])} onChange={(event) => handleChange(["follow_up"], event.target.value)} rows={3} className="w-full resize-y border-b border-black bg-transparent px-1 py-1 outline-none" />
+              </div>
             </div>
           </div>
         </div>

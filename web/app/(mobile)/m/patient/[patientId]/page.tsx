@@ -46,6 +46,13 @@ import { formatModuleSummary, moduleEntriesFor, moduleLabel } from "@/lib/struct
 
 type MobileTab = "visits" | "tests" | "attachments" | "timeline";
 type VisitSectionKey = "note" | "attachments";
+type PhotoPreview = {
+  src: string;
+  alt: string;
+  title: string;
+  isLoading?: boolean;
+  revokeOnClose?: boolean;
+};
 
 function formatDate(value: string | null | undefined) {
   if (!value) {
@@ -75,6 +82,61 @@ function openNoteAttachmentViewer(asset: NoteAsset) {
 
 function openPatientAttachmentViewer(attachmentId: string) {
   window.open(`/attachment-view/${attachmentId}`, "_blank");
+}
+
+function isImageContentType(contentType: string) {
+  return contentType.startsWith("image/");
+}
+
+function noteAssetImageSrc(asset: NoteAsset) {
+  return asset.data_base64 ? `data:${asset.content_type || "image/jpeg"};base64,${asset.data_base64}` : "";
+}
+
+function PhotoPreviewModal({
+  preview,
+  onClose,
+}: {
+  preview: PhotoPreview | null;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!preview) {
+      return;
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, preview]);
+
+  if (!preview) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/90 p-3" role="dialog" aria-modal="true" aria-label={preview.title}>
+      <button type="button" className="absolute inset-0 cursor-zoom-out" onClick={onClose} aria-label="Close photo preview" />
+      <div className="relative z-10 flex h-full w-full flex-col gap-3">
+        <div className="flex items-center justify-between gap-3 text-white">
+          <p className="min-w-0 flex-1 truncate text-sm font-bold">{preview.title}</p>
+          <button type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/20 bg-white/10 text-white" aria-label="Close photo preview">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[16px] bg-slate-950/50">
+          {preview.isLoading ? (
+            <p className="px-6 py-16 text-sm text-slate-200">Opening photo...</p>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={preview.src} alt={preview.alt} className="max-h-full max-w-full object-contain" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function shortDate(value: string | null | undefined) {
@@ -483,6 +545,7 @@ export default function MobilePatientPage() {
   const [isUploadingProfilePhoto, setIsUploadingProfilePhoto] = useState(false);
   const [profilePhotoVersion, setProfilePhotoVersion] = useState(0);
   const [profilePhotoObjectUrl, setProfilePhotoObjectUrl] = useState("");
+  const [photoPreview, setPhotoPreview] = useState<PhotoPreview | null>(null);
   const [aiSummary, setAiSummary] = useState<PatientSummary | null>(null);
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
@@ -813,7 +876,7 @@ export default function MobilePatientPage() {
       : sexShort || "—"
     : "—";
 
-  const patientWideAttachments = useMemo(() => {
+  const patientWideAttachments = (() => {
     const seen = new Set<string>();
     const noteRows = notes.flatMap((note) => {
       const assets = note.snapshot_asset_payload?.length ? note.snapshot_asset_payload : note.asset_payload || [];
@@ -830,7 +893,18 @@ export default function MobilePatientPage() {
             label: asset.name,
             timestamp: note.finalized_at || note.created_at,
             attachmentId: asset.attachment_id,
-            open: () => asset.attachment_id ? openPatientAttachmentViewer(asset.attachment_id) : openNoteAttachmentViewer(asset),
+            contentType: asset.content_type,
+            open: () => {
+              if (asset.attachment_id) {
+                void openLinkedAttachment(asset.attachment_id, asset.name, asset.content_type, note.finalized_at || note.created_at);
+                return;
+              }
+              if (isImageContentType(asset.content_type) && asset.data_base64) {
+                openNoteImage(asset);
+                return;
+              }
+              openNoteAttachmentViewer(asset);
+            },
           }];
         });
     });
@@ -842,10 +916,11 @@ export default function MobilePatientPage() {
         label: attachment.file_name,
         timestamp: attachment.created_at,
         attachmentId: attachment.id,
-        open: async () => openPatientAttachmentViewer(attachment.id),
+        contentType: attachment.content_type,
+        open: async () => openPatientAttachment(attachment),
       }));
     return [...noteRows, ...patientRows].sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
-  }, [attachments, notes]);
+  })();
 
   function toggleSection(section: VisitSectionKey) {
     setOpenSections((current) => ({ ...current, [section]: !current[section] }));
@@ -854,10 +929,20 @@ export default function MobilePatientPage() {
   async function openVisitAttachment(attachment: PatientVisitAttachmentRow) {
     try {
       if (attachment.attachment_id) {
-        openPatientAttachmentViewer(attachment.attachment_id!);
+        await openLinkedAttachment(attachment.attachment_id, attachment.label, attachment.content_type, attachment.timestamp);
         return;
       }
       if (attachment.source_type === "note_attachment" && attachment.data_base64) {
+        if (isImageContentType(attachment.content_type)) {
+          openNoteImage({
+            id: attachment.id,
+            kind: "attachment",
+            name: attachment.label,
+            content_type: attachment.content_type,
+            data_base64: attachment.data_base64,
+          });
+          return;
+        }
         openNoteAttachmentViewer({
           id: attachment.id,
           kind: "attachment",
@@ -870,6 +955,91 @@ export default function MobilePatientPage() {
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : "Failed to open attachment.");
     }
+  }
+
+  async function openLinkedAttachment(attachmentId: string, label: string, contentType: string, timestamp: string) {
+    if (!patient) {
+      return;
+    }
+    await openPatientAttachment({
+      id: attachmentId,
+      org_id: "",
+      patient_id: patient.id,
+      uploaded_by: null,
+      file_name: label,
+      content_type: contentType,
+      file_size: 0,
+      storage_path: "",
+      created_at: timestamp,
+    });
+  }
+
+  async function openPatientAttachment(attachment: PatientAttachment) {
+    if (!isImageContentType(attachment.content_type)) {
+      openPatientAttachmentViewer(attachment.id);
+      return;
+    }
+    setPhotoPreview({
+      src: "",
+      alt: attachment.file_name || "Patient attachment",
+      title: attachment.file_name || "Patient attachment",
+      isLoading: true,
+    });
+    try {
+      const blob = await api.downloadPatientAttachment(attachment.id);
+      const objectUrl = URL.createObjectURL(blob);
+      setPhotoPreview((current) => {
+        if (!current?.isLoading) {
+          URL.revokeObjectURL(objectUrl);
+          return current;
+        }
+        if (current.revokeOnClose && current.src.startsWith("blob:")) {
+          URL.revokeObjectURL(current.src);
+        }
+        return {
+          src: objectUrl,
+          alt: attachment.file_name || "Patient attachment",
+          title: attachment.file_name || "Patient attachment",
+          revokeOnClose: true,
+        };
+      });
+    } catch (downloadError) {
+      setPhotoPreview(null);
+      setError(downloadError instanceof Error ? downloadError.message : "Failed to open attachment.");
+    }
+  }
+
+  function openNoteImage(asset: NoteAsset) {
+    const src = noteAssetImageSrc(asset);
+    if (!src) {
+      openNoteAttachmentViewer(asset);
+      return;
+    }
+    setPhotoPreview({
+      src,
+      alt: asset.name || "Patient attachment",
+      title: asset.name || "Patient attachment",
+    });
+  }
+
+  function openProfilePhotoPreview() {
+    if (!patient || !profilePhotoObjectUrl) {
+      return;
+    }
+    setPhotoPreview({
+      src: profilePhotoObjectUrl,
+      alt: `${patient.name} profile photo`,
+      title: `${patient.name} profile photo`,
+    });
+  }
+
+  function closePhotoPreview() {
+    setPhotoPreview((current) => {
+      if (current?.revokeOnClose && current.src.startsWith("blob:")) {
+        URL.revokeObjectURL(current.src);
+      }
+      return null;
+    });
   }
 
   async function uploadProfilePhoto(file: File | null | undefined) {
@@ -1004,16 +1174,26 @@ export default function MobilePatientPage() {
             {patient ? (
               <>
                 <div className="mt-3.5 flex items-center gap-3">
-                  <div className="relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-[14px] border border-white/35 bg-white/20 text-[15px] font-bold">
-                    {profilePhotoObjectUrl ? (
+                  {profilePhotoObjectUrl ? (
+                    <button
+                      type="button"
+                      onClick={openProfilePhotoPreview}
+                      className="relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-[14px] border border-white/35 bg-white/20 text-[15px] font-bold focus:outline-none focus:ring-2 focus:ring-white/70"
+                      aria-label="Open patient photo"
+                    >
                       <NextImage unoptimized src={profilePhotoObjectUrl} alt={`${patient.name} profile photo`} width={48} height={48} className="h-full w-full object-cover" />
-                    ) : (
-                      initials
-                    )}
-                    <span className="absolute inset-x-0 bottom-0 bg-slate-950/35 py-0.5 text-center text-[8.5px] font-bold uppercase tracking-[0.08em] text-white">
-                      {isUploadingProfilePhoto ? "..." : "Photo"}
-                    </span>
-                  </div>
+                      <span className="absolute inset-x-0 bottom-0 bg-slate-950/35 py-0.5 text-center text-[8.5px] font-bold uppercase tracking-[0.08em] text-white">
+                        {isUploadingProfilePhoto ? "..." : "Photo"}
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-[14px] border border-white/35 bg-white/20 text-[15px] font-bold">
+                      {initials}
+                      <span className="absolute inset-x-0 bottom-0 bg-slate-950/35 py-0.5 text-center text-[8.5px] font-bold uppercase tracking-[0.08em] text-white">
+                        {isUploadingProfilePhoto ? "..." : "Photo"}
+                      </span>
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <h1 className="truncate text-lg font-bold leading-tight">{patient.name}</h1>
                     <p className="mt-0.5 truncate text-xs text-white/80">
@@ -1342,6 +1522,7 @@ export default function MobilePatientPage() {
             onValueChange={setModuleEntryNotes}
             isSaving={isSavingModuleEntry}
           />
+          <PhotoPreviewModal preview={photoPreview} onClose={closePhotoPreview} />
         </>
       )}
     </MobileShell>

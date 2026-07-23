@@ -121,26 +121,26 @@ export default function MobileQueuePage() {
         <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{shellError || error}</p>
       ) : null}
 
-      <section className="flex min-h-[calc(100vh-150px)] flex-col rounded-[18px] border border-[#bfd7e8] bg-white/95 px-5 py-4 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
-        <div className="mb-4 flex shrink-0 items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-800">Waiting</h2>
-            <p className="text-sm text-slate-500">{queuePatients.length} patients</p>
+      <section className="-mx-1 flex min-h-[calc(100vh-132px)] flex-col">
+        <div className="mb-3 flex shrink-0 items-center justify-between gap-3 px-1">
+          <div className="flex items-baseline gap-2">
+            <h2 className="text-xl font-semibold text-slate-800">Waiting</h2>
+            <span className="text-sm text-slate-500">{queuePatients.length} patient{queuePatients.length === 1 ? "" : "s"}</span>
           </div>
           <button
             type="button"
             onClick={() => setIsAddOpen(true)}
             aria-label="Add patient"
             title="Add patient"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#edf5fa] text-[#2a6fa8] transition hover:bg-[#dbeaf4]"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#edf5fa] text-[#2a6fa8] transition hover:bg-[#dbeaf4]"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {isLoading ? (
-            <p className="rounded-[14px] border border-dashed border-[#bfd7e8] bg-[#f5f9fc] px-4 py-8 text-center text-sm text-slate-500">
+            <p className="border-y border-dashed border-[#bfd7e8] bg-white/60 px-4 py-8 text-center text-sm text-slate-500">
               Loading queue...
             </p>
           ) : queuePatients.length ? (
@@ -160,7 +160,7 @@ export default function MobileQueuePage() {
               })}
             </div>
           ) : (
-            <div className="rounded-[14px] border border-dashed border-[#bfd7e8] bg-[#f5f9fc] px-4 py-8 text-center">
+            <div className="border-y border-dashed border-[#bfd7e8] bg-white/60 px-4 py-7 text-center">
               <p className="text-sm font-medium text-slate-600">No patients in this stage.</p>
               <p className="mt-1 text-xs text-slate-500">New arrivals and transitions will appear here.</p>
             </div>

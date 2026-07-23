@@ -987,18 +987,17 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
     detail_lines = [
         ("Name", patient.get("name", "Not recorded")),
         ("Phone", patient.get("phone", "Not recorded")),
-        ("Age", str(patient.get("age")) if patient.get("age") is not None else "Not recorded"),
-        ("Height", f"{patient['height']} cm" if patient.get("height") is not None else "Not recorded"),
-        ("Weight", f"{patient['weight']} kg" if patient.get("weight") is not None else "Not recorded"),
-        (
-            "Temperature",
-            f"{patient['temperature']} F" if patient.get("temperature") is not None else "Not recorded",
-        ),
-        (
-            "Reason for Visit",
-            patient.get("reason", "Not recorded"),
-        ),
     ]
+    if patient.get("age") is not None:
+        detail_lines.append(("Age", str(patient["age"])))
+    if patient.get("height") is not None:
+        detail_lines.append(("Height", f"{patient['height']} cm"))
+    if patient.get("weight") is not None:
+        detail_lines.append(("Weight", f"{patient['weight']} kg"))
+    if patient.get("temperature") is not None:
+        detail_lines.append(("Temperature", f"{patient['temperature']} F"))
+    if patient.get("reason"):
+        detail_lines.append(("Reason for Visit", patient["reason"]))
 
     for index in range(0, len(detail_lines), 2):
         left = detail_lines[index]
