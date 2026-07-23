@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import re
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -33,7 +34,7 @@ class WhatsAppInboundMessage:
 
 def verify_whatsapp_signature(*, app_secret: str, signature_header: str | None, body: bytes) -> bool:
     if not app_secret:
-        return True
+        return False
     if not signature_header or not signature_header.startswith("sha256="):
         return False
     expected = "sha256=" + hmac.new(app_secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
@@ -341,7 +342,12 @@ async def handle_inbound_message(
     )
     reply = await build_assistant_reply(repo, org_id, intent)
     try:
-        result = client.send_text(to=message.from_wa_id, body=reply, reply_to_message_id=message.message_id)
+        result = await asyncio.to_thread(
+            client.send_text,
+            to=message.from_wa_id,
+            body=reply,
+            reply_to_message_id=message.message_id,
+        )
     except WhatsAppClientError as exc:
         await repo.record_whatsapp_message_event(
             org_id=org_id,

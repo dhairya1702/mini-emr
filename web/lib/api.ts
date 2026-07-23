@@ -21,6 +21,10 @@ import {
   ClinicalAnalysisResponse,
   ClinicalQuestionsPayload,
   ClinicalQuestionsResponse,
+  ControlRoomDatabase,
+  ControlRoomIncidents,
+  ControlRoomRunbooks,
+  ControlRoomStatus,
   CustomerOnboarding,
   CustomerOnboardingCreatePayload,
   CustomerOnboardingUpdatePayload,
@@ -519,6 +523,11 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   listPlatformErrors: (limit = 100) => request<PlatformError[]>(withQuery("/superdashboard/errors", { limit })),
+  getControlRoomStatus: () => request<ControlRoomStatus>("/controlroom/status"),
+  getControlRoomDatabase: () => request<ControlRoomDatabase>("/controlroom/database"),
+  getControlRoomIncidents: (windowHours = 24) =>
+    request<ControlRoomIncidents>(withQuery("/controlroom/incidents", { window_hours: windowHours })),
+  getControlRoomRunbooks: () => request<ControlRoomRunbooks>("/controlroom/runbooks"),
   listSuperuserOrgs: () => request<SuperuserOrgSummary[]>("/superdashboard/orgs"),
   getSuperuserOrgDetail: (orgId: string) => request<SuperuserOrgDetail>(`/superdashboard/orgs/${orgId}`),
   deleteSuperuserUser: (userId: string) =>
@@ -599,9 +608,10 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  listPatients: (options?: { activeOnly?: boolean; limit?: number; offset?: number }) =>
+  listPatients: (options?: { activeOnly?: boolean; q?: string; limit?: number; offset?: number }) =>
     request<Patient[]>(withQuery("/patients", {
       active_only: options?.activeOnly ? "true" : undefined,
+      q: options?.q,
       limit: options?.limit,
       offset: options?.offset,
     })),

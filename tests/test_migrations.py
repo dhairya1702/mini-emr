@@ -57,3 +57,23 @@ def test_migration_status_rejects_changed_applied_file(tmp_path: Path):
 
     with pytest.raises(MigrationError, match="checksum mismatch"):
         migration_status(connection, [migration])
+
+
+def test_tenant_integrity_schema_drift_migration_covers_invoice_items_and_indexes():
+    root = Path(__file__).resolve().parents[1]
+    migration_sql = (
+        root / "db" / "migrations" / "2026-07-23_tenant_integrity_schema_drift.sql"
+    ).read_text(encoding="utf-8")
+    schema_sql = (root / "db" / "schema.sql").read_text(encoding="utf-8")
+
+    assert "add column if not exists org_id uuid" in migration_sql
+    assert "set org_id = invoice.org_id" in migration_sql
+    assert "invoice_items_org_invoice_fk" in migration_sql
+    assert "invoice_items_org_catalog_item_fk" in migration_sql
+    assert "foreign key (org_id, invoice_id) references public.invoices(org_id, id)" in schema_sql
+    assert (
+        "foreign key (org_id, catalog_item_id) references public.catalog_items(org_id, id)"
+        in schema_sql
+    )
+    assert "notes_org_visit_created_idx" in schema_sql
+    assert "follow_ups_due_reminder_claim_idx" in schema_sql

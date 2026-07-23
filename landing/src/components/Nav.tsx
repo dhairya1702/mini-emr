@@ -1,5 +1,5 @@
 import { useTransition } from "../transition-context";
-import { trackAnalyticsEvent } from "../analytics";
+import { trackAnalyticsEvent } from "../track";
 
 export default function Nav() {
   const { go } = useTransition();

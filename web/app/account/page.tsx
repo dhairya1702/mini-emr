@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { PasswordInput } from "@/components/password-input";
-import { api } from "@/lib/api";
+import { api, resolveApiAssetUrl } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { AuthUser } from "@/lib/types";
 
@@ -308,7 +308,7 @@ export default function AccountPage() {
                       <div className="flex items-center gap-3">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001"}${resolvedUser.doctor_signature_url}`}
+                          src={resolveApiAssetUrl(resolvedUser.doctor_signature_url)}
                           alt="User signature"
                           className="max-h-8 w-auto max-w-[160px] object-contain"
                         />

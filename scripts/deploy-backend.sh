@@ -8,6 +8,7 @@ deploy_root_dir
 ensure_expected_gcloud_target
 ensure_clean_release_tree
 require_env_vars DATABASE_URL_SECRET_NAME AUTH_SECRET_NAME SUPER_ADMIN_IDENTIFIERS
+require_scheduler_secret_for_reminders
 
 IMAGE_TAG="$(resolve_image_tag)"
 WEB_ORIGINS="$(resolve_web_origin_list)"
@@ -21,7 +22,7 @@ gcloud builds submit \
   --project="$PROJECT_ID" \
   --region="$REGION" \
   --config=cloudbuild.backend.yaml \
-  --substitutions=SHORT_SHA="$IMAGE_TAG"
+  --substitutions="_AR_REPO=${AR_REPO},SHORT_SHA=${IMAGE_TAG}"
 
 MIGRATION_JOB="${BACKEND_SERVICE}-migrate"
 echo "Preparing database migration job: $MIGRATION_JOB"
@@ -60,8 +61,8 @@ gcloud run deploy "$BACKEND_SERVICE" \
   --set-env-vars="^@^APP_ORIGINS=${WEB_ORIGINS}" \
   --set-env-vars="^|^SUPER_ADMIN_IDENTIFIERS=${SUPER_ADMIN_IDENTIFIERS}" \
   --set-env-vars="OPEN_CLINIC_REGISTRATION=true" \
-  --set-env-vars="FOLLOW_UP_REMINDER_RUNNER_ENABLED=false" \
-  --set-env-vars="FOLLOW_UP_REMINDER_INTERVAL_SECONDS=300" \
+  --set-env-vars="FOLLOW_UP_REMINDER_RUNNER_ENABLED=${FOLLOW_UP_REMINDER_RUNNER_ENABLED}" \
+  --set-env-vars="FOLLOW_UP_REMINDER_INTERVAL_SECONDS=${FOLLOW_UP_REMINDER_INTERVAL_SECONDS}" \
   --set-env-vars="DB_POOL_MIN_SIZE=1" \
   --set-env-vars="DB_POOL_MAX_SIZE=10" \
   --set-env-vars="DB_POOL_TIMEOUT_SECONDS=10" \
@@ -70,12 +71,4 @@ gcloud run deploy "$BACKEND_SERVICE" \
   --no-traffic
 
 LATEST_REVISION="$(gcloud run services describe "$BACKEND_SERVICE" --project="$PROJECT_ID" --region="$REGION" --format='value(status.latestCreatedRevisionName)')"
-echo "Prepared backend revision: $LATEST_REVISION"
-
-echo "Promoting backend revision to 100% production traffic"
-gcloud run services update-traffic "$BACKEND_SERVICE" \
-  --project="$PROJECT_ID" \
-  --region="$REGION" \
-  --to-revisions="${LATEST_REVISION}=100"
-
-echo "Backend production traffic now points to: $LATEST_REVISION"
+promote_revision_if_requested "$BACKEND_SERVICE" "$LATEST_REVISION" "backend"

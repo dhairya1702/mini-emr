@@ -1021,6 +1021,108 @@ export interface SuperdashboardOnboarding {
   customers: CustomerOnboarding[];
 }
 
+export type ControlRoomStatusValue = "healthy" | "warning" | "failing" | "unknown";
+
+export interface ControlRoomCheck {
+  key: string;
+  label: string;
+  status: ControlRoomStatusValue;
+  evidence: string;
+  next_action: string;
+  checked_at: string;
+}
+
+export interface ControlRoomStatus {
+  checked_at: string;
+  overall_status: ControlRoomStatusValue;
+  checks: ControlRoomCheck[];
+}
+
+export interface ControlRoomMigration {
+  name: string;
+  checksum_sha256: string;
+  applied_at: string | null;
+}
+
+export interface ControlRoomTableStat {
+  table_name: string;
+  estimated_rows: number;
+}
+
+export interface ControlRoomIntegrityCheck {
+  key: string;
+  label: string;
+  status: ControlRoomStatusValue;
+  invalid_count: number;
+  evidence: string;
+}
+
+export interface ControlRoomDatabase {
+  checked_at: string;
+  reachable: boolean;
+  migration_status: ControlRoomStatusValue;
+  pending_migrations: string[];
+  database_only_migrations: string[];
+  applied_migrations: ControlRoomMigration[];
+  table_stats: ControlRoomTableStat[];
+  integrity_checks: ControlRoomIntegrityCheck[];
+}
+
+export interface ControlRoomIncidentSample {
+  id: string;
+  org_id: string | null;
+  user_id: string | null;
+  identifier: string;
+  path: string;
+  method: string;
+  status_code: number | null;
+  error_type: string;
+  message: string;
+  details: string;
+  context: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ControlRoomIncident {
+  fingerprint: string;
+  severity: "critical" | "high" | "medium" | "low";
+  method: string;
+  path: string;
+  status_code: number | null;
+  error_type: string;
+  message: string;
+  count: number;
+  affected_org_count: number;
+  affected_user_count: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  latest_sample: ControlRoomIncidentSample;
+}
+
+export interface ControlRoomIncidents {
+  checked_at: string;
+  window_hours: number;
+  incidents: ControlRoomIncident[];
+}
+
+export interface ControlRoomRunbookStep {
+  label: string;
+  command: string;
+  note: string;
+  dangerous: boolean;
+}
+
+export interface ControlRoomRunbook {
+  key: string;
+  title: string;
+  summary: string;
+  steps: ControlRoomRunbookStep[];
+}
+
+export interface ControlRoomRunbooks {
+  runbooks: ControlRoomRunbook[];
+}
+
 export interface AccountUpdatePayload {
   name: string;
   doctor_dob?: string | null;

@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from psycopg import Error as PsycopgError
 
@@ -285,6 +286,26 @@ def _patient_with_profile_photo_url(patient: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _appointment_capacity_window(scheduled_for: object, timezone: str) -> tuple[str, str, str]:
+    if isinstance(scheduled_for, datetime):
+        parsed = scheduled_for
+    else:
+        parsed = datetime.fromisoformat(str(scheduled_for).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    try:
+        clinic_tz = ZoneInfo(str(timezone or "UTC"))
+    except ZoneInfoNotFoundError:
+        clinic_tz = ZoneInfo("UTC")
+    local_hour_start = parsed.astimezone(clinic_tz).replace(minute=0, second=0, microsecond=0)
+    local_hour_end = local_hour_start.replace(hour=local_hour_start.hour + 1) if local_hour_start.hour < 23 else (
+        local_hour_start.replace(hour=0) + timedelta(days=1)
+    )
+    hour_start = local_hour_start.astimezone(UTC).isoformat()
+    hour_end = local_hour_end.astimezone(UTC).isoformat()
+    return hour_start, hour_end, local_hour_start.isoformat()
+
+
 class PostgresPatientFlowRepository:
     def __init__(self, connection_manager: PostgresConnectionManager) -> None:
         self.connection_manager = connection_manager
@@ -407,6 +428,7 @@ class PostgresPatientFlowRepository:
         org_id: str,
         *,
         active_only: bool = False,
+        query: str | None = None,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -418,18 +440,27 @@ class PostgresPatientFlowRepository:
                         if active_only
                         else ""
                     )
+                    query_clause = ""
+                    query_params: list[Any] = []
+                    normalized_query = str(query or "").strip()
+                    if normalized_query:
+                        pattern = f"%{escape_ilike(normalized_query)}%"
+                        query_clause = (
+                            "and (name ilike %s escape '\\' or phone ilike %s escape '\\' "
+                            "or reason ilike %s escape '\\')"
+                        )
+                        query_params.extend([pattern, pattern, pattern])
                     paging_clause = "limit %s offset %s" if limit is not None else ""
-                    params: tuple[Any, ...] = (
-                        (org_id, limit, offset)
-                        if limit is not None
-                        else (org_id,)
-                    )
+                    params_list: list[Any] = [org_id, *query_params]
+                    if limit is not None:
+                        params_list.extend([limit, offset])
                     cursor.execute(
                         f"""
                         select {_columns_sql(PATIENT_COLUMNS)}
                         from public.patients
                         where org_id = %s
                         {active_clause}
+                        {query_clause}
                         order by
                           case status when 'waiting' then 0 when 'consultation' then 1 else 2 end,
                           case when queue_priority = 'urgent' then 0 else 1 end,
@@ -437,7 +468,7 @@ class PostgresPatientFlowRepository:
                           last_visit_at desc
                         {paging_clause}
                         """,
-                        params,
+                        tuple(params_list),
                     )
                     patients = [_patient_with_profile_photo_url(_row_to_dict(row, cursor)) for row in cursor.fetchall()]
                     return self._attach_queue_context(cursor, patients)
@@ -627,14 +658,18 @@ class PostgresPatientFlowRepository:
         def _create() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
+                    hour_start, hour_end, lock_bucket = _appointment_capacity_window(
+                        values["scheduled_for"],
+                        timezone,
+                    )
                     cursor.execute(
                         """
                         select pg_advisory_xact_lock(
                           hashtext(%s),
-                          hashtext(date_trunc('hour', %s::timestamptz at time zone %s)::text)
+                          hashtext(%s)
                         )
                         """,
-                        (org_id, values["scheduled_for"], timezone),
+                        (org_id, lock_bucket),
                     )
                     cursor.execute(
                         """
@@ -644,15 +679,14 @@ class PostgresPatientFlowRepository:
                         from public.appointments
                         where org_id = %s
                           and status = 'scheduled'
-                          and date_trunc('hour', scheduled_for at time zone %s)
-                            = date_trunc('hour', %s::timestamptz at time zone %s)
+                          and scheduled_for >= %s::timestamptz
+                          and scheduled_for < %s::timestamptz
                         """,
                         (
                             values["scheduled_for"],
                             org_id,
-                            timezone,
-                            values["scheduled_for"],
-                            timezone,
+                            hour_start,
+                            hour_end,
                         ),
                     )
                     capacity_row = cursor.fetchone() or (0, 0)
@@ -1035,14 +1069,18 @@ class PostgresPatientFlowRepository:
                         if current_status != "scheduled":
                             raise ValueError("Only scheduled appointments can be rescheduled.")
                         update_payload["scheduled_for"] = payload.scheduled_for.isoformat()
+                        hour_start, hour_end, lock_bucket = _appointment_capacity_window(
+                            update_payload["scheduled_for"],
+                            timezone,
+                        )
                         cursor.execute(
                             """
                             select pg_advisory_xact_lock(
                               hashtext(%s),
-                              hashtext(date_trunc('hour', %s::timestamptz at time zone %s)::text)
+                              hashtext(%s)
                             )
                             """,
-                            (org_id, update_payload["scheduled_for"], timezone),
+                            (org_id, lock_bucket),
                         )
                         cursor.execute(
                             """
@@ -1053,16 +1091,15 @@ class PostgresPatientFlowRepository:
                             where org_id = %s
                               and id <> %s
                               and status = 'scheduled'
-                              and date_trunc('hour', scheduled_for at time zone %s)
-                                = date_trunc('hour', %s::timestamptz at time zone %s)
+                              and scheduled_for >= %s::timestamptz
+                              and scheduled_for < %s::timestamptz
                             """,
                             (
                                 update_payload["scheduled_for"],
                                 org_id,
                                 appointment_id,
-                                timezone,
-                                update_payload["scheduled_for"],
-                                timezone,
+                                hour_start,
+                                hour_end,
                             ),
                         )
                         capacity_row = cursor.fetchone() or (0, 0)

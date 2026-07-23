@@ -1,4 +1,5 @@
 import hmac
+import logging
 from datetime import UTC, date, datetime
 from uuid import UUID
 
@@ -15,6 +16,7 @@ from app.schema_domains.patients import FollowUpCreate, FollowUpOut, FollowUpUpd
 from app.services.followup_workflow import create_follow_up_workflow, send_due_follow_up_emails_workflow, update_follow_up_workflow
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 def _system_user_for_org(org_id: str) -> UserOut:
     return UserOut.model_construct(
@@ -84,7 +86,7 @@ async def update_follow_up(
 async def run_follow_up_reminders(
     x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
     repo: AppRepository = Depends(get_repository),
-) -> dict[str, int | bool]:
+) -> dict[str, int | bool | list[str]]:
     expected_token = str(get_settings().internal_scheduler_token or "").strip()
     provided_token = str(x_internal_token or "").strip()
 
@@ -100,8 +102,13 @@ async def run_follow_up_reminders(
         )
 
     processed = 0
+    failed_orgs: list[str] = []
     for org_id in await repo.list_organization_ids():
-        await send_due_follow_up_emails_workflow(repo, _system_user_for_org(str(org_id)))
-        processed += 1
+        try:
+            await send_due_follow_up_emails_workflow(repo, _system_user_for_org(str(org_id)))
+            processed += 1
+        except Exception:
+            logger.exception("Failed to run follow-up reminders for org %s", org_id)
+            failed_orgs.append(str(org_id))
 
-    return {"success": True, "processed_orgs": processed}
+    return {"success": not failed_orgs, "processed_orgs": processed, "failed_orgs": failed_orgs}

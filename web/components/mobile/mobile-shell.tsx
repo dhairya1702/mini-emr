@@ -46,6 +46,8 @@ const iconByNavKey: Record<MobileNavItemKey, typeof LayoutDashboard> = {
 };
 
 export function MobileShell({
+  title,
+  subtitle,
   action,
   children,
   bleed = false,
@@ -73,7 +75,7 @@ export function MobileShell({
     <main className={bleed ? "min-h-screen text-slate-800" : "clinic-page text-slate-800"}>
       {bleed ? null : (
         <header className="sticky top-0 z-30 -mx-4 -mt-5 border-b border-[#dbe7ef] bg-white/90 px-4 py-3 backdrop-blur sm:-mx-6 lg:-mx-8">
-          <div className="relative mx-auto flex max-w-2xl items-center justify-between gap-3">
+          <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
             <button
               type="button"
               onClick={openMenu}
@@ -82,12 +84,16 @@ export function MobileShell({
             >
               <Menu className="h-5 w-5" />
             </button>
-            <Link
-              href="/m"
-              className="absolute left-1/2 max-w-[52%] -translate-x-1/2 truncate text-center text-base font-semibold uppercase tracking-[0.18em] text-slate-900"
-            >
-              {clinicSettings?.clinic_name || "Clinic EMR"}
-            </Link>
+            <div className="min-w-0 flex-1 text-center">
+              <Link
+                href="/m"
+                className="block truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+              >
+                {clinicSettings?.clinic_name || "Clinic EMR"}
+              </Link>
+              <div className="truncate text-base font-bold text-slate-900">{title}</div>
+              {subtitle ? <div className="truncate text-xs text-slate-500">{subtitle}</div> : null}
+            </div>
             {action ?? (
               <button
                 type="button"

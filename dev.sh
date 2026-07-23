@@ -159,6 +159,7 @@ fi
   cd "$BACKEND_DIR"
   source "$BACKEND_VENV/bin/activate"
   if [[ "$WHATSAPP_SKIP_SIGNATURE_CHECK" == "1" ]]; then
+    export WHATSAPP_SKIP_SIGNATURE_CHECK
     export WHATSAPP_APP_SECRET=""
   fi
   if [[ "$BACKEND_RELOAD" == "1" ]]; then

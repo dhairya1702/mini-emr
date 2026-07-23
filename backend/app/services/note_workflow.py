@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 from app.clinic_context import build_clinic_context, build_measurements_context, build_patient_context
 from app.db import AppRepository
+from app.email_validation import normalize_single_email
 from app.formatting import format_display_datetime
 from app.file_validation import validate_pdf_bytes
 from app.schema_domains.auth_settings import UserOut
@@ -463,8 +464,9 @@ async def send_letter_workflow(
     subject: str,
     content: str,
 ) -> SendNoteResponse:
-    normalized_email = recipient_email.strip()
-    if "@" not in normalized_email:
+    try:
+        normalized_email = normalize_single_email(recipient_email)
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail="Enter a valid recipient email.")
     clinic_settings = await build_document_context_for_user(repo, current_user)
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
@@ -576,8 +578,9 @@ async def send_note_workflow(
     current_user: UserOut,
     payload: SendNoteRequest,
 ) -> SendNoteResponse:
-    recipient_email = payload.recipient_email.strip()
-    if "@" not in recipient_email:
+    try:
+        recipient_email = normalize_single_email(payload.recipient_email)
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail="Enter a valid recipient email.")
     note = await repo.get_note(str(current_user.org_id), str(payload.note_id))
     if str(note["patient_id"]) != str(payload.patient_id):

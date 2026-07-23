@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -100,12 +101,14 @@ async def _send_pdf_document(
 ) -> str:
     client = build_whatsapp_client()
     try:
-        media_id = client.upload_media(
+        media_id = await asyncio.to_thread(
+            client.upload_media,
             content=pdf_bytes,
             filename=filename,
             content_type="application/pdf",
         )
-        result = client.send_document(
+        result = await asyncio.to_thread(
+            client.send_document,
             to=recipient_wa_id,
             media_id=media_id,
             filename=filename,

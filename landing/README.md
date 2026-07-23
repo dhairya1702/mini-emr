@@ -83,12 +83,13 @@ landing/
 
 ## Early-access form
 
-The form (`name`, `email`, `clinic`, `role`) is currently in **demo mode** —
-submissions are simulated locally with no network call.
+The form (`name`, `email`, `clinic`, `role`) uses Web3Forms when
+`WEB3FORMS_ACCESS_KEY` in `src/access.ts` contains a real key. With the
+placeholder value, submissions stay in demo mode and are simulated locally.
 
-To go live, set `ACCESS_ENDPOINT` in `src/access.ts` to your form endpoint
-(e.g. a Formspree URL or your own API). The form will then `POST` the fields as
-JSON. No other changes needed.
+The Firebase Hosting site id in `firebase.json` is separate from the Cloud Run
+web service, even though both currently use the `clinic-os-ai` name. Verify the
+target and custom domain before deploying this landing app.
 
 ## Deployment note
 

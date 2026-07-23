@@ -255,6 +255,20 @@ def is_super_admin_identifier(identifier: str) -> bool:
     return identifier.strip().lower() in _super_admin_identifiers()
 
 
+def _control_room_identifiers() -> set[str]:
+    settings = get_settings()
+    raw = str(getattr(settings, "control_room_identifiers", "") or "")
+    return {
+        identifier.strip().lower()
+        for identifier in raw.split(",")
+        if identifier.strip()
+    }
+
+
+def is_control_room_identifier(identifier: str) -> bool:
+    return identifier.strip().lower() in _control_room_identifiers()
+
+
 async def require_super_admin(
     current_user: UserOut = Depends(get_current_user),
 ) -> UserOut:
@@ -263,4 +277,15 @@ async def require_super_admin(
         or not is_super_admin_identifier(current_user.identifier)
     ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superdashboard access required.")
+    return current_user
+
+
+async def require_control_room_user(
+    current_user: UserOut = Depends(get_current_user),
+) -> UserOut:
+    if (
+        current_user.role != "admin"
+        or not is_control_room_identifier(current_user.identifier)
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Control room access required.")
     return current_user

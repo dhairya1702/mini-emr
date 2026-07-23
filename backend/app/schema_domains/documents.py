@@ -1,8 +1,9 @@
 from uuid import UUID
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from app.email_validation import normalize_single_email
 from app.schema_domains.common import NoteStatus
 from app.schema_domains.clinical_extractions import ClinicalExtractions, PrescriptionInput
 from app.schema_domains.optometry import (
@@ -95,6 +96,11 @@ class SendLetterRequest(BaseModel):
     subject: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1, max_length=50000)
 
+    @field_validator("recipient_email")
+    @classmethod
+    def validate_recipient_email(cls, value: str) -> str:
+        return normalize_single_email(value)
+
 
 class SendLetterWhatsAppRequest(BaseModel):
     recipient_phone: str = Field(min_length=5, max_length=40)
@@ -107,6 +113,11 @@ class SendNoteRequest(BaseModel):
     note_id: UUID
     patient_id: UUID
     recipient_email: str = Field(min_length=5, max_length=200)
+
+    @field_validator("recipient_email")
+    @classmethod
+    def validate_recipient_email(cls, value: str) -> str:
+        return normalize_single_email(value)
 
 
 class SendNoteWhatsAppRequest(BaseModel):

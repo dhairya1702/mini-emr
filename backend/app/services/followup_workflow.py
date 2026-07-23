@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime, timedelta
 from fastapi import HTTPException
 
@@ -12,6 +13,7 @@ from app.services.followup_booking_service import create_follow_up_booking_token
 from app.services.email_service import EmailDeliveryError, send_clinic_email_message
 
 FOLLOW_UP_SUGGESTION_DAYS = 7
+logger = logging.getLogger(__name__)
 
 
 def _as_utc_minute(value: object) -> datetime:
@@ -181,6 +183,41 @@ async def _send_follow_up_email_if_needed(repo: AppRepository, current_user: Use
     await repo.mark_follow_up_reminder_sent(str(current_user.org_id), str(follow_up["id"]))
 
 
+async def _record_immediate_reminder_failure(
+    repo: AppRepository,
+    current_user: UserOut,
+    follow_up: dict,
+    exc: Exception,
+) -> None:
+    logger.warning(
+        "Immediate follow-up reminder failed for org=%s follow_up=%s: %s",
+        current_user.org_id,
+        follow_up.get("id"),
+        exc,
+    )
+    create_platform_error = getattr(repo, "create_platform_error", None)
+    if not callable(create_platform_error):
+        return
+    try:
+        await create_platform_error(
+            org_id=str(current_user.org_id),
+            user_id=str(current_user.id),
+            identifier=current_user.identifier,
+            path="/follow-ups/immediate-reminder",
+            method="BACKGROUND",
+            status_code=None,
+            error_type=type(exc).__name__,
+            message=str(exc),
+            details="Immediate follow-up reminder email failed after create/update.",
+            context={
+                "follow_up_id": str(follow_up.get("id") or ""),
+                "patient_id": str(follow_up.get("patient_id") or ""),
+            },
+        )
+    except Exception:
+        logger.exception("Failed to record immediate follow-up reminder delivery failure.")
+
+
 async def send_due_follow_up_emails_workflow(
     repo: AppRepository,
     current_user: UserOut,
@@ -300,8 +337,8 @@ async def create_follow_up_workflow(
     if scheduled_for <= datetime.now(UTC) + timedelta(hours=lead_hours):
         try:
             await _send_follow_up_email_if_needed(repo, current_user, created)
-        except (RuntimeError, EmailDeliveryError):
-            pass
+        except (RuntimeError, EmailDeliveryError) as exc:
+            await _record_immediate_reminder_failure(repo, current_user, created, exc)
     return FollowUpOut(**created)
 
 
@@ -327,6 +364,6 @@ async def update_follow_up_workflow(
         if _as_utc_minute(scheduled_at) <= datetime.now(UTC) + timedelta(hours=lead_hours):
             try:
                 await _send_follow_up_email_if_needed(repo, current_user, updated)
-            except (RuntimeError, EmailDeliveryError):
-                pass
+            except (RuntimeError, EmailDeliveryError) as exc:
+                await _record_immediate_reminder_failure(repo, current_user, updated, exc)
     return FollowUpOut(**updated)

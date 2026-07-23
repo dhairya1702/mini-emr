@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Clock, FileText, Mail, PenLine, Settings2, Stethoscope, Trash2, Upload, UserPlus, X } from "lucide-react";
 
 import { PasswordInput } from "@/components/password-input";
-import { api } from "@/lib/api";
+import { api, resolveApiAssetUrl } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
 import type { ClinicSetupStepKey } from "@/lib/setup-checklist";
@@ -377,7 +377,7 @@ function SignatureSetup({
         {currentUser?.doctor_signature_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001"}${currentUser.doctor_signature_url}`}
+            src={resolveApiAssetUrl(currentUser.doctor_signature_url)}
             alt="User signature"
             className="max-h-28 w-auto max-w-full object-contain"
           />

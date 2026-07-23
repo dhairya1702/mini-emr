@@ -41,7 +41,7 @@ export default function PatientsPage() {
   const [exportError, setExportError] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const loadPageData = useCallback(async () => {
-    const records = await api.listAllPatients();
+    const records = await api.listPatients({ limit: 500 });
     return records.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at));
   }, []);
   const onPageData = useCallback((data: Patient[]) => {
@@ -93,6 +93,20 @@ export default function PatientsPage() {
     const searchQuery = new URLSearchParams(window.location.search).get("q");
     if (searchQuery) setQuery(searchQuery);
   }, []);
+
+  useEffect(() => {
+    const normalizedQuery = query.trim();
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const records = await api.listPatients({ q: normalizedQuery || undefined, limit: 500 });
+        setPatients(records.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at)));
+      } catch {
+        // The shell-level request handling will surface auth/backend errors; keep
+        // the existing list visible if a transient search request fails.
+      }
+    }, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [query]);
 
   function rememberRecentPatient(patient: Patient) {
     if (!recentPatientsScope) {

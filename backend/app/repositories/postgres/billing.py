@@ -49,6 +49,7 @@ INVOICE_COLUMNS = [
 
 INVOICE_ITEM_COLUMNS = [
     "id",
+    "org_id",
     "invoice_id",
     "catalog_item_id",
     "item_type",
@@ -206,6 +207,14 @@ class PostgresBillingRepository:
         def _delete() -> None:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        update public.invoice_items
+                        set catalog_item_id = null
+                        where org_id = %s and catalog_item_id = %s
+                        """,
+                        (org_id, item_id),
+                    )
                     cursor.execute("delete from public.catalog_items where org_id = %s and id = %s", (org_id, item_id))
 
         await asyncio.to_thread(_delete)
@@ -333,17 +342,21 @@ class PostgresBillingRepository:
                         )
                         invoice = _row_to_dict(cursor.fetchone(), cursor)
 
-                    cursor.execute("delete from public.invoice_items where invoice_id = %s", (invoice_id,))
+                    cursor.execute(
+                        "delete from public.invoice_items where org_id = %s and invoice_id = %s",
+                        (org_id, invoice_id),
+                    )
                     for item in item_payload:
                         cursor.execute(
                             """
                             insert into public.invoice_items (
-                              invoice_id, catalog_item_id, item_type, label, quantity, unit_price, line_total
+                              org_id, invoice_id, catalog_item_id, item_type, label, quantity, unit_price, line_total
                             )
-                            values (%s, %s, %s, %s, %s, %s, %s)
-                            returning id, invoice_id, catalog_item_id, item_type, label, quantity, unit_price, line_total, created_at
+                            values (%s, %s, %s, %s, %s, %s, %s, %s)
+                            returning id, org_id, invoice_id, catalog_item_id, item_type, label, quantity, unit_price, line_total, created_at
                             """,
                             (
+                                org_id,
                                 invoice_id,
                                 item["catalog_item_id"],
                                 item["item_type"],
@@ -357,10 +370,10 @@ class PostgresBillingRepository:
                         f"""
                         select {_columns_sql(INVOICE_ITEM_COLUMNS)}
                         from public.invoice_items
-                        where invoice_id = %s
+                        where org_id = %s and invoice_id = %s
                         order by created_at asc
                         """,
-                        (invoice_id,),
+                        (org_id, invoice_id),
                     )
                     invoice["items"] = [_row_to_dict(row, cursor) for row in cursor.fetchall()]
                     return attach_invoice_balances(invoice)
@@ -404,10 +417,10 @@ class PostgresBillingRepository:
                         f"""
                         select {_columns_sql(INVOICE_ITEM_COLUMNS)}
                         from public.invoice_items
-                        where invoice_id = %s
+                        where org_id = %s and invoice_id = %s
                         order by created_at asc
                         """,
-                        (invoice_id,),
+                        (org_id, invoice_id),
                     )
                     items = [_row_to_dict(row, cursor) for row in cursor.fetchall()]
 
@@ -544,10 +557,10 @@ class PostgresBillingRepository:
                         f"""
                         select {_columns_sql(INVOICE_ITEM_COLUMNS)}
                         from public.invoice_items
-                        where invoice_id = %s
+                        where org_id = %s and invoice_id = %s
                         order by created_at asc
                         """,
-                        (invoice_id,),
+                        (org_id, invoice_id),
                     )
                     invoice["items"] = [_row_to_dict(item, cursor) for item in cursor.fetchall()]
                     return attach_invoice_balances(invoice)
@@ -629,10 +642,10 @@ class PostgresBillingRepository:
                             f"""
                             select {_columns_sql(INVOICE_ITEM_COLUMNS)}
                             from public.invoice_items
-                            where invoice_id = any(%s::uuid[])
+                            where org_id = %s and invoice_id = any(%s::uuid[])
                             order by created_at asc
                             """,
-                            (invoice_ids,),
+                            (org_id, invoice_ids),
                         )
                         for item_row in cursor.fetchall():
                             item = _row_to_dict(item_row, cursor)
@@ -668,10 +681,10 @@ class PostgresBillingRepository:
                             f"""
                             select {_columns_sql(INVOICE_ITEM_COLUMNS)}
                             from public.invoice_items
-                            where invoice_id = any(%s::uuid[])
+                            where org_id = %s and invoice_id = any(%s::uuid[])
                             order by created_at asc
                             """,
-                            (invoice_ids,),
+                            (org_id, invoice_ids),
                         )
                         for item_row in cursor.fetchall():
                             item = _row_to_dict(item_row, cursor)

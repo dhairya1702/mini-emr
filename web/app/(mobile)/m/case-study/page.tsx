@@ -20,7 +20,7 @@ export default function MobileCaseStudyPage() {
     if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") return;
     let active = true;
     setIsLoading(true);
-    Promise.all([api.listAllPatients(), api.listCaseStudies()])
+    Promise.all([api.listPatients({ limit: 500 }), api.listCaseStudies()])
       .then(([patientRows, caseStudyRows]) => {
         if (!active) return;
         setPatients(patientRows.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at)));

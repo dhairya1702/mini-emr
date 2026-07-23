@@ -58,7 +58,7 @@ export default function MobileEarningsPage() {
     if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") return;
     let active = true;
     setIsLoading(true);
-    api.listAllInvoices()
+    api.listInvoices({ limit: 500 })
       .then((rows) => {
         if (!active) return;
         setInvoices(rows);

@@ -55,7 +55,7 @@ export default function MobilePatientsPage() {
     }
     setIsLoading(true);
     try {
-      const rows = await api.listAllPatients();
+      const rows = await api.listPatients({ q: query.trim() || undefined, limit: 500 });
       setPatients(rows.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at)));
       setError("");
     } catch (loadError) {
@@ -78,9 +78,9 @@ export default function MobilePatientsPage() {
     return () => {
       active = false;
     };
-    // loadPatients intentionally reads current user state and is only needed on shell readiness changes.
+    // loadPatients intentionally reads current user/search state and is only needed on shell readiness changes/search.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser, isAuthReady, isRedirectingToLogin]);
+  }, [currentUser, isAuthReady, isRedirectingToLogin, query]);
 
   useEffect(() => {
     setRecentPatients(recentPatientsScope ? loadRecentPatients(recentPatientsScope) : []);

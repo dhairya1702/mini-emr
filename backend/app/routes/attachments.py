@@ -6,6 +6,7 @@ from fastapi.responses import Response, StreamingResponse
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
 from app.db import AppRepository, get_repository
+from app.email_validation import normalize_single_email
 from app.file_validation import validate_pdf_bytes
 from app.schema_domains.attachments import (
     PatientAttachmentOut,
@@ -259,8 +260,9 @@ async def send_patient_attachment(
     storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
     current_user: UserOut = Depends(get_current_user),
 ) -> SendPatientAttachmentResponse:
-    recipient_email = payload.recipient_email.strip()
-    if "@" not in recipient_email:
+    try:
+        recipient_email = normalize_single_email(payload.recipient_email)
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail="Enter a valid recipient email.")
     try:
         row = await repo.get_patient_attachment(str(current_user.org_id), attachment_id)

@@ -23,7 +23,7 @@ gcloud builds submit \
   --project="$PROJECT_ID" \
   --region="$REGION" \
   --config=cloudbuild.web.yaml \
-  --substitutions="_API_BASE_URL=/api,_BACKEND_PROXY_URL=${BACKEND_URL},SHORT_SHA=${IMAGE_TAG}"
+  --substitutions="_AR_REPO=${AR_REPO},_API_BASE_URL=/api,_BACKEND_PROXY_URL=${BACKEND_URL},SHORT_SHA=${IMAGE_TAG}"
 
 echo "Deploying web service: $WEB_SERVICE"
 gcloud run deploy "$WEB_SERVICE" \
@@ -34,12 +34,4 @@ gcloud run deploy "$WEB_SERVICE" \
   --no-traffic
 
 LATEST_WEB_REVISION="$(gcloud run services describe "$WEB_SERVICE" --project="$PROJECT_ID" --region="$REGION" --format='value(status.latestCreatedRevisionName)')"
-echo "Prepared web revision: $LATEST_WEB_REVISION"
-
-echo "Promoting web revision to 100% production traffic"
-gcloud run services update-traffic "$WEB_SERVICE" \
-  --project="$PROJECT_ID" \
-  --region="$REGION" \
-  --to-revisions="${LATEST_WEB_REVISION}=100"
-
-echo "Web production traffic now points to: $LATEST_WEB_REVISION"
+promote_revision_if_requested "$WEB_SERVICE" "$LATEST_WEB_REVISION" "web"

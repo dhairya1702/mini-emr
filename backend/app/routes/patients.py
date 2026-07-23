@@ -180,6 +180,7 @@ def _profile_photo_extension(content_type: str) -> str:
 @router.get("/patients", response_model=list[PatientOut])
 async def get_patients(
     active_only: bool = Query(default=False),
+    q: str | None = Query(default=None, max_length=120),
     limit: int = Query(default=500, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     repo: AppRepository = Depends(get_repository),
@@ -189,6 +190,7 @@ async def get_patients(
         rows = await repo.list_patients(
             str(current_user.org_id),
             active_only=active_only,
+            query=q,
             limit=limit,
             offset=offset,
         )

@@ -71,6 +71,23 @@ def test_settings_requires_gcs_bucket():
         settings.validate_runtime()
 
 
+def test_settings_requires_whatsapp_secret_when_enabled_without_bypass():
+    settings = Settings(
+        auth_secret="test-secret",
+        app_origin="https://clinic.example",
+        database_url="postgresql://clinic:secret@localhost:5432/clinic",
+        gcs_patient_attachments_bucket="clinic-media",
+        whatsapp_enabled=True,
+        whatsapp_verify_token="verify-token",
+        whatsapp_app_secret="",
+        whatsapp_access_token="access-token",
+        whatsapp_phone_number_id="phone-number-id",
+    )
+
+    with pytest.raises(RuntimeError, match="WHATSAPP_APP_SECRET"):
+        settings.validate_runtime()
+
+
 def test_postgres_connection_manager_requires_database_url():
     with pytest.raises(RuntimeError, match="DATABASE_URL"):
         PostgresConnectionManager("")
@@ -1446,6 +1463,7 @@ def _invoice_row(*, amount_paid: float = 500) -> tuple:
 def _invoice_item_row() -> tuple:
     return (
         "invoice-item-1",
+        "org-1",
         "invoice-1",
         "catalog-1",
         "service",

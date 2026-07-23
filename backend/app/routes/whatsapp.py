@@ -53,7 +53,8 @@ async def receive_whatsapp_webhook(
 ) -> dict[str, str | int]:
     settings = config_module.get_settings()
     body = await request.body()
-    if not verify_whatsapp_signature(
+    skip_signature_check = bool(getattr(settings, "whatsapp_skip_signature_check", False))
+    if not skip_signature_check and not verify_whatsapp_signature(
         app_secret=settings.whatsapp_app_secret,
         signature_header=x_hub_signature_256,
         body=body,

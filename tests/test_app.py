@@ -664,6 +664,194 @@ class FakeRepo:
             "daily": list(daily.values()),
         }
 
+    async def get_controlroom_database_overview(self) -> dict:
+        checked_at = _now()
+        checks = [
+            (
+                "invoice_items_invoice_org",
+                "Invoice item org matches invoice org",
+                sum(
+                    1
+                    for item in self.invoice_items.values()
+                    if not self.invoices.get(item.get("invoice_id"))
+                    or item.get("org_id") != self.invoices[item.get("invoice_id")].get("org_id")
+                ),
+            ),
+            (
+                "invoice_items_catalog_org",
+                "Invoice item org matches catalog item org",
+                sum(
+                    1
+                    for item in self.invoice_items.values()
+                    if item.get("catalog_item_id")
+                    and self.catalog_items.get(item.get("catalog_item_id"))
+                    and item.get("org_id") != self.catalog_items[item.get("catalog_item_id")].get("org_id")
+                ),
+            ),
+            (
+                "users_valid_org",
+                "Users belong to valid organizations",
+                sum(1 for user in self.users.values() if user.get("org_id") not in self.organizations),
+            ),
+            (
+                "settings_valid_org",
+                "Clinic settings belong to valid organizations",
+                sum(1 for row in self.clinic_settings.values() if row.get("org_id") not in self.organizations),
+            ),
+            (
+                "patients_valid_org",
+                "Patients belong to valid organizations",
+                sum(1 for row in self.patients.values() if row.get("org_id") not in self.organizations),
+            ),
+            (
+                "whatsapp_binding_user_org",
+                "WhatsApp bindings point to valid org/users",
+                sum(
+                    1
+                    for row in self.whatsapp_owner_bindings.values()
+                    if row.get("org_id") not in self.organizations
+                    or (
+                        row.get("user_id")
+                        and (
+                            row.get("user_id") not in self.users
+                            or self.users[row.get("user_id")].get("org_id") != row.get("org_id")
+                        )
+                    )
+                ),
+            ),
+        ]
+        return {
+            "checked_at": checked_at,
+            "reachable": True,
+            "migration_status": "healthy",
+            "pending_migrations": [],
+            "database_only_migrations": [],
+            "applied_migrations": [
+                {
+                    "name": "2026-07-23_tenant_integrity_schema_drift.sql",
+                    "checksum_sha256": "test-checksum",
+                    "applied_at": checked_at,
+                }
+            ],
+            "table_stats": [
+                {"table_name": "organizations", "estimated_rows": len(self.organizations)},
+                {"table_name": "clinic_users", "estimated_rows": len(self.users)},
+                {"table_name": "patients", "estimated_rows": len(self.patients)},
+                {"table_name": "platform_errors", "estimated_rows": len(self.platform_errors)},
+            ],
+            "integrity_checks": [
+                {
+                    "key": key,
+                    "label": label,
+                    "status": "healthy" if invalid_count == 0 else "failing",
+                    "invalid_count": invalid_count,
+                    "evidence": f"{invalid_count} invalid rows.",
+                }
+                for key, label, invalid_count in checks
+            ],
+        }
+
+    async def get_controlroom_status_metrics(self) -> dict:
+        database = await self.get_controlroom_database_overview()
+        since_24h = _now() - timedelta(hours=24)
+        since_1h = _now() - timedelta(hours=1)
+        requests = [row for row in self.api_request_metrics if row["created_at"] >= since_24h]
+        errors_1h = [row for row in self.platform_errors.values() if row["created_at"] >= since_1h]
+        whatsapp_failed = [
+            row for row in self.whatsapp_message_events.values()
+            if row.get("status") == "failed" and row.get("created_at", _now()) >= since_24h
+        ]
+        due_followups = [
+            row for row in self.follow_ups.values()
+            if row.get("status") == "scheduled" and row.get("scheduled_for", _now()) <= _now()
+        ]
+        return {
+            "database": database,
+            "request_metrics_24h": {
+                "request_count": len(requests),
+                "error_response_count": sum(int(row["status_code"] >= 500) for row in requests),
+            },
+            "errors_1h": {
+                "error_count": len(errors_1h),
+                "top_error_context": Counter(str(row.get("path") or "") for row in errors_1h).most_common(1)[0][0]
+                if errors_1h
+                else "",
+            },
+            "whatsapp_24h": {"failed_count": len(whatsapp_failed), "last_failed_at": None},
+            "followups_due": {
+                "due_count": len(due_followups),
+                "error_count": sum(int(bool(row.get("reminder_last_error"))) for row in due_followups),
+            },
+            "ai_usage_24h": {
+                "request_count": len([row for row in self.ai_usage_events.values() if row["created_at"] >= since_24h]),
+                "total_tokens": sum(
+                    int(row.get("total_tokens") or 0)
+                    for row in self.ai_usage_events.values()
+                    if row["created_at"] >= since_24h
+                ),
+            },
+            "email": {
+                "configured_org_count": sum(
+                    int(bool(row.get("sender_email")) and bool(row.get("sender_email_app_password")))
+                    for row in self.clinic_settings.values()
+                )
+            },
+            "storage": {
+                "media_storage_bytes": sum(int(row.get("file_size") or 0) for row in self.patient_attachments.values())
+            },
+        }
+
+    async def list_controlroom_incidents(self, *, window_hours: int = 24, limit: int = 500) -> list[dict]:
+        since = _now() - timedelta(hours=window_hours)
+        rows = [
+            row for row in self.platform_errors.values()
+            if row["created_at"] >= since
+        ]
+        rows.sort(key=lambda row: row["created_at"], reverse=True)
+        groups: dict[str, dict] = {}
+        for row in rows[:limit]:
+            basis = "|".join([
+                str(row.get("method") or ""),
+                str(row.get("path") or ""),
+                str(row.get("status_code") or ""),
+                str(row.get("error_type") or ""),
+                str(row.get("message") or "").lower(),
+            ])
+            fingerprint = hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
+            group = groups.setdefault(
+                fingerprint,
+                {
+                    "fingerprint": fingerprint,
+                    "severity": "high" if int(row.get("status_code") or 0) >= 500 else "low",
+                    "method": row.get("method") or "",
+                    "path": row.get("path") or "",
+                    "status_code": row.get("status_code"),
+                    "error_type": row.get("error_type") or "",
+                    "message": row.get("message") or "",
+                    "count": 0,
+                    "org_ids": set(),
+                    "user_ids": set(),
+                    "first_seen_at": row["created_at"],
+                    "last_seen_at": row["created_at"],
+                    "latest_sample": row,
+                },
+            )
+            group["count"] += 1
+            if row.get("org_id"):
+                group["org_ids"].add(row["org_id"])
+            if row.get("user_id"):
+                group["user_ids"].add(row["user_id"])
+            group["first_seen_at"] = min(group["first_seen_at"], row["created_at"])
+            group["last_seen_at"] = max(group["last_seen_at"], row["created_at"])
+        return [
+            {
+                **group,
+                "affected_org_count": len(group["org_ids"]),
+                "affected_user_count": len(group["user_ids"]),
+            }
+            for group in sorted(groups.values(), key=lambda item: item["count"], reverse=True)
+        ]
+
     async def delete_user_any(self, user_id: str) -> None:
         self.users.pop(user_id, None)
 
@@ -1249,9 +1437,11 @@ class FakeRepo:
         org_id: str,
         *,
         active_only: bool = False,
+        query: str | None = None,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]:
+        normalized_query = str(query or "").strip().lower()
         rows = [
                 patient
                 for patient in self.patients.values()
@@ -1260,6 +1450,12 @@ class FakeRepo:
                     not active_only
                     or patient["status"] in {"waiting", "consultation"}
                     or (patient["status"] == "done" and not patient["billed"])
+                )
+                and (
+                    not normalized_query
+                    or normalized_query in str(patient.get("name") or "").lower()
+                    or normalized_query in str(patient.get("phone") or "").lower()
+                    or normalized_query in str(patient.get("reason") or "").lower()
                 )
             ]
         rows.sort(

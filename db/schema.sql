@@ -199,6 +199,7 @@ create table if not exists public.invoices (
 
 create table if not exists public.invoice_items (
   id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
   invoice_id uuid not null references public.invoices(id) on delete cascade,
   catalog_item_id uuid references public.catalog_items(id) on delete set null,
   item_type text not null check (item_type in ('service', 'medicine')),
@@ -469,12 +470,18 @@ create unique index if not exists patients_org_id_id_uidx
   on public.patients(org_id, id);
 create unique index if not exists clinic_users_org_id_id_uidx
   on public.clinic_users(org_id, id);
+create unique index if not exists catalog_items_org_id_id_uidx
+  on public.catalog_items(org_id, id);
+create unique index if not exists invoices_org_id_id_uidx
+  on public.invoices(org_id, id);
 create unique index if not exists notes_org_id_id_uidx
   on public.notes(org_id, id);
 create unique index if not exists appointments_org_id_id_uidx
   on public.appointments(org_id, id);
 create unique index if not exists patient_visits_org_id_id_uidx
   on public.patient_visits(org_id, id);
+create unique index if not exists whatsapp_owner_bindings_org_id_id_uidx
+  on public.whatsapp_owner_bindings(org_id, id);
 
 do $$
 begin
@@ -496,8 +503,38 @@ begin
   if not exists (select 1 from pg_constraint where conname = 'invoices_org_patient_fk') then
     alter table public.invoices add constraint invoices_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
   end if;
+  if not exists (select 1 from pg_constraint where conname = 'invoices_org_completed_by_fk') then
+    alter table public.invoices add constraint invoices_org_completed_by_fk foreign key (org_id, completed_by) references public.clinic_users(org_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'invoice_items_org_invoice_fk') then
+    alter table public.invoice_items add constraint invoice_items_org_invoice_fk foreign key (org_id, invoice_id) references public.invoices(org_id, id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'invoice_items_org_catalog_item_fk') then
+    alter table public.invoice_items add constraint invoice_items_org_catalog_item_fk foreign key (org_id, catalog_item_id) references public.catalog_items(org_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'notes_org_sent_by_fk') then
+    alter table public.notes add constraint notes_org_sent_by_fk foreign key (org_id, sent_by) references public.clinic_users(org_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'patient_attachments_org_uploaded_by_fk') then
+    alter table public.patient_attachments add constraint patient_attachments_org_uploaded_by_fk foreign key (org_id, uploaded_by) references public.clinic_users(org_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'audit_events_org_actor_user_fk') then
+    alter table public.audit_events add constraint audit_events_org_actor_user_fk foreign key (org_id, actor_user_id) references public.clinic_users(org_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'platform_errors_org_user_fk') then
+    alter table public.platform_errors add constraint platform_errors_org_user_fk foreign key (org_id, user_id) references public.clinic_users(org_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'whatsapp_owner_bindings_org_user_fk') then
+    alter table public.whatsapp_owner_bindings add constraint whatsapp_owner_bindings_org_user_fk foreign key (org_id, user_id) references public.clinic_users(org_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'whatsapp_message_events_org_binding_fk') then
+    alter table public.whatsapp_message_events add constraint whatsapp_message_events_org_binding_fk foreign key (org_id, binding_id) references public.whatsapp_owner_bindings(org_id, id);
+  end if;
   if not exists (select 1 from pg_constraint where conname = 'follow_ups_org_patient_fk') then
     alter table public.follow_ups add constraint follow_ups_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'follow_ups_org_created_by_fk') then
+    alter table public.follow_ups add constraint follow_ups_org_created_by_fk foreign key (org_id, created_by) references public.clinic_users(org_id, id);
   end if;
   if not exists (select 1 from pg_constraint where conname = 'appointments_org_checked_in_patient_fk') then
     alter table public.appointments add constraint appointments_org_checked_in_patient_fk foreign key (org_id, checked_in_patient_id) references public.patients(org_id, id);
@@ -516,6 +553,9 @@ begin
   end if;
   if not exists (select 1 from pg_constraint where conname = 'case_studies_org_patient_fk') then
     alter table public.case_studies add constraint case_studies_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'case_studies_org_created_by_fk') then
+    alter table public.case_studies add constraint case_studies_org_created_by_fk foreign key (org_id, created_by) references public.clinic_users(org_id, id);
   end if;
 end
 $$;
@@ -906,6 +946,9 @@ add column if not exists completed_by uuid references public.clinic_users(id) on
 alter table public.invoice_items
 add column if not exists catalog_item_id uuid references public.catalog_items(id) on delete set null;
 
+alter table public.invoice_items
+add column if not exists org_id uuid;
+
 alter table public.follow_ups
 add column if not exists created_by uuid references public.clinic_users(id) on delete set null;
 
@@ -957,16 +1000,22 @@ alter table public.catalog_items
 create index if not exists invoices_org_patient_idx on public.invoices (org_id, patient_id, created_at desc);
 create index if not exists invoices_org_created_idx on public.invoices (org_id, created_at desc);
 create index if not exists invoice_items_invoice_idx on public.invoice_items (invoice_id, created_at asc);
+create index if not exists invoice_items_org_invoice_idx on public.invoice_items (org_id, invoice_id, created_at asc);
+create index if not exists invoice_items_org_catalog_item_idx on public.invoice_items (org_id, catalog_item_id)
+  where catalog_item_id is not null;
 create index if not exists audit_events_org_created_idx on public.audit_events (org_id, created_at desc);
 create index if not exists follow_ups_org_status_scheduled_idx on public.follow_ups (org_id, status, scheduled_for asc);
 create index if not exists follow_ups_patient_idx on public.follow_ups (patient_id, created_at desc);
 create index if not exists follow_ups_org_patient_scheduled_idx on public.follow_ups (org_id, patient_id, scheduled_for desc);
 create index if not exists follow_ups_due_reminder_idx on public.follow_ups (org_id, scheduled_for asc)
   where status = 'scheduled' and reminder_sent_at is null;
+create index if not exists follow_ups_due_reminder_claim_idx on public.follow_ups (org_id, scheduled_for, reminder_claimed_at)
+  where status = 'scheduled' and reminder_sent_at is null;
 create index if not exists appointments_org_status_scheduled_idx on public.appointments (org_id, status, scheduled_for asc);
 create index if not exists appointments_org_checked_in_patient_created_idx on public.appointments (org_id, checked_in_patient_id, created_at desc);
 create index if not exists appointments_org_follow_up_idx on public.appointments (org_id, follow_up_id);
 create index if not exists patient_visits_org_follow_up_idx on public.patient_visits (org_id, follow_up_id);
+create index if not exists notes_org_visit_created_idx on public.notes(org_id, visit_id, created_at desc);
 
 drop function if exists public.check_in_appointment_atomic(uuid, uuid);
 drop function if exists public.check_in_appointment_atomic(uuid, uuid, boolean, uuid);
@@ -1364,6 +1413,7 @@ begin
   returning * into v_invoice;
 
   insert into public.invoice_items (
+    org_id,
     invoice_id,
     catalog_item_id,
     item_type,
@@ -1373,6 +1423,7 @@ begin
     line_total
   )
   select
+    v_invoice.org_id,
     v_invoice.id,
     item.catalog_item_id,
     item.item_type,

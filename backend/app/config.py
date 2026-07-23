@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     app_origin: str = "http://127.0.0.1:3000"
     app_origins: str = ""
     super_admin_identifiers: str = ""
+    control_room_identifiers: str = ""
     open_clinic_registration: bool = True
     follow_up_reminder_runner_enabled: bool = False
     follow_up_reminder_interval_seconds: int = 300
@@ -31,6 +32,7 @@ class Settings(BaseSettings):
     whatsapp_access_token: str = ""
     whatsapp_phone_number_id: str = ""
     whatsapp_graph_api_version: str = "v23.0"
+    whatsapp_skip_signature_check: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -59,6 +61,18 @@ class Settings(BaseSettings):
             missing.append("APP_ORIGIN")
         if not str(self.gcs_patient_attachments_bucket or "").strip():
             missing.append("GCS_PATIENT_ATTACHMENTS_BUCKET")
+        if self.whatsapp_enabled:
+            if not str(self.whatsapp_verify_token or "").strip():
+                missing.append("WHATSAPP_VERIFY_TOKEN")
+            if not str(self.whatsapp_access_token or "").strip():
+                missing.append("WHATSAPP_ACCESS_TOKEN")
+            if not str(self.whatsapp_phone_number_id or "").strip():
+                missing.append("WHATSAPP_PHONE_NUMBER_ID")
+            if (
+                not bool(self.whatsapp_skip_signature_check)
+                and not str(self.whatsapp_app_secret or "").strip()
+            ):
+                missing.append("WHATSAPP_APP_SECRET")
         if missing:
             raise RuntimeError(
                 "Missing required environment variables: "

@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.email_validation import normalize_single_email
 from app.schema_domains.common import CatalogItemType, PaymentStatus
 
 
@@ -85,6 +86,11 @@ class InvoiceOut(BaseModel):
 class SendInvoiceRequest(BaseModel):
     invoice_id: UUID
     recipient_email: str = Field(min_length=5, max_length=200)
+
+    @field_validator("recipient_email")
+    @classmethod
+    def validate_recipient_email(cls, value: str) -> str:
+        return normalize_single_email(value)
 
 
 class SendInvoiceWhatsAppRequest(BaseModel):

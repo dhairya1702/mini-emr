@@ -134,7 +134,7 @@ export function SettingsDrawerAppointmentsPanel({
       return;
     }
     let active = true;
-    void api.listAllPatients()
+    void api.listPatients({ limit: 500 })
       .then((rows) => {
         if (!active) {
           return;

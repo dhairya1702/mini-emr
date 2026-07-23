@@ -307,6 +307,38 @@ def test_whatsapp_rejects_invalid_signature(client, monkeypatch: pytest.MonkeyPa
     assert response.status_code == 403
 
 
+def test_whatsapp_rejects_missing_app_secret_without_explicit_bypass(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    monkeypatch.setattr(config_module, "get_settings", lambda: _settings(whatsapp_app_secret=""))
+    body = json.dumps(_payload("today summary")).encode("utf-8")
+
+    response = test_client.post(
+        "/webhooks/whatsapp",
+        content=body,
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_whatsapp_allows_explicit_signature_bypass_for_dev(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    monkeypatch.setattr(
+        config_module,
+        "get_settings",
+        lambda: _settings(whatsapp_app_secret="", whatsapp_skip_signature_check=True),
+    )
+    body = json.dumps(_payload("today summary")).encode("utf-8")
+
+    response = test_client.post(
+        "/webhooks/whatsapp",
+        content=body,
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 200
+
+
 def test_whatsapp_command_classifier():
     assert whatsapp_assistant.classify_intent("who is there tomorrow?") == "appointments_tomorrow"
     assert whatsapp_assistant.classify_intent("how much did we make today") == "revenue_today"

@@ -7,7 +7,7 @@ import {
   WEB3FORMS_ENDPOINT,
 } from "../access";
 import { useTransition } from "../transition-context";
-import { trackAnalyticsEvent } from "../analytics";
+import { trackAnalyticsEvent } from "../track";
 import "../App.css";
 
 type Status = "idle" | "submitting" | "done" | "error";

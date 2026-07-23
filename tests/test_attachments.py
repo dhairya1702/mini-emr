@@ -230,6 +230,29 @@ def test_patient_attachment_send_emails_stored_file(client, monkeypatch):
     assert audit_events
 
 
+def test_patient_attachment_send_rejects_comma_separated_recipient(client):
+    test_client, _repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="attachments-email-guard@clinic.com",
+        clinic_name="Attachments Email Guard Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = _create_patient(test_client, headers)
+
+    response = test_client.post(
+        f"/patients/{patient['id']}/attachments/00000000-0000-0000-0000-000000000000/send",
+        json={
+            "recipient_email": "patient@example.com,other@example.com",
+            "subject": "Your scan",
+            "message": "",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+
+
 def test_patient_profile_photo_upload_download_replace_and_delete(client):
     test_client, repo = client
     session = register_test_clinic(

@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { PasswordInput } from "@/components/password-input";
 import { useClinicShell } from "@/components/clinic-shell-provider";
-import { api } from "@/lib/api";
+import { api, resolveApiAssetUrl } from "@/lib/api";
 import type { AuthUser } from "@/lib/types";
 
 function normalizeDateInput(value: string | null | undefined) {
@@ -228,7 +228,7 @@ export default function MobileAccountPage() {
                 <div className="mt-3 rounded-xl bg-white p-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001"}${resolvedUser.doctor_signature_url}`}
+                    src={resolveApiAssetUrl(resolvedUser.doctor_signature_url)}
                     alt="User signature"
                     className="max-h-16 w-auto max-w-full object-contain"
                   />

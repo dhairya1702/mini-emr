@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import HTTPException
 
 from app.db import AppRepository
+from app.email_validation import normalize_single_email
 from app.services.email_service import EmailDeliveryError, send_clinic_email_message
 from app.services.document_helpers import build_document_context_for_user
 from app.services.pdf_service import build_invoice_pdf
@@ -126,8 +127,9 @@ async def send_invoice_workflow(
     current_user: UserOut,
     payload: SendInvoiceRequest,
 ) -> InvoiceActionResponse:
-    recipient_email = payload.recipient_email.strip()
-    if "@" not in recipient_email:
+    try:
+        recipient_email = normalize_single_email(payload.recipient_email)
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail="Enter a valid recipient email.")
     invoice = await repo.get_invoice(str(current_user.org_id), str(payload.invoice_id))
     patient = await repo.get_patient(str(current_user.org_id), str(invoice["patient_id"]))
