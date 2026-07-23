@@ -218,6 +218,7 @@ function createEmptyForm() {
     symptoms: "",
     diagnosis: "",
     medications: "",
+    treatment: "",
     notes: "",
     bloodPressureSystolic: "",
     bloodPressureDiastolic: "",
@@ -267,6 +268,21 @@ function createEmptyForm() {
     prescriptions: [] as PrescriptionDraft[],
     assets: [] as NoteAsset[],
   };
+}
+
+function buildMedicationTreatmentPayload(medications: string, treatment: string) {
+  const medicationText = medications.trim();
+  const treatmentText = treatment.trim();
+  if (medicationText && treatmentText) {
+    return `Medications:\n${medicationText}\n\nTreatment:\n${treatmentText}`;
+  }
+  if (medicationText) {
+    return `Medications:\n${medicationText}`;
+  }
+  if (treatmentText) {
+    return `Treatment:\n${treatmentText}`;
+  }
+  return "";
 }
 
 type ConsultationWorkspaceSnapshot = {
@@ -818,8 +834,8 @@ export function ConsultationDrawer({
     [form.assets],
   );
   const medicationPlan = useMemo(() => {
-    return form.medications.trim();
-  }, [form.medications]);
+    return buildMedicationTreatmentPayload(form.medications, form.treatment);
+  }, [form.medications, form.treatment]);
   useEffect(() => {
     const canvas = drawingCanvasRef.current;
     const context = canvas?.getContext("2d");
@@ -2525,6 +2541,19 @@ export function ConsultationDrawer({
               <p className="mt-2 text-xs text-slate-500">
                 Selected inventory medicines are forced into the treatment section of the generated note.
               </p>
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Treatment</span>
+              <textarea
+                rows={3}
+                value={form.treatment}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, treatment: event.target.value }))
+                }
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                placeholder="Advice, procedures, therapy plan, lifestyle instructions"
+              />
             </label>
 
             <label className="block">
