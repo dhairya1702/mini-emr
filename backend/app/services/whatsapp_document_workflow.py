@@ -149,7 +149,7 @@ async def send_invoice_whatsapp_workflow(
     patient = await repo.get_patient(str(current_user.org_id), str(invoice["patient_id"]))
     raw_phone = str(payload.recipient_phone or patient.get("phone") or "").strip()
     recipient_wa_id = normalize_whatsapp_recipient(raw_phone)
-    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    clinic_settings = await build_document_context_for_user(repo, current_user)
     patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
     catalog_items = await repo.list_catalog_items(str(current_user.org_id))
     catalog_by_id = {str(item["id"]): item for item in catalog_items}

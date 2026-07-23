@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from app.db import AppRepository
 from app.services.email_service import EmailDeliveryError, send_clinic_email_message
+from app.services.document_helpers import build_document_context_for_user
 from app.services.pdf_service import build_invoice_pdf
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import (
@@ -130,7 +131,7 @@ async def send_invoice_workflow(
         raise HTTPException(status_code=400, detail="Enter a valid recipient email.")
     invoice = await repo.get_invoice(str(current_user.org_id), str(payload.invoice_id))
     patient = await repo.get_patient(str(current_user.org_id), str(invoice["patient_id"]))
-    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    clinic_settings = await build_document_context_for_user(repo, current_user)
     patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
     catalog_items = await repo.list_catalog_items(str(current_user.org_id))
     catalog_by_id = {str(item["id"]): item for item in catalog_items}

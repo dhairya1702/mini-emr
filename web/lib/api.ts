@@ -418,6 +418,8 @@ export const api = {
       method: "POST",
     });
   },
+  downloadMySignature: () =>
+    requestBlob("/auth/me/signature/file"),
   removeMySignature: () =>
     request<AuthUser>("/auth/me/signature", {
       method: "DELETE",
@@ -847,6 +849,8 @@ export const api = {
   },
   downloadClinicDocumentTemplate: () =>
     requestBlob("/settings/clinic/document-template/file"),
+  previewClinicDocumentTemplateNote: () =>
+    requestBlob("/settings/clinic/document-template/preview-note"),
   removeClinicDocumentTemplate: () =>
     request<ClinicSettings>("/settings/clinic/document-template", {
       method: "DELETE",

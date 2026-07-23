@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -41,6 +42,15 @@ CLINIC_SETTINGS_COLUMNS = [
     "document_template_margin_right",
     "document_template_margin_bottom",
     "document_template_margin_left",
+    "document_template_signature_x",
+    "document_template_signature_y",
+    "document_template_signature_width",
+    "document_template_signature_height",
+    "document_template_doctor_name_x",
+    "document_template_doctor_name_y",
+    "document_template_doctor_name_width",
+    "document_template_doctor_name_height",
+    "document_template_note_layout",
     "onboarding_required",
     "onboarding_completed_at",
     "users_allowed",
@@ -74,6 +84,15 @@ CLINIC_SETTINGS_MUTABLE_COLUMNS = [
     "document_template_margin_right",
     "document_template_margin_bottom",
     "document_template_margin_left",
+    "document_template_signature_x",
+    "document_template_signature_y",
+    "document_template_signature_width",
+    "document_template_signature_height",
+    "document_template_doctor_name_x",
+    "document_template_doctor_name_y",
+    "document_template_doctor_name_width",
+    "document_template_doctor_name_height",
+    "document_template_note_layout",
     "onboarding_required",
     "onboarding_completed_at",
     "users_allowed",
@@ -106,6 +125,15 @@ def _clinic_settings_defaults() -> dict[str, Any]:
         "document_template_margin_right",
         "document_template_margin_bottom",
         "document_template_margin_left",
+        "document_template_signature_x",
+        "document_template_signature_y",
+        "document_template_signature_width",
+        "document_template_signature_height",
+        "document_template_doctor_name_x",
+        "document_template_doctor_name_y",
+        "document_template_doctor_name_width",
+        "document_template_doctor_name_height",
+        "document_template_note_layout",
         "onboarding_required",
         "onboarding_completed_at",
         "users_allowed",
@@ -182,10 +210,17 @@ def _settings_values(payload: ClinicSettingsUpdate, current: dict[str, Any] | No
         **(current or {}),
         **payload_values,
     }
+    if isinstance(values.get("document_template_note_layout"), str):
+        try:
+            values["document_template_note_layout"] = json.loads(values["document_template_note_layout"])
+        except json.JSONDecodeError:
+            values["document_template_note_layout"] = {}
     values["sender_email_app_password"] = encrypt_stored_secret(
         values.get("sender_email_app_password")
     )
-    return {column: values.get(column) for column in CLINIC_SETTINGS_MUTABLE_COLUMNS}
+    normalized = {column: values.get(column) for column in CLINIC_SETTINGS_MUTABLE_COLUMNS}
+    normalized["document_template_note_layout"] = json.dumps(normalized.get("document_template_note_layout") or {})
+    return normalized
 
 
 def _signature_url(row: dict[str, Any], *, require_data: bool) -> str | None:
@@ -918,7 +953,10 @@ class PostgresAuthSettingsRepository:
         timestamp: str,
     ) -> dict[str, Any]:
         insert_columns = ["org_id", *CLINIC_SETTINGS_MUTABLE_COLUMNS, "updated_at"]
-        placeholders = ", ".join(["%s"] * len(insert_columns))
+        placeholders = ", ".join(
+            "%s::jsonb" if column == "document_template_note_layout" else "%s"
+            for column in insert_columns
+        )
         update_assignments = ", ".join(
             f"{column} = excluded.{column}" for column in [*CLINIC_SETTINGS_MUTABLE_COLUMNS, "updated_at"]
         )

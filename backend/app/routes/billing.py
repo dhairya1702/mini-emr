@@ -24,6 +24,7 @@ from app.services.billing_workflow import (
     list_invoices_with_user_names,
     send_invoice_workflow,
 )
+from app.services.document_helpers import build_document_context_for_user
 from app.services.pdf_service import build_invoice_pdf
 from app.services.whatsapp_document_workflow import send_invoice_whatsapp_workflow
 
@@ -115,7 +116,7 @@ async def generate_invoice_pdf(
     try:
         invoice = await repo.get_invoice(str(current_user.org_id), invoice_id)
         patient = await repo.get_patient(str(current_user.org_id), str(invoice["patient_id"]))
-        clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+        clinic_settings = await build_document_context_for_user(repo, current_user)
         generated_on = datetime.now().strftime("%b %d, %Y %I:%M %p")
         pdf_bytes = build_invoice_pdf(
             clinic=clinic_settings,

@@ -39,6 +39,27 @@ TEMPLATE_MIN_TOP_CLEARANCE = {
 }
 SIGNATURE_MAX_WIDTH = 2.0 * inch
 SIGNATURE_MAX_HEIGHT = 0.8 * inch
+DEFAULT_TEMPLATE_SIGNATURE_BOX = {
+    "x": 0.1,
+    "y": 0.78,
+    "width": 0.24,
+    "height": 0.08,
+}
+DEFAULT_TEMPLATE_DOCTOR_NAME_BOX = {
+    "x": 0.1,
+    "y": 0.87,
+    "width": 0.24,
+    "height": 0.04,
+}
+DEFAULT_TEMPLATE_NOTE_LAYOUT = {
+    "name": {"x": 0.1, "y": 0.16, "width": 0.26, "height": 0.035},
+    "weight": {"x": 0.4, "y": 0.16, "width": 0.18, "height": 0.035},
+    "date": {"x": 0.66, "y": 0.16, "width": 0.24, "height": 0.035},
+    "age": {"x": 0.1, "y": 0.205, "width": 0.2, "height": 0.035},
+    "temp": {"x": 0.4, "y": 0.205, "width": 0.2, "height": 0.035},
+    "height": {"x": 0.1, "y": 0.25, "width": 0.22, "height": 0.035},
+    "noteBody": {"x": 0.1, "y": 0.305, "width": 0.76, "height": 0.41},
+}
 ASSET_PREVIEW_MAX_HEIGHT = 7.0 * inch
 SUPPORTED_NOTE_ASSET_IMAGE_PREFIX = "image/"
 SUPPORTED_NOTE_ASSET_PDF_TYPE = "application/pdf"
@@ -127,6 +148,14 @@ def _clamp_margin(value: Any) -> float:
     return max(0.0, min(margin, 288.0))
 
 
+def _clamp_normalized(value: Any, fallback: float, *, minimum: float = 0.0, maximum: float = 1.0) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = fallback
+    return max(minimum, min(parsed, maximum))
+
+
 def _content_bounds(
     data: dict[str, Any],
     use_template: bool,
@@ -175,6 +204,25 @@ def _resolve_template(data: dict[str, Any], document_kind: str) -> tuple[str, by
         raise TemplateConfigurationError(
             f"The uploaded {label} template{template_hint} has unsupported type '{mime_type}'."
     )
+    return mime_type, raw_bytes
+
+
+def _resolve_uploaded_template(data: dict[str, Any], label: str) -> tuple[str, bytes]:
+    mime_type = str(data.get("document_template_content_type") or "").strip().lower()
+    encoded = str(data.get("document_template_data_base64") or "").strip()
+    if not mime_type or not encoded:
+        raise TemplateConfigurationError(f"The {label} template file is missing. Re-upload the template in Clinic settings.")
+    try:
+        raw_bytes = base64.b64decode(encoded, validate=True)
+    except (ValueError, base64.binascii.Error):
+        raise TemplateConfigurationError(f"The uploaded {label} template is invalid. Re-upload the template in Clinic settings.") from None
+    if mime_type == "application/pdf" and PdfReader is None:
+        raise TemplateConfigurationError(
+            f"The uploaded {label} template is a PDF, but PDF template support is unavailable. "
+            "Install backend requirements and restart the API."
+        )
+    if mime_type not in {"application/pdf", "image/jpeg", "image/png"}:
+        raise TemplateConfigurationError(f"The uploaded {label} template has unsupported type '{mime_type}'.")
     return mime_type, raw_bytes
 
 
@@ -313,6 +361,224 @@ def _draw_doctor_signature(
         pdf.setFillColor(HexColor("#1e293b"))
         pdf.setFont("Helvetica-Bold", 10)
         pdf.drawString(margin_x, image_y - 12, doctor_name)
+
+
+def _draw_template_signature(pdf: canvas.Canvas, data: dict[str, Any], *, width: float, height: float) -> None:
+    signature = _resolve_signature(data)
+    if not signature:
+        return
+
+    box_width_ratio = _clamp_normalized(
+        data.get("document_template_signature_width"),
+        DEFAULT_TEMPLATE_SIGNATURE_BOX["width"],
+        minimum=0.02,
+    )
+    box_height_ratio = _clamp_normalized(
+        data.get("document_template_signature_height"),
+        DEFAULT_TEMPLATE_SIGNATURE_BOX["height"],
+        minimum=0.02,
+    )
+    box_x_ratio = _clamp_normalized(data.get("document_template_signature_x"), DEFAULT_TEMPLATE_SIGNATURE_BOX["x"])
+    box_y_ratio = _clamp_normalized(data.get("document_template_signature_y"), DEFAULT_TEMPLATE_SIGNATURE_BOX["y"])
+    box_width_ratio = min(box_width_ratio, 1.0 - box_x_ratio)
+    box_height_ratio = min(box_height_ratio, 1.0 - box_y_ratio)
+
+    x = box_x_ratio * width
+    box_width = max(box_width_ratio * width, 12.0)
+    box_height = max(box_height_ratio * height, 12.0)
+    y = height - ((box_y_ratio * height) + box_height)
+    _, raw_bytes = signature
+    pdf.drawImage(
+        ImageReader(BytesIO(raw_bytes)),
+        x,
+        y,
+        width=box_width,
+        height=box_height,
+        preserveAspectRatio=True,
+        mask="auto",
+    )
+
+
+def _draw_template_doctor_name(pdf: canvas.Canvas, data: dict[str, Any], *, width: float, height: float) -> None:
+    doctor_name = str(data.get("doctor_name") or "").strip()
+    if not doctor_name:
+        return
+
+    box_width_ratio = _clamp_normalized(
+        data.get("document_template_doctor_name_width"),
+        DEFAULT_TEMPLATE_DOCTOR_NAME_BOX["width"],
+        minimum=0.02,
+    )
+    box_height_ratio = _clamp_normalized(
+        data.get("document_template_doctor_name_height"),
+        DEFAULT_TEMPLATE_DOCTOR_NAME_BOX["height"],
+        minimum=0.02,
+    )
+    box_x_ratio = _clamp_normalized(data.get("document_template_doctor_name_x"), DEFAULT_TEMPLATE_DOCTOR_NAME_BOX["x"])
+    box_y_ratio = _clamp_normalized(data.get("document_template_doctor_name_y"), DEFAULT_TEMPLATE_DOCTOR_NAME_BOX["y"])
+    box_width_ratio = min(box_width_ratio, 1.0 - box_x_ratio)
+    box_height_ratio = min(box_height_ratio, 1.0 - box_y_ratio)
+
+    x = box_x_ratio * width
+    box_width = max(box_width_ratio * width, 12.0)
+    box_height = max(box_height_ratio * height, 12.0)
+    y = height - ((box_y_ratio * height) + box_height)
+    font_size = max(8.0, min(12.0, box_height * 0.45))
+    pdf.setFillColor(HexColor("#1e293b"))
+    pdf.setFont("Helvetica-Bold", font_size)
+    pdf.drawString(x, y + max((box_height - font_size) / 2, 0), doctor_name[:80])
+
+
+def _template_box_to_pdf_rect(box: dict[str, Any], *, width: float, height: float) -> tuple[float, float, float, float]:
+    box_width_ratio = _clamp_normalized(box.get("width"), 0.2, minimum=0.02)
+    box_height_ratio = _clamp_normalized(box.get("height"), 0.04, minimum=0.02)
+    box_x_ratio = _clamp_normalized(box.get("x"), 0.0)
+    box_y_ratio = _clamp_normalized(box.get("y"), 0.0)
+    box_width_ratio = min(box_width_ratio, 1.0 - box_x_ratio)
+    box_height_ratio = min(box_height_ratio, 1.0 - box_y_ratio)
+    box_width = max(box_width_ratio * width, 12.0)
+    box_height = max(box_height_ratio * height, 12.0)
+    x = box_x_ratio * width
+    y = height - ((box_y_ratio * height) + box_height)
+    return x, y, box_width, box_height
+
+
+def _merged_note_layout(data: dict[str, Any]) -> dict[str, dict[str, float]]:
+    raw_layout = data.get("document_template_note_layout") or {}
+    if not isinstance(raw_layout, dict):
+        raw_layout = {}
+    merged = {key: value.copy() for key, value in DEFAULT_TEMPLATE_NOTE_LAYOUT.items()}
+    for key, value in raw_layout.items():
+        if isinstance(value, dict) and key in merged:
+            merged[key] = {**merged[key], **value}
+    return merged
+
+
+def _draw_template_note_preview_text(
+    pdf: canvas.Canvas,
+    *,
+    width: float,
+    height: float,
+    layout: dict[str, dict[str, float]],
+) -> None:
+    header_samples = {
+        "name": "Name: Sample Patient",
+        "weight": "Weight: 68 kg",
+        "date": "Date: Jul 23, 2026",
+        "age": "Age: 34 yrs",
+        "temp": "Temp: 98.4 F",
+        "height": "Height: 172 cm",
+    }
+    note_sections = [
+        (
+            "Presenting Complaint",
+            "Patient reports gradual blurring of distance vision over the last 3 months, "
+            "intermittent frontal headache after prolonged screen use, mild watering in the evening, and difficulty "
+            "reading small text during night driving.",
+        ),
+        (
+            "Clinical Notes",
+            "Visual acuity assessed with and without correction. Patient is comfortable during "
+            "examination. Anterior segment appears quiet. Pupils are equal and reactive. Extraocular movements are full. "
+            "No acute symptoms reported during today's visit.",
+        ),
+        ("Diagnosis", "Myopic astigmatism with accommodative eye strain related to prolonged near work."),
+        (
+            "Treatment",
+            "Updated spectacle prescription explained. Discussed visual hygiene, ergonomic screen distance, "
+            "adequate lighting, and avoiding continuous near work without breaks.",
+        ),
+        ("Follow-up Advice", "Routine review in 6 months, earlier if headaches persist after new spectacles."),
+    ]
+    pdf.setFillColor(HexColor("#111827"))
+    for key, text in header_samples.items():
+        box = layout.get(key) or DEFAULT_TEMPLATE_NOTE_LAYOUT[key]
+        x, y, box_width, box_height = _template_box_to_pdf_rect(box, width=width, height=height)
+        font_size = 10
+        pdf.setFont("Helvetica", font_size)
+        lines = _wrap_text(text, "Helvetica", font_size, max(box_width - 4, 24))
+        line_height = font_size + 3
+        current_y = y + box_height - font_size - 2
+        for line in lines:
+            if current_y < y + 2:
+                break
+            if ":" in line:
+                label, rest = line.split(":", 1)
+                label_text = f"{label}:"
+                pdf.setFont("Helvetica-Bold", font_size)
+                pdf.drawString(x + 2, current_y, label_text)
+                pdf.setFont("Helvetica", font_size)
+                pdf.drawString(x + 2 + stringWidth(label_text + " ", "Helvetica-Bold", font_size), current_y, rest.strip())
+            else:
+                pdf.drawString(x + 2, current_y, line)
+            current_y -= line_height
+
+    body_box = layout.get("noteBody") or DEFAULT_TEMPLATE_NOTE_LAYOUT["noteBody"]
+    x, y, box_width, box_height = _template_box_to_pdf_rect(body_box, width=width, height=height)
+    font_size = 9
+    line_height = font_size + 3
+    section_gap = 8
+    current_y = y + box_height - font_size - 2
+    for label, content in note_sections:
+        label_text = f"{label}:"
+        available_width = max(box_width - 4, 24)
+        first_line_width = max(available_width - stringWidth(label_text + " ", "Helvetica-Bold", font_size), 24)
+        content_lines = _wrap_text(content, "Helvetica", font_size, first_line_width)
+        continuation_lines: list[str] = []
+        if content_lines:
+            first_content_line = content_lines[0]
+            for extra_line in content_lines[1:]:
+                continuation_lines.extend(_wrap_text(extra_line, "Helvetica", font_size, available_width))
+        else:
+            first_content_line = ""
+        if current_y < y + 2:
+            break
+        pdf.setFont("Helvetica-Bold", font_size)
+        pdf.drawString(x + 2, current_y, label_text)
+        pdf.setFont("Helvetica", font_size)
+        pdf.drawString(x + 2 + stringWidth(label_text + " ", "Helvetica-Bold", font_size), current_y, first_content_line)
+        current_y -= line_height
+        for line in continuation_lines:
+            if current_y < y + 2:
+                break
+            pdf.drawString(x + 2, current_y, line)
+            current_y -= line_height
+        current_y -= section_gap
+
+
+def build_template_note_preview_pdf(data: dict[str, Any]) -> bytes:
+    template = _resolve_uploaded_template(data, "document preview")
+    width, height = _page_size_for_template(template)
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=(width, height))
+    pdf.setTitle("Document Template Note Preview")
+    _draw_background(pdf, template, width, height)
+    _draw_template_note_preview_text(pdf, width=width, height=height, layout=_merged_note_layout(data))
+    _draw_template_signature(pdf, data, width=width, height=height)
+    _draw_template_doctor_name(pdf, data, width=width, height=height)
+    pdf.showPage()
+    pdf.save()
+    preview_bytes = buffer.getvalue()
+    return _apply_pdf_template(preview_bytes, template)
+
+
+def _draw_document_signature(
+    pdf: canvas.Canvas,
+    data: dict[str, Any],
+    *,
+    use_template: bool,
+    width: float,
+    height: float,
+    margin_x: float,
+    bottom_limit: float,
+    max_width: float,
+    y: float,
+) -> None:
+    if use_template:
+        _draw_template_signature(pdf, data, width=width, height=height)
+        _draw_template_doctor_name(pdf, data, width=width, height=height)
+        return
+    _draw_doctor_signature(pdf, data, width=width, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y)
 
 
 def _template_content_start_y(top_y: float, page_height: float, document_kind: str) -> float:
@@ -1092,7 +1358,7 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
 
         y -= 10
 
-    _draw_doctor_signature(pdf, patient, width=width, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y)
+    _draw_document_signature(pdf, patient, use_template=use_template, width=width, height=height, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y)
 
     if custom_footer.strip() and not use_template:
         footer_y = 0.55 * inch
@@ -1212,7 +1478,7 @@ def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: 
 
         y -= 4
 
-    _draw_doctor_signature(pdf, clinic, width=width, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y - 8)
+    _draw_document_signature(pdf, clinic, use_template=use_template, width=width, height=height, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y - 8)
 
     if custom_footer.strip() and not use_template:
         footer_y = 0.55 * inch
@@ -1414,6 +1680,8 @@ def build_invoice_pdf(
     y -= 22
     pdf.drawRightString(margin_x + max_width - 80, y, "Total")
     pdf.drawRightString(margin_x + max_width - 10, y, f"{float(invoice.get('total', 0)):.2f}")
+
+    _draw_document_signature(pdf, clinic, use_template=use_template, width=width, height=height, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y - 28)
 
     if custom_footer.strip() and not use_template:
         footer_y = 0.55 * inch

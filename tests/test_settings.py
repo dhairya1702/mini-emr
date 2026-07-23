@@ -84,6 +84,18 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
             "document_template_margin_right": 48,
             "document_template_margin_bottom": 54,
             "document_template_margin_left": 60,
+            "document_template_signature_x": 0.58,
+            "document_template_signature_y": 0.76,
+            "document_template_signature_width": 0.28,
+            "document_template_signature_height": 0.09,
+            "document_template_doctor_name_x": 0.58,
+            "document_template_doctor_name_y": 0.86,
+            "document_template_doctor_name_width": 0.28,
+            "document_template_doctor_name_height": 0.04,
+            "document_template_note_layout": {
+                "name": {"x": 0.11, "y": 0.16, "width": 0.3, "height": 0.04},
+                "noteBody": {"x": 0.12, "y": 0.3, "width": 0.7, "height": 0.42},
+            },
         },
     )
     assert updated.status_code == 200
@@ -93,6 +105,16 @@ def test_clinic_settings_document_template_upload_download_and_remove(client):
     assert updated_json["document_template_letters_enabled"] is True
     assert updated_json["document_template_margin_top"] == 72
     assert updated_json["document_template_margin_left"] == 60
+    assert updated_json["document_template_signature_x"] == 0.58
+    assert updated_json["document_template_signature_y"] == 0.76
+    assert updated_json["document_template_signature_width"] == 0.28
+    assert updated_json["document_template_signature_height"] == 0.09
+    assert updated_json["document_template_doctor_name_x"] == 0.58
+    assert updated_json["document_template_doctor_name_y"] == 0.86
+    assert updated_json["document_template_doctor_name_width"] == 0.28
+    assert updated_json["document_template_doctor_name_height"] == 0.04
+    assert updated_json["document_template_note_layout"]["name"]["x"] == 0.11
+    assert updated_json["document_template_note_layout"]["noteBody"]["height"] == 0.42
     assert updated_json["appointment_start_time"] == "08:30"
     assert updated_json["appointment_end_time"] == "17:30"
     assert updated_json["appointments_per_hour"] == 2
@@ -302,6 +324,17 @@ def test_saved_clinic_template_offsets_are_used_for_note_pdf_generation(client, 
             "document_template_margin_right": 54,
             "document_template_margin_bottom": 54,
             "document_template_margin_left": 54,
+            "document_template_signature_x": 0.55,
+            "document_template_signature_y": 0.72,
+            "document_template_signature_width": 0.25,
+            "document_template_signature_height": 0.08,
+            "document_template_doctor_name_x": 0.55,
+            "document_template_doctor_name_y": 0.84,
+            "document_template_doctor_name_width": 0.25,
+            "document_template_doctor_name_height": 0.04,
+            "document_template_note_layout": {
+                "name": {"x": 0.1, "y": 0.18, "width": 0.26, "height": 0.04},
+            },
         },
     )
     assert update.status_code == 200
@@ -342,6 +375,15 @@ def test_saved_clinic_template_offsets_are_used_for_note_pdf_generation(client, 
     rendered_patient = captured["patient"]
     assert isinstance(rendered_patient, dict)
     assert rendered_patient["document_template_margin_top"] == 200
+    assert rendered_patient["document_template_signature_x"] == 0.55
+    assert rendered_patient["document_template_signature_y"] == 0.72
+    assert rendered_patient["document_template_signature_width"] == 0.25
+    assert rendered_patient["document_template_signature_height"] == 0.08
+    assert rendered_patient["document_template_doctor_name_x"] == 0.55
+    assert rendered_patient["document_template_doctor_name_y"] == 0.84
+    assert rendered_patient["document_template_doctor_name_width"] == 0.25
+    assert rendered_patient["document_template_doctor_name_height"] == 0.04
+    assert rendered_patient["document_template_note_layout"]["name"]["y"] == 0.18
     assert rendered_patient["document_template_notes_enabled"] is True
     assert rendered_patient["doctor_name"] == "Dr Note Preview"
     assert rendered_patient["doctor_signature_name"] == "sig.png"

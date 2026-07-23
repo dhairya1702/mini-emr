@@ -1,4 +1,5 @@
 import sys
+from base64 import b64encode
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
@@ -47,6 +48,24 @@ class _RecordingCanvas:
         self.buffer.write(b"canvas-pdf")
 
 
+class _SignatureCanvas:
+    def __init__(self) -> None:
+        self.images: list[tuple[float, float, float, float]] = []
+        self.strings: list[tuple[float, float, str]] = []
+
+    def setFillColor(self, *_args, **_kwargs) -> None:
+        pass
+
+    def setFont(self, *_args, **_kwargs) -> None:
+        pass
+
+    def drawImage(self, _image, x, y, *, width, height, **_kwargs) -> None:
+        self.images.append((x, y, width, height))
+
+    def drawString(self, x, y, text, *_args, **_kwargs) -> None:
+        self.strings.append((x, y, text))
+
+
 def test_template_content_start_y_uses_safer_default_clearance_for_note_templates() -> None:
     page_height = 842.0
     configured_top_y = page_height - 54.0
@@ -64,6 +83,37 @@ def test_template_content_start_y_honors_more_conservative_user_margin() -> None
     start_y = _template_content_start_y(configured_top_y, page_height, "note")
 
     assert start_y == configured_top_y
+
+
+def test_template_signature_uses_saved_normalized_box() -> None:
+    pdf = _SignatureCanvas()
+    data = {
+        "doctor_signature_content_type": "image/png",
+        "doctor_signature_data_base64": b64encode(b"signature").decode("ascii"),
+        "document_template_signature_x": 0.5,
+        "document_template_signature_y": 0.75,
+        "document_template_signature_width": 0.2,
+        "document_template_signature_height": 0.1,
+    }
+
+    pdf_service._draw_template_signature(pdf, data, width=600.0, height=800.0)  # type: ignore[arg-type]
+
+    assert pdf.images == [(300.0, 120.0, 120.0, 80.0)]
+
+
+def test_template_doctor_name_uses_saved_normalized_box() -> None:
+    pdf = _SignatureCanvas()
+    data = {
+        "doctor_name": "Dr Template",
+        "document_template_doctor_name_x": 0.5,
+        "document_template_doctor_name_y": 0.85,
+        "document_template_doctor_name_width": 0.2,
+        "document_template_doctor_name_height": 0.05,
+    }
+
+    pdf_service._draw_template_doctor_name(pdf, data, width=600.0, height=800.0)  # type: ignore[arg-type]
+
+    assert pdf.strings == [(300.0, 94.0, "Dr Template")]
 
 
 def test_extract_note_body_accepts_section_labels_with_space_before_colon() -> None:

@@ -31,7 +31,7 @@ import { SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-p
 import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/settings-drawer-inventory-panel";
 import { PasswordInput } from "@/components/password-input";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
-import { api } from "@/lib/api";
+import { api, resolveApiAssetUrl } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { printBlob } from "@/lib/print";
 import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
@@ -165,6 +165,15 @@ type ClinicFormState = {
   document_template_margin_right: string;
   document_template_margin_bottom: string;
   document_template_margin_left: string;
+  document_template_signature_x: string;
+  document_template_signature_y: string;
+  document_template_signature_width: string;
+  document_template_signature_height: string;
+  document_template_doctor_name_x: string;
+  document_template_doctor_name_y: string;
+  document_template_doctor_name_width: string;
+  document_template_doctor_name_height: string;
+  document_template_note_layout: ClinicSettings["document_template_note_layout"];
 };
 
 const PREVIEW_PAGE_WIDTH = 595;
@@ -192,19 +201,48 @@ function previewInsetStyles(form: ClinicFormState) {
   };
 }
 
+function toPercentInput(value?: number | null, fallback = 0) {
+  return Number.isFinite(value) ? String(Math.round(Number(value) * 100)) : String(fallback);
+}
+
+function normalizePreviewPercent(value: string, fallback: number, min = 0, max = 100) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(parsed, max));
+}
+
+function previewSignatureStyles(form: ClinicFormState) {
+  const left = normalizePreviewPercent(form.document_template_signature_x, 62);
+  const top = normalizePreviewPercent(form.document_template_signature_y, 78);
+  const width = normalizePreviewPercent(form.document_template_signature_width, 24, 2);
+  const height = normalizePreviewPercent(form.document_template_signature_height, 8, 2);
+  return {
+    left: `${Math.min(left, 98)}%`,
+    top: `${Math.min(top, 98)}%`,
+    width: `${Math.min(width, 100 - left)}%`,
+    height: `${Math.min(height, 100 - top)}%`,
+  };
+}
+
 function ClinicDocumentPreview({
   form,
+  currentUser,
   templatePreviewUrl,
   templatePreviewMimeType,
   isTemplatePreviewLoading,
 }: {
   form: ClinicFormState;
+  currentUser: AuthUser | null;
   templatePreviewUrl: string;
   templatePreviewMimeType: string;
   isTemplatePreviewLoading: boolean;
 }) {
   const hasTemplate = Boolean(form.document_template_name || form.document_template_url);
   const contentInsets = previewInsetStyles(form);
+  const signatureStyles = previewSignatureStyles(form);
+  const signatureUrl = resolveApiAssetUrl(currentUser?.doctor_signature_url);
   const isPdf = templatePreviewMimeType === "application/pdf";
   const pdfPreviewSrc = templatePreviewUrl
     ? `${templatePreviewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`
@@ -305,6 +343,18 @@ function ClinicDocumentPreview({
                   </p>
                   <p>Treatment: Adjust top/right/bottom/left offsets until this frame sits comfortably inside your paper.</p>
                 </div>
+              </div>
+              <div
+                className="absolute rounded-[10px] border-2 border-dashed border-emerald-500 bg-emerald-500/10"
+                style={signatureStyles}
+              >
+                {signatureUrl ? (
+                  <Image src={signatureUrl} alt="Signature placement preview" fill unoptimized className="object-contain p-1" />
+                ) : (
+                  <div className="flex h-full items-center justify-center px-2 text-center text-[10px] font-semibold text-emerald-700">
+                    Signature
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -442,6 +492,15 @@ function createClinicFormState(settings?: ClinicSettings | null): ClinicFormStat
     document_template_margin_right: toMarginInput(settings?.document_template_margin_right),
     document_template_margin_bottom: toMarginInput(settings?.document_template_margin_bottom),
     document_template_margin_left: toMarginInput(settings?.document_template_margin_left),
+    document_template_signature_x: toPercentInput(settings?.document_template_signature_x, 62),
+    document_template_signature_y: toPercentInput(settings?.document_template_signature_y, 78),
+    document_template_signature_width: toPercentInput(settings?.document_template_signature_width, 24),
+    document_template_signature_height: toPercentInput(settings?.document_template_signature_height, 8),
+    document_template_doctor_name_x: String(settings?.document_template_doctor_name_x ?? 0.62),
+    document_template_doctor_name_y: String(settings?.document_template_doctor_name_y ?? 0.87),
+    document_template_doctor_name_width: String(settings?.document_template_doctor_name_width ?? 0.24),
+    document_template_doctor_name_height: String(settings?.document_template_doctor_name_height ?? 0.04),
+    document_template_note_layout: settings?.document_template_note_layout ?? {},
   };
 }
 
@@ -955,6 +1014,24 @@ export function SettingsDrawer({
       setError("Document template margins must be valid positive numbers or zero.");
       return;
     }
+    const signatureBox = {
+      x: Number(form.document_template_signature_x) / 100,
+      y: Number(form.document_template_signature_y) / 100,
+      width: Number(form.document_template_signature_width) / 100,
+      height: Number(form.document_template_signature_height) / 100,
+    };
+    if (
+      Object.values(signatureBox).some((value) => !Number.isFinite(value)) ||
+      signatureBox.x < 0 ||
+      signatureBox.y < 0 ||
+      signatureBox.width < 0.02 ||
+      signatureBox.height < 0.02 ||
+      signatureBox.x + signatureBox.width > 1 ||
+      signatureBox.y + signatureBox.height > 1
+    ) {
+      setError("Signature placement must stay within the page and be at least 2% wide and tall.");
+      return;
+    }
 
     setIsSaving(true);
     setError("");
@@ -983,6 +1060,15 @@ export function SettingsDrawer({
         document_template_margin_right: margins.right,
         document_template_margin_bottom: margins.bottom,
         document_template_margin_left: margins.left,
+        document_template_signature_x: signatureBox.x,
+        document_template_signature_y: signatureBox.y,
+        document_template_signature_width: signatureBox.width,
+        document_template_signature_height: signatureBox.height,
+        document_template_doctor_name_x: Number(form.document_template_doctor_name_x),
+        document_template_doctor_name_y: Number(form.document_template_doctor_name_y),
+        document_template_doctor_name_width: Number(form.document_template_doctor_name_width),
+        document_template_doctor_name_height: Number(form.document_template_doctor_name_height),
+        document_template_note_layout: form.document_template_note_layout,
       };
       if (form.sender_email_app_password.trim()) {
         clinicPayload.sender_email_app_password = form.sender_email_app_password.trim();
@@ -1900,6 +1986,46 @@ export function SettingsDrawer({
               ))}
             </div>
           </div>
+
+          <div className="mt-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Signature placement</h4>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Position the current doctor signature on top of the uploaded page. Values are percentages of the page.
+                </p>
+              </div>
+            </div>
+            {!hasUserSignature(currentUser) ? (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Upload a doctor signature from Account or Users to see it on generated documents.
+              </p>
+            ) : null}
+            <div className="mt-4 grid gap-4 md:grid-cols-4">
+              {[
+                { key: "document_template_signature_x" as const, label: "Left %" },
+                { key: "document_template_signature_y" as const, label: "Top %" },
+                { key: "document_template_signature_width" as const, label: "Width %" },
+                { key: "document_template_signature_height" as const, label: "Height %" },
+              ].map((item) => (
+                <label key={item.key} className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">{item.label}</span>
+                  <input
+                    type="number"
+                    min={item.key.endsWith("_width") || item.key.endsWith("_height") ? "2" : "0"}
+                    max="100"
+                    step="1"
+                    value={form[item.key]}
+                    disabled={!hasDocumentTemplate}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, [item.key]: event.target.value }))
+                    }
+                    className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8] disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
           </section>
 
           <section className="rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
@@ -1962,6 +2088,7 @@ export function SettingsDrawer({
           <div className="mt-6">
           <ClinicDocumentPreview
             form={form}
+            currentUser={currentUser}
             templatePreviewUrl={templatePreviewUrl}
             templatePreviewMimeType={templatePreviewMimeType}
             isTemplatePreviewLoading={isTemplatePreviewLoading}

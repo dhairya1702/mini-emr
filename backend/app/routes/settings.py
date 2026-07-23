@@ -1,5 +1,6 @@
 from base64 import b64decode, b64encode
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 from uuid import UUID
 
@@ -11,6 +12,7 @@ from app.auth import get_current_user, require_admin
 from app.db import AppRepository, get_repository
 from app.file_validation import validate_pdf_bytes
 from app.schema_domains.auth_settings import ClinicSettingsOut, ClinicSettingsUpdate, UserOut
+from app.services.pdf_service import TemplateConfigurationError, build_template_note_preview_pdf
 
 
 router = APIRouter()
@@ -179,6 +181,35 @@ async def download_clinic_template(
         raise
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="download_clinic_template") from exc
+
+
+@router.get("/settings/clinic/document-template/preview-note")
+async def preview_clinic_template_note(
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> StreamingResponse:
+    try:
+        settings_row = await repo.get_clinic_settings(str(current_user.org_id))
+        user_row = await repo.get_user(str(current_user.id))
+        preview_context = {
+            **settings_row,
+            "doctor_name": current_user.name or str(settings_row.get("doctor_name") or ""),
+            "doctor_signature_name": user_row.get("doctor_signature_name"),
+            "doctor_signature_content_type": user_row.get("doctor_signature_content_type"),
+            "doctor_signature_data_base64": user_row.get("doctor_signature_data_base64"),
+        }
+        pdf_bytes = build_template_note_preview_pdf(preview_context)
+        return StreamingResponse(
+            BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": 'inline; filename="document-template-note-preview.pdf"'},
+        )
+    except TemplateConfigurationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="preview_clinic_template_note") from exc
 
 
 @router.delete("/settings/clinic/document-template", response_model=ClinicSettingsOut)

@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -10,6 +10,15 @@ from app.schema_domains.common import ClinicSpecialty, UserRole
 
 
 DEFAULT_DOCUMENT_TEMPLATE_MARGIN = 54.0
+DEFAULT_DOCUMENT_TEMPLATE_NOTE_LAYOUT: dict[str, dict[str, float]] = {
+    "name": {"x": 0.1, "y": 0.16, "width": 0.26, "height": 0.035},
+    "weight": {"x": 0.4, "y": 0.16, "width": 0.18, "height": 0.035},
+    "date": {"x": 0.66, "y": 0.16, "width": 0.24, "height": 0.035},
+    "age": {"x": 0.1, "y": 0.205, "width": 0.2, "height": 0.035},
+    "temp": {"x": 0.4, "y": 0.205, "width": 0.2, "height": 0.035},
+    "height": {"x": 0.1, "y": 0.25, "width": 0.22, "height": 0.035},
+    "noteBody": {"x": 0.1, "y": 0.305, "width": 0.76, "height": 0.41},
+}
 WorkspaceMode = Literal["solo", "team"]
 
 
@@ -38,6 +47,15 @@ class ClinicSettingsUpdate(BaseModel):
     document_template_margin_right: float | None = Field(default=None, ge=0, le=288)
     document_template_margin_bottom: float | None = Field(default=None, ge=0, le=288)
     document_template_margin_left: float | None = Field(default=None, ge=0, le=288)
+    document_template_signature_x: float | None = Field(default=None, ge=0, le=1)
+    document_template_signature_y: float | None = Field(default=None, ge=0, le=1)
+    document_template_signature_width: float | None = Field(default=None, ge=0.02, le=1)
+    document_template_signature_height: float | None = Field(default=None, ge=0.02, le=1)
+    document_template_doctor_name_x: float | None = Field(default=None, ge=0, le=1)
+    document_template_doctor_name_y: float | None = Field(default=None, ge=0, le=1)
+    document_template_doctor_name_width: float | None = Field(default=None, ge=0.02, le=1)
+    document_template_doctor_name_height: float | None = Field(default=None, ge=0.02, le=1)
+    document_template_note_layout: dict[str, dict[str, float]] | None = None
     onboarding_required: bool | None = None
     onboarding_completed_at: datetime | None = None
     users_allowed: int | None = Field(default=None, ge=1, le=500)
@@ -66,6 +84,35 @@ class ClinicSettingsUpdate(BaseModel):
         if 60 % value != 0:
             raise ValueError("Appointments per hour must divide evenly into 60 minutes.")
         return value
+
+    @field_validator("document_template_note_layout")
+    @classmethod
+    def validate_document_template_note_layout(
+        cls,
+        value: dict[str, dict[str, float]] | None,
+    ) -> dict[str, dict[str, float]] | None:
+        if value is None:
+            return value
+        normalized: dict[str, dict[str, float]] = {}
+        for key, box in value.items():
+            if not isinstance(box, dict):
+                continue
+            parsed_box: dict[str, float] = {}
+            for field_name in ("x", "y", "width", "height"):
+                raw_value: Any = box.get(field_name)
+                try:
+                    parsed = float(raw_value)
+                except (TypeError, ValueError):
+                    raise ValueError("Template note layout boxes must use numeric coordinates.") from None
+                if field_name in {"width", "height"}:
+                    parsed = max(0.02, min(parsed, 1.0))
+                else:
+                    parsed = max(0.0, min(parsed, 1.0))
+                parsed_box[field_name] = parsed
+            parsed_box["width"] = min(parsed_box["width"], 1.0 - parsed_box["x"])
+            parsed_box["height"] = min(parsed_box["height"], 1.0 - parsed_box["y"])
+            normalized[str(key)] = parsed_box
+        return normalized
 
     @model_validator(mode="after")
     def validate_booking_window(self) -> "ClinicSettingsUpdate":
@@ -101,6 +148,17 @@ class ClinicSettingsOut(BaseModel):
     document_template_margin_right: float = DEFAULT_DOCUMENT_TEMPLATE_MARGIN
     document_template_margin_bottom: float = DEFAULT_DOCUMENT_TEMPLATE_MARGIN
     document_template_margin_left: float = DEFAULT_DOCUMENT_TEMPLATE_MARGIN
+    document_template_signature_x: float = 0.1
+    document_template_signature_y: float = 0.78
+    document_template_signature_width: float = 0.24
+    document_template_signature_height: float = 0.08
+    document_template_doctor_name_x: float = 0.1
+    document_template_doctor_name_y: float = 0.87
+    document_template_doctor_name_width: float = 0.24
+    document_template_doctor_name_height: float = 0.04
+    document_template_note_layout: dict[str, dict[str, float]] = Field(
+        default_factory=lambda: {key: value.copy() for key, value in DEFAULT_DOCUMENT_TEMPLATE_NOTE_LAYOUT.items()}
+    )
     onboarding_required: bool = False
     onboarding_completed_at: datetime | None = None
     users_allowed: int = 2
