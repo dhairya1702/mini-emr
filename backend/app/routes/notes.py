@@ -23,6 +23,7 @@ from app.schema_domains.documents import (
     SendLetterWhatsAppRequest,
     SendNoteRequest,
     SendNoteResponse,
+    SendNoteWhatsAppRequest,
     UpdateNoteDraftRequest,
 )
 from app.schema_domains.patients import NoteOut
@@ -38,7 +39,7 @@ from app.services.note_workflow import (
 )
 from app.services.document_helpers import build_document_context_for_user
 from app.services.pdf_service import build_letter_pdf, build_note_pdf
-from app.services.whatsapp_document_workflow import send_letter_whatsapp_workflow
+from app.services.whatsapp_document_workflow import send_letter_whatsapp_workflow, send_note_whatsapp_workflow
 from app.storage import PatientAttachmentStorage, get_patient_attachment_storage
 
 
@@ -137,6 +138,19 @@ async def send_note(
 ) -> SendNoteResponse:
     try:
         return await send_note_workflow(repo, storage, current_user, payload)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+
+
+@router.post("/send-note-whatsapp", response_model=SendNoteResponse)
+async def send_note_whatsapp(
+    payload: SendNoteWhatsAppRequest,
+    current_user: UserOut = Depends(require_admin),
+    repo: AppRepository = Depends(get_repository),
+    storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
+) -> SendNoteResponse:
+    try:
+        return await send_note_whatsapp_workflow(repo, storage, current_user, payload)
     except ValueError as exc:
         raise bad_request_error(exc) from exc
 

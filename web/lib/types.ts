@@ -1261,6 +1261,12 @@ export interface SendNotePayload {
   recipient_email: string;
 }
 
+export interface SendNoteWhatsAppPayload {
+  note_id: string;
+  patient_id: string;
+  recipient_phone: string;
+}
+
 export interface SendPatientAttachmentPayload {
   recipient_email: string;
   subject: string;

@@ -108,6 +108,12 @@ class SendNoteRequest(BaseModel):
     recipient_email: str = Field(min_length=5, max_length=200)
 
 
+class SendNoteWhatsAppRequest(BaseModel):
+    note_id: UUID
+    patient_id: UUID
+    recipient_phone: str = Field(min_length=5, max_length=40)
+
+
 class SendNoteResponse(BaseModel):
     success: bool
     message: str

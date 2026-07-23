@@ -75,6 +75,7 @@ import {
   SendLetterPayload,
   SendLetterWhatsAppPayload,
   SendNotePayload,
+  SendNoteWhatsAppPayload,
   SendPatientAttachmentPayload,
   StaffUserCreatePayload,
   SuperdashboardDashboard,
@@ -843,6 +844,11 @@ export const api = {
     }),
   sendNote: (payload: SendNotePayload) =>
     request<OperationResult>("/send-note", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  sendNoteWhatsApp: (payload: SendNoteWhatsAppPayload) =>
+    request<OperationResult>("/send-note-whatsapp", {
       method: "POST",
       body: JSON.stringify(payload),
     }),

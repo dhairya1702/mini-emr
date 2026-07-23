@@ -10,10 +10,13 @@ from app.config import get_settings
 from app.db import AppRepository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import InvoiceActionResponse, InvoiceOut, SendInvoiceWhatsAppRequest
-from app.schema_domains.documents import SendNoteResponse
+from app.schema_domains.documents import SendNoteResponse, SendNoteWhatsAppRequest
 from app.services.audit_service import record_invoice_completed, record_invoice_shared
+from app.services.audit_service import get_actor_name, write_audit_event
 from app.services.document_helpers import build_document_context_for_user
-from app.services.pdf_service import build_invoice_pdf, build_letter_pdf
+from app.services.note_workflow import hydrate_note_assets_for_pdf
+from app.services.pdf_service import build_invoice_pdf, build_letter_pdf, build_note_pdf
+from app.storage import PatientAttachmentStorage
 from app.services.whatsapp_client import WhatsAppClient, WhatsAppClientError
 
 
@@ -297,4 +300,106 @@ async def send_letter_whatsapp_workflow(
     return SendNoteResponse(
         success=True,
         message=f"Letter sent on WhatsApp to {recipient_wa_id} from {clinic_name}.",
+    )
+
+
+async def send_note_whatsapp_workflow(
+    repo: AppRepository,
+    storage: PatientAttachmentStorage,
+    current_user: UserOut,
+    payload: SendNoteWhatsAppRequest,
+) -> SendNoteResponse:
+    note = await repo.get_note(str(current_user.org_id), str(payload.note_id))
+    if str(note["patient_id"]) != str(payload.patient_id):
+        raise HTTPException(status_code=400, detail="Note does not belong to that patient.")
+
+    patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
+    raw_phone = str(payload.recipient_phone or patient.get("phone") or "").strip()
+    recipient_wa_id = normalize_whatsapp_recipient(raw_phone)
+    clinic_settings = await build_document_context_for_user(repo, current_user)
+    finalized_during_request = note.get("status") not in {"final", "sent"}
+    finalized_note = note if not finalized_during_request else await repo.finalize_note(
+        str(current_user.org_id),
+        str(payload.note_id),
+    )
+    if finalized_during_request:
+        await repo.mark_patient_summary_stale(
+            str(current_user.org_id),
+            str(payload.patient_id),
+        )
+
+    snapshot_content = str(finalized_note.get("snapshot_content") or finalized_note.get("content") or "").strip()
+    if not snapshot_content:
+        raise HTTPException(status_code=400, detail="Saved note content is empty.")
+
+    generated_on = datetime.now().strftime("%b %d, %Y %I:%M %p")
+    note_assets = await hydrate_note_assets_for_pdf(
+        repo,
+        storage,
+        str(current_user.org_id),
+        finalized_note.get("snapshot_asset_payload") or finalized_note.get("asset_payload") or [],
+    )
+    patient_name = str(patient.get("name") or "").strip() or "Patient"
+    clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
+    pdf_bytes = build_note_pdf(
+        patient={**patient, **clinic_settings},
+        note_content=snapshot_content,
+        generated_on=generated_on,
+        assets=note_assets,
+    )
+    filename = f"{patient_name.replace(' ', '_') or 'patient'}_consultation_note.pdf"
+    caption = "\n\n".join(
+        [
+            f"Hi {_first_name(patient_name)},",
+            f"Thank you for visiting {clinic_name}.",
+            "Here is your consultation note.",
+            "Attached for your records.",
+        ]
+    )
+    await _send_pdf_document(
+        repo,
+        org_id=str(current_user.org_id),
+        recipient_wa_id=recipient_wa_id,
+        filename=filename,
+        caption=caption,
+        pdf_bytes=pdf_bytes,
+        intent="send_consultation_note_document",
+        raw_context={
+            "note_id": str(payload.note_id),
+            "patient_id": str(payload.patient_id),
+            "patient_name": patient_name,
+            "recipient_phone": raw_phone,
+            "recipient_wa_id": recipient_wa_id,
+            "filename": filename,
+        },
+    )
+    sent_note = await repo.mark_note_sent(
+        str(current_user.org_id),
+        str(payload.note_id),
+        sent_by=str(current_user.id),
+        sent_to=recipient_wa_id,
+    )
+    await write_audit_event(
+        repo,
+        current_user,
+        entity_type="note",
+        entity_id=str(payload.note_id),
+        action="consultation_note_shared",
+        summary=f"Shared consultation note on WhatsApp with {recipient_wa_id}.",
+        metadata={
+            "patient_id": str(payload.patient_id),
+            "patient_name": patient_name,
+            "recipient": recipient_wa_id,
+            "sent_at": sent_note.get("sent_at"),
+            "sent_by": str(current_user.id),
+            "sent_by_name": get_actor_name(current_user),
+            "sent_to": recipient_wa_id,
+            "version_number": sent_note.get("version_number", 1),
+            "root_note_id": sent_note.get("root_note_id"),
+            "amended_from_note_id": sent_note.get("amended_from_note_id"),
+        },
+    )
+    return SendNoteResponse(
+        success=True,
+        message=f"Consultation note sent on WhatsApp to {recipient_wa_id}.",
     )
