@@ -1317,10 +1317,15 @@ export default function HomePage() {
 
   async function handleStartConsultation(patient: Patient) {
     try {
-      const workingPatient = patient.status === "waiting"
+      const latestPatient = patient.status === "waiting"
         ? await transitionPatientStatus(patient, "consultation")
-        : patient;
-      setSelectedPatient(workingPatient);
+        : isTrainingMode
+          ? patient
+          : await api.getPatient(patient.id);
+      setPatients((current) =>
+        current.map((entry) => (entry.id === latestPatient.id ? latestPatient : entry)),
+      );
+      setSelectedPatient(latestPatient);
       setDrawerMode("consultation");
     } catch {
       return;
