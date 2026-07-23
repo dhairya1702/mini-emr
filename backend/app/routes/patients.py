@@ -29,6 +29,8 @@ from app.schema_domains.patients import (
     PatientVisitOut,
 )
 from app.schema_domains.specialty import (
+    BinocularVisionEvaluationInput,
+    BinocularVisionEvaluationOut,
     LongitudinalTrackCreate,
     LongitudinalTrackRecordOut,
     PediatricGrowthMeasurementInput,
@@ -45,6 +47,7 @@ from app.services.patient_views import (
     build_patient_myopia_history_view,
     build_patient_timeline_view,
     list_patient_tbi_evaluations_view,
+    list_patient_binocular_vision_evaluations_view,
     list_patient_invoices_view,
     list_patient_chart_visits_view,
     list_patient_notes_view,
@@ -97,7 +100,7 @@ SPECIALTY_MODULE_TRACKS = {
 async def _require_optometry_clinic(repo: AppRepository, org_id: str) -> None:
     settings = await repo.get_clinic_settings(org_id)
     if str(settings.get("clinic_specialty") or "").strip() != "optometry":
-        raise ValueError("TBI evaluation is only available for optometry clinics.")
+        raise ValueError("This optometry evaluation is only available for optometry clinics.")
 
 
 async def _require_specialty_module(repo: AppRepository, org_id: str, module_type: str) -> None:
@@ -126,6 +129,34 @@ def _tbi_summary_fields(payload: dict) -> dict:
     elif management:
         summary_bits.append(management[:140])
     return {"summary": " · ".join(summary_bits) or "Neurovision / TBI evaluation saved."}
+
+
+def _value_at(payload: dict, *path: str) -> str:
+    current = payload
+    for part in path:
+        if not isinstance(current, dict):
+            return ""
+        current = current.get(part)
+    return str(current or "").strip() if current is not None else ""
+
+
+def _binocular_vision_summary_fields(payload: dict) -> dict:
+    summary_bits = [
+        _value_at(payload, "impression"),
+        _value_at(payload, "history", "main_complaints"),
+        (
+            f"NPC {_value_at(payload, 'motor_evaluation', 'npc_accommodative_target', 'objective')}"
+            if _value_at(payload, "motor_evaluation", "npc_accommodative_target", "objective")
+            else ""
+        ),
+        (
+            f"Stereo N {_value_at(payload, 'sensory_evaluation', 'stereopsis', 'near')}"
+            if _value_at(payload, "sensory_evaluation", "stereopsis", "near")
+            else ""
+        ),
+    ]
+    summary = " · ".join(bit[:140] for bit in summary_bits if bit)
+    return {"summary": summary or "Binocular vision evaluation saved."}
 
 
 def _resolve_profile_photo_content_type(upload: UploadFile) -> str:
@@ -565,6 +596,22 @@ async def list_patient_tbi_evaluations(
         raise internal_server_error(exc, context="list_patient_tbi_evaluations") from exc
 
 
+@router.get("/patients/{patient_id}/binocular-vision-evaluations", response_model=list[BinocularVisionEvaluationOut])
+async def list_patient_binocular_vision_evaluations(
+    patient_id: str,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> list[BinocularVisionEvaluationOut]:
+    try:
+        org_id = str(current_user.org_id)
+        await _require_optometry_clinic(repo, org_id)
+        return await list_patient_binocular_vision_evaluations_view(repo, org_id, patient_id)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="list_patient_binocular_vision_evaluations") from exc
+
+
 @router.get("/patients/{patient_id}/module-entries", response_model=list[LongitudinalTrackRecordOut])
 async def list_patient_module_entries(
     patient_id: str,
@@ -632,6 +679,42 @@ async def create_patient_tbi_evaluation(
         raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="create_patient_tbi_evaluation") from exc
+
+
+@router.post("/patients/{patient_id}/binocular-vision-evaluations", response_model=BinocularVisionEvaluationOut, status_code=201)
+async def create_patient_binocular_vision_evaluation(
+    patient_id: str,
+    payload: BinocularVisionEvaluationInput,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> BinocularVisionEvaluationOut:
+    try:
+        org_id = str(current_user.org_id)
+        await _require_optometry_clinic(repo, org_id)
+        track = await repo.create_longitudinal_track(
+            org_id,
+            patient_id,
+            LongitudinalTrackCreate(
+                track_type="binocular_vision",
+                measured_at=payload.measured_at,
+                summary_fields=_binocular_vision_summary_fields(payload.payload),
+                raw_payload=payload.payload,
+                derived_metrics={},
+            ),
+        )
+        return BinocularVisionEvaluationOut(
+            id=str(track["id"]),
+            org_id=str(track["org_id"]),
+            patient_id=str(track["patient_id"]),
+            measured_at=track["measured_at"],
+            payload=track.get("raw_payload") or {},
+            summary_fields=track.get("summary_fields") or {},
+            created_at=track["created_at"],
+        )
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="create_patient_binocular_vision_evaluation") from exc
 
 
 @router.post("/patients/{patient_id}/growth-records", response_model=PediatricGrowthMeasurementOut, status_code=201)

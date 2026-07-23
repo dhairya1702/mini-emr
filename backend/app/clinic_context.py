@@ -35,6 +35,68 @@ def _render_structured_notes(title: str, rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
+def _flatten_structured_payload(payload: dict, prefix: str = "") -> list[list[str]]:
+    rows: list[list[str]] = []
+    for key, value in payload.items():
+        if key in NON_CLINICAL_STRUCTURED_KEYS or value in (None, "", [], {}):
+            continue
+        label = f"{prefix} {_format_structured_label(key)}".strip()
+        if isinstance(value, dict):
+            rows.extend(_flatten_structured_payload(value, label))
+        elif isinstance(value, list):
+            joined = ", ".join(str(item) for item in value if item not in (None, "", [], {}))
+            if joined:
+                rows.append([label, joined])
+        else:
+            rows.append([label, str(value)])
+    return rows
+
+
+def _build_binocular_vision_rows(binocular: dict) -> list[list[str]]:
+    wanted_paths = [
+        ("Main complaints", ("history", "main_complaints")),
+        ("Spectacle use", ("history", "spectacle_use_history")),
+        ("Near work / computer use", ("history", "near_work_hours")),
+        ("Associated symptoms", ("history", "associated_symptoms")),
+        ("Previous vision therapy", ("history", "previous_vision_therapy")),
+        ("General health / medications", ("history", "general_health_medications")),
+        ("VA with glasses OD", ("refraction", "visual_acuity_with_glasses", "od")),
+        ("VA with glasses OS", ("refraction", "visual_acuity_with_glasses", "os")),
+        ("Unaided VA OD", ("refraction", "visual_acuity_unaided", "od")),
+        ("Unaided VA OS", ("refraction", "visual_acuity_unaided", "os")),
+        ("Acceptance OD", ("refraction", "acceptance", "od")),
+        ("Acceptance OS", ("refraction", "acceptance", "os")),
+        ("Test performed with", ("assessment_setup", "tested_with")),
+        ("Stereopsis distance", ("sensory_evaluation", "stereopsis", "distance")),
+        ("Stereopsis near", ("sensory_evaluation", "stereopsis", "near")),
+        ("W4DT distance", ("sensory_evaluation", "worth_four_dot", "distance")),
+        ("W4DT near", ("sensory_evaluation", "worth_four_dot", "near")),
+        ("Cover test distance", ("motor_evaluation", "cover_test", "distance")),
+        ("Cover test near", ("motor_evaluation", "cover_test", "near")),
+        ("NPC accommodative subjective", ("motor_evaluation", "npc_accommodative_target", "subjective")),
+        ("NPC accommodative objective", ("motor_evaluation", "npc_accommodative_target", "objective")),
+        ("MEM OD", ("motor_evaluation", "mem", "od")),
+        ("MEM OS", ("motor_evaluation", "mem", "os")),
+        ("NRA", ("motor_evaluation", "nra")),
+        ("PRA", ("motor_evaluation", "pra")),
+        ("Impression", ("impression",)),
+        ("Advice", ("advice",)),
+        ("Follow up", ("follow_up",)),
+    ]
+    rows: list[list[str]] = []
+    for label, path in wanted_paths:
+        current: object = binocular
+        for part in path:
+            if not isinstance(current, dict):
+                current = ""
+                break
+            current = current.get(part, "")
+        value = str(current or "").strip()
+        if value:
+            rows.append([label, value])
+    return rows
+
+
 def build_clinic_context(clinic_settings: dict) -> str:
     clinic_context_bits = [
         f"Clinic Name: {clinic_settings.get('clinic_name', 'ClinicOS') or 'ClinicOS'}",
@@ -178,79 +240,10 @@ def build_measurements_context(payload: GenerateNoteRequest) -> str:
         if eye_table:
             measurement_bits.append(eye_table)
     if payload.binocular_vision:
-        binocular = payload.binocular_vision
-        symptom_flags = [
-            label for label, is_present in (
-                ("Asthenopia", binocular.asthenopia),
-                ("Headache", binocular.headache),
-                ("Diplopia", binocular.diplopia),
-                ("Blur Near", binocular.blur_near),
-                ("Blur Distance", binocular.blur_distance),
-                ("Reading Difficulty", binocular.reading_difficulty),
-                ("Poor Concentration", binocular.poor_concentration),
-            ) if is_present
-        ]
-        overview_rows = [
-            ["Symptoms", ", ".join(symptom_flags)],
-            ["Symptom Notes", binocular.symptom_notes],
-            ["Distance Cover Test", binocular.distance_cover_test],
-            ["Near Cover Test", binocular.near_cover_test],
-            ["Distance Deviation", binocular.distance_deviation_pd],
-            ["Near Deviation", binocular.near_deviation_pd],
-            ["Binocular VA Distance", binocular.binocular_visual_acuity_distance],
-            ["Binocular VA Near", binocular.binocular_visual_acuity_near],
-            ["Motility", binocular.motility],
-            ["Pursuits", binocular.pursuits],
-            ["Saccades", binocular.saccades],
-        ]
-        overview_table = _render_pipe_table(
-            "Binocular Vision Overview:",
-            ["Field", "Value"],
-            [[label, value] for label, value in overview_rows if value],
-        )
-        if overview_table:
-            measurement_bits.append(overview_table)
-
-        convergence_rows = [
-            ["NPC Break", binocular.npc_break_cm],
-            ["NPC Recovery", binocular.npc_recovery_cm],
-            ["Convergence Notes", binocular.convergence_notes],
-            ["BO Distance", binocular.bo_distance],
-            ["BO Near", binocular.bo_near],
-            ["BI Distance", binocular.bi_distance],
-            ["BI Near", binocular.bi_near],
-            ["Vergence Notes", binocular.vergence_notes],
-        ]
-        convergence_table = _render_pipe_table(
-            "Binocular Vision Convergence:",
-            ["Field", "Value"],
-            [[label, value] for label, value in convergence_rows if value],
-        )
-        if convergence_table:
-            measurement_bits.append(convergence_table)
-
-        sensory_rows = [
-            ["Stereo Test", binocular.stereo_test_name],
-            ["Stereo Result", binocular.stereo_result_arcsec],
-            ["Worth 4 Dot Distance", binocular.worth_four_dot_distance],
-            ["Worth 4 Dot Near", binocular.worth_four_dot_near],
-            ["Sensory Notes", binocular.sensory_notes],
-            ["Amplitude Right", binocular.amplitude_right],
-            ["Amplitude Left", binocular.amplitude_left],
-            ["Facility", binocular.facility_cpm],
-            ["Facility Lens", binocular.facility_lens],
-            ["Accommodation Notes", binocular.accommodation_notes],
-            ["Working Diagnosis", binocular.working_diagnosis],
-            ["Management Plan", binocular.management_plan],
-            ["Follow-up", binocular.follow_up_interval],
-        ]
-        sensory_table = _render_pipe_table(
-            "Binocular Vision Sensory & Plan:",
-            ["Field", "Value"],
-            [[label, value] for label, value in sensory_rows if value],
-        )
-        if sensory_table:
-            measurement_bits.append(sensory_table)
+        binocular_rows = _build_binocular_vision_rows(payload.binocular_vision)
+        binocular_table = _render_pipe_table("Binocular Vision Assessment:", ["Field", "Value"], binocular_rows)
+        if binocular_table:
+            measurement_bits.append(binocular_table)
     if payload.low_vision:
         low_vision = payload.low_vision
         needs_flags = [
@@ -350,11 +343,7 @@ def build_measurements_context(payload: GenerateNoteRequest) -> str:
         module_type = module.module_type.strip()
         if not module_type:
             continue
-        module_rows = [
-            [_format_structured_label(key), str(value)]
-            for key, value in module.payload.items()
-            if key not in NON_CLINICAL_STRUCTURED_KEYS and value not in (None, "", [], {})
-        ]
+        module_rows = _flatten_structured_payload(module.payload)
         if not module_rows:
             continue
         module_notes = _render_structured_notes(

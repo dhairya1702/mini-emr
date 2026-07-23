@@ -10,6 +10,7 @@ from app.schema_domains.patients import (
     PatientVisitNoteDetailOut,
 )
 from app.schema_domains.specialty import (
+    BinocularVisionEvaluationOut,
     PediatricGrowthDeltaOut,
     PediatricGrowthMeasurementOut,
     PediatricGrowthSummaryOut,
@@ -155,6 +156,18 @@ def _build_tbi_evaluation_record(track: dict) -> TbiEvaluationOut:
     )
 
 
+def _build_binocular_vision_evaluation_record(track: dict) -> BinocularVisionEvaluationOut:
+    return BinocularVisionEvaluationOut(
+        id=str(track["id"]),
+        org_id=str(track["org_id"]),
+        patient_id=str(track["patient_id"]),
+        measured_at=track["measured_at"],
+        payload=track.get("raw_payload") or {},
+        summary_fields=track.get("summary_fields") or {},
+        created_at=track["created_at"],
+    )
+
+
 async def list_patient_tbi_evaluations_view(
     repo: AppRepository,
     org_id: str,
@@ -163,6 +176,16 @@ async def list_patient_tbi_evaluations_view(
     await repo.get_patient(org_id, patient_id)
     tracks = await repo.list_longitudinal_tracks_for_patient(org_id, patient_id, track_type="tbi_evaluation")
     return [_build_tbi_evaluation_record(track) for track in tracks]
+
+
+async def list_patient_binocular_vision_evaluations_view(
+    repo: AppRepository,
+    org_id: str,
+    patient_id: str,
+) -> list[BinocularVisionEvaluationOut]:
+    await repo.get_patient(org_id, patient_id)
+    tracks = await repo.list_longitudinal_tracks_for_patient(org_id, patient_id, track_type="binocular_vision")
+    return [_build_binocular_vision_evaluation_record(track) for track in tracks]
 
 
 async def build_user_name_map(repo: AppRepository, org_id: str) -> dict[str, str]:

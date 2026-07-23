@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { MobileShell } from "@/components/mobile/mobile-shell";
+import { BinocularVisionModal } from "@/components/optometry/binocular-vision-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
 import { api } from "@/lib/api";
 import type {
@@ -34,6 +35,8 @@ import type {
   PediatricGrowthSummary,
   MyopiaHistory,
   LongitudinalTrackRecord,
+  BinocularVisionEvaluationCreatePayload,
+  BinocularVisionEvaluationRecord,
   TbiEvaluationCreatePayload,
   TbiEvaluationRecord,
 } from "@/lib/types";
@@ -241,7 +244,10 @@ function TestsTab({
   myopiaError,
   myopiaHistory,
   onOpenModule,
+  onOpenBinocularVision,
   onOpenTbiEvaluation,
+  binocularVisionError,
+  binocularVisionEvaluations,
   tbiError,
   tbiEvaluations,
 }: {
@@ -252,7 +258,10 @@ function TestsTab({
   myopiaError: string;
   myopiaHistory: MyopiaHistory | null;
   onOpenModule: (moduleKey: SpecialtyModuleKey) => void;
+  onOpenBinocularVision: () => void;
   onOpenTbiEvaluation: () => void;
+  binocularVisionError: string;
+  binocularVisionEvaluations: BinocularVisionEvaluationRecord[];
   tbiError: string;
   tbiEvaluations: TbiEvaluationRecord[];
 }) {
@@ -261,6 +270,7 @@ function TestsTab({
   const latestGrowthRecord = growthRecords[growthRecords.length - 1] ?? null;
   const latestMyopiaRecord = myopiaHistory?.records.at(-1) ?? null;
   const latestTbiEvaluation = tbiEvaluations.at(-1) ?? null;
+  const latestBinocularVisionEvaluation = binocularVisionEvaluations.at(-1) ?? null;
 
   const rows = modules.map((moduleKey) => {
     if (moduleKey === "myopia_management") {
@@ -278,6 +288,14 @@ function TestsTab({
         date: latestTbiEvaluation ? shortDate(latestTbiEvaluation.measured_at || latestTbiEvaluation.created_at) : "—",
         count: tbiEvaluations.length,
         error: tbiError,
+      };
+    }
+    if (moduleKey === "binocular_vision") {
+      return {
+        key: moduleKey,
+        date: latestBinocularVisionEvaluation ? shortDate(latestBinocularVisionEvaluation.measured_at || latestBinocularVisionEvaluation.created_at) : "—",
+        count: binocularVisionEvaluations.length,
+        error: binocularVisionError,
       };
     }
     if (moduleKey === "pediatric_growth_measurement") {
@@ -321,7 +339,17 @@ function TestsTab({
             <button
               key={row.key}
               type="button"
-              onClick={() => (row.key === "tbi_evaluation" ? onOpenTbiEvaluation() : onOpenModule(row.key))}
+              onClick={() => {
+                if (row.key === "tbi_evaluation") {
+                  onOpenTbiEvaluation();
+                  return;
+                }
+                if (row.key === "binocular_vision") {
+                  onOpenBinocularVision();
+                  return;
+                }
+                onOpenModule(row.key);
+              }}
               className="flex w-full items-center gap-3 border-b border-[#dbe7ef] bg-white px-4 py-3.5 text-left"
             >
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[11px] border border-[#dbe7ef] bg-[#f3f8fb] text-[#2f8fd3]">
@@ -433,12 +461,16 @@ export default function MobilePatientPage() {
   const [growthHistory, setGrowthHistory] = useState<PediatricGrowthSummary | null>(null);
   const [moduleEntries, setModuleEntries] = useState<LongitudinalTrackRecord[]>([]);
   const [tbiEvaluations, setTbiEvaluations] = useState<TbiEvaluationRecord[]>([]);
+  const [binocularVisionEvaluations, setBinocularVisionEvaluations] = useState<BinocularVisionEvaluationRecord[]>([]);
   const [isTestsLoading, setIsTestsLoading] = useState(false);
   const [testsError, setTestsError] = useState("");
   const [hasLoadedTestsTab, setHasLoadedTestsTab] = useState(false);
   const [tbiError, setTbiError] = useState("");
+  const [binocularVisionError, setBinocularVisionError] = useState("");
   const [isTbiLoading, setIsTbiLoading] = useState(false);
+  const [isBinocularVisionLoading, setIsBinocularVisionLoading] = useState(false);
   const [isTbiEvaluationOpen, setIsTbiEvaluationOpen] = useState(false);
+  const [isBinocularVisionOpen, setIsBinocularVisionOpen] = useState(false);
   const [activeModuleKey, setActiveModuleKey] = useState<SpecialtyModuleKey | null>(null);
   const [moduleEntryNotes, setModuleEntryNotes] = useState("");
   const [isSavingModuleEntry, setIsSavingModuleEntry] = useState(false);
@@ -463,10 +495,14 @@ export default function MobilePatientPage() {
     setIsTimelineLoading(false);
     setHasLoadedTimelineTab(false);
     setTbiEvaluations([]);
+    setBinocularVisionEvaluations([]);
     setModuleEntries([]);
     setTbiError("");
+    setBinocularVisionError("");
     setIsTbiLoading(false);
+    setIsBinocularVisionLoading(false);
     setIsTbiEvaluationOpen(false);
+    setIsBinocularVisionOpen(false);
   }, [patientId]);
 
   useEffect(() => {
@@ -634,25 +670,30 @@ export default function MobilePatientPage() {
     const clinicSpecialty = clinicSettings?.clinic_specialty ?? null;
     const shouldLoadMyopia = specialtyHasModule(clinicSpecialty, "myopia_management");
     const shouldLoadTbi = specialtyHasModule(clinicSpecialty, "tbi_evaluation");
+    const shouldLoadBinocularVision = specialtyHasModule(clinicSpecialty, "binocular_vision");
     const shouldLoadGrowth = specialtyHasModule(clinicSpecialty, "pediatric_growth_measurement");
     setIsTestsLoading(true);
     setIsTbiLoading(shouldLoadTbi);
+    setIsBinocularVisionLoading(shouldLoadBinocularVision);
     setTestsError("");
     setTbiError("");
+    setBinocularVisionError("");
 
     Promise.all([
       shouldLoadMyopia ? api.getPatientMyopiaHistory(patientId) : Promise.resolve(null),
       shouldLoadGrowth ? api.getPatientGrowthHistory(patientId) : Promise.resolve(null),
       shouldLoadTbi ? api.listPatientTbiEvaluations(patientId) : Promise.resolve([] as TbiEvaluationRecord[]),
+      shouldLoadBinocularVision ? api.listPatientBinocularVisionEvaluations(patientId) : Promise.resolve([] as BinocularVisionEvaluationRecord[]),
       api.listPatientModuleEntries(patientId),
     ])
-      .then(([myopia, growth, tbi, entries]) => {
+      .then(([myopia, growth, tbi, binocularVision, entries]) => {
         if (!active) {
           return;
         }
         setMyopiaHistory(myopia);
         setGrowthHistory(growth);
         setTbiEvaluations(tbi);
+        setBinocularVisionEvaluations(binocularVision);
         setModuleEntries(entries);
         setHasLoadedTestsTab(true);
       })
@@ -662,11 +703,13 @@ export default function MobilePatientPage() {
         }
         setTestsError(loadError instanceof Error ? loadError.message : "Failed to load tests.");
         setTbiError(loadError instanceof Error ? loadError.message : "Failed to load TBI evaluations.");
+        setBinocularVisionError(loadError instanceof Error ? loadError.message : "Failed to load binocular vision evaluations.");
       })
       .finally(() => {
         if (active) {
           setIsTestsLoading(false);
           setIsTbiLoading(false);
+          setIsBinocularVisionLoading(false);
         }
       });
 
@@ -812,6 +855,28 @@ export default function MobilePatientPage() {
       throw saveError;
     } finally {
       setIsTbiLoading(false);
+    }
+  }
+
+  async function saveBinocularVisionEvaluation(payload: BinocularVisionEvaluationCreatePayload) {
+    if (!patientId) {
+      return;
+    }
+    setIsBinocularVisionLoading(true);
+    setBinocularVisionError("");
+    try {
+      const saved = await api.createPatientBinocularVisionEvaluation(patientId, payload);
+      setBinocularVisionEvaluations((current) => [...current.filter((record) => record.id !== saved.id), saved]);
+      setHasLoadedTimelineTab(false);
+      setPatientTimeline([]);
+      setHasLoadedTestsTab(true);
+      setActiveTab("tests");
+    } catch (saveError) {
+      const message = saveError instanceof Error ? saveError.message : "Failed to save evaluation.";
+      setBinocularVisionError(message);
+      throw saveError;
+    } finally {
+      setIsBinocularVisionLoading(false);
     }
   }
 
@@ -1067,7 +1132,10 @@ export default function MobilePatientPage() {
                         setActiveModuleKey(moduleKey);
                         setModuleEntryNotes("");
                       }}
+                      onOpenBinocularVision={() => setIsBinocularVisionOpen(true)}
                       onOpenTbiEvaluation={() => setIsTbiEvaluationOpen(true)}
+                      binocularVisionError={binocularVisionError}
+                      binocularVisionEvaluations={binocularVisionEvaluations}
                       tbiError={tbiError}
                       tbiEvaluations={tbiEvaluations}
                     />
@@ -1154,6 +1222,16 @@ export default function MobilePatientPage() {
             readOnly={false}
             onClose={() => setIsTbiEvaluationOpen(false)}
             onSave={saveTbiEvaluation}
+          />
+          <BinocularVisionModal
+            open={isBinocularVisionOpen}
+            patient={patient}
+            evaluations={binocularVisionEvaluations}
+            isLoading={isBinocularVisionLoading}
+            error={binocularVisionError}
+            readOnly={false}
+            onClose={() => setIsBinocularVisionOpen(false)}
+            onSave={saveBinocularVisionEvaluation}
           />
           <ModuleHistorySheet
             entries={activeModuleKey ? moduleEntriesFor(moduleEntries, activeModuleKey) : []}

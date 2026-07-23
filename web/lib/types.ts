@@ -138,6 +138,7 @@ export type PatientTimelineEventType =
   | "consultation_note"
   | "myopia_measurement"
   | "tbi_evaluation"
+  | "binocular_vision"
   | "growth_measurement"
   | "well_child_visit"
   | "invoice_created"
@@ -171,6 +172,7 @@ export interface PatientSummary {
 }
 
 export type TbiEvaluationPayload = Record<string, unknown>;
+export type BinocularVisionPayload = Record<string, unknown>;
 
 export interface TbiEvaluationRecord {
   id: string;
@@ -185,6 +187,21 @@ export interface TbiEvaluationRecord {
 export interface TbiEvaluationCreatePayload {
   measured_at: string;
   payload: TbiEvaluationPayload;
+}
+
+export interface BinocularVisionEvaluationRecord {
+  id: string;
+  org_id: string;
+  patient_id: string;
+  measured_at: string;
+  payload: BinocularVisionPayload;
+  summary_fields: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface BinocularVisionEvaluationCreatePayload {
+  measured_at: string;
+  payload: BinocularVisionPayload;
 }
 
 export interface PatientVisitAttachmentRow {
@@ -352,47 +369,6 @@ export interface ContactLensPayload {
   quantity: string;
   special_instructions: string;
   eyes: ContactLensEyeEntry[];
-}
-
-export interface BinocularVisionPayload {
-  symptom_notes: string;
-  asthenopia: boolean;
-  headache: boolean;
-  diplopia: boolean;
-  blur_near: boolean;
-  blur_distance: boolean;
-  reading_difficulty: boolean;
-  poor_concentration: boolean;
-  distance_cover_test: string;
-  near_cover_test: string;
-  distance_deviation_pd: string;
-  near_deviation_pd: string;
-  binocular_visual_acuity_distance: string;
-  binocular_visual_acuity_near: string;
-  motility: string;
-  pursuits: string;
-  saccades: string;
-  npc_break_cm: string;
-  npc_recovery_cm: string;
-  convergence_notes: string;
-  bo_distance: string;
-  bo_near: string;
-  bi_distance: string;
-  bi_near: string;
-  vergence_notes: string;
-  stereo_test_name: string;
-  stereo_result_arcsec: string;
-  worth_four_dot_distance: string;
-  worth_four_dot_near: string;
-  sensory_notes: string;
-  amplitude_right: string;
-  amplitude_left: string;
-  facility_cpm: string;
-  facility_lens: string;
-  accommodation_notes: string;
-  working_diagnosis: string;
-  management_plan: string;
-  follow_up_interval: string;
 }
 
 export interface LowVisionPayload {

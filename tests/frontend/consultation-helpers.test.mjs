@@ -18,13 +18,13 @@ test("binocular vision helpers surface saved data and compact summary", () => {
   const payload = consultation.createEmptyBinocularVision();
   assert.equal(consultation.hasBinocularVisionData(payload), false);
 
-  payload.working_diagnosis = "Convergence insufficiency";
-  payload.npc_break_cm = "12";
-  payload.stereo_result_arcsec = "80";
+  payload.impression = "Convergence insufficiency";
+  payload.motor_evaluation = { npc_accommodative_target: { objective: "12 cm" } };
+  payload.sensory_evaluation = { stereopsis: { near: "80 arc sec" } };
   assert.equal(consultation.hasBinocularVisionData(payload), true);
   assert.equal(
     consultation.buildBinocularVisionSummary(payload),
-    "Convergence insufficiency · NPC 12 cm · Stereo 80 arc sec",
+    "Convergence insufficiency · NPC 12 cm · Stereo N 80 arc sec",
   );
 });
 

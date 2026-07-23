@@ -85,7 +85,7 @@ _install_reportlab_stubs()
 from app.clinic_context import build_clinic_context, build_measurements_context, build_patient_context
 from app.exports import build_history_visit_rows, filter_rows_by_created_at, get_export_range_start
 from app.main import app
-from app.schemas import BinocularVisionInput, ContactLensEyeInput, ContactLensInput, EyeExamEntry, GenerateNoteRequest, LowVisionInput, MyopiaHistoryOut, MyopiaMeasurementInput, MyopiaMeasurementOut, TestScoreEntry as ScoreEntry
+from app.schemas import ContactLensEyeInput, ContactLensInput, EyeExamEntry, GenerateNoteRequest, LowVisionInput, MyopiaHistoryOut, MyopiaMeasurementInput, MyopiaMeasurementOut, TestScoreEntry as ScoreEntry
 
 
 TYPES_PATH = ROOT / "web" / "lib" / "types.ts"
@@ -268,15 +268,20 @@ def test_build_clinic_and_measurement_contexts_include_structured_fields() -> No
                     )
                 ],
             ),
-            binocular_vision=BinocularVisionInput(
-                asthenopia=True,
-                distance_cover_test="Ortho",
-                near_cover_test="XP",
-                npc_break_cm="8",
-                stereo_test_name="Randot",
-                stereo_result_arcsec="40",
-                working_diagnosis="Convergence insufficiency",
-            ),
+            binocular_vision={
+                "history": {
+                    "main_complaints": "Eyestrain at near work",
+                    "associated_symptoms": "Headache",
+                },
+                "sensory_evaluation": {
+                    "stereopsis": {"near": "40"},
+                },
+                "motor_evaluation": {
+                    "cover_test": {"distance": "Ortho", "near": "XP"},
+                    "npc_accommodative_target": {"objective": "8 cm"},
+                },
+                "impression": "Convergence insufficiency",
+            },
             low_vision=LowVisionInput(
                 primary_complaint="Difficulty reading labels",
                 distance_visual_acuity="6/60",
@@ -305,9 +310,10 @@ def test_build_clinic_and_measurement_contexts_include_structured_fields() -> No
     assert "Contact Lens Assessment:" in measurements_context
     assert "Manufacturer | Acme Vision" in measurements_context
     assert "Right | -1.00 | - | - | 8.6 | 14.2 | - | 6/6 | - | -" in measurements_context
-    assert "Binocular Vision Overview:" in measurements_context
-    assert "Distance Cover Test | Ortho" in measurements_context
-    assert "Stereo Result | 40" in measurements_context
+    assert "Binocular Vision Assessment:" in measurements_context
+    assert "Main complaints | Eyestrain at near work" in measurements_context
+    assert "Cover test distance | Ortho" in measurements_context
+    assert "Stereopsis near | 40" in measurements_context
     assert "Low Vision Assessment:" in measurements_context
     assert "Primary Complaint | Difficulty reading labels" in measurements_context
     assert "Device Recommended | 4x handheld magnifier" in measurements_context

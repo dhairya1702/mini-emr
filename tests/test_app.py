@@ -2738,6 +2738,73 @@ def test_tbi_evaluation_is_optometry_only_and_appears_in_timeline(client):
     assert "Unaided VA" in tbi_events[0]["description"]
 
 
+def test_binocular_vision_evaluation_is_optometry_only_and_appears_in_timeline(client):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="binocular@example.com", clinic_name="BV Clinic")
+    token = session["token"]
+
+    patient_response = test_client.post(
+        "/patients",
+        headers=auth_headers_for_token(token),
+        json={
+            "name": "Nia Shah",
+            "phone": "5550108888",
+            "email": "nia@example.com",
+            "address": "18 Vision Lane",
+            "reason": "binocular vision assessment",
+            "age": 16,
+            "weight": 52,
+            "height": 162,
+            "temperature": 98.2,
+        },
+    )
+    assert patient_response.status_code == 201
+    patient = patient_response.json()
+
+    blocked_response = test_client.post(
+        f"/patients/{patient['id']}/binocular-vision-evaluations",
+        headers=auth_headers_for_token(token),
+        json={
+            "measured_at": "2026-07-22T10:00:00+00:00",
+            "payload": {"history": {"main_complaints": "Eyestrain"}},
+        },
+    )
+    assert blocked_response.status_code == 400
+
+    repo.clinic_settings[session["user"]["org_id"]]["clinic_specialty"] = "optometry"
+    payload = {
+        "history": {"main_complaints": "Eyestrain at near work"},
+        "motor_evaluation": {"npc_accommodative_target": {"objective": "8 cm"}},
+        "sensory_evaluation": {"stereopsis": {"near": "40 sec arc"}},
+        "impression": "Convergence insufficiency",
+    }
+    created_response = test_client.post(
+        f"/patients/{patient['id']}/binocular-vision-evaluations",
+        headers=auth_headers_for_token(token),
+        json={"measured_at": "2026-07-22T10:00:00+00:00", "payload": payload},
+    )
+    assert created_response.status_code == 201
+    created = created_response.json()
+    assert created["payload"]["impression"] == "Convergence insufficiency"
+    assert "Convergence insufficiency" in created["summary_fields"]["summary"]
+
+    list_response = test_client.get(
+        f"/patients/{patient['id']}/binocular-vision-evaluations",
+        headers=auth_headers_for_token(token),
+    )
+    assert list_response.status_code == 200
+    assert len(list_response.json()) == 1
+
+    timeline_response = test_client.get(
+        f"/patients/{patient['id']}/timeline",
+        headers=auth_headers_for_token(token),
+    )
+    assert timeline_response.status_code == 200
+    binocular_events = [event for event in timeline_response.json() if event["type"] == "binocular_vision"]
+    assert len(binocular_events) == 1
+    assert "Convergence insufficiency" in binocular_events[0]["description"]
+
+
 def test_case_study_generation_storage_and_pdf(client):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="case-study@example.com", clinic_name="Case Study Clinic")

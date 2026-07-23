@@ -44,6 +44,8 @@ import {
   GenerateNoteResponse,
   LongitudinalTrackCreatePayload,
   LongitudinalTrackRecord,
+  BinocularVisionEvaluationCreatePayload,
+  BinocularVisionEvaluationRecord,
   MobileFinalizeConsultationPayload,
   MobileFinalizeConsultationResponse,
   MyopiaHistory,
@@ -676,6 +678,8 @@ export const api = {
     request<PediatricGrowthSummary>(`/patients/${patientId}/growth-history`),
   listPatientTbiEvaluations: (patientId: string) =>
     request<TbiEvaluationRecord[]>(`/patients/${patientId}/tbi-evaluations`),
+  listPatientBinocularVisionEvaluations: (patientId: string) =>
+    request<BinocularVisionEvaluationRecord[]>(`/patients/${patientId}/binocular-vision-evaluations`),
   listPatientModuleEntries: (patientId: string) =>
     request<LongitudinalTrackRecord[]>(`/patients/${patientId}/module-entries`),
   createPatientModuleEntry: (patientId: string, payload: LongitudinalTrackCreatePayload) =>
@@ -685,6 +689,11 @@ export const api = {
     }),
   createPatientTbiEvaluation: (patientId: string, payload: TbiEvaluationCreatePayload) =>
     request<TbiEvaluationRecord>(`/patients/${patientId}/tbi-evaluations`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  createPatientBinocularVisionEvaluation: (patientId: string, payload: BinocularVisionEvaluationCreatePayload) =>
+    request<BinocularVisionEvaluationRecord>(`/patients/${patientId}/binocular-vision-evaluations`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

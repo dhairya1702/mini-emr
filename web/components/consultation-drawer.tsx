@@ -11,6 +11,8 @@ import { clearConsultationWorkspace, readConsultationWorkspace, writeConsultatio
 import { zonedDateTimeInputToUtcIso } from "@/lib/timezone";
 import {
   AuthUser,
+  BinocularVisionEvaluationCreatePayload,
+  BinocularVisionEvaluationRecord,
   BinocularVisionPayload,
   CatalogItem,
   ClinicalAnalysisResponse,
@@ -517,6 +519,9 @@ export function ConsultationDrawer({
   const [isMyopiaManagementOpen, setIsMyopiaManagementOpen] = useState(false);
   const [isTbiEvaluationOpen, setIsTbiEvaluationOpen] = useState(false);
   const [tbiEvaluations, setTbiEvaluations] = useState<TbiEvaluationRecord[]>([]);
+  const [binocularVisionEvaluations, setBinocularVisionEvaluations] = useState<BinocularVisionEvaluationRecord[]>([]);
+  const [isBinocularVisionLoading, setIsBinocularVisionLoading] = useState(false);
+  const [binocularVisionError, setBinocularVisionError] = useState("");
   const [isTbiLoading, setIsTbiLoading] = useState(false);
   const [tbiError, setTbiError] = useState("");
   const [moduleEntries, setModuleEntries] = useState<LongitudinalTrackRecord[]>([]);
@@ -597,6 +602,9 @@ export function ConsultationDrawer({
     setIsMyopiaManagementOpen(false);
     setIsTbiEvaluationOpen(false);
     setTbiEvaluations([]);
+    setBinocularVisionEvaluations([]);
+    setIsBinocularVisionLoading(false);
+    setBinocularVisionError("");
     setIsTbiLoading(false);
     setTbiError("");
     setModuleEntries([]);
@@ -780,6 +788,40 @@ export function ConsultationDrawer({
     };
     image.src = `data:${drawingAsset.content_type};base64,${drawingAsset.data_base64}`;
   }, [drawingAsset, openSections.drawing]);
+
+  useEffect(() => {
+    if (!patientId || !isOptometryClinic || !isBinocularVisionOpen) {
+      return;
+    }
+    if (isTrainingMode) {
+      setBinocularVisionEvaluations([]);
+      return;
+    }
+
+    let active = true;
+    setIsBinocularVisionLoading(true);
+    setBinocularVisionError("");
+    api.listPatientBinocularVisionEvaluations(patientId)
+      .then((rows) => {
+        if (active) {
+          setBinocularVisionEvaluations(rows);
+        }
+      })
+      .catch((loadError) => {
+        if (active) {
+          setBinocularVisionError(loadError instanceof Error ? loadError.message : "Failed to load binocular vision evaluations.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsBinocularVisionLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isBinocularVisionOpen, isOptometryClinic, isTrainingMode, patientId]);
 
   useEffect(() => {
     if (!patientId || !isOptometryClinic || !isTbiEvaluationOpen) {
@@ -1321,13 +1363,6 @@ export function ConsultationDrawer({
     setForm((current) => ({ ...current, contactLens: nextContactLens }));
   }
 
-  function selectBinocularVisionEntry(entry: LongitudinalTrackRecord) {
-    setForm((current) => ({
-      ...current,
-      binocularVision: { ...createEmptyBinocularVision(), ...(entry.raw_payload as Partial<BinocularVisionPayload>) },
-    }));
-  }
-
   function selectLowVisionEntry(entry: LongitudinalTrackRecord) {
     setForm((current) => ({
       ...current,
@@ -1458,9 +1493,47 @@ export function ConsultationDrawer({
     );
   }
 
-  async function saveBinocularVision(next: BinocularVisionPayload) {
-    setForm((current) => ({ ...current, binocularVision: next }));
-    await saveStructuredModuleEntry("binocular_vision", next as unknown as Record<string, unknown>, buildBinocularVisionSummary(next));
+  async function saveBinocularVisionEvaluation(payload: BinocularVisionEvaluationCreatePayload) {
+    if (!currentPatient) {
+      return;
+    }
+    setIsBinocularVisionLoading(true);
+    setBinocularVisionError("");
+    try {
+      if (isTrainingMode) {
+        const saved: BinocularVisionEvaluationRecord = {
+          id: createId(),
+          org_id: "training",
+          patient_id: currentPatient.id,
+          measured_at: payload.measured_at,
+          payload: payload.payload,
+          summary_fields: { summary: buildBinocularVisionSummary(payload.payload) },
+          created_at: new Date().toISOString(),
+        };
+        setBinocularVisionEvaluations((current) => [...current, saved]);
+        setForm((current) => ({ ...current, binocularVision: payload.payload }));
+        rememberCurrentConsultationModule("binocular_vision", {
+          measured_at: payload.measured_at,
+          ...payload.payload,
+        });
+        setStatusMessage("Binocular vision evaluation saved.");
+        return;
+      }
+      const saved = await api.createPatientBinocularVisionEvaluation(currentPatient.id, payload);
+      setBinocularVisionEvaluations((current) => [...current.filter((record) => record.id !== saved.id), saved]);
+      setForm((current) => ({ ...current, binocularVision: saved.payload }));
+      rememberCurrentConsultationModule("binocular_vision", {
+        measured_at: saved.measured_at,
+        ...saved.payload,
+      });
+      setStatusMessage("Binocular vision evaluation saved.");
+    } catch (saveError) {
+      const message = saveError instanceof Error ? saveError.message : "Failed to save binocular vision evaluation.";
+      setBinocularVisionError(message);
+      throw saveError;
+    } finally {
+      setIsBinocularVisionLoading(false);
+    }
   }
 
   async function saveLowVision(next: LowVisionPayload) {
@@ -3301,13 +3374,16 @@ export function ConsultationDrawer({
       ) : null}
       <BinocularVisionModal
         open={isOptometryClinic && isBinocularVisionOpen}
-        value={form.binocularVision}
+        patient={currentPatient}
+        evaluations={binocularVisionEvaluations}
+        isLoading={isBinocularVisionLoading}
+        error={binocularVisionError}
+        readOnly={false}
         onClose={() => setIsBinocularVisionOpen(false)}
-        onSave={async (next) => {
-          await saveBinocularVision(next);
+        onSave={async (payload) => {
+          await saveBinocularVisionEvaluation(payload);
           setIsBinocularVisionOpen(false);
         }}
-        sidebar={renderPreviousEvaluations("binocular_vision", selectBinocularVisionEntry)}
       />
       <LowVisionModal
         open={isOptometryClinic && isLowVisionOpen}

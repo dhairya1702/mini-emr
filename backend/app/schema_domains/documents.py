@@ -1,4 +1,5 @@
 from uuid import UUID
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -31,7 +32,7 @@ class GenerateNoteRequest(BaseModel):
     test_scores: list[TestScoreEntry] = Field(default_factory=list, max_length=30)
     eye_exam: list[EyeExamEntry] = Field(default_factory=list, max_length=2)
     contact_lens: ContactLensInput | None = None
-    binocular_vision: BinocularVisionInput | None = None
+    binocular_vision: dict[str, Any] | None = None
     low_vision: LowVisionInput | None = None
     myopia_measurement: MyopiaMeasurementInput | None = None
     structured_modules: list[StructuredModuleInput] = Field(default_factory=list, max_length=20)

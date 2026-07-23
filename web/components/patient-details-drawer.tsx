@@ -2,7 +2,7 @@
 
 import { Fragment, type ChangeEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarClock, ChevronDown, Clock3, FileText, Image as ImageIcon, Mail, Pencil, Sparkles, Upload, UserRound, X } from "lucide-react";
+import { Activity, ArrowLeft, CalendarClock, ChevronDown, ChevronRight, ClipboardList, Clock3, Eye, FileText, Image as ImageIcon, LineChart, Mail, Pencil, Sparkles, Upload, UserRound, X } from "lucide-react";
 
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { BinocularVisionModal } from "@/components/optometry/binocular-vision-modal";
@@ -15,7 +15,6 @@ import { api } from "@/lib/api";
 import {
   buildBinocularVisionSummary,
   buildLowVisionSummary,
-  createEmptyBinocularVision,
   createEmptyContactLens,
   createEmptyLowVision,
   hasContactLensEyeData,
@@ -23,7 +22,8 @@ import {
 import { getSpecialtyModules, specialtyHasModule, type SpecialtyModuleKey } from "@/lib/specialty";
 import { createTrainingId } from "@/lib/training-mode";
 import {
-  BinocularVisionPayload,
+  BinocularVisionEvaluationCreatePayload,
+  BinocularVisionEvaluationRecord,
   ConsultationNote,
   ContactLensEyeEntry,
   ContactLensPayload,
@@ -62,6 +62,10 @@ interface PatientDetailsDrawerProps {
   onLoadGrowthHistory?: (patientId: string) => Promise<PediatricGrowthSummary>;
   isTrainingMode?: boolean;
   readOnly?: boolean;
+  /** Render as an edge-to-edge full-screen page (route) instead of a modal overlay. */
+  fullScreen?: boolean;
+  /** Breadcrumb label shown next to the back button in full-screen mode (e.g. "Patients"). */
+  fullScreenBackLabel?: string;
   onPatientUpdated?: (patient: Patient) => void;
   onSave: (payloadPatientId: string, payload: {
     name: string;
@@ -242,6 +246,33 @@ function getTimelineIcon(type: PatientTimelineEvent["type"]) {
   }
   return <Clock3 className="h-4 w-4 text-[#2f8fd3]" />;
 }
+
+function timelineMeta(type: PatientTimelineEvent["type"]): { label: string; node: string; kind: string } {
+  const value = String(type || "").toLowerCase();
+  if (value.includes("eval") || value.includes("measurement") || value === "myopia_measurement") {
+    return { label: "Test", node: "bg-[#f0b44c] border-[#fff2da]", kind: "text-[#b45309]" };
+  }
+  if (value.includes("attachment") || value.includes("file")) {
+    return { label: "File", node: "bg-[#4f9cf7] border-[#e2eefb]", kind: "text-[#2f7d55]" };
+  }
+  if (value.includes("invoice") || value.includes("bill")) {
+    return { label: "Billing", node: "bg-[#4f9cf7] border-[#e2eefb]", kind: "text-[#2f7d55]" };
+  }
+  if (value.includes("follow_up")) {
+    return { label: "Follow-up", node: "bg-[#2f8fd3] border-[#ecf6fd]", kind: "text-[#2a6fa8]" };
+  }
+  if (value.includes("appointment")) {
+    return { label: "Appointment", node: "bg-[#2f8fd3] border-[#ecf6fd]", kind: "text-[#2a6fa8]" };
+  }
+  return { label: "Visit", node: "bg-[#2f8fd3] border-[#ecf6fd]", kind: "text-[#2a6fa8]" };
+}
+
+const MODULE_ICON: Partial<Record<SpecialtyModuleKey, typeof Activity>> = {
+  myopia_management: Eye,
+  tbi_evaluation: Activity,
+  pediatric_growth_measurement: LineChart,
+  eye_exam: Eye,
+};
 
 function timelineDescription(event: PatientTimelineEvent) {
   if (event.type !== "consultation_note") {
@@ -493,10 +524,12 @@ function TimelinePanel({
   error,
   isLoading,
   timeline,
+  fullScreen = false,
 }: {
   error: string;
   isLoading: boolean;
   timeline: PatientTimelineEvent[];
+  fullScreen?: boolean;
 }) {
   if (isLoading) {
     return (
@@ -518,6 +551,35 @@ function TimelinePanel({
     return (
       <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-white px-4 py-10 text-center text-sm text-slate-500">
         No timeline records yet.
+      </div>
+    );
+  }
+
+  if (fullScreen) {
+    return (
+      <div>
+        {timeline.map((event, index) => {
+          const meta = timelineMeta(event.type);
+          const last = index === timeline.length - 1;
+          return (
+            <div key={event.id} className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <span className={`mt-1.5 h-3 w-3 shrink-0 rounded-full border-[3px] ${meta.node}`} />
+                {last ? null : <span className="my-1 w-0.5 flex-1 bg-[#dbe7ef]" />}
+              </div>
+              <div className="min-w-0 flex-1 pb-2">
+                <div className="rounded-[14px] border border-[#dbe7ef] bg-white p-3 shadow-[0_6px_16px_rgba(64,131,181,0.07)]">
+                  <span className={`mb-1 block text-[10px] font-bold uppercase tracking-[0.08em] ${meta.kind}`}>{meta.label}</span>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-sm font-bold text-slate-900">{getEventTitle(event)}</span>
+                    <span className="shrink-0 whitespace-nowrap text-[11px] text-slate-400">{formatDateTime(event.timestamp)}</span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-[12.5px] leading-relaxed text-slate-500">{timelineDescription(event)}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -734,6 +796,8 @@ function TestsPanel({
   modules,
   myopiaError,
   myopiaRecords,
+  binocularVisionError,
+  binocularVisionEvaluations,
   tbiError,
   tbiEvaluations,
   onOpenBinocularVision,
@@ -743,6 +807,7 @@ function TestsPanel({
   onOpenLowVision,
   onOpenMyopiaManagement,
   onOpenTbiEvaluation,
+  fullScreen = false,
 }: {
   latestGrowthRecord: PediatricGrowthSummary["records"][number] | null;
   moduleEntryError: string;
@@ -750,6 +815,8 @@ function TestsPanel({
   modules: SpecialtyModuleKey[];
   myopiaError: string;
   myopiaRecords: MyopiaHistory["records"];
+  binocularVisionError: string;
+  binocularVisionEvaluations: BinocularVisionEvaluationRecord[];
   tbiError: string;
   tbiEvaluations: TbiEvaluationRecord[];
   onOpenBinocularVision: () => void;
@@ -759,9 +826,11 @@ function TestsPanel({
   onOpenLowVision: () => void;
   onOpenMyopiaManagement: () => void;
   onOpenTbiEvaluation: () => void;
+  fullScreen?: boolean;
 }) {
   const latestMyopiaRecord = myopiaRecords[myopiaRecords.length - 1] ?? null;
   const latestTbiEvaluation = tbiEvaluations[tbiEvaluations.length - 1] ?? null;
+  const latestBinocularVisionEvaluation = binocularVisionEvaluations[binocularVisionEvaluations.length - 1] ?? null;
   const entriesByModule = moduleEntries.reduce<Record<string, LongitudinalTrackRecord[]>>((grouped, entry) => {
     grouped[entry.track_type] = [...(grouped[entry.track_type] ?? []), entry];
     return grouped;
@@ -779,6 +848,7 @@ function TestsPanel({
         key: moduleKey,
         label: moduleLabel(moduleKey),
         date: latestMyopiaRecord ? formatDateTime(latestMyopiaRecord.measured_at) : "—",
+        count: myopiaRecords.length,
         error: myopiaError,
         open: onOpenMyopiaManagement,
       };
@@ -788,8 +858,19 @@ function TestsPanel({
         key: moduleKey,
         label: moduleLabel(moduleKey),
         date: latestTbiEvaluation ? formatDateTime(latestTbiEvaluation.measured_at || latestTbiEvaluation.created_at) : "—",
+        count: tbiEvaluations.length,
         error: tbiError,
         open: onOpenTbiEvaluation,
+      };
+    }
+    if (moduleKey === "binocular_vision") {
+      return {
+        key: moduleKey,
+        label: moduleLabel(moduleKey),
+        date: latestBinocularVisionEvaluation ? formatDateTime(latestBinocularVisionEvaluation.measured_at || latestBinocularVisionEvaluation.created_at) : "—",
+        count: binocularVisionEvaluations.length,
+        error: binocularVisionError,
+        open: onOpenBinocularVision,
       };
     }
     if (moduleKey === "pediatric_growth_measurement") {
@@ -797,6 +878,7 @@ function TestsPanel({
         key: moduleKey,
         label: moduleLabel(moduleKey),
         date: latestGrowthRecord ? formatDateTime(latestGrowthRecord.measured_at) : "—",
+        count: latestGrowthRecord ? undefined : 0,
         error: "",
         open: onOpenGrowthHistory,
       };
@@ -805,6 +887,7 @@ function TestsPanel({
       key: moduleKey,
       label: moduleLabel(moduleKey),
       date: latestGenericEntry ? formatDateTime(latestGenericEntry.measured_at) : "—",
+      count: entriesByModule[moduleKey]?.length ?? 0,
       error: "",
       open: structuredOpeners[moduleKey] ?? (() => {}),
     };
@@ -812,6 +895,57 @@ function TestsPanel({
 
   function handleOpen(row: typeof rows[number]) {
     row.open();
+  }
+
+  if (fullScreen) {
+    if (!rows.length) {
+      return (
+        <div className="rounded-[16px] border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-6 py-10 text-center text-sm text-slate-500">
+          No tests available for this specialty yet.
+        </div>
+      );
+    }
+    return (
+      <div>
+        {moduleEntryError ? (
+          <p className="mb-3 rounded-xl bg-amber-50 px-4 py-3 text-xs font-medium text-amber-700">
+            Saved module dates could not be loaded. Restart the backend if this just changed.
+          </p>
+        ) : null}
+        <div className="overflow-hidden rounded-[16px] border border-[#dbe7ef] bg-white">
+          {rows.map((row) => {
+            const Icon = MODULE_ICON[row.key] ?? ClipboardList;
+            const subline = row.error
+              ? row.error
+              : typeof row.count === "number"
+                ? row.count
+                  ? `${row.count} record${row.count === 1 ? "" : "s"}`
+                  : "No records yet"
+                : row.date !== "—"
+                  ? "Recorded"
+                  : "No records yet";
+            return (
+              <button
+                key={row.key}
+                type="button"
+                onClick={() => handleOpen(row)}
+                className="flex w-full items-center gap-3 border-b border-[#dbe7ef] bg-white px-4 py-3.5 text-left transition last:border-b-0 hover:bg-[#f7fbfd]"
+              >
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] border border-[#dbe7ef] bg-[#f3f8fb] text-[#2f8fd3]">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-slate-900">{row.label}</span>
+                  <span className={`mt-0.5 block text-xs ${row.error ? "text-rose-600" : "text-slate-400"}`}>{subline}</span>
+                </span>
+                <span className="shrink-0 text-xs font-semibold text-slate-500">{row.date}</span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -1000,14 +1134,18 @@ export function PatientDetailsDrawer({
   onLoadGrowthHistory,
   isTrainingMode = false,
   readOnly = false,
+  fullScreen = false,
+  fullScreenBackLabel = "Patients",
   onPatientUpdated,
   onSave,
 }: PatientDetailsDrawerProps) {
   const hasMyopiaManagement = specialtyHasModule(clinicSpecialty, "myopia_management");
   const hasTbiEvaluation = specialtyHasModule(clinicSpecialty, "tbi_evaluation");
+  const hasBinocularVision = specialtyHasModule(clinicSpecialty, "binocular_vision");
   const hasGrowthMeasurement = specialtyHasModule(clinicSpecialty, "pediatric_growth_measurement");
   const specialtyModules = getSpecialtyModules(clinicSpecialty);
   const [activeTab, setActiveTab] = useState<ChartTab>("visits");
+  const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(false);
   const [isEditingPatient, setIsEditingPatient] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -1051,14 +1189,16 @@ export function PatientDetailsDrawer({
   const [growthHistory, setGrowthHistory] = useState<PediatricGrowthSummary | null>(null);
   const [moduleEntries, setModuleEntries] = useState<LongitudinalTrackRecord[]>([]);
   const [tbiEvaluations, setTbiEvaluations] = useState<TbiEvaluationRecord[]>([]);
+  const [binocularVisionEvaluations, setBinocularVisionEvaluations] = useState<BinocularVisionEvaluationRecord[]>([]);
   const [eyeExam, setEyeExam] = useState<EyeExamEntry[]>(createEmptyEyeExam);
   const [contactLens, setContactLens] = useState<ContactLensPayload>(createEmptyContactLens);
-  const [binocularVision, setBinocularVision] = useState<BinocularVisionPayload>(createEmptyBinocularVision);
   const [lowVision, setLowVision] = useState<LowVisionPayload>(createEmptyLowVision);
   const [isMyopiaLoading, setIsMyopiaLoading] = useState(false);
   const [myopiaError, setMyopiaError] = useState("");
   const [isTbiLoading, setIsTbiLoading] = useState(false);
   const [tbiError, setTbiError] = useState("");
+  const [isBinocularVisionLoading, setIsBinocularVisionLoading] = useState(false);
+  const [binocularVisionError, setBinocularVisionError] = useState("");
   const [moduleEntryError, setModuleEntryError] = useState("");
   const [patientTimeline, setPatientTimeline] = useState<PatientTimelineEvent[]>([]);
   const [isTimelineLoading, setIsTimelineLoading] = useState(false);
@@ -1076,7 +1216,6 @@ export function PatientDetailsDrawer({
   const [isLowVisionOpen, setIsLowVisionOpen] = useState(false);
   const [selectedEyeExamEntryId, setSelectedEyeExamEntryId] = useState("");
   const [selectedContactLensEntryId, setSelectedContactLensEntryId] = useState("");
-  const [selectedBinocularVisionEntryId, setSelectedBinocularVisionEntryId] = useState("");
   const [selectedLowVisionEntryId, setSelectedLowVisionEntryId] = useState("");
   const [genericModuleEntryError, setGenericModuleEntryError] = useState("");
   const [openVisitSections, setOpenVisitSections] = useState<Record<"note" | "attachments", boolean>>({
@@ -1177,10 +1316,13 @@ export function PatientDetailsDrawer({
     setMyopiaHistory(null);
     setGrowthHistory(null);
     setTbiEvaluations([]);
+    setBinocularVisionEvaluations([]);
     setMyopiaError("");
     setTbiError("");
+    setBinocularVisionError("");
     setIsMyopiaLoading(false);
     setIsTbiLoading(false);
+    setIsBinocularVisionLoading(false);
     setHasLoadedTestsTab(false);
     setPatientTimeline([]);
     setTimelineError("");
@@ -1192,6 +1334,7 @@ export function PatientDetailsDrawer({
     setIsSummaryLoading(false);
     setIsRegeneratingSummary(false);
     setIsTbiEvaluationOpen(false);
+    setIsBinocularVisionOpen(false);
   }, [patient]);
 
   useEffect(() => {
@@ -1380,8 +1523,10 @@ export function PatientDetailsDrawer({
     async function loadTests() {
       setIsMyopiaLoading(hasMyopiaManagement);
       setIsTbiLoading(hasTbiEvaluation);
+      setIsBinocularVisionLoading(hasBinocularVision);
       setMyopiaError("");
       setTbiError("");
+      setBinocularVisionError("");
       setModuleEntryError("");
       try {
         const emptyMyopiaHistory = {
@@ -1401,10 +1546,11 @@ export function PatientDetailsDrawer({
           flags: [],
           records: [],
         } satisfies PediatricGrowthSummary;
-        const [nextMyopiaHistory, nextGrowthHistory, nextTbiEvaluations, nextModuleEntries] = await Promise.allSettled([
+        const [nextMyopiaHistory, nextGrowthHistory, nextTbiEvaluations, nextBinocularVisionEvaluations, nextModuleEntries] = await Promise.allSettled([
           hasMyopiaManagement && onLoadMyopiaHistory ? onLoadMyopiaHistory(patientId) : Promise.resolve(emptyMyopiaHistory),
           hasGrowthMeasurement && onLoadGrowthHistory ? onLoadGrowthHistory(patientId) : Promise.resolve(emptyGrowthHistory),
           hasTbiEvaluation && !isTrainingMode ? api.listPatientTbiEvaluations(patientId) : Promise.resolve([] as TbiEvaluationRecord[]),
+          hasBinocularVision && !isTrainingMode ? api.listPatientBinocularVisionEvaluations(patientId) : Promise.resolve([] as BinocularVisionEvaluationRecord[]),
           isTrainingMode ? Promise.resolve([] as LongitudinalTrackRecord[]) : api.listPatientModuleEntries(patientId),
         ]);
         if (!active) {
@@ -1427,6 +1573,12 @@ export function PatientDetailsDrawer({
           setTbiEvaluations([]);
           setTbiError(nextTbiEvaluations.reason instanceof Error ? nextTbiEvaluations.reason.message : "Failed to load TBI evaluations.");
         }
+        if (nextBinocularVisionEvaluations.status === "fulfilled") {
+          setBinocularVisionEvaluations(nextBinocularVisionEvaluations.value);
+        } else {
+          setBinocularVisionEvaluations([]);
+          setBinocularVisionError(nextBinocularVisionEvaluations.reason instanceof Error ? nextBinocularVisionEvaluations.reason.message : "Failed to load binocular vision evaluations.");
+        }
         if (nextModuleEntries.status === "fulfilled") {
           setModuleEntries(nextModuleEntries.value);
         } else {
@@ -1442,12 +1594,15 @@ export function PatientDetailsDrawer({
         setGrowthHistory(null);
         setModuleEntries([]);
         setTbiEvaluations([]);
+        setBinocularVisionEvaluations([]);
         setMyopiaError(loadError instanceof Error ? loadError.message : "Failed to load tests.");
         setTbiError(loadError instanceof Error ? loadError.message : "Failed to load TBI evaluations.");
+        setBinocularVisionError(loadError instanceof Error ? loadError.message : "Failed to load binocular vision evaluations.");
       } finally {
         if (active) {
           setIsMyopiaLoading(false);
           setIsTbiLoading(false);
+          setIsBinocularVisionLoading(false);
         }
       }
     }
@@ -1456,7 +1611,7 @@ export function PatientDetailsDrawer({
     return () => {
       active = false;
     };
-  }, [activeTab, hasGrowthMeasurement, hasLoadedTestsTab, hasMyopiaManagement, hasTbiEvaluation, isTrainingMode, onLoadGrowthHistory, onLoadMyopiaHistory, patient]);
+  }, [activeTab, hasBinocularVision, hasGrowthMeasurement, hasLoadedTestsTab, hasMyopiaManagement, hasTbiEvaluation, isTrainingMode, onLoadGrowthHistory, onLoadMyopiaHistory, patient]);
 
   useEffect(() => {
     if (!patient || activeTab !== "timeline" || hasLoadedTimelineTab) {
@@ -1525,7 +1680,6 @@ export function PatientDetailsDrawer({
   const latestGrowthRecord = growthRecords[growthRecords.length - 1] ?? null;
   const eyeExamEntries = moduleEntriesFor(moduleEntries, "eye_exam");
   const contactLensEntries = moduleEntriesFor(moduleEntries, "contact_lens");
-  const binocularVisionEntries = moduleEntriesFor(moduleEntries, "binocular_vision");
   const lowVisionEntries = moduleEntriesFor(moduleEntries, "low_vision");
 
   function toggleVisitSection(section: "note" | "attachments") {
@@ -1635,9 +1789,6 @@ export function PatientDetailsDrawer({
     } else if (moduleKey === "contact_lens") {
       setContactLens(createEmptyContactLens());
       setSelectedContactLensEntryId("");
-    } else if (moduleKey === "binocular_vision") {
-      setBinocularVision(createEmptyBinocularVision());
-      setSelectedBinocularVisionEntryId("");
     } else if (moduleKey === "low_vision") {
       setLowVision(createEmptyLowVision());
       setSelectedLowVisionEntryId("");
@@ -1672,11 +1823,6 @@ export function PatientDetailsDrawer({
     };
     setContactLens(nextContactLens);
     setSelectedContactLensEntryId(entry.id);
-  }
-
-  function selectBinocularVisionEntry(entry: LongitudinalTrackRecord) {
-    setBinocularVision({ ...createEmptyBinocularVision(), ...(entry.raw_payload as Partial<BinocularVisionPayload>) });
-    setSelectedBinocularVisionEntryId(entry.id);
   }
 
   function selectLowVisionEntry(entry: LongitudinalTrackRecord) {
@@ -1753,11 +1899,39 @@ export function PatientDetailsDrawer({
     }
   }
 
-  async function handleSaveBinocularVision(next: BinocularVisionPayload) {
-    setBinocularVision(next);
-    const saved = await saveStructuredModuleEntry("binocular_vision", next as unknown as Record<string, unknown>, buildBinocularVisionSummary(next));
-    if (saved) {
-      setSelectedBinocularVisionEntryId(saved.id);
+  async function handleSaveBinocularVisionEvaluation(payload: BinocularVisionEvaluationCreatePayload) {
+    if (!currentPatient) {
+      return;
+    }
+    const patientId = currentPatient.id;
+    setIsBinocularVisionLoading(true);
+    setBinocularVisionError("");
+    try {
+      if (isTrainingMode) {
+        const saved: BinocularVisionEvaluationRecord = {
+          id: createTrainingId("binocular-vision"),
+          org_id: "training",
+          patient_id: patientId,
+          measured_at: payload.measured_at,
+          payload: payload.payload,
+          summary_fields: { summary: buildBinocularVisionSummary(payload.payload) },
+          created_at: new Date().toISOString(),
+        };
+        setBinocularVisionEvaluations((current) => [...current, saved]);
+      } else {
+        const saved = await api.createPatientBinocularVisionEvaluation(patientId, payload);
+        setBinocularVisionEvaluations((current) => [...current.filter((record) => record.id !== saved.id), saved]);
+      }
+      setHasLoadedTimelineTab(false);
+      setPatientTimeline([]);
+      setHasLoadedTestsTab(true);
+      setActiveTab("tests");
+    } catch (saveError) {
+      const message = saveError instanceof Error ? saveError.message : "Failed to save binocular vision evaluation.";
+      setBinocularVisionError(message);
+      throw saveError;
+    } finally {
+      setIsBinocularVisionLoading(false);
     }
   }
 
@@ -2018,8 +2192,193 @@ export function PatientDetailsDrawer({
   }
 
   return (
-    <div className="fixed inset-0 z-30 bg-slate-950/35 p-2 backdrop-blur-sm sm:p-4">
-      <div className="mx-auto flex h-full max-h-[97vh] w-full max-w-[1700px] flex-col overflow-hidden rounded-[20px] border border-[#dbe7ef] bg-white shadow-[0_35px_90px_rgba(15,23,42,0.18)]">
+    <div className={fullScreen ? "flex h-[100dvh] flex-col" : "fixed inset-0 z-30 bg-slate-950/35 p-2 backdrop-blur-sm sm:p-4"}>
+      <div className={fullScreen ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-white" : "mx-auto flex h-full max-h-[97vh] w-full max-w-[1700px] flex-col overflow-hidden rounded-[20px] border border-[#dbe7ef] bg-white shadow-[0_35px_90px_rgba(15,23,42,0.18)]"}>
+        {fullScreen ? (
+          <>
+            {/* app bar: back + breadcrumb */}
+            <div className="flex items-center gap-3 border-b border-[#dbe7ef] bg-white/90 px-6 py-2.5 backdrop-blur">
+              <button
+                type="button"
+                onClick={() => { setError(""); onClose(); }}
+                className="inline-flex h-9 items-center gap-2 rounded-[10px] border border-[#bfd7e8] bg-white px-3 text-sm font-semibold text-slate-600 transition hover:bg-[#edf5fa]"
+              >
+                <ArrowLeft className="h-4 w-4" /> Back
+              </button>
+              <span className="truncate text-sm text-slate-400">
+                {fullScreenBackLabel}&nbsp;/&nbsp;<span className="font-semibold text-slate-700">{currentPatient.name}</span>
+              </span>
+            </div>
+
+            {/* identity header */}
+            <div className="border-b border-[#dbe7ef] px-6 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex min-w-0 flex-1 items-start gap-4">
+                  <div className="shrink-0">
+                    <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[18px] bg-gradient-to-br from-[#2f8fd3] to-[#245f92] text-xl font-bold text-white shadow-[0_10px_22px_rgba(37,111,168,0.28)]">
+                      {profilePhotoObjectUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={profilePhotoObjectUrl} alt={`${currentPatient.name} profile photo`} className="h-full w-full object-cover" />
+                      ) : (
+                        <span aria-hidden="true">{patientInitials(currentPatient)}</span>
+                      )}
+                    </div>
+                    {!readOnly && !isTrainingMode ? (
+                      <div className="mt-2 flex flex-col gap-1.5">
+                        <label className="cursor-pointer rounded-lg border border-[#dbe7ef] px-2.5 py-1 text-center text-[11px] font-medium text-[#2a6fa8] transition hover:border-[#9fc7e1] hover:bg-[#f3f8fb]">
+                          {isUploadingProfilePhoto ? "Uploading..." : currentPatient.profile_photo_url ? "Change" : "Add photo"}
+                          <input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" className="sr-only" disabled={isUploadingProfilePhoto} onChange={handleProfilePhotoFileChange} />
+                        </label>
+                        {currentPatient.profile_photo_url ? (
+                          <button type="button" disabled={isUploadingProfilePhoto} onClick={handleRemoveProfilePhoto} className="rounded-lg border border-rose-100 px-2.5 py-1 text-[11px] font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-60">
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">Patient Chart</p>
+                    <h2 className="mt-0.5 truncate text-2xl font-bold text-slate-900">{currentPatient.name}</h2>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {(() => {
+                        const sexLabel = currentPatient.sex_at_birth
+                          ? currentPatient.sex_at_birth.split("_").map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ")
+                          : "";
+                        const ageChip = typeof currentPatient.age === "number"
+                          ? `${currentPatient.age} yrs${sexLabel ? ` · ${sexLabel}` : ""}`
+                          : sexLabel || null;
+                        const chips: { text: string; key: boolean }[] = [];
+                        if (ageChip) chips.push({ text: ageChip, key: true });
+                        if (currentPatient.phone) chips.push({ text: currentPatient.phone, key: false });
+                        chips.push({ text: currentPatient.address || "No address on file", key: false });
+                        chips.push({ text: `Last visit ${formatDateTime(currentPatient.last_visit_at)}`, key: false });
+                        return chips.map((chip, index) => (
+                          <span
+                            key={index}
+                            className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                              chip.key ? "border-[#bfe0f5] bg-[#ecf6fd] text-[#2a6fa8]" : "border-[#dbe7ef] bg-[#f3f8fb] text-slate-600"
+                            }`}
+                          >
+                            {chip.text}
+                          </span>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2.5">
+                  {!readOnly ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingPatient((current) => !current)}
+                      className={`inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition ${
+                        isEditingPatient ? "border-[#9fc7e1] bg-[#edf5fa] text-[#2a6fa8]" : "border-[#bfd7e8] bg-white text-slate-600 hover:bg-[#edf5fa]"
+                      }`}
+                    >
+                      <Pencil className="h-4 w-4" /> Edit
+                    </button>
+                  ) : null}
+                  {workflowActionLabel && onWorkflowAction ? (
+                    <button
+                      type="button"
+                      onClick={() => { setError(""); void onWorkflowAction(); }}
+                      disabled={workflowActionDisabled}
+                      className="inline-flex h-10 items-center justify-center rounded-xl bg-[#14a38b] px-5 text-sm font-semibold text-white shadow-sm shadow-teal-900/10 transition hover:bg-[#108873] disabled:opacity-60"
+                    >
+                      {workflowActionLabel}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {isEditingPatient ? (
+                <div className="mt-4 rounded-xl border border-[#dbe7ef] bg-[#f7fbfd] p-4">
+                  <div className="grid gap-3 lg:grid-cols-[minmax(180px,1.35fr)_repeat(4,minmax(110px,0.8fr))]">
+                    <SummaryField label="Name" value={form.name} readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, name: value })); }} />
+                    <SummaryField label="Phone" value={form.phone} readOnly={false} inputMode="tel" onChange={(value) => { setError(""); setForm((current) => ({ ...current, phone: value })); }} />
+                    <SummaryField label="DOB" value={form.dateOfBirth} type="date" readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, dateOfBirth: value })); }} />
+                    <SummaryField label="Reason" value={form.reason} readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, reason: value })); }} />
+                    <SummaryField label="Email" value={form.email} type="email" readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, email: value })); }} />
+                  </div>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(180px,1.35fr)_repeat(4,minmax(110px,0.8fr))]">
+                    <SummaryField label="Address" value={form.address} readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, address: value })); }} />
+                    <SummaryField label="Weight" value={form.weight} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, weight: value })); }} />
+                    <SummaryField label="Height" value={form.height} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, height: value })); }} />
+                    <SummaryField label="Temp" value={form.temperature} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, temperature: value })); }} />
+                  </div>
+                  <div className="mt-3 max-w-xs">
+                    <label className="block text-xs font-medium text-slate-500">
+                      Sex
+                      <select
+                        value={form.sexAtBirth}
+                        onChange={(event) => { setError(""); setForm((current) => ({ ...current, sexAtBirth: event.target.value as "" | SexAtBirth })); }}
+                        className="mt-1 w-full rounded-lg border border-[#dbe7ef] bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#6daed8]"
+                      >
+                        <option value="">Not recorded</option>
+                        <option value="female">Female</option>
+                        <option value="male">Male</option>
+                        <option value="unknown">Other</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {/* AI summary band */}
+            {!isTrainingMode ? (
+              <div className="border-b border-[#bfe0f5] bg-[#ecf6fd] px-6 py-3">
+                <button type="button" onClick={() => setIsSummaryCollapsed((current) => !current)} className="flex w-full items-center gap-2.5 text-left">
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-[#2f8fd3]/15 text-[#2f8fd3]">
+                    <Sparkles className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="flex-1 text-xs font-bold tracking-[0.06em] text-[#1d4d72]">AI SUMMARY</span>
+                  {isRegeneratingSummary ? <span className="text-xs font-medium text-[#2f6c98]">Updating…</span> : null}
+                  <ChevronDown className={`h-4 w-4 text-[#2a6fa8] transition ${isSummaryCollapsed ? "-rotate-90" : ""}`} />
+                </button>
+                {!isSummaryCollapsed ? (
+                  <div className="mt-2 max-w-[1150px]">
+                    {isSummaryLoading && !aiSummary ? (
+                      <div className="space-y-2">
+                        <div className="h-3 w-11/12 animate-pulse rounded bg-[#d7e9f7]" />
+                        <div className="h-3 w-9/12 animate-pulse rounded bg-[#d7e9f7]" />
+                      </div>
+                    ) : summaryError ? (
+                      <p className="text-sm text-rose-600">{summaryError}</p>
+                    ) : aiSummary?.summary ? (
+                      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-[#33587a]">{aiSummary.summary}</p>
+                    ) : (
+                      <p className="text-[13px] text-[#5b6b80]">No summary available yet.</p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* underline tabs */}
+            <div className="flex gap-7 border-b border-[#dbe7ef] bg-white px-6">
+              {([
+                { key: "visits", label: "Visits" },
+                { key: "tests", label: "Tests" },
+                { key: "attachments", label: "Files" },
+                { key: "timeline", label: "Timeline" },
+              ] as { key: ChartTab; label: string }[]).map((tab) => {
+                const isActive = activeTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`relative py-3.5 text-sm font-semibold transition ${isActive ? "text-[#287fc0]" : "text-slate-400 hover:text-slate-600"}`}
+                  >
+                    {tab.label}
+                    {isActive ? <span className="absolute inset-x-0 -bottom-px h-[3px] rounded bg-[#2f8fd3]" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : (
         <div className="border-b border-[#dbe7ef] px-5 py-4 sm:px-7">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 flex-1 items-start gap-4">
@@ -2166,10 +2525,11 @@ export function PatientDetailsDrawer({
             ) : null}
           </div>
         </div>
+        )}
 
         <section className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7">
           <div className="w-full">
-            {!isTrainingMode ? (
+            {!fullScreen && !isTrainingMode ? (
               <div className="mb-5 rounded-xl border border-[#cfe3f3] bg-gradient-to-br from-[#f3f9fe] to-[#eaf4fc] p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
@@ -2259,6 +2619,8 @@ export function PatientDetailsDrawer({
                 modules={specialtyModules}
                 myopiaError={myopiaError}
                 myopiaRecords={myopiaRecords}
+                binocularVisionError={binocularVisionError}
+                binocularVisionEvaluations={binocularVisionEvaluations}
                 tbiError={tbiError}
                 tbiEvaluations={tbiEvaluations}
                 onOpenBinocularVision={() => setIsBinocularVisionOpen(true)}
@@ -2268,6 +2630,7 @@ export function PatientDetailsDrawer({
                 onOpenGrowthHistory={() => setIsGrowthHistoryOpen(true)}
                 onOpenLowVision={() => setIsLowVisionOpen(true)}
                 onOpenMyopiaManagement={() => setIsMyopiaManagementOpen(true)}
+                fullScreen={fullScreen}
               />
             ) : null}
 
@@ -2292,6 +2655,7 @@ export function PatientDetailsDrawer({
                 error={timelineError}
                 isLoading={isTimelineLoading}
                 timeline={patientTimeline}
+                fullScreen={fullScreen}
               />
             ) : null}
           </div>
@@ -2419,6 +2783,18 @@ export function PatientDetailsDrawer({
           onSave={handleSaveTbiEvaluation}
         />
       ) : null}
+      {hasBinocularVision ? (
+        <BinocularVisionModal
+          open={isBinocularVisionOpen}
+          patient={currentPatient}
+          evaluations={binocularVisionEvaluations}
+          isLoading={isBinocularVisionLoading}
+          error={binocularVisionError}
+          readOnly={readOnly}
+          onClose={() => setIsBinocularVisionOpen(false)}
+          onSave={handleSaveBinocularVisionEvaluation}
+        />
+      ) : null}
       {hasGrowthMeasurement ? (
         <GrowthHistoryModal
           open={isGrowthHistoryOpen}
@@ -2464,27 +2840,6 @@ export function PatientDetailsDrawer({
           }}
           onChange={updateContactLens}
           onEyeChange={updateContactLensEye}
-        />
-        {genericModuleEntryError ? <p className="mt-3 text-sm font-medium text-rose-600">{genericModuleEntryError}</p> : null}
-      </PatientStructuredModuleShell>
-      <PatientStructuredModuleShell
-        open={isBinocularVisionOpen}
-        patient={currentPatient}
-        moduleKey="binocular_vision"
-        entries={binocularVisionEntries}
-        selectedEntryId={selectedBinocularVisionEntryId}
-        onClose={() => setIsBinocularVisionOpen(false)}
-        onNew={() => startNewStructuredModule("binocular_vision")}
-        onSelectEntry={selectBinocularVisionEntry}
-      >
-        <BinocularVisionModal
-          open
-          inline
-          value={binocularVision}
-          onClose={() => {}}
-          onSave={(next) => {
-            void handleSaveBinocularVision(next);
-          }}
         />
         {genericModuleEntryError ? <p className="mt-3 text-sm font-medium text-rose-600">{genericModuleEntryError}</p> : null}
       </PatientStructuredModuleShell>

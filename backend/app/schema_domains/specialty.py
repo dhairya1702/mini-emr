@@ -61,6 +61,28 @@ class TbiEvaluationOut(BaseModel):
     created_at: datetime
 
 
+class BinocularVisionEvaluationInput(BaseModel):
+    measured_at: datetime
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("payload")
+    @classmethod
+    def validate_payload_size(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(value, separators=(",", ":"), default=str)) > 200_000:
+            raise ValueError("Binocular vision evaluation payload must be 200 KB or smaller.")
+        return value
+
+
+class BinocularVisionEvaluationOut(BaseModel):
+    id: str
+    org_id: str
+    patient_id: str
+    measured_at: datetime
+    payload: dict[str, Any] = Field(default_factory=dict)
+    summary_fields: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
 class PediatricGrowthMeasurementInput(BaseModel):
     measured_at: datetime
     height_cm: float = Field(gt=0, le=300)

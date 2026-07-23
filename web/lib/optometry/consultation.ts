@@ -111,101 +111,62 @@ export function hasContactLensData(contactLens?: ContactLensPayload | null) {
 
 export function createEmptyBinocularVision(): BinocularVisionPayload {
   return {
-    symptom_notes: "",
-    asthenopia: false,
-    headache: false,
-    diplopia: false,
-    blur_near: false,
-    blur_distance: false,
-    reading_difficulty: false,
-    poor_concentration: false,
-    distance_cover_test: "",
-    near_cover_test: "",
-    distance_deviation_pd: "",
-    near_deviation_pd: "",
-    binocular_visual_acuity_distance: "",
-    binocular_visual_acuity_near: "",
-    motility: "",
-    pursuits: "",
-    saccades: "",
-    npc_break_cm: "",
-    npc_recovery_cm: "",
-    convergence_notes: "",
-    bo_distance: "",
-    bo_near: "",
-    bi_distance: "",
-    bi_near: "",
-    vergence_notes: "",
-    stereo_test_name: "",
-    stereo_result_arcsec: "",
-    worth_four_dot_distance: "",
-    worth_four_dot_near: "",
-    sensory_notes: "",
-    amplitude_right: "",
-    amplitude_left: "",
-    facility_cpm: "",
-    facility_lens: "",
-    accommodation_notes: "",
-    working_diagnosis: "",
-    management_plan: "",
-    follow_up_interval: "",
+    history: {
+      main_complaints: "",
+      spectacle_use_history: "",
+      near_work_hours: "",
+      associated_symptoms: "",
+      previous_vision_therapy: "",
+      general_health_medications: "",
+    },
+    refraction: {},
+    assessment_setup: {},
+    sensory_evaluation: {},
+    motor_evaluation: {},
+    impression: "",
+    advice: "",
+    follow_up: "",
   };
 }
 
 export function hasBinocularVisionData(binocular?: BinocularVisionPayload | null) {
-  if (!binocular) {
+  if (!binocular || typeof binocular !== "object") {
     return false;
   }
-  return Boolean(
-    binocular.symptom_notes.trim() ||
-    binocular.asthenopia ||
-    binocular.headache ||
-    binocular.diplopia ||
-    binocular.blur_near ||
-    binocular.blur_distance ||
-    binocular.reading_difficulty ||
-    binocular.poor_concentration ||
-    binocular.distance_cover_test.trim() ||
-    binocular.near_cover_test.trim() ||
-    binocular.distance_deviation_pd.trim() ||
-    binocular.near_deviation_pd.trim() ||
-    binocular.binocular_visual_acuity_distance.trim() ||
-    binocular.binocular_visual_acuity_near.trim() ||
-    binocular.motility.trim() ||
-    binocular.pursuits.trim() ||
-    binocular.saccades.trim() ||
-    binocular.npc_break_cm.trim() ||
-    binocular.npc_recovery_cm.trim() ||
-    binocular.convergence_notes.trim() ||
-    binocular.bo_distance.trim() ||
-    binocular.bo_near.trim() ||
-    binocular.bi_distance.trim() ||
-    binocular.bi_near.trim() ||
-    binocular.vergence_notes.trim() ||
-    binocular.stereo_test_name.trim() ||
-    binocular.stereo_result_arcsec.trim() ||
-    binocular.worth_four_dot_distance.trim() ||
-    binocular.worth_four_dot_near.trim() ||
-    binocular.sensory_notes.trim() ||
-    binocular.amplitude_right.trim() ||
-    binocular.amplitude_left.trim() ||
-    binocular.facility_cpm.trim() ||
-    binocular.facility_lens.trim() ||
-    binocular.accommodation_notes.trim() ||
-    binocular.working_diagnosis.trim() ||
-    binocular.management_plan.trim() ||
-    binocular.follow_up_interval.trim(),
-  );
+  return flattenValues(binocular).some((value) => value.trim());
 }
 
 export function buildBinocularVisionSummary(binocular: BinocularVisionPayload) {
+  const valueAt = (path: string[]) => {
+    let current: unknown = binocular;
+    for (const part of path) {
+      if (!current || typeof current !== "object") {
+        return "";
+      }
+      current = (current as Record<string, unknown>)[part];
+    }
+    return typeof current === "string" ? current.trim() : "";
+  };
   const parts = [
-    binocular.working_diagnosis.trim(),
-    binocular.npc_break_cm.trim() ? `NPC ${binocular.npc_break_cm.trim()} cm` : "",
-    binocular.stereo_result_arcsec.trim() ? `Stereo ${binocular.stereo_result_arcsec.trim()} arc sec` : "",
-    binocular.near_deviation_pd.trim() ? `Near ${binocular.near_deviation_pd.trim()} pd` : "",
+    valueAt(["impression"]),
+    valueAt(["history", "main_complaints"]),
+    valueAt(["motor_evaluation", "npc_accommodative_target", "objective"]) ? `NPC ${valueAt(["motor_evaluation", "npc_accommodative_target", "objective"])}` : "",
+    valueAt(["sensory_evaluation", "stereopsis", "near"]) ? `Stereo N ${valueAt(["sensory_evaluation", "stereopsis", "near"])}` : "",
   ].filter(Boolean);
-  return parts.slice(0, 3).join(" · ") || "Binocular vision data saved.";
+  return parts.slice(0, 3).join(" · ") || "Binocular vision evaluation saved.";
+}
+
+function flattenValues(value: unknown): string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(flattenValues);
+  }
+  if (value && typeof value === "object") {
+    return Object.values(value).flatMap(flattenValues);
+  }
+  return [];
 }
 
 export function createEmptyLowVision(): LowVisionPayload {

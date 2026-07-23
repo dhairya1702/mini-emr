@@ -143,6 +143,25 @@ def build_patient_timeline(
         )
 
     for track in longitudinal_tracks:
+        if track.get("track_type") == "binocular_vision":
+            summary = track.get("summary_fields") or {}
+            events.append(
+                PatientTimelineEvent(
+                    id=f"binocular-vision-{track['id']}",
+                    type="binocular_vision",
+                    title="Binocular vision evaluation recorded",
+                    timestamp=track["measured_at"],
+                    description=str(summary.get("summary") or "Binocular vision evaluation saved."),
+                    entity_type="longitudinal_track",
+                    entity_id=str(track["id"]),
+                    details={
+                        "track_type": "binocular_vision",
+                        "measured_at": track.get("measured_at"),
+                        "payload": track.get("raw_payload") or {},
+                    },
+                )
+            )
+            continue
         if track.get("track_type") == "tbi_evaluation":
             summary = track.get("summary_fields") or {}
             events.append(

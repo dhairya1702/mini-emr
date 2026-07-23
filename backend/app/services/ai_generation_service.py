@@ -114,6 +114,7 @@ def _strip_pipe_tables(value: str) -> str:
             "Binocular Vision Overview:",
             "Binocular Vision Convergence:",
             "Binocular Vision Sensory & Plan:",
+            "Binocular Vision Assessment:",
             "Low Vision Assessment:",
             "Low Vision Functional & Device Trial:",
             "Low Vision Plan & Support:",

@@ -441,6 +441,7 @@ def _split_text_and_tables(content: str) -> tuple[list[str], list[tuple[list[str
             "Binocular Vision Overview:",
             "Binocular Vision Convergence:",
             "Binocular Vision Sensory & Plan:",
+            "Binocular Vision Assessment:",
             "Low Vision Assessment:",
             "Low Vision Functional & Device Trial:",
             "Low Vision Plan & Support:",

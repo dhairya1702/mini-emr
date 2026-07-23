@@ -23,6 +23,7 @@ TimelineEventType = Literal[
     "consultation_note",
     "myopia_measurement",
     "tbi_evaluation",
+    "binocular_vision",
     "growth_measurement",
     "well_child_visit",
     "invoice_created",
