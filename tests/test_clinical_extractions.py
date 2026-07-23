@@ -65,7 +65,7 @@ def test_explicit_prescription_overrides_duplicate_ai_extraction():
     assert str(merged[0].catalog_item_id) == str(explicit.catalog_item_id)
 
 
-def test_note_renderer_places_one_medicine_table_at_the_end():
+def test_note_renderer_places_one_medicine_table_after_treatment_before_follow_up():
     content = _render_consultation_note(
         {
             "presenting_complaint": "Fever.",
@@ -78,8 +78,10 @@ def test_note_renderer_places_one_medicine_table_at_the_end():
     )
 
     assert content.count("Medications Prescribed:") == 1
-    assert content.index("Follow-up Advice:") < content.index("Medications Prescribed:")
-    assert content.rstrip().endswith("Paracetamol | 500 mg | — | — | — | — | 6 tablets | —")
+    assert content.index("Clinical Notes:") < content.index("Diagnosis:")
+    assert content.index("Treatment:") < content.index("Medications Prescribed:")
+    assert content.index("Medications Prescribed:") < content.index("Follow-up Advice:")
+    assert "Paracetamol | 500 mg | — | — | — | — | 6 tablets | —" in content
 
 
 def test_catalog_matching_auto_match_is_exact_or_alias_only():

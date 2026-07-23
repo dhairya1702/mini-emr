@@ -59,6 +59,7 @@ def test_note_normalization_preserves_exact_structured_medication_regimen():
     assert "Morning and night" in normalized
     assert "5 days" in normalized
     assert "After food" in normalized
+    assert normalized.index("Clinical Notes:") < normalized.index("Diagnosis:")
 
 
 def test_note_normalization_preserves_structured_eye_exam_table_with_generated_prose():

@@ -329,15 +329,19 @@ DETAIL_LABELS = {
     "Temperature",
     "Reason for Visit",
     "Generated On",
+    "Date",
 }
 
-SECTION_LABELS = {
+SECTION_ORDER = (
     "Presenting Complaint",
-    "Diagnosis",
     "Clinical Notes",
+    "Diagnosis",
     "Treatment",
+    "Medications Prescribed",
     "Follow-up Advice",
-}
+)
+
+SECTION_LABELS = set(SECTION_ORDER)
 
 
 def _normalize_section_candidate(raw_line: str) -> str:
@@ -387,7 +391,7 @@ def _parse_note_sections(note_content: str) -> list[tuple[str, str]]:
 
     ordered_sections: list[tuple[str, str]] = []
     by_label = {label: "\n".join(lines).strip() for label, lines in sections}
-    for label in ("Presenting Complaint", "Diagnosis", "Clinical Notes", "Treatment", "Follow-up Advice"):
+    for label in SECTION_ORDER:
         if label in by_label:
             ordered_sections.append((label, by_label[label]))
     return ordered_sections
@@ -461,18 +465,28 @@ def _classify_structured_tables(
     medicines_table: tuple[list[str], list[list[str]]] | None = None
     eye_exam_table: tuple[list[str], list[list[str]]] | None = None
 
-    for _section_label, section_content in note_sections:
+    for section_label, section_content in note_sections:
+        if section_label == "Medications Prescribed":
+            continue
         _prose_lines, tables = _split_text_and_tables(section_content)
         for header_cells, body_rows in tables:
             normalized_header = [cell.strip().lower() for cell in header_cells]
             if normalized_header == ["measurement", "value"]:
                 vitals_rows = body_rows
-            elif normalized_header == ["medicine", "quantity", "schedule", "duration", "notes"]:
+            elif _is_medicine_table(header_cells):
                 medicines_table = (header_cells, body_rows)
             elif normalized_header == ["eye", "sphere", "cylinder", "axis", "vision"]:
                 eye_exam_table = (header_cells, body_rows)
 
     return vitals_rows, medicines_table, eye_exam_table
+
+
+def _is_medicine_table(header_cells: list[str]) -> bool:
+    normalized_header = [cell.strip().lower() for cell in header_cells]
+    return normalized_header in (
+        ["medicine", "quantity", "schedule", "duration", "notes"],
+        ["medicine", "strength", "dose", "route", "schedule", "duration", "quantity", "instructions"],
+    )
 
 
 def _draw_vitals_grid(
@@ -988,6 +1002,8 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
         ("Name", patient.get("name", "Not recorded")),
         ("Phone", patient.get("phone", "Not recorded")),
     ]
+    if generated_on.strip():
+        detail_lines.append(("Date", generated_on.strip()))
     if patient.get("age") is not None:
         detail_lines.append(("Age", str(patient["age"])))
     if patient.get("height") is not None:
@@ -1023,7 +1039,7 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
         pdf.drawString(margin_x, y, f"{section_label}:")
         y -= 22
 
-        prose_lines, _tables = _split_text_and_tables(section_content)
+        prose_lines, tables = _split_text_and_tables(section_content)
         pdf.setFont("Helvetica", 11)
         pdf.setFillColor(HexColor("#1e293b"))
 
@@ -1046,6 +1062,33 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
                 pdf.drawString(margin_x, y, wrapped)
                 y -= 18
             y -= 4
+
+        for header_cells, body_rows in tables:
+            if section_label != "Medications Prescribed" or not _is_medicine_table(header_cells):
+                continue
+            estimated_rows = max(1, len(body_rows)) + 1
+            estimated_height = (estimated_rows * 28) + 12
+            if y - estimated_height < bottom_limit:
+                pdf.showPage()
+                if use_template:
+                    _start_page(pdf, template, width, height)
+                    y = _template_content_start_y(top_y, height, "note")
+                else:
+                    y = height - 0.75 * inch
+            y = _draw_pipe_table(
+                pdf,
+                margin_x,
+                y,
+                max_width,
+                header_cells,
+                body_rows,
+                bottom_limit=bottom_limit,
+                template=template,
+                use_template=use_template,
+                width=width,
+                height=height,
+                top_y=top_y,
+            )
 
         y -= 10
 

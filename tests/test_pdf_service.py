@@ -98,6 +98,31 @@ def test_classify_structured_tables_reads_vitals_and_medicines_from_sections() -
     assert eye_exam_table[0] == ["Eye", "Sphere", "Cylinder", "Axis", "Vision"]
 
 
+def test_parse_note_sections_uses_clinical_flow_order_with_medications_before_follow_up() -> None:
+    note_content = (
+        "Presenting Complaint:\nFever.\n\n"
+        "Diagnosis:\nViral fever.\n\n"
+        "Clinical Notes:\nTemperature reviewed.\n\n"
+        "Treatment:\nSupportive care.\n\n"
+        "Follow-up Advice:\nReview in 3 days.\n\n"
+        "Medications Prescribed:\n"
+        "Medicine | Strength | Dose | Route | Schedule | Duration | Quantity | Instructions\n"
+        "--- | --- | --- | --- | --- | --- | --- | ---\n"
+        "Paracetamol | 500 mg | 1 tablet | oral | twice daily | 3 days | 6 | after food"
+    )
+
+    labels = [label for label, _content in _parse_note_sections(note_content)]
+
+    assert labels == [
+        "Presenting Complaint",
+        "Clinical Notes",
+        "Diagnosis",
+        "Treatment",
+        "Medications Prescribed",
+        "Follow-up Advice",
+    ]
+
+
 def test_note_image_asset_page_gets_template_applied_locally(monkeypatch) -> None:
     monkeypatch.setattr(pdf_service.canvas, "Canvas", _RecordingCanvas)
     monkeypatch.setattr(pdf_service, "_start_page", lambda *args, **kwargs: None)
@@ -209,6 +234,7 @@ def test_build_note_pdf_skips_missing_optional_patient_details(monkeypatch) -> N
 
     assert ("Name", "L Venkatesh") in flattened
     assert ("Phone", "9840221676") in flattened
+    assert ("Date", "Jul 23, 2026 2:30 PM") in flattened
     assert ("Reason for Visit", "Routine ocular examination") in flattened
     assert all(label not in {"Age", "Height", "Weight", "Temperature"} for label, _value in flattened)
     assert all(value != "Not recorded" for _label, value in flattened)

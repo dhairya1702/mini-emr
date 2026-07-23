@@ -54,8 +54,8 @@ def build_fallback_note(
         clinical_notes = f"{measurements_context}\n{clinical_notes}".strip()
     return (
         f"Presenting Complaint:\n{symptoms or 'Symptoms not fully documented.'}\n\n"
-        f"Diagnosis:\n{diagnosis or 'Clinical impression is still under evaluation.'}\n\n"
         f"Clinical Notes:\n{clinical_notes}\n\n"
+        f"Diagnosis:\n{diagnosis or 'Clinical impression is still under evaluation.'}\n\n"
         f"Treatment:\n{medications or 'Medication plan was not documented.'}\n\n"
         "Follow-up Advice:\nReturn for reassessment if symptoms worsen or fail to improve."
     )
@@ -63,8 +63,8 @@ def build_fallback_note(
 
 SECTION_ORDER = [
     "Presenting Complaint",
-    "Diagnosis",
     "Clinical Notes",
+    "Diagnosis",
     "Treatment",
     "Follow-up Advice",
 ]
@@ -152,8 +152,8 @@ def _normalize_note_content(
 
     fallbacks = {
         "Presenting Complaint": symptoms.strip() or "Symptoms not fully documented.",
-        "Diagnosis": diagnosis.strip() or "Clinical impression is still under evaluation.",
         "Clinical Notes": notes.strip() or "No additional findings were documented during this consultation.",
+        "Diagnosis": diagnosis.strip() or "Clinical impression is still under evaluation.",
         "Treatment": medications.strip() or "Medication plan was not documented.",
         "Follow-up Advice": "Return for reassessment if symptoms worsen or fail to improve.",
     }
@@ -1692,8 +1692,8 @@ def _render_consultation_note(
 ) -> str:
     content = (
         f"Presenting Complaint:\n{sections['presenting_complaint'].strip()}\n\n"
-        f"Diagnosis:\n{sections['diagnosis'].strip()}\n\n"
         f"Clinical Notes:\n{sections['clinical_notes'].strip()}\n\n"
+        f"Diagnosis:\n{sections['diagnosis'].strip()}\n\n"
         f"Treatment:\n{sections['treatment'].strip()}\n\n"
         f"Follow-up Advice:\n{sections['follow_up_advice'].strip()}"
     )
@@ -1727,7 +1727,15 @@ def sync_note_medication_table(
         )
         for medicine in medications
     )
-    return f"{content}\n\nMedications Prescribed:\n" + "\n".join(rows)
+    medicines_section = "Medications Prescribed:\n" + "\n".join(rows)
+    follow_up_match = re.search(r"\n\nFollow-up Advice:\n", content)
+    if not follow_up_match:
+        return f"{content}\n\n{medicines_section}"
+    return (
+        f"{content[:follow_up_match.start()].rstrip()}\n\n"
+        f"{medicines_section}\n\n"
+        f"{content[follow_up_match.start() + 2:].lstrip()}"
+    ).strip()
 
 
 def _fallback_sections(
