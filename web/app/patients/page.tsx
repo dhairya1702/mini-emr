@@ -1,15 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Download, RefreshCw, Search } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
-import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
 import { api } from "@/lib/api";
 import { loadRecentPatients, saveRecentPatient } from "@/lib/recent-patients";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { Patient, PatientChartVisit, PatientTimelineEvent, PatientVisitDetail } from "@/lib/types";
+import { Patient } from "@/lib/types";
 
 function formatVisitDate(value: string) {
   return new Date(value).toLocaleString([], {
@@ -32,8 +32,8 @@ function upsertPatient(current: Patient[], incoming: Patient) {
 }
 
 export default function PatientsPage() {
+  const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [recentPatients, setRecentPatients] = useState<Patient[]>([]);
@@ -115,43 +115,9 @@ export default function PatientsPage() {
     );
   }, [patients, query]);
 
-  async function handleUpdatePatient(
-    patientId: string,
-    payload: {
-      name: string;
-      phone: string;
-      email: string;
-      address: string;
-      reason: string;
-      date_of_birth?: string | null;
-      age: number | null;
-      weight: number | null;
-      height: number | null;
-      temperature: number | null;
-    },
-  ) {
-    const saved = await api.updatePatient(patientId, payload);
-    setPatients((current) => current.map((patient) => (patient.id === patientId ? saved : patient)));
-    setSelectedPatient(saved);
-    rememberRecentPatient(saved);
-  }
-
-  function handlePatientChartUpdated(updated: Patient) {
-    setPatients((current) => current.map((patient) => (patient.id === updated.id ? updated : patient)));
-    setSelectedPatient((current) => (current?.id === updated.id ? updated : current));
-    rememberRecentPatient(updated);
-  }
-
-  async function handleLoadPatientVisits(patientId: string): Promise<PatientChartVisit[]> {
-    return api.listPatientChartVisits(patientId);
-  }
-
-  async function handleLoadPatientVisitDetail(patientId: string, visitId: string): Promise<PatientVisitDetail> {
-    return api.getPatientVisitDetail(patientId, visitId);
-  }
-
-  async function handleLoadPatientTimeline(patientId: string): Promise<PatientTimelineEvent[]> {
-    return api.getPatientTimeline(patientId);
+  function openPatientChart(patient: Patient) {
+    rememberRecentPatient(patient);
+    router.push(`/patients/${patient.id}`);
   }
 
   async function handleExport() {
@@ -266,10 +232,7 @@ export default function PatientsPage() {
                   <button
                     key={patient.id}
                     type="button"
-                    onClick={() => {
-                      setSelectedPatient(patient);
-                      rememberRecentPatient(patient);
-                  }}
+                    onClick={() => openPatientChart(patient)}
                     className="min-w-[180px] rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3.5 py-2.5 text-left transition hover:border-[#bfd7e8] hover:bg-white"
                   >
                     <p className="text-sm font-semibold text-slate-900">{patient.name}</p>
@@ -317,10 +280,7 @@ export default function PatientsPage() {
                     {visiblePatients.map((patient) => (
                       <tr
                         key={patient.id}
-                        onClick={() => {
-                          setSelectedPatient(patient);
-                          rememberRecentPatient(patient);
-                        }}
+                        onClick={() => openPatientChart(patient)}
                         className="cursor-pointer transition hover:bg-[#f3f8fb]/70"
                       >
                         <td className="border-b border-[#dbe7ef] px-5 py-4 text-sm text-slate-800">
@@ -364,19 +324,6 @@ export default function PatientsPage() {
           </div>
         </section>
       </div>
-
-      <PatientDetailsDrawer
-        patient={selectedPatient}
-        clinicSpecialty={clinicSettings?.clinic_specialty ?? null}
-        onLoadVisits={handleLoadPatientVisits}
-        onLoadVisitDetail={handleLoadPatientVisitDetail}
-        onLoadTimeline={handleLoadPatientTimeline}
-        onLoadMyopiaHistory={(patientId) => api.getPatientMyopiaHistory(patientId)}
-        onLoadGrowthHistory={(patientId) => api.getPatientGrowthHistory(patientId)}
-        onSave={handleUpdatePatient}
-        onPatientUpdated={handlePatientChartUpdated}
-        onClose={() => setSelectedPatient(null)}
-      />
 
       {isSettingsOpen ? (
       <LazySettingsDrawer

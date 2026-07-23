@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Clock3, Download, RefreshCw, Search } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
-import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
 import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { Patient, PatientChartVisit, PatientTimelineEvent, PatientVisit, PatientVisitDetail } from "@/lib/types";
+import { Patient, PatientVisit } from "@/lib/types";
 
 type HistoryFilter = "all" | "waiting" | "consultation" | "done" | "billed";
 type HistoryExportRange = "today" | "7d" | "30d" | "month" | "all";
@@ -52,8 +52,8 @@ function normalizeVisit(value: PatientVisit): PatientVisit {
 }
 
 export default function HistoryPage() {
+  const router = useRouter();
   const [visits, setVisits] = useState<PatientVisit[]>([]);
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [filter, setFilter] = useState<HistoryFilter>("all");
   const [query, setQuery] = useState("");
@@ -154,53 +154,8 @@ export default function HistoryPage() {
     });
   }, [filter, visits, query]);
 
-  async function handleUpdatePatient(
-    patientId: string,
-    payload: {
-      name: string;
-      phone: string;
-      email: string;
-      address: string;
-      reason: string;
-      date_of_birth?: string | null;
-      age: number | null;
-      weight: number | null;
-      height: number | null;
-      temperature: number | null;
-    },
-  ) {
-    const saved = await api.updatePatient(patientId, payload);
-    setVisits((current) =>
-      current.map((visit) =>
-        visit.patient_id === patientId
-          ? { ...visit, name: saved.name, phone: saved.phone, status: saved.status, billed: saved.billed, last_visit_at: saved.last_visit_at }
-          : visit,
-      ),
-    );
-    setSelectedPatient(saved);
-  }
-
-  function handlePatientChartUpdated(updated: Patient) {
-    setVisits((current) =>
-      current.map((visit) =>
-        visit.patient_id === updated.id
-          ? { ...visit, name: updated.name, phone: updated.phone, status: updated.status, billed: updated.billed, last_visit_at: updated.last_visit_at }
-          : visit,
-      ),
-    );
-    setSelectedPatient((current) => (current?.id === updated.id ? updated : current));
-  }
-
-  async function handleLoadPatientVisits(patientId: string): Promise<PatientChartVisit[]> {
-    return api.listPatientChartVisits(patientId);
-  }
-
-  async function handleLoadPatientVisitDetail(patientId: string, visitId: string): Promise<PatientVisitDetail> {
-    return api.getPatientVisitDetail(patientId, visitId);
-  }
-
-  async function handleLoadPatientTimeline(patientId: string): Promise<PatientTimelineEvent[]> {
-    return api.getPatientTimeline(patientId);
+  function openPatientChart(patientId: string) {
+    router.push(`/patients/${patientId}?from=history`);
   }
 
   async function handleExport(range: HistoryExportRange) {
@@ -373,28 +328,7 @@ export default function HistoryPage() {
                       {visibleVisits.map((visit) => (
                         <tr
                           key={visit.id}
-                        onClick={() => {
-                          const selected = {
-                            id: visit.patient_id,
-                            name: visit.name,
-                            phone: visit.phone,
-                            email: visit.email,
-                            address: visit.address,
-                            reason: visit.reason,
-                            age: visit.age,
-                            weight: visit.weight,
-                            height: visit.height,
-                            temperature: visit.temperature,
-                            status: visit.status,
-                            billed: visit.billed,
-                            queue_priority: "normal" as const,
-                            stage_entered_at: visit.last_visit_at,
-                            queue_position: 0,
-                            created_at: visit.created_at,
-                            last_visit_at: visit.last_visit_at,
-                          };
-                          setSelectedPatient(selected);
-                        }}
+                        onClick={() => openPatientChart(visit.patient_id)}
                           className="cursor-pointer transition hover:bg-[#f3f8fb]/70"
                         >
                           <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-800">
@@ -435,20 +369,6 @@ export default function HistoryPage() {
         </section>
       </div>
 
-      <PatientDetailsDrawer
-        patient={selectedPatient}
-        clinicSpecialty={clinicSettings?.clinic_specialty ?? null}
-        onLoadVisits={handleLoadPatientVisits}
-        onLoadVisitDetail={handleLoadPatientVisitDetail}
-        onLoadTimeline={handleLoadPatientTimeline}
-        onLoadMyopiaHistory={(patientId) => api.getPatientMyopiaHistory(patientId)}
-        onLoadGrowthHistory={(patientId) => api.getPatientGrowthHistory(patientId)}
-        readOnly
-        onSave={handleUpdatePatient}
-        onPatientUpdated={handlePatientChartUpdated}
-        onClose={() => setSelectedPatient(null)}
-      />
-
       {isSettingsOpen ? (
       <LazySettingsDrawer
         open={isSettingsOpen}
@@ -487,7 +407,7 @@ export default function HistoryPage() {
               .map(normalizeVisit)
               .sort((left, right) => right.created_at.localeCompare(left.created_at)),
           );
-          setSelectedPatient(checkedInPatient);
+          router.push(`/patients/${checkedInPatient.id}`);
           return {
             id: appointmentId,
             checked_in_at: new Date().toISOString(),

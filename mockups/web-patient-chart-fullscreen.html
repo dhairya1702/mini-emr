@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClinicOS · Web Patient Chart · Full-screen</title>
+  <style>
+    :root {
+      --line: #dbe7ef; --line-strong: #bfd7e8;
+      --surface: #ffffff; --soft: #f3f8fb; --soft-2: #f7fbfd; --soft-strong: #edf5fa;
+      --ink: #1f2b3d; --ink-soft: #5b6b80; --ink-faint: #8595a8;
+      --accent: #2f8fd3; --accent-strong: #287fc0; --accent-text: #2a6fa8;
+      --accent-soft: #ecf6fd; --accent-line: #bfe0f5;
+      --teal: #14a38b; --teal-strong: #108873;
+      --shadow-sm: 0 6px 16px rgba(64,131,181,0.07);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 0%, rgba(178,211,232,0.22), transparent 24%),
+        radial-gradient(circle at 96% 0%, rgba(216,231,239,0.42), transparent 22%),
+        linear-gradient(180deg, #fbfdff 0%, #f4f9fc 100%);
+      height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+    }
+    h1,h2,h3,h4,p { margin: 0; }
+    button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+    svg { display: block; }
+
+    /* ---- global app top bar (context / back) ---- */
+    .appbar {
+      display: flex; align-items: center; gap: 14px;
+      padding: 12px 28px; border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.9); backdrop-filter: blur(8px);
+    }
+    .back {
+      display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 10px;
+      border: 1px solid var(--line-strong); border-radius: 10px; background: #fff;
+      font-size: 13px; font-weight: 600; color: var(--ink-soft);
+    }
+    .back:hover { background: var(--soft-strong); }
+    .crumbs { font-size: 13px; color: var(--ink-faint); }
+    .crumbs b { color: var(--ink); font-weight: 700; }
+    .appbar .grow { flex: 1; }
+    .appbar .brand { font-size: 12px; font-weight: 700; letter-spacing: 0.22em; color: var(--ink); }
+
+    /* ---- header ---- */
+    .head {
+      display: flex; align-items: center; gap: 18px;
+      padding: 20px 28px; border-bottom: 1px solid var(--line);
+    }
+    .avatar {
+      width: 66px; height: 66px; border-radius: 18px; flex: none;
+      background: linear-gradient(135deg, #2f8fd3, #245f92); color: #fff;
+      display: grid; place-items: center; font-size: 23px; font-weight: 700;
+      box-shadow: 0 10px 22px rgba(37,111,168,0.28);
+    }
+    .idblock { min-width: 0; flex: 1; }
+    .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-faint); }
+    .idblock h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; margin-top: 2px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+    .chip { font-size: 12px; font-weight: 600; color: var(--ink-soft); background: var(--soft); border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px; }
+    .chip.key { color: var(--accent-text); background: var(--accent-soft); border-color: var(--accent-line); }
+
+    .actions { display: flex; align-items: center; gap: 10px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px; border-radius: 11px; font-size: 14px; font-weight: 600; }
+    .btn-ghost { border: 1px solid var(--line-strong); background: #fff; color: var(--ink-soft); }
+    .btn-ghost:hover { background: var(--soft-strong); }
+    .btn-teal { background: var(--teal); color: #fff; box-shadow: 0 10px 22px rgba(20,163,139,0.22); }
+    .btn-teal:hover { background: var(--teal-strong); }
+
+    /* ---- AI summary band ---- */
+    .summary { display: flex; align-items: flex-start; gap: 12px; padding: 12px 28px; background: var(--accent-soft); border-bottom: 1px solid var(--accent-line); }
+    .summary .badge { width: 24px; height: 24px; border-radius: 7px; flex: none; background: rgba(47,143,211,0.14); color: var(--accent); display: grid; place-items: center; margin-top: 1px; }
+    .summary .body { flex: 1; min-width: 0; }
+    .summary .lbl { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: #1d4d72; }
+    .summary p { margin-top: 4px; font-size: 13px; line-height: 1.5; color: #33587a; max-width: 1150px; }
+    .summary .chev { color: var(--accent-text); margin-top: 2px; }
+
+    /* ---- tabs ---- */
+    .tabs { display: flex; gap: 28px; padding: 0 28px; border-bottom: 1px solid var(--line); background: #fff; }
+    .tabs button { position: relative; padding: 13px 0 14px; font-size: 14px; font-weight: 600; color: var(--ink-faint); }
+    .tabs button.active { color: var(--accent-strong); }
+    .tabs button.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; background: var(--accent); border-radius: 3px; }
+    .tabs .tab-count { margin-left: 6px; font-size: 11px; font-weight: 700; color: var(--ink-faint); }
+
+    /* ---- body two-pane fills remaining height ---- */
+    .body { flex: 1; min-height: 0; display: grid; grid-template-columns: 380px minmax(0,1fr); }
+    .pane-left { border-right: 1px solid var(--line); background: var(--soft-2); overflow-y: auto; padding: 20px 22px; }
+    .pane-right { overflow-y: auto; padding: 24px 32px; }
+    .pane-right .inner { max-width: 1100px; }
+
+    .sec-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+    .sec-head h2 { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); }
+    .sec-head .count { font-size: 12px; color: var(--ink-faint); }
+
+    .visit { width: 100%; text-align: left; display: block; border: 1px solid var(--line); background: #fff; border-radius: 14px; padding: 14px 15px; margin-bottom: 10px; box-shadow: var(--shadow-sm); }
+    .visit.sel { border-color: var(--accent-line); background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+    .visit .top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .visit .vname { font-size: 15px; font-weight: 700; }
+    .visit .vdate { font-size: 11px; color: var(--ink-faint); white-space: nowrap; }
+    .visit .tags { display: flex; gap: 6px; margin-top: 8px; }
+    .visit .tags span { font-size: 10.5px; font-weight: 600; color: var(--accent-text); background: #fff; border: 1px solid var(--accent-line); padding: 2px 8px; border-radius: 999px; display: inline-flex; align-items: center; gap: 4px; }
+
+    .reason-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); }
+    .reason { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; margin-top: 4px; }
+    .reason-meta { margin-top: 6px; font-size: 13px; color: var(--ink-soft); }
+
+    .card { border: 1px solid var(--line); border-radius: 16px; background: #fff; margin-top: 18px; overflow: hidden; }
+    .card > .card-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; font-size: 15px; font-weight: 700; color: var(--ink); }
+    .card .pill { font-size: 11px; font-weight: 700; color: var(--accent-text); background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: 999px; padding: 2px 9px; }
+    .card .card-body { border-top: 1px solid var(--line); padding: 16px 18px; }
+    .note { background: var(--soft-2); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; font-size: 14px; line-height: 1.65; color: #3a4a5e; white-space: pre-wrap; }
+    .files { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .file { display: flex; align-items: center; gap: 12px; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 12px; padding: 11px 12px; }
+    .file:hover { background: var(--soft-2); }
+    .file .thumb { width: 46px; height: 46px; border-radius: 11px; background: var(--soft); border: 1px solid var(--line); display: grid; place-items: center; color: var(--accent); flex: none; }
+    .file .fname { font-size: 13.5px; font-weight: 600; }
+    .file .fmeta { font-size: 11.5px; color: var(--ink-faint); margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <!-- APP TOP BAR (context + back) -->
+  <div class="appbar">
+    <button class="back">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back
+    </button>
+    <span class="crumbs">Patients&nbsp; /&nbsp; <b>Dhairya H.</b></span>
+    <span class="grow"></span>
+    <span class="brand">CLINIC EMR</span>
+  </div>
+
+  <!-- HEADER -->
+  <div class="head">
+    <div class="avatar">DH</div>
+    <div class="idblock">
+      <div class="eyebrow">Patient Chart</div>
+      <h1>Dhairya H.</h1>
+      <div class="chips">
+        <span class="chip key">16 yrs · F</span>
+        <span class="chip">#1234567890</span>
+        <span class="chip">No address on file</span>
+        <span class="chip">Last visit Jul 22, 8:55 PM</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-ghost">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+        Edit
+      </button>
+      <button class="btn btn-teal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9z"/></svg>
+        Start consultation
+      </button>
+    </div>
+  </div>
+
+  <!-- AI SUMMARY -->
+  <div class="summary">
+    <span class="badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.8L18 8l-4.4 1.2L12 14l-1.6-4.8L6 8l4.4-1.2z"/></svg></span>
+    <div class="body">
+      <div class="lbl">AI SUMMARY</div>
+      <p>16-year-old female under ongoing optometry care. The most recent visit addressed an eye check-up; visual acuity was within normal limits with no abnormal findings. Prior visits covered a blurred-vision follow-up with a prescription change and a baseline eye exam.</p>
+    </div>
+    <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="active">Visits<span class="tab-count">3</span></button>
+    <button>Tests</button>
+    <button>Files<span class="tab-count">4</span></button>
+    <button>Timeline</button>
+  </div>
+
+  <!-- BODY -->
+  <div class="body">
+    <div class="pane-left">
+      <div class="sec-head"><h2>Visits</h2><span class="count">3 total</span></div>
+
+      <button class="visit sel">
+        <div class="top"><span class="vname">Eye check up</span><span class="vdate">Jul 22</span></div>
+        <div class="tags">
+          <span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Note</span>
+          <span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/></svg> 2 files</span>
+        </div>
+      </button>
+      <button class="visit">
+        <div class="top"><span class="vname">Blurred vision follow-up</span><span class="vdate">May 3</span></div>
+        <div class="tags"><span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Note</span></div>
+      </button>
+      <button class="visit">
+        <div class="top"><span class="vname">Initial consultation</span><span class="vdate">Feb 11</span></div>
+        <div class="tags"><span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Note</span><span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> 1 file</span></div>
+      </button>
+    </div>
+
+    <div class="pane-right">
+      <div class="inner">
+        <div class="reason-eyebrow">Reason</div>
+        <div class="reason">Eye check up</div>
+        <div class="reason-meta">Visit 1 · Recorded Jul 22, 8:55 PM</div>
+
+        <div class="card">
+          <div class="card-head">Consultation note</div>
+          <div class="card-body">
+            <div class="note">Presenting complaint: routine eye check-up.
+
+Findings: Visual acuity 6/6 in both eyes. Anterior segment unremarkable. Fundus examination within normal limits. No signs of refractive change since last visit.
+
+Assessment: Healthy ocular status.
+
+Plan: Reassure patient. Advised routine review in 12 months. No new prescription required.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">Files &amp; media <span class="pill">2</span></div>
+          <div class="card-body">
+            <div class="files">
+              <button class="file">
+                <span class="thumb"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg></span>
+                <span><span class="fname">retina_scan.jpg</span><span class="fmeta">Image · Jul 22</span></span>
+              </button>
+              <button class="file">
+                <span class="thumb"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+                <span><span class="fname">prescription.pdf</span><span class="fmeta">Document · Jul 22</span></span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
