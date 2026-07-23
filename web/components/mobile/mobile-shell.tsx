@@ -48,50 +48,66 @@ const iconByNavKey: Record<MobileNavItemKey, typeof LayoutDashboard> = {
 export function MobileShell({
   action,
   children,
+  bleed = false,
 }: {
   title: string;
   subtitle?: string;
   action?: ReactNode;
-  children: ReactNode;
+  /**
+   * When true, the default sticky header and content padding are removed so the
+   * page can render its own full-bleed (edge-to-edge) header. `children` may be a
+   * render function that receives `openMenu` to trigger the shared nav drawer.
+   */
+  bleed?: boolean;
+  children: ReactNode | ((controls: { openMenu: () => void }) => ReactNode);
 }) {
   const pathname = usePathname();
   const { clinicSettings, currentUser, handleLogout } = useClinicShell();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navItems = getVisibleMobileNavItems(currentUser?.role);
+  const openMenu = () => setIsMenuOpen(true);
+
+  const content = typeof children === "function" ? children({ openMenu }) : children;
 
   return (
-    <main className="clinic-page text-slate-800">
-      <header className="sticky top-0 z-30 -mx-4 -mt-5 border-b border-[#dbe7ef] bg-white/90 px-4 py-3 backdrop-blur sm:-mx-6 lg:-mx-8">
-        <div className="relative mx-auto flex max-w-2xl items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => setIsMenuOpen(true)}
-            className="clinic-icon-button h-11 w-11 rounded-xl"
-            aria-label="Open menu"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-          <Link
-            href="/m"
-            className="absolute left-1/2 max-w-[52%] -translate-x-1/2 truncate text-center text-base font-semibold uppercase tracking-[0.18em] text-slate-900"
-          >
-            {clinicSettings?.clinic_name || "Clinic EMR"}
-          </Link>
-          {action ?? (
+    <main className={bleed ? "min-h-screen text-slate-800" : "clinic-page text-slate-800"}>
+      {bleed ? null : (
+        <header className="sticky top-0 z-30 -mx-4 -mt-5 border-b border-[#dbe7ef] bg-white/90 px-4 py-3 backdrop-blur sm:-mx-6 lg:-mx-8">
+          <div className="relative mx-auto flex max-w-2xl items-center justify-between gap-3">
             <button
               type="button"
-              onClick={handleLogout}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-700 transition hover:bg-rose-50"
-              aria-label="Logout"
-              title="Logout"
+              onClick={openMenu}
+              className="clinic-icon-button h-11 w-11 rounded-xl"
+              aria-label="Open menu"
             >
-              <LogOut className="h-5 w-5" />
+              <Menu className="h-5 w-5" />
             </button>
-          )}
-        </div>
-      </header>
+            <Link
+              href="/m"
+              className="absolute left-1/2 max-w-[52%] -translate-x-1/2 truncate text-center text-base font-semibold uppercase tracking-[0.18em] text-slate-900"
+            >
+              {clinicSettings?.clinic_name || "Clinic EMR"}
+            </Link>
+            {action ?? (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-700 transition hover:bg-rose-50"
+                aria-label="Logout"
+                title="Logout"
+              >
+                <LogOut className="h-5 w-5" />
+              </button>
+            )}
+          </div>
+        </header>
+      )}
 
-      <div className="mx-auto max-w-[44rem] px-2 py-5 sm:px-4">{children}</div>
+      {bleed ? (
+        <div className="mx-auto w-full max-w-[44rem]">{content}</div>
+      ) : (
+        <div className="mx-auto max-w-[44rem] px-2 py-5 sm:px-4">{content}</div>
+      )}
 
       {isMenuOpen ? (
         <div className="fixed inset-0 z-40 bg-slate-900/30" onClick={() => setIsMenuOpen(false)}>

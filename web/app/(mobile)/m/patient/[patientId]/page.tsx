@@ -1,7 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, ChevronDown, FileText, Image as ImageIcon, Sparkles, UserRound } from "lucide-react";
+import {
+  Activity,
+  ArrowLeft,
+  ChevronDown,
+  ClipboardList,
+  Eye,
+  FileText,
+  Image as ImageIcon,
+  LineChart,
+  Menu,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -21,10 +33,12 @@ import type {
   PatientVisitDetail,
   PediatricGrowthSummary,
   MyopiaHistory,
+  LongitudinalTrackRecord,
   TbiEvaluationCreatePayload,
   TbiEvaluationRecord,
 } from "@/lib/types";
-import { specialtyHasModule } from "@/lib/specialty";
+import { getSpecialtyModules, specialtyHasModule, type SpecialtyModuleKey } from "@/lib/specialty";
+import { formatModuleSummary, moduleEntriesFor, moduleLabel } from "@/lib/structured-modules";
 
 type MobileTab = "visits" | "tests" | "attachments" | "timeline";
 type VisitSectionKey = "note" | "attachments";
@@ -59,92 +73,174 @@ function openPatientAttachmentViewer(attachmentId: string) {
   window.open(`/attachment-view/${attachmentId}`, "_blank");
 }
 
-function ChartTabButton({
-  active,
-  count,
-  label,
-  onClick,
+function shortDate(value: string | null | undefined) {
+  if (!value) {
+    return "—";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return date.toLocaleString([], { month: "short", day: "numeric" });
+}
+
+function isImageName(name: string) {
+  return /\.(png|jpe?g|gif|webp|heic|bmp|svg)$/i.test(name.trim());
+}
+
+type RailColor = "accent" | "dim" | "amber" | "green";
+
+const RAIL_NODE_CLASS: Record<RailColor, string> = {
+  accent: "bg-[#2f8fd3] border-[#ecf6fd]",
+  dim: "bg-[#9fc7e1] border-[#ecf6fd]",
+  amber: "bg-[#f0b44c] border-[#fff2da]",
+  green: "bg-[#4f9cf7] border-[#e2eefb]",
+};
+
+function timelineMeta(type: PatientTimelineEvent["type"]): { label: string; color: RailColor; kindClass: string } {
+  const value = String(type || "").toLowerCase();
+  if (value.includes("eval") || value.includes("measurement")) {
+    return { label: "Test", color: "amber", kindClass: "text-[#b45309]" };
+  }
+  if (value.includes("attachment") || value.includes("file")) {
+    return { label: "File", color: "green", kindClass: "text-[#2f7d55]" };
+  }
+  if (value.includes("invoice") || value.includes("bill")) {
+    return { label: "Billing", color: "green", kindClass: "text-[#2f7d55]" };
+  }
+  if (value.includes("follow_up")) {
+    return { label: "Follow-up", color: "accent", kindClass: "text-[#2a6fa8]" };
+  }
+  return { label: "Visit", color: "accent", kindClass: "text-[#2a6fa8]" };
+}
+
+const TAB_ITEMS: { key: MobileTab; label: string }[] = [
+  { key: "visits", label: "Visits" },
+  { key: "tests", label: "Tests" },
+  { key: "attachments", label: "Files" },
+  { key: "timeline", label: "Timeline" },
+];
+
+function StickyTabs({ active, onSelect }: { active: MobileTab; onSelect: (tab: MobileTab) => void }) {
+  return (
+    <div className="sticky top-0 z-20 border-b border-[#dbe7ef] bg-[#fbfdff]/95 backdrop-blur">
+      <div className="mx-auto flex max-w-[44rem] px-4">
+        {TAB_ITEMS.map((tab) => {
+          const isActive = tab.key === active;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => onSelect(tab.key)}
+              className={`relative flex-1 py-3 text-center text-[13px] font-semibold transition ${
+                isActive ? "text-[#287fc0]" : "text-slate-400"
+              }`}
+            >
+              {tab.label}
+              {isActive ? <span className="absolute inset-x-3 -bottom-px h-[2.5px] rounded bg-[#2f8fd3]" /> : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SectionHeading({ title, meta }: { title: string; meta?: string }) {
+  return (
+    <div className="mb-2.5 mt-4 flex items-baseline justify-between">
+      <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{title}</h2>
+      {meta ? <span className="text-xs text-slate-400">{meta}</span> : null}
+    </div>
+  );
+}
+
+function RailItem({
+  color = "accent",
+  last = false,
+  children,
 }: {
-  active: boolean;
-  count?: number;
-  label: string;
-  onClick: () => void;
+  color?: RailColor;
+  last?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex h-11 items-center gap-2 rounded-2xl px-4 text-sm font-semibold transition ${
-        active
-          ? "bg-[#2f8fd3] text-white shadow-[0_10px_22px_rgba(47,143,211,0.18)]"
-          : "border border-[#bfd7e8] bg-white text-slate-700"
-      }`}
-    >
-      {label}
-      {typeof count === "number" ? (
-        <span className={`rounded-full px-2.5 py-0.5 text-xs ${active ? "bg-white/20 text-white" : "bg-[#edf5fa] text-slate-500"}`}>
-          {count}
-        </span>
-      ) : null}
-    </button>
-  );
-}
-
-function TimelineCard({ event }: { event: PatientTimelineEvent }) {
-  return (
-    <article className="rounded-[18px] border border-[#dbe7ef] bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-800">{event.title}</p>
-          <p className="mt-2 text-sm leading-6 text-slate-600">{event.description}</p>
-        </div>
-        <p className="shrink-0 text-xs text-slate-500">{formatDate(event.timestamp)}</p>
+    <div className="flex gap-3">
+      <div className="flex flex-col items-center">
+        <span className={`mt-1.5 h-3 w-3 shrink-0 rounded-full border-[3px] ${RAIL_NODE_CLASS[color]}`} />
+        {last ? null : <span className="my-1 w-0.5 flex-1 bg-[#dbe7ef]" />}
       </div>
-    </article>
+      <div className="min-w-0 flex-1 pb-2">{children}</div>
+    </div>
   );
 }
 
-function MobileAccordion({
-  children,
+function InfoTag({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-[#bfe0f5] bg-white px-2 py-0.5 text-[10.5px] font-semibold text-[#2a6fa8]">
+      {children}
+    </span>
+  );
+}
+
+function HeroStat({ label, value, divider = false }: { label: string; value: string; divider?: boolean }) {
+  return (
+    <div className={`relative flex-1 text-center ${divider ? "before:absolute before:left-0 before:top-0.5 before:bottom-0.5 before:w-px before:bg-white/20" : ""}`}>
+      <p className="text-[10px] uppercase tracking-[0.08em] text-white/70">{label}</p>
+      <p className="mt-0.5 text-sm font-bold">{value}</p>
+    </div>
+  );
+}
+
+function VisitDetailSection({
+  title,
   count,
   isOpen,
   onToggle,
-  title,
+  children,
 }: {
-  children: React.ReactNode;
+  title: string;
   count?: number;
   isOpen: boolean;
   onToggle: () => void;
-  title: string;
+  children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[22px] border border-[#dbe7ef] bg-white">
+    <div className="overflow-hidden rounded-[12px] border border-[#dbe7ef] bg-white">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left"
+        className="flex w-full items-center justify-between gap-3 px-3.5 py-3 text-left"
       >
-        <div className="flex min-w-0 items-center gap-3">
-          <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+        <span className="flex items-center gap-2 text-[13.5px] font-semibold text-slate-800">
+          {title}
           {typeof count === "number" ? (
-            <span className="rounded-full border border-[#bfd7e8] bg-[#f3f8fb] px-2.5 py-0.5 text-xs font-medium text-slate-600">
+            <span className="rounded-full border border-[#bfe0f5] bg-[#ecf6fd] px-2 py-0.5 text-[11px] font-bold text-[#2a6fa8]">
               {count}
             </span>
           ) : null}
-        </div>
-        <ChevronDown className={`h-5 w-5 shrink-0 text-slate-500 transition ${isOpen ? "rotate-180" : "rotate-0"}`} />
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition ${isOpen ? "rotate-180" : "rotate-0"}`} />
       </button>
-      {isOpen ? <div className="border-t border-[#dbe7ef] px-4 py-4">{children}</div> : null}
-    </section>
+      {isOpen ? <div className="border-t border-[#dbe7ef] px-3.5 py-3">{children}</div> : null}
+    </div>
   );
 }
+
+const MODULE_ICON: Partial<Record<SpecialtyModuleKey, typeof Activity>> = {
+  myopia_management: Eye,
+  tbi_evaluation: Activity,
+  pediatric_growth_measurement: LineChart,
+};
 
 function TestsTab({
   clinicSpecialty,
   growthHistory,
   isLoading,
+  moduleEntries,
   myopiaError,
   myopiaHistory,
+  onOpenModule,
   onOpenTbiEvaluation,
   tbiError,
   tbiEvaluations,
@@ -152,66 +248,161 @@ function TestsTab({
   clinicSpecialty: Patient["status"] | string | null | undefined;
   growthHistory: PediatricGrowthSummary | null;
   isLoading: boolean;
+  moduleEntries: LongitudinalTrackRecord[];
   myopiaError: string;
   myopiaHistory: MyopiaHistory | null;
+  onOpenModule: (moduleKey: SpecialtyModuleKey) => void;
   onOpenTbiEvaluation: () => void;
   tbiError: string;
   tbiEvaluations: TbiEvaluationRecord[];
 }) {
-  const isOptometryClinic = specialtyHasModule(clinicSpecialty as never, "myopia_management");
-  const isPediatricsClinic = specialtyHasModule(clinicSpecialty as never, "pediatric_growth_measurement");
+  const modules = getSpecialtyModules(clinicSpecialty as never);
   const growthRecords = growthHistory?.records ?? [];
   const latestGrowthRecord = growthRecords[growthRecords.length - 1] ?? null;
+  const latestMyopiaRecord = myopiaHistory?.records.at(-1) ?? null;
+  const latestTbiEvaluation = tbiEvaluations.at(-1) ?? null;
+
+  const rows = modules.map((moduleKey) => {
+    if (moduleKey === "myopia_management") {
+      const count = myopiaHistory?.records.length ?? 0;
+      return {
+        key: moduleKey,
+        date: latestMyopiaRecord ? shortDate(latestMyopiaRecord.measured_at) : "—",
+        count,
+        error: myopiaError,
+      };
+    }
+    if (moduleKey === "tbi_evaluation") {
+      return {
+        key: moduleKey,
+        date: latestTbiEvaluation ? shortDate(latestTbiEvaluation.measured_at || latestTbiEvaluation.created_at) : "—",
+        count: tbiEvaluations.length,
+        error: tbiError,
+      };
+    }
+    if (moduleKey === "pediatric_growth_measurement") {
+      return {
+        key: moduleKey,
+        date: latestGrowthRecord ? shortDate(latestGrowthRecord.measured_at) : "—",
+        count: growthRecords.length,
+        error: "",
+      };
+    }
+    const entries = moduleEntriesFor(moduleEntries, moduleKey);
+    const latestEntry = entries[0] ?? null;
+    return {
+      key: moduleKey,
+      date: latestEntry ? shortDate(latestEntry.measured_at) : "—",
+      count: entries.length,
+      error: "",
+    };
+  });
 
   if (isLoading) {
     return <p className="clinic-empty-state">Loading tests...</p>;
   }
 
+  if (!rows.length) {
+    return <p className="clinic-empty-state">No tests available for this specialty yet.</p>;
+  }
+
   return (
-    <div className="grid gap-4">
-      {myopiaError ? <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{myopiaError}</p> : null}
-      {isOptometryClinic ? (
-        <section className="rounded-[22px] border border-[#dbe7ef] bg-white p-5 shadow-[0_12px_30px_rgba(47,61,50,0.08)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Myopia</p>
-          <p className="mt-2 text-lg font-semibold text-slate-900">
-            {(myopiaHistory?.records.length ?? 0)} readings
-          </p>
-          <p className="mt-2 text-sm text-slate-600">
-            OD {myopiaHistory?.baseline_delta?.right_mm ?? "—"} · OS {myopiaHistory?.baseline_delta?.left_mm ?? "—"}
-          </p>
-        </section>
-      ) : null}
-      {isOptometryClinic ? (
-        <section className="rounded-[22px] border border-[#dbe7ef] bg-white p-5 shadow-[0_12px_30px_rgba(47,61,50,0.08)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Neurovision / TBI</p>
-          <p className="mt-2 text-lg font-semibold text-slate-900">
-            {tbiEvaluations.length} evaluations
-          </p>
-          {tbiError ? <p className="mt-2 text-sm text-rose-600">{tbiError}</p> : null}
-          <button
-            type="button"
-            onClick={onOpenTbiEvaluation}
-            className="mt-4 rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700"
-          >
-            Open
+    <div>
+      {myopiaError ? <p className="mb-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{myopiaError}</p> : null}
+      <div className="-mx-4 border-t border-[#dbe7ef]">
+        {rows.map((row) => {
+          const Icon = MODULE_ICON[row.key] ?? ClipboardList;
+          const subline = row.error
+            ? row.error
+            : row.count
+              ? `${row.count} record${row.count === 1 ? "" : "s"}`
+              : "No records yet";
+          return (
+            <button
+              key={row.key}
+              type="button"
+              onClick={() => (row.key === "tbi_evaluation" ? onOpenTbiEvaluation() : onOpenModule(row.key))}
+              className="flex w-full items-center gap-3 border-b border-[#dbe7ef] bg-white px-4 py-3.5 text-left"
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[11px] border border-[#dbe7ef] bg-[#f3f8fb] text-[#2f8fd3]">
+                <Icon className="h-4 w-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-900">{moduleLabel(row.key)}</span>
+                <span className={`mt-0.5 block text-xs ${row.error ? "text-rose-600" : "text-slate-400"}`}>{subline}</span>
+              </span>
+              <span className="shrink-0 text-xs font-semibold text-slate-500">{row.date}</span>
+              <ChevronDown className="h-4 w-4 shrink-0 -rotate-90 text-slate-300" />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ModuleHistorySheet({
+  entries,
+  moduleKey,
+  onClose,
+  onSave,
+  value,
+  onValueChange,
+  isSaving,
+}: {
+  entries: LongitudinalTrackRecord[];
+  moduleKey: SpecialtyModuleKey | null;
+  onClose: () => void;
+  onSave: () => void | Promise<void>;
+  value: string;
+  onValueChange: (value: string) => void;
+  isSaving: boolean;
+}) {
+  if (!moduleKey) {
+    return null;
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-slate-950/35">
+      <div className="max-h-[90vh] w-full overflow-y-auto rounded-t-[24px] bg-white p-5 shadow-[0_-16px_48px_rgba(15,23,42,0.24)]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Previous Evaluations</p>
+            <h3 className="mt-1 text-xl font-semibold text-slate-900">{moduleLabel(moduleKey)}</h3>
+          </div>
+          <button type="button" onClick={onClose} className="clinic-icon-button">
+            <X className="h-4 w-4" />
           </button>
-        </section>
-      ) : null}
-      {isPediatricsClinic ? (
-        <section className="rounded-[22px] border border-[#dbe7ef] bg-white p-5 shadow-[0_12px_30px_rgba(47,61,50,0.08)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Growth</p>
-          <p className="mt-2 text-lg font-semibold text-slate-900">
-            {growthRecords.length} readings
-          </p>
-          <p className="mt-2 text-sm text-slate-600">
-            {latestGrowthRecord ? `${latestGrowthRecord.height_cm} cm · ${latestGrowthRecord.weight_kg} kg` : "No latest measurement"}
-          </p>
-          <p className="mt-2 text-sm text-slate-500">{growthHistory?.trend_summary || "No trend yet"}</p>
-        </section>
-      ) : null}
-      {!isOptometryClinic && !isPediatricsClinic ? (
-        <p className="clinic-empty-state">No tests available for this patient yet.</p>
-      ) : null}
+        </div>
+        <div className="mt-4 grid gap-2">
+          {entries.length ? entries.map((entry) => (
+            <article key={entry.id} className="rounded-xl border border-[#dbe7ef] bg-[#f7fbfd] p-3">
+              <p className="text-sm font-semibold text-slate-900">{formatDate(entry.measured_at)}</p>
+              <p className="mt-1 text-sm leading-5 text-slate-600">{formatModuleSummary(entry)}</p>
+            </article>
+          )) : (
+            <p className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-3 py-5 text-center text-sm text-slate-500">
+              No evaluations yet.
+            </p>
+          )}
+        </div>
+        <label className="mt-5 block text-sm font-semibold text-slate-700">
+          New
+          <textarea
+            value={value}
+            onChange={(event) => onValueChange(event.target.value)}
+            rows={5}
+            className="mt-2 w-full resize-none rounded-[18px] border border-[#bfd7e8] bg-white px-4 py-3 text-base font-normal leading-6 text-slate-800 outline-none focus:border-[#6daed8]"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={isSaving}
+          className="mt-4 h-12 w-full rounded-2xl bg-[#2f8fd3] text-sm font-semibold text-white disabled:opacity-60"
+        >
+          {isSaving ? "Saving..." : "Save"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -240,6 +431,7 @@ export default function MobilePatientPage() {
   const [hasLoadedAttachmentsTab, setHasLoadedAttachmentsTab] = useState(false);
   const [myopiaHistory, setMyopiaHistory] = useState<MyopiaHistory | null>(null);
   const [growthHistory, setGrowthHistory] = useState<PediatricGrowthSummary | null>(null);
+  const [moduleEntries, setModuleEntries] = useState<LongitudinalTrackRecord[]>([]);
   const [tbiEvaluations, setTbiEvaluations] = useState<TbiEvaluationRecord[]>([]);
   const [isTestsLoading, setIsTestsLoading] = useState(false);
   const [testsError, setTestsError] = useState("");
@@ -247,6 +439,9 @@ export default function MobilePatientPage() {
   const [tbiError, setTbiError] = useState("");
   const [isTbiLoading, setIsTbiLoading] = useState(false);
   const [isTbiEvaluationOpen, setIsTbiEvaluationOpen] = useState(false);
+  const [activeModuleKey, setActiveModuleKey] = useState<SpecialtyModuleKey | null>(null);
+  const [moduleEntryNotes, setModuleEntryNotes] = useState("");
+  const [isSavingModuleEntry, setIsSavingModuleEntry] = useState(false);
   const [patientTimeline, setPatientTimeline] = useState<PatientTimelineEvent[]>([]);
   const [isTimelineLoading, setIsTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState("");
@@ -256,6 +451,7 @@ export default function MobilePatientPage() {
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
   const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false);
+  const [isSummaryOpen, setIsSummaryOpen] = useState(true);
 
   useEffect(() => {
     setOpenSections({ note: false, attachments: false });
@@ -267,6 +463,7 @@ export default function MobilePatientPage() {
     setIsTimelineLoading(false);
     setHasLoadedTimelineTab(false);
     setTbiEvaluations([]);
+    setModuleEntries([]);
     setTbiError("");
     setIsTbiLoading(false);
     setIsTbiEvaluationOpen(false);
@@ -447,14 +644,16 @@ export default function MobilePatientPage() {
       shouldLoadMyopia ? api.getPatientMyopiaHistory(patientId) : Promise.resolve(null),
       shouldLoadGrowth ? api.getPatientGrowthHistory(patientId) : Promise.resolve(null),
       shouldLoadTbi ? api.listPatientTbiEvaluations(patientId) : Promise.resolve([] as TbiEvaluationRecord[]),
+      api.listPatientModuleEntries(patientId),
     ])
-      .then(([myopia, growth, tbi]) => {
+      .then(([myopia, growth, tbi, entries]) => {
         if (!active) {
           return;
         }
         setMyopiaHistory(myopia);
         setGrowthHistory(growth);
         setTbiEvaluations(tbi);
+        setModuleEntries(entries);
         setHasLoadedTestsTab(true);
       })
       .catch((loadError) => {
@@ -517,6 +716,23 @@ export default function MobilePatientPage() {
     [selectedVisitId, visits],
   );
   const selectedVisitDetail = selectedVisit ? visitDetailsById[selectedVisit.id] ?? null : null;
+
+  const clinicName = clinicSettings?.clinic_name || "Clinic EMR";
+
+  const initials = useMemo(() => {
+    const parts = (patient?.name || "").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) {
+      return "?";
+    }
+    return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "?";
+  }, [patient?.name]);
+
+  const sexShort = patient?.sex_at_birth ? String(patient.sex_at_birth)[0]?.toUpperCase() : null;
+  const ageLabel = patient
+    ? patient.age != null
+      ? `${patient.age}${sexShort ? ` · ${sexShort}` : ""}`
+      : sexShort || "—"
+    : "—";
 
   const patientWideAttachments = useMemo(() => {
     const seen = new Set<string>();
@@ -591,7 +807,7 @@ export default function MobilePatientPage() {
       setHasLoadedTestsTab(true);
       setActiveTab("tests");
     } catch (saveError) {
-      const message = saveError instanceof Error ? saveError.message : "Failed to save TBI evaluation.";
+      const message = saveError instanceof Error ? saveError.message : "Failed to save evaluation.";
       setTbiError(message);
       throw saveError;
     } finally {
@@ -599,244 +815,357 @@ export default function MobilePatientPage() {
     }
   }
 
+  async function saveModuleEntry() {
+    if (!patientId || !activeModuleKey) {
+      return;
+    }
+    const notes = moduleEntryNotes.trim();
+    if (!notes) {
+      setTestsError("Enter notes before saving.");
+      return;
+    }
+    setIsSavingModuleEntry(true);
+    setTestsError("");
+    try {
+      const payload = {
+        track_type: activeModuleKey,
+        measured_at: new Date().toISOString(),
+        summary_fields: { summary: notes },
+        raw_payload: { notes },
+      };
+      const saved = await api.createPatientModuleEntry(patientId, payload);
+      setModuleEntries((current) => [saved, ...current.filter((entry) => entry.id !== saved.id)]);
+      setModuleEntryNotes("");
+      setActiveModuleKey(null);
+      setActiveTab("tests");
+    } catch (saveError) {
+      const message = saveError instanceof Error ? saveError.message : "Failed to save evaluation.";
+      setTestsError(message);
+      throw saveError;
+    } finally {
+      setIsSavingModuleEntry(false);
+    }
+  }
+
   return (
-    <MobileShell
-      title={patient?.name || "Patient"}
-      subtitle={patient ? `${patient.age ?? "-"} years | ${patient.phone || "No phone"}` : "Chart"}
-      action={
-        <Link
-          href="/m/patients"
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-[#bfd7e8] bg-white text-slate-700"
-          aria-label="Back to patients"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-      }
-    >
-      {error ? <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
-
-      {patient ? (
+    <MobileShell title={patient?.name || "Patient"} bleed>
+      {({ openMenu }) => (
         <>
-          <section className="rounded-[22px] border border-[#dbe7ef] bg-white p-5 shadow-[0_12px_30px_rgba(47,61,50,0.08)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Patient chart</p>
-            <h1 className="mt-2 text-3xl font-semibold text-slate-900">{patient.name}</h1>
-            <p className="mt-2 text-sm text-slate-500">
-              {patient.phone} · Age {patient.age ?? "-"} · {patient.address || "No address"} · last visit {formatDate(patient.last_visit_at)}
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <ChartTabButton active={activeTab === "visits"} label="Visits" onClick={() => setActiveTab("visits")} />
-              <ChartTabButton
-                active={activeTab === "tests"}
-                label="Tests"
-                onClick={() => setActiveTab("tests")}
-              />
-              <ChartTabButton
-                active={activeTab === "attachments"}
-                label="Attachments"
-                onClick={() => setActiveTab("attachments")}
-              />
-              <ChartTabButton
-                active={activeTab === "timeline"}
-                label="Timeline"
-                onClick={() => setActiveTab("timeline")}
-              />
+          {/* full-bleed hero (absorbs the app bar) */}
+          <div className="bg-gradient-to-br from-[#2f8fd3] to-[#245f92] px-4 pb-3.5 pt-3 text-white">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={openMenu}
+                className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/15 text-white"
+                aria-label="Open menu"
+              >
+                <Menu className="h-[18px] w-[18px]" />
+              </button>
+              <span className="flex-1" />
+              <span className="text-[11px] font-bold tracking-[0.22em]">{clinicName.toUpperCase()}</span>
+              <span className="flex-1" />
+              <Link
+                href="/m/patients"
+                className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/15 text-white"
+                aria-label="Back to patients"
+              >
+                <ArrowLeft className="h-[18px] w-[18px]" />
+              </Link>
             </div>
-          </section>
 
-          <section className="mt-4 rounded-[22px] border border-[#cfe3f3] bg-gradient-to-br from-[#f3f9fe] to-[#eaf4fc] p-5">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#2f8fd3]/10 text-[#2f8fd3]">
-                  <Sparkles className="h-3.5 w-3.5" />
-                </span>
-                <span className="text-sm font-semibold text-[#1d4d72]">Summary</span>
-              </div>
-              {isRegeneratingSummary ? (
-                <span className="text-xs font-medium text-[#2f6c98]">Updating…</span>
-              ) : null}
-            </div>
-            <div className="mt-3">
-              {isSummaryLoading && !aiSummary ? (
-                <div className="space-y-2">
-                  <div className="h-3 w-11/12 animate-pulse rounded bg-[#d7e9f7]" />
-                  <div className="h-3 w-9/12 animate-pulse rounded bg-[#d7e9f7]" />
-                  <div className="h-3 w-10/12 animate-pulse rounded bg-[#d7e9f7]" />
-                </div>
-              ) : summaryError ? (
-                <p className="text-sm text-rose-600">{summaryError}</p>
-              ) : aiSummary?.summary ? (
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{aiSummary.summary}</p>
-              ) : (
-                <p className="text-sm text-slate-500">No summary available yet.</p>
-              )}
-            </div>
-          </section>
-
-          <div className="mt-4 grid gap-4">
-            {activeTab === "visits" ? (
+            {patient ? (
               <>
-                {visitsError ? <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{visitsError}</p> : null}
-                {isVisitsLoading ? (
-                  <p className="clinic-empty-state">Loading visits...</p>
-                ) : visits.length ? (
-                  <section className="grid gap-3">
-                    {visits.map((visit, index) => (
-                      <button
-                        key={visit.id}
-                        type="button"
-                        onClick={() => setSelectedVisitId(visit.id)}
-                        className={`flex items-center justify-between gap-3 rounded-[18px] border px-4 py-4 text-left ${
-                          visit.id === selectedVisit?.id
-                            ? "border-[#9fc7e1] bg-[#f3f8fb] shadow-[inset_3px_0_0_#2f8fd3]"
-                            : "border-[#dbe7ef] bg-white"
-                        }`}
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="rounded-xl bg-[#f3f8fb] p-2 ring-1 ring-[#dbe7ef]">
-                            <UserRound className="h-4 w-4 text-[#2f8fd3]" />
-                          </div>
-                          <p className="truncate text-base font-semibold text-slate-900">Visit {index + 1}</p>
-                        </div>
-                        <p className="shrink-0 text-xs text-slate-500">{formatDate(visit.created_at)}</p>
-                      </button>
-                    ))}
-                  </section>
-                ) : (
-                  <p className="clinic-empty-state">No visits recorded yet.</p>
-                )}
-
-                {selectedVisit ? (
-                  <div className="grid gap-4">
-                    <section className="rounded-[18px] border border-[#dbe7ef] bg-white px-5 py-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Reason</p>
-                      <h2 className="mt-1 text-xl font-semibold text-slate-900">
-                        {selectedVisitDetail?.reason || selectedVisit.reason || "Recorded visit"}
-                      </h2>
-                      {visitDetailError ? <p className="mt-2 text-sm text-rose-700">{visitDetailError}</p> : null}
-                    </section>
-
-                    <MobileAccordion title="Consultation note" isOpen={openSections.note} onToggle={() => toggleSection("note")}>
-                      {loadingVisitDetailId === selectedVisit.id ? (
-                        <p className="clinic-empty-state">Loading consultation note...</p>
-                      ) : selectedVisitDetail?.consultation_note?.content ? (
-                        <div className="whitespace-pre-wrap rounded-[18px] border border-[#dbe7ef] bg-[#f7fbfd] px-4 py-3 text-sm leading-6 text-slate-700">
-                          {selectedVisitDetail.consultation_note.content}
-                        </div>
-                      ) : (
-                        <p className="clinic-empty-state">No consultation note on this visit yet.</p>
-                      )}
-                    </MobileAccordion>
-
-                    <MobileAccordion
-                      title="Files and media"
-                      count={selectedVisitDetail?.attachments.length ?? 0}
-                      isOpen={openSections.attachments}
-                      onToggle={() => toggleSection("attachments")}
-                    >
-                      {loadingVisitDetailId === selectedVisit.id ? (
-                        <p className="clinic-empty-state">Loading attachments...</p>
-                      ) : selectedVisitDetail?.attachments.length ? (
-                        <div className="grid gap-3">
-                          {selectedVisitDetail.attachments.map((attachment) => (
-                            <button
-                              key={attachment.id}
-                              type="button"
-                              onClick={() => void openVisitAttachment(attachment)}
-                              className="flex items-center gap-3 rounded-[18px] border border-[#dbe7ef] bg-white p-4 text-left"
-                            >
-                              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#dbe7ef] bg-[#f3f8fb] text-slate-500">
-                                {attachment.content_type.startsWith("image/") ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold text-slate-800">{attachment.label}</p>
-                                <p className="text-xs text-slate-500">{formatDate(attachment.timestamp)}</p>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="clinic-empty-state">No attachments on this visit yet.</p>
-                      )}
-                    </MobileAccordion>
+                <div className="mt-3.5 flex items-center gap-3">
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[13px] border border-white/35 bg-white/20 text-[15px] font-bold">
+                    {initials}
                   </div>
-                ) : null}
+                  <div className="min-w-0">
+                    <h1 className="truncate text-lg font-bold leading-tight">{patient.name}</h1>
+                    <p className="mt-0.5 truncate text-xs text-white/80">
+                      {patient.phone || "No phone"} · {patient.address || "No address on file"}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3.5 flex border-t border-white/20 pt-2.5">
+                  <HeroStat label="Age" value={ageLabel} />
+                  <HeroStat label="Visits" value={String(visits.length)} divider />
+                  <HeroStat label="Last seen" value={shortDate(patient.last_visit_at)} divider />
+                </div>
               </>
-            ) : null}
+            ) : (
+              <div className="mt-4 h-12" />
+            )}
+          </div>
 
-            {activeTab === "tests" ? (
-              <>
-                {testsError ? <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{testsError}</p> : null}
-	                <TestsTab
-	                  clinicSpecialty={clinicSettings?.clinic_specialty ?? null}
-	                  growthHistory={growthHistory}
-	                  isLoading={isTestsLoading}
-	                  myopiaError=""
-	                  myopiaHistory={myopiaHistory}
-	                  onOpenTbiEvaluation={() => setIsTbiEvaluationOpen(true)}
-	                  tbiError={tbiError}
-	                  tbiEvaluations={tbiEvaluations}
-	                />
-              </>
-            ) : null}
-
-            {activeTab === "attachments" ? (
-              <section className="rounded-[22px] border border-[#dbe7ef] bg-white p-5 shadow-[0_12px_30px_rgba(47,61,50,0.08)]">
-                {isAttachmentsLoading ? <p className="clinic-empty-state">Loading attachments...</p> : null}
-                {attachmentsError ? <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{attachmentsError}</p> : null}
-                {!isAttachmentsLoading ? (
-                  <div className="divide-y divide-[#edf3f8]">
-                    {patientWideAttachments.length ? (
-                      patientWideAttachments.map((row) => (
-                        <button
-                          key={row.id}
-                          type="button"
-                          onClick={() => void row.open()}
-                          className="flex w-full items-center justify-between gap-4 py-3 text-left"
-                        >
-                          <p className="min-w-0 truncate text-sm font-medium text-slate-900">{row.label}</p>
-                          <p className="shrink-0 text-xs text-slate-500">{formatDate(row.timestamp)}</p>
-                        </button>
-                      ))
+          {patient ? (
+            <>
+              {/* AI summary band (collapsible) */}
+              <div className="border-b border-[#bfe0f5] bg-[#ecf6fd] px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setIsSummaryOpen((open) => !open)}
+                  className="flex w-full items-center gap-2 text-left"
+                >
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-[#2f8fd3]/15 text-[#2f8fd3]">
+                    <Sparkles className="h-3 w-3" />
+                  </span>
+                  <span className="flex-1 text-xs font-bold tracking-[0.04em] text-[#1d4d72]">AI SUMMARY</span>
+                  {isRegeneratingSummary ? <span className="text-[11px] font-medium text-[#2f6c98]">Updating…</span> : null}
+                  <ChevronDown className={`h-4 w-4 text-[#2a6fa8] transition ${isSummaryOpen ? "" : "-rotate-90"}`} />
+                </button>
+                {isSummaryOpen ? (
+                  <div className="mt-1.5">
+                    {isSummaryLoading && !aiSummary ? (
+                      <div className="space-y-2">
+                        <div className="h-3 w-11/12 animate-pulse rounded bg-[#d7e9f7]" />
+                        <div className="h-3 w-9/12 animate-pulse rounded bg-[#d7e9f7]" />
+                      </div>
+                    ) : summaryError ? (
+                      <p className="text-[12.5px] text-rose-600">{summaryError}</p>
+                    ) : aiSummary?.summary ? (
+                      <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-[#33587a]">{aiSummary.summary}</p>
                     ) : (
-                      <p className="py-8 text-center text-sm text-slate-500">No attachments yet.</p>
+                      <p className="text-[12.5px] text-[#5b6b80]">No summary available yet.</p>
                     )}
                   </div>
                 ) : null}
-              </section>
-            ) : null}
+              </div>
 
-            {activeTab === "timeline" ? (
-              <section className="rounded-[22px] border border-[#dbe7ef] bg-white p-5 shadow-[0_12px_30px_rgba(47,61,50,0.08)]">
-                {isTimelineLoading ? <p className="clinic-empty-state">Loading timeline...</p> : null}
-                {timelineError ? <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{timelineError}</p> : null}
-                {!isTimelineLoading && !timelineError ? (
-                  patientTimeline.length ? (
-                    <div className="grid gap-3">
-                      {patientTimeline.map((event) => <TimelineCard key={event.id} event={event} />)}
-                    </div>
-                  ) : (
-                    <p className="py-8 text-center text-sm text-slate-500">No timeline records yet.</p>
-                  )
+              {/* sticky tabs */}
+              <StickyTabs active={activeTab} onSelect={setActiveTab} />
+
+              {/* tab content */}
+              <div className="px-4 pb-8">
+                {error ? <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+
+                {activeTab === "visits" ? (
+                  <>
+                    <SectionHeading title="Visits" meta={visits.length ? `${visits.length} total` : undefined} />
+                    {visitsError ? <p className="mb-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{visitsError}</p> : null}
+                    {isVisitsLoading ? (
+                      <p className="clinic-empty-state">Loading visits...</p>
+                    ) : visits.length ? (
+                      visits.map((visit, index) => {
+                        const isSelected = visit.id === selectedVisit?.id;
+                        const detail = isSelected ? selectedVisitDetail : null;
+                        const isLoadingDetail = isSelected && loadingVisitDetailId === visit.id;
+                        return (
+                          <RailItem key={visit.id} color={isSelected ? "accent" : "dim"} last={index === visits.length - 1}>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedVisitId(visit.id)}
+                              className={`w-full rounded-[14px] border p-3 text-left shadow-[0_6px_16px_rgba(64,131,181,0.07)] ${
+                                isSelected ? "border-[#bfe0f5] bg-[#ecf6fd]" : "border-[#dbe7ef] bg-white"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="text-sm font-bold text-slate-900">
+                                  {visit.reason || `Visit ${index + 1}`}
+                                </span>
+                                <span className="shrink-0 whitespace-nowrap text-[11px] text-slate-400">
+                                  {shortDate(visit.created_at)}
+                                </span>
+                              </div>
+                              {detail ? (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {detail.consultation_note?.content ? (
+                                    <InfoTag>
+                                      <FileText className="h-3 w-3" /> Note
+                                    </InfoTag>
+                                  ) : null}
+                                  {detail.attachments.length ? (
+                                    <InfoTag>
+                                      <ImageIcon className="h-3 w-3" /> {detail.attachments.length} file
+                                      {detail.attachments.length === 1 ? "" : "s"}
+                                    </InfoTag>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </button>
+
+                            {isSelected ? (
+                              <div className="mt-2 grid gap-2">
+                                {visitDetailError ? (
+                                  <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{visitDetailError}</p>
+                                ) : null}
+                                <VisitDetailSection
+                                  title="Consultation note"
+                                  isOpen={openSections.note}
+                                  onToggle={() => toggleSection("note")}
+                                >
+                                  {isLoadingDetail ? (
+                                    <p className="text-sm text-slate-400">Loading consultation note...</p>
+                                  ) : detail?.consultation_note?.content ? (
+                                    <div className="whitespace-pre-wrap rounded-[10px] border border-[#dbe7ef] bg-[#f7fbfd] px-3 py-2.5 text-[13px] leading-6 text-slate-700">
+                                      {detail.consultation_note.content}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-slate-400">No consultation note on this visit yet.</p>
+                                  )}
+                                </VisitDetailSection>
+                                <VisitDetailSection
+                                  title="Files & media"
+                                  count={detail?.attachments.length ?? 0}
+                                  isOpen={openSections.attachments}
+                                  onToggle={() => toggleSection("attachments")}
+                                >
+                                  {isLoadingDetail ? (
+                                    <p className="text-sm text-slate-400">Loading attachments...</p>
+                                  ) : detail?.attachments.length ? (
+                                    <div className="grid gap-2">
+                                      {detail.attachments.map((attachment) => (
+                                        <button
+                                          key={attachment.id}
+                                          type="button"
+                                          onClick={() => void openVisitAttachment(attachment)}
+                                          className="flex items-center gap-3 rounded-[10px] border border-[#dbe7ef] bg-white p-2.5 text-left"
+                                        >
+                                          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[9px] border border-[#dbe7ef] bg-[#f3f8fb] text-slate-400">
+                                            {attachment.content_type.startsWith("image/") ? (
+                                              <ImageIcon className="h-4 w-4" />
+                                            ) : (
+                                              <FileText className="h-4 w-4" />
+                                            )}
+                                          </span>
+                                          <span className="min-w-0">
+                                            <span className="block truncate text-[13px] font-semibold text-slate-800">
+                                              {attachment.label}
+                                            </span>
+                                            <span className="block text-[11px] text-slate-400">{shortDate(attachment.timestamp)}</span>
+                                          </span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-slate-400">No attachments on this visit yet.</p>
+                                  )}
+                                </VisitDetailSection>
+                              </div>
+                            ) : null}
+                          </RailItem>
+                        );
+                      })
+                    ) : (
+                      <p className="clinic-empty-state">No visits recorded yet.</p>
+                    )}
+                  </>
                 ) : null}
-              </section>
-            ) : null}
-          </div>
-	        </>
-	      ) : isVisitsLoading ? (
-        <p className="clinic-empty-state">Loading chart...</p>
-      ) : (
-        <p className="clinic-empty-state">Patient not found.</p>
-	      )}
-	      <TbiEvaluationModal
-	        open={isTbiEvaluationOpen}
-	        patient={patient}
-	        evaluations={tbiEvaluations}
-	        isLoading={isTbiLoading}
-	        error={tbiError}
-	        readOnly={false}
-	        onClose={() => setIsTbiEvaluationOpen(false)}
-	        onSave={saveTbiEvaluation}
-	      />
-	    </MobileShell>
-	  );
-	}
+
+                {activeTab === "tests" ? (
+                  <>
+                    <SectionHeading title="Evaluations" meta={clinicSettings?.clinic_specialty ? String(clinicSettings.clinic_specialty) : undefined} />
+                    {testsError ? <p className="mb-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{testsError}</p> : null}
+                    <TestsTab
+                      clinicSpecialty={clinicSettings?.clinic_specialty ?? null}
+                      growthHistory={growthHistory}
+                      isLoading={isTestsLoading}
+                      moduleEntries={moduleEntries}
+                      myopiaError=""
+                      myopiaHistory={myopiaHistory}
+                      onOpenModule={(moduleKey) => {
+                        setActiveModuleKey(moduleKey);
+                        setModuleEntryNotes("");
+                      }}
+                      onOpenTbiEvaluation={() => setIsTbiEvaluationOpen(true)}
+                      tbiError={tbiError}
+                      tbiEvaluations={tbiEvaluations}
+                    />
+                  </>
+                ) : null}
+
+                {activeTab === "attachments" ? (
+                  <>
+                    <SectionHeading
+                      title="Attachments"
+                      meta={patientWideAttachments.length ? `${patientWideAttachments.length} file${patientWideAttachments.length === 1 ? "" : "s"}` : undefined}
+                    />
+                    {attachmentsError ? <p className="mb-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{attachmentsError}</p> : null}
+                    {isAttachmentsLoading ? (
+                      <p className="clinic-empty-state">Loading attachments...</p>
+                    ) : patientWideAttachments.length ? (
+                      <div className="-mx-4 border-t border-[#dbe7ef]">
+                        {patientWideAttachments.map((row) => (
+                          <button
+                            key={row.id}
+                            type="button"
+                            onClick={() => void row.open()}
+                            className="flex w-full items-center gap-3 border-b border-[#dbe7ef] bg-white px-4 py-3.5 text-left"
+                          >
+                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[11px] border border-[#dbe7ef] bg-[#f3f8fb] text-[#2f8fd3]">
+                              {isImageName(row.label) ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">{row.label}</span>
+                            <span className="shrink-0 text-xs font-semibold text-slate-500">{shortDate(row.timestamp)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="clinic-empty-state">No attachments yet.</p>
+                    )}
+                  </>
+                ) : null}
+
+                {activeTab === "timeline" ? (
+                  <>
+                    <SectionHeading title="Activity" meta="Newest first" />
+                    {timelineError ? <p className="mb-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{timelineError}</p> : null}
+                    {isTimelineLoading ? (
+                      <p className="clinic-empty-state">Loading timeline...</p>
+                    ) : patientTimeline.length ? (
+                      patientTimeline.map((event, index) => {
+                        const meta = timelineMeta(event.type);
+                        return (
+                          <RailItem key={event.id} color={meta.color} last={index === patientTimeline.length - 1}>
+                            <div className="rounded-[14px] border border-[#dbe7ef] bg-white p-3 shadow-[0_6px_16px_rgba(64,131,181,0.07)]">
+                              <span className={`mb-1 block text-[10px] font-bold uppercase tracking-[0.08em] ${meta.kindClass}`}>
+                                {meta.label}
+                              </span>
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="text-sm font-bold text-slate-900">{event.title}</span>
+                                <span className="shrink-0 whitespace-nowrap text-[11px] text-slate-400">{shortDate(event.timestamp)}</span>
+                              </div>
+                              {event.description ? (
+                                <p className="mt-1 text-[12.5px] leading-relaxed text-slate-500">{event.description}</p>
+                              ) : null}
+                            </div>
+                          </RailItem>
+                        );
+                      })
+                    ) : (
+                      <p className="clinic-empty-state">No timeline records yet.</p>
+                    )}
+                  </>
+                ) : null}
+              </div>
+            </>
+          ) : isVisitsLoading ? (
+            <p className="clinic-empty-state m-4">Loading chart...</p>
+          ) : (
+            <p className="clinic-empty-state m-4">Patient not found.</p>
+          )}
+
+          <TbiEvaluationModal
+            open={isTbiEvaluationOpen}
+            patient={patient}
+            evaluations={tbiEvaluations}
+            isLoading={isTbiLoading}
+            error={tbiError}
+            readOnly={false}
+            onClose={() => setIsTbiEvaluationOpen(false)}
+            onSave={saveTbiEvaluation}
+          />
+          <ModuleHistorySheet
+            entries={activeModuleKey ? moduleEntriesFor(moduleEntries, activeModuleKey) : []}
+            moduleKey={activeModuleKey}
+            onClose={() => setActiveModuleKey(null)}
+            onSave={saveModuleEntry}
+            value={moduleEntryNotes}
+            onValueChange={setModuleEntryNotes}
+            isSaving={isSavingModuleEntry}
+          />
+        </>
+      )}
+    </MobileShell>
+  );
+}

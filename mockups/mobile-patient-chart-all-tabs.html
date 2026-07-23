@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClinicOS · Mobile Patient Chart · All Tabs (full-bleed)</title>
+  <style>
+    :root {
+      --bg-start: #fbfdff; --bg-end: #f4f9fc;
+      --halo-left: rgba(178,211,232,0.26); --halo-right: rgba(216,231,239,0.5);
+      --line: #dbe7ef; --line-strong: #bfd7e8;
+      --surface: #ffffff; --soft: #f3f8fb; --soft-strong: #edf5fa;
+      --ink: #1f2b3d; --ink-soft: #5b6b80; --ink-faint: #8595a8;
+      --accent: #2f8fd3; --accent-strong: #287fc0; --accent-text: #2a6fa8;
+      --accent-soft: #ecf6fd; --accent-line: #bfe0f5;
+      --shadow-sm: 0 6px 16px rgba(64,131,181,0.07);
+      --r-md: 14px; --r-sm: 10px;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      color: var(--ink);
+      background-image:
+        radial-gradient(circle at top left, var(--halo-left), transparent 26%),
+        radial-gradient(circle at top right, var(--halo-right), transparent 26%),
+        linear-gradient(180deg, var(--bg-start) 0%, var(--bg-end) 100%);
+      background-attachment: fixed;
+      padding: 40px 20px 80px;
+    }
+    h1,h2,h3,p { margin: 0; }
+    button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+    svg { display: block; }
+
+    .page-head { max-width: 1100px; margin: 0 auto 8px; }
+    .page-head h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+    .page-head p { margin-top: 6px; color: var(--ink-soft); font-size: 14px; max-width: 680px; }
+
+    .lanes { display: flex; flex-wrap: wrap; gap: 40px 44px; justify-content: center; margin-top: 34px; }
+    .lane { width: 380px; }
+    .lane-label { text-align: center; margin-bottom: 14px; }
+    .lane-label .tag {
+      display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--accent-text);
+      background: var(--accent-soft); border: 1px solid var(--accent-line);
+      padding: 5px 12px; border-radius: 999px;
+    }
+    .lane-label p { margin-top: 8px; font-size: 13px; color: var(--ink-soft); line-height: 1.5; }
+
+    .phone { width: 380px; border-radius: 40px; background: #0f1b2a; padding: 12px; box-shadow: 0 30px 70px rgba(28,58,86,0.28); }
+    .screen {
+      position: relative; border-radius: 30px; overflow: hidden;
+      background-image:
+        radial-gradient(circle at top left, var(--halo-left), transparent 30%),
+        linear-gradient(180deg, var(--bg-start) 0%, var(--bg-end) 100%);
+      height: 780px; display: flex; flex-direction: column;
+    }
+    .scroll { overflow-y: auto; flex: 1; }
+    .scroll::-webkit-scrollbar { width: 0; }
+    .pad { padding: 0 16px; }
+
+    /* full-bleed hero */
+    .heroband { background: linear-gradient(135deg, #2f8fd3, #245f92); color: #fff; padding: 12px 16px 14px; }
+    .heroband .bar { display: flex; align-items: center; gap: 12px; }
+    .hb-btn { flex: none; width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.28); display: grid; place-items: center; color: #fff; }
+    .heroband .bar .title { font-size: 11px; font-weight: 700; letter-spacing: 0.22em; }
+    .heroband .bar .spacer { flex: 1; }
+    .heroband .who { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+    .heroband .avatar { flex: none; width: 44px; height: 44px; border-radius: 13px; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.35); font-size: 15px; font-weight: 700; display: grid; place-items: center; }
+    .heroband h1 { font-size: 19px; font-weight: 700; line-height: 1.1; }
+    .heroband .sub { margin-top: 2px; font-size: 12px; color: rgba(255,255,255,0.82); }
+    .heroband .stats { display: flex; margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.18); padding-top: 11px; }
+    .heroband .stat { flex: 1; text-align: center; position: relative; }
+    .heroband .stat + .stat::before { content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 1px; background: rgba(255,255,255,0.18); }
+    .heroband .stat .k { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.72); }
+    .heroband .stat .v { font-size: 14px; font-weight: 700; margin-top: 3px; }
+
+    /* summary band */
+    .summaryband { background: var(--accent-soft); border-bottom: 1px solid var(--accent-line); padding: 12px 16px; }
+    .summaryband .row { display: flex; align-items: center; gap: 8px; }
+    .summaryband .badge { flex: none; width: 20px; height: 20px; border-radius: 6px; background: rgba(47,143,211,0.14); color: var(--accent); display: grid; place-items: center; }
+    .summaryband .lbl { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; color: #1d4d72; flex: 1; }
+    .summaryband p { margin-top: 7px; font-size: 12.5px; line-height: 1.55; color: #33587a; }
+
+    /* sticky tabs */
+    .tabwrap { position: sticky; top: 0; z-index: 5; background: rgba(251,253,255,0.97); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+    .tabline { display: flex; padding: 0 16px; }
+    .tabline button { flex: 1; padding: 11px 0 12px; font-size: 12.5px; font-weight: 600; color: var(--ink-faint); position: relative; }
+    .tabline button.active { color: var(--accent-strong); }
+    .tabline button.active::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2.5px; background: var(--accent); border-radius: 2px; }
+
+    .sec-head { display: flex; align-items: baseline; justify-content: space-between; margin: 16px 2px 10px; }
+    .sec-head h2 { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); }
+    .sec-head .count { font-size: 12px; color: var(--ink-faint); }
+
+    /* timeline/visit feed */
+    .tl-item { display: flex; gap: 12px; }
+    .tl-rail { display: flex; flex-direction: column; align-items: center; }
+    .tl-rail .node { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); border: 3px solid var(--accent-soft); margin-top: 6px; }
+    .tl-rail .node.dim { background: #9fc7e1; }
+    .tl-rail .node.amber { background: #f0b44c; border-color: #fff2da; }
+    .tl-rail .node.green { background: #4f9cf7; border-color: #e2eefb; }
+    .tl-rail .line { flex: 1; width: 2px; background: var(--line); margin: 4px 0; }
+    .tl-card { flex: 1; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 13px; margin-bottom: 6px; box-shadow: var(--shadow-sm); }
+    .tl-card.sel { border-color: var(--accent-line); background: var(--accent-soft); }
+    .tl-card .t { display: flex; justify-content: space-between; gap: 8px; }
+    .tl-card .t .name { font-size: 14px; font-weight: 700; }
+    .tl-card .t .date { font-size: 11px; color: var(--ink-faint); white-space: nowrap; }
+    .tl-card .desc { margin-top: 4px; font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; }
+    .tl-card .kind { display: inline-block; margin-bottom: 5px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+    .kind.visit { color: var(--accent-text); }
+    .kind.test { color: #b45309; }
+    .kind.file { color: #2f7d55; }
+    .tl-tags { display: flex; gap: 6px; margin-top: 9px; }
+    .tl-tags span { font-size: 10.5px; font-weight: 600; color: var(--accent-text); background: #fff; border: 1px solid var(--accent-line); padding: 2px 8px; border-radius: 999px; display: inline-flex; align-items: center; gap: 4px; }
+
+    /* ---- TESTS: full-width list (no boxed table bubble) ---- */
+    .list { border-top: 1px solid var(--line); }
+    .list .hrow {
+      display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+      border-bottom: 1px solid var(--line); background: var(--surface);
+    }
+    .list .hrow:last-child { border-bottom: none; }
+    .list .ic {
+      flex: none; width: 38px; height: 38px; border-radius: 11px;
+      background: var(--soft); border: 1px solid var(--line); display: grid; place-items: center; color: var(--accent);
+    }
+    .list .body { flex: 1; min-width: 0; }
+    .list .body .n { font-size: 14px; font-weight: 600; color: var(--ink); }
+    .list .body .m { margin-top: 2px; font-size: 12px; color: var(--ink-faint); }
+    .list .meta { text-align: right; }
+    .list .meta .d { font-size: 12px; color: var(--ink-soft); font-weight: 600; }
+    .list .meta .badge0 { font-size: 11px; color: var(--ink-faint); }
+    .list .chev { color: var(--ink-faint); }
+
+    .empty-inline { padding: 26px 16px; text-align: center; font-size: 13px; color: var(--ink-faint); }
+    .spacer24 { height: 20px; }
+  </style>
+</head>
+<body>
+  <div class="page-head">
+    <h1>Mobile Patient Chart — all tabs (full-bleed / Variant 1)</h1>
+    <p>The locked shell (edge-to-edge hero + flat AI summary band + sticky underline tabs) applied to all four tabs so every screen reads consistently. Content uses full-width list rows and the timeline rail instead of nested "bubble" cards.</p>
+  </div>
+
+  <div class="lanes">
+
+    <!-- ================= VISITS ================= -->
+    <div class="lane">
+      <div class="lane-label"><span class="tag">Tab · Visits</span><p>Timeline feed with inline reason + content tags</p></div>
+      <div class="phone"><div class="screen"><div class="scroll">
+        <div class="heroband">
+          <div class="bar">
+            <button class="hb-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+            <div class="spacer"></div><span class="title">CLINIC EMR</span><div class="spacer"></div>
+            <button class="hb-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+          </div>
+          <div class="who"><div class="avatar">DH</div><div><h1>Dhairya H.</h1><div class="sub">#1234567890 · No address on file</div></div></div>
+          <div class="stats"><div class="stat"><div class="k">Age</div><div class="v">16 · F</div></div><div class="stat"><div class="k">Visits</div><div class="v">3</div></div><div class="stat"><div class="k">Last seen</div><div class="v">Jul 22</div></div></div>
+        </div>
+        <div class="summaryband">
+          <div class="row"><span class="badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.8L18 8l-4.4 1.2L12 14l-1.6-4.8L6 8l4.4-1.2z"/></svg></span><span class="lbl">AI SUMMARY</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2a6fa8" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></div>
+          <p>16-year-old female under ongoing optometry care. Most recent visit addressed an eye check-up; visual acuity within normal limits.</p>
+        </div>
+        <div class="tabwrap"><div class="tabline"><button class="active">Visits</button><button>Tests</button><button>Files</button><button>Timeline</button></div></div>
+        <div class="pad">
+          <div class="sec-head"><h2>Visits</h2><span class="count">3 total</span></div>
+          <div class="tl-item"><div class="tl-rail"><span class="node"></span><span class="line"></span></div>
+            <div class="tl-card sel"><div class="t"><span class="name">Eye check up</span><span class="date">Jul 22</span></div><div class="desc">Routine optometry review · visual acuity normal.</div>
+              <div class="tl-tags"><span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Note</span><span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/></svg> 2 files</span></div></div></div>
+          <div class="tl-item"><div class="tl-rail"><span class="node dim"></span><span class="line"></span></div><div class="tl-card"><div class="t"><span class="name">Blurred vision follow-up</span><span class="date">May 3</span></div><div class="desc">Follow-up on prescription change · advised new lenses.</div></div></div>
+          <div class="tl-item"><div class="tl-rail"><span class="node dim"></span></div><div class="tl-card"><div class="t"><span class="name">Initial consultation</span><span class="date">Feb 11</span></div><div class="desc">First visit · baseline eye exam recorded.</div></div></div>
+          <div class="spacer24"></div>
+        </div>
+      </div></div></div>
+    </div>
+
+    <!-- ================= TESTS ================= -->
+    <div class="lane">
+      <div class="lane-label"><span class="tag">Tab · Tests</span><p>Full-width module rows (Type · latest date), tap to open history</p></div>
+      <div class="phone"><div class="screen"><div class="scroll">
+        <div class="heroband">
+          <div class="bar">
+            <button class="hb-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+            <div class="spacer"></div><span class="title">CLINIC EMR</span><div class="spacer"></div>
+            <button class="hb-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+          </div>
+          <div class="who"><div class="avatar">DH</div><div><h1>Dhairya H.</h1><div class="sub">#1234567890 · No address on file</div></div></div>
+          <div class="stats"><div class="stat"><div class="k">Age</div><div class="v">16 · F</div></div><div class="stat"><div class="k">Visits</div><div class="v">3</div></div><div class="stat"><div class="k">Last seen</div><div class="v">Jul 22</div></div></div>
+        </div>
+        <div class="summaryband">
+          <div class="row"><span class="badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.8L18 8l-4.4 1.2L12 14l-1.6-4.8L6 8l4.4-1.2z"/></svg></span><span class="lbl">AI SUMMARY</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2a6fa8" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></div>
+          <p>16-year-old female under ongoing optometry care. Most recent visit addressed an eye check-up; visual acuity within normal limits.</p>
+        </div>
+        <div class="tabwrap"><div class="tabline"><button>Visits</button><button class="active">Tests</button><button>Files</button><button>Timeline</button></div></div>
+        <div class="pad"><div class="sec-head"><h2>Evaluations</h2><span class="count">Optometry</span></div></div>
+        <div class="list">
+          <button class="hrow">
+            <span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg></span>
+            <span class="body"><span class="n">Myopia Management</span><span class="m">3 records · axial length tracked</span></span>
+            <span class="meta"><span class="d">Jul 22</span></span>
+            <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          <button class="hrow">
+            <span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3 3 3 0 0 0 0 6 3 3 0 0 0 3 3 3 3 0 0 0 6 0 3 3 0 0 0 3-3 3 3 0 0 0 0-6 3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/></svg></span>
+            <span class="body"><span class="n">TBI Evaluation</span><span class="m">1 evaluation on file</span></span>
+            <span class="meta"><span class="d">May 3</span></span>
+            <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          <button class="hrow">
+            <span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></span>
+            <span class="body"><span class="n">Pediatric Growth</span><span class="m">No measurements yet</span></span>
+            <span class="meta"><span class="badge0">—</span></span>
+            <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          <button class="hrow">
+            <span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+            <span class="body"><span class="n">Color Vision</span><span class="m">No records yet</span></span>
+            <span class="meta"><span class="badge0">—</span></span>
+            <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+        <div class="spacer24"></div>
+      </div></div></div>
+    </div>
+
+    <!-- ================= FILES ================= -->
+    <div class="lane">
+      <div class="lane-label"><span class="tag">Tab · Files</span><p>Full-width attachment rows with type icon + date</p></div>
+      <div class="phone"><div class="screen"><div class="scroll">
+        <div class="heroband">
+          <div class="bar">
+            <button class="hb-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+            <div class="spacer"></div><span class="title">CLINIC EMR</span><div class="spacer"></div>
+            <button class="hb-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+          </div>
+          <div class="who"><div class="avatar">DH</div><div><h1>Dhairya H.</h1><div class="sub">#1234567890 · No address on file</div></div></div>
+          <div class="stats"><div class="stat"><div class="k">Age</div><div class="v">16 · F</div></div><div class="stat"><div class="k">Visits</div><div class="v">3</div></div><div class="stat"><div class="k">Last seen</div><div class="v">Jul 22</div></div></div>
+        </div>
+        <div class="summaryband">
+          <div class="row"><span class="badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.8L18 8l-4.4 1.2L12 14l-1.6-4.8L6 8l4.4-1.2z"/></svg></span><span class="lbl">AI SUMMARY</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2a6fa8" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></div>
+          <p>16-year-old female under ongoing optometry care. Most recent visit addressed an eye check-up; visual acuity within normal limits.</p>
+        </div>
+        <div class="tabwrap"><div class="tabline"><button>Visits</button><button>Tests</button><button class="active">Files</button><button>Timeline</button></div></div>
+        <div class="pad"><div class="sec-head"><h2>Attachments</h2><span class="count">4 files</span></div></div>
+        <div class="list">
+          <button class="hrow">
+            <span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg></span>
+            <span class="body"><span class="n">retina_scan.jpg</span><span class="m">Image · 1.4 MB</span></span>
+            <span class="meta"><span class="d">Jul 22</span></span>
+          </button>
+          <button class="hrow">
+            <span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+            <span class="body"><span class="n">prescription.pdf</span><span class="m">Document · 210 KB</span></span>
+            <span class="meta"><span class="d">Jul 22</span></span>
+          </button>
+          <button class="hrow">
+            <span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg></span>
+            <span class="body"><span class="n">left_eye_front.jpg</span><span class="m">Image · 980 KB</span></span>
+            <span class="meta"><span class="d">May 3</span></span>
+          </button>
+          <button class="hrow">
+            <span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+            <span class="body"><span class="n">referral_letter.pdf</span><span class="m">Document · 88 KB</span></span>
+            <span class="meta"><span class="d">Feb 11</span></span>
+          </button>
+        </div>
+        <div class="spacer24"></div>
+      </div></div></div>
+    </div>
+
+    <!-- ================= TIMELINE ================= -->
+    <div class="lane">
+      <div class="lane-label"><span class="tag">Tab · Timeline</span><p>All events (visits, tests, files) on one color-coded rail</p></div>
+      <div class="phone"><div class="screen"><div class="scroll">
+        <div class="heroband">
+          <div class="bar">
+            <button class="hb-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+            <div class="spacer"></div><span class="title">CLINIC EMR</span><div class="spacer"></div>
+            <button class="hb-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+          </div>
+          <div class="who"><div class="avatar">DH</div><div><h1>Dhairya H.</h1><div class="sub">#1234567890 · No address on file</div></div></div>
+          <div class="stats"><div class="stat"><div class="k">Age</div><div class="v">16 · F</div></div><div class="stat"><div class="k">Visits</div><div class="v">3</div></div><div class="stat"><div class="k">Last seen</div><div class="v">Jul 22</div></div></div>
+        </div>
+        <div class="summaryband">
+          <div class="row"><span class="badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.8L18 8l-4.4 1.2L12 14l-1.6-4.8L6 8l4.4-1.2z"/></svg></span><span class="lbl">AI SUMMARY</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2a6fa8" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></div>
+          <p>16-year-old female under ongoing optometry care. Most recent visit addressed an eye check-up; visual acuity within normal limits.</p>
+        </div>
+        <div class="tabwrap"><div class="tabline"><button>Visits</button><button>Tests</button><button>Files</button><button class="active">Timeline</button></div></div>
+        <div class="pad">
+          <div class="sec-head"><h2>Activity</h2><span class="count">Newest first</span></div>
+          <div class="tl-item"><div class="tl-rail"><span class="node"></span><span class="line"></span></div><div class="tl-card"><span class="kind visit">Visit</span><div class="t"><span class="name">Eye check up</span><span class="date">Jul 22</span></div><div class="desc">Consultation note recorded · visual acuity normal.</div></div></div>
+          <div class="tl-item"><div class="tl-rail"><span class="node green"></span><span class="line"></span></div><div class="tl-card"><span class="kind file">File</span><div class="t"><span class="name">retina_scan.jpg added</span><span class="date">Jul 22</span></div><div class="desc">Uploaded during eye check-up visit.</div></div></div>
+          <div class="tl-item"><div class="tl-rail"><span class="node amber"></span><span class="line"></span></div><div class="tl-card"><span class="kind test">Test</span><div class="t"><span class="name">Myopia Management</span><span class="date">Jul 22</span></div><div class="desc">Axial length 24.1 mm · SE −2.25 D recorded.</div></div></div>
+          <div class="tl-item"><div class="tl-rail"><span class="node dim"></span><span class="line"></span></div><div class="tl-card"><span class="kind visit">Visit</span><div class="t"><span class="name">Blurred vision follow-up</span><span class="date">May 3</span></div><div class="desc">Advised new lenses · prescription updated.</div></div></div>
+          <div class="tl-item"><div class="tl-rail"><span class="node dim"></span></div><div class="tl-card"><span class="kind visit">Visit</span><div class="t"><span class="name">Initial consultation</span><span class="date">Feb 11</span></div><div class="desc">Baseline eye exam recorded.</div></div></div>
+          <div class="spacer24"></div>
+        </div>
+      </div></div></div>
+    </div>
+
+  </div>
+</body>
+</html>
