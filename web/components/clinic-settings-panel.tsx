@@ -134,6 +134,14 @@ function normalizePreviewBoxes(layout: ClinicSettings["document_template_note_la
   return normalized;
 }
 
+function previewGroupBox(boxes: PreviewBoxes, keys: PreviewBoxKey[]): TemplateBox {
+  const left = Math.min(...keys.map((key) => boxes[key].x));
+  const top = Math.min(...keys.map((key) => boxes[key].y));
+  const right = Math.max(...keys.map((key) => boxes[key].x + boxes[key].width));
+  const bottom = Math.max(...keys.map((key) => boxes[key].y + boxes[key].height));
+  return clampBox({ x: left, y: top, width: right - left, height: bottom - top });
+}
+
 async function renderPdfFirstPagePreview(blob: Blob): Promise<string> {
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -553,6 +561,26 @@ export function ClinicSettingsPanel({
     setPreviewBoxes((current) => ({ ...current, [key]: clampBox(box) }));
   }
 
+  function updatePreviewGroup(keys: PreviewBoxKey[], box: TemplateBox) {
+    setPreviewBoxes((current) => {
+      const currentGroup = previewGroupBox(current, keys);
+      const nextGroup = clampBox(box);
+      const scaleX = currentGroup.width > 0 ? nextGroup.width / currentGroup.width : 1;
+      const scaleY = currentGroup.height > 0 ? nextGroup.height / currentGroup.height : 1;
+      const next = { ...current };
+      for (const key of keys) {
+        const currentBox = current[key];
+        next[key] = clampBox({
+          x: nextGroup.x + (currentBox.x - currentGroup.x) * scaleX,
+          y: nextGroup.y + (currentBox.y - currentGroup.y) * scaleY,
+          width: currentBox.width * scaleX,
+          height: currentBox.height * scaleY,
+        });
+      }
+      return next;
+    });
+  }
+
   function resetTemplateLayout() {
     if (!canEdit) return;
     setPreviewBoxes(normalizePreviewBoxes(DEFAULT_PREVIEW_BOXES));
@@ -574,6 +602,9 @@ export function ClinicSettingsPanel({
     setStatus("Layout reset to defaults. Click Save to keep it.");
     setError("");
   }
+
+  const patientDetailsBox = previewGroupBox(previewBoxes, ["name", "age", "height"]);
+  const vitalDetailsBox = previewGroupBox(previewBoxes, ["weight", "temp"]);
 
   return (
     <form
@@ -782,20 +813,27 @@ export function ClinicSettingsPanel({
                   <div className="absolute inset-0 bg-white/5" />
 
                   <TemplateOverlayBox
-                    box={previewBoxes.name}
+                    box={patientDetailsBox}
                     tone="content"
                     disabled={!canEdit}
-                    onChange={(box) => updatePreviewBox("name", box)}
+                    onChange={(box) => updatePreviewGroup(["name", "age", "height"], box)}
                   >
-                    <p className="text-[9px] leading-tight text-slate-900 sm:text-[10px]"><strong>Name:</strong> Sample Patient</p>
+                    <div className="space-y-1 text-[9px] leading-tight text-slate-900 sm:text-[10px]">
+                      <p><strong>Name:</strong> Sample Patient</p>
+                      <p><strong>Age:</strong> 34 yrs</p>
+                      <p><strong>Height:</strong> 172 cm</p>
+                    </div>
                   </TemplateOverlayBox>
                   <TemplateOverlayBox
-                    box={previewBoxes.weight}
+                    box={vitalDetailsBox}
                     tone="content"
                     disabled={!canEdit}
-                    onChange={(box) => updatePreviewBox("weight", box)}
+                    onChange={(box) => updatePreviewGroup(["weight", "temp"], box)}
                   >
-                    <p className="text-[9px] leading-tight text-slate-900 sm:text-[10px]"><strong>Weight:</strong> 68 kg</p>
+                    <div className="space-y-1 text-[9px] leading-tight text-slate-900 sm:text-[10px]">
+                      <p><strong>Weight:</strong> 68 kg</p>
+                      <p><strong>Temp:</strong> 98.4 F</p>
+                    </div>
                   </TemplateOverlayBox>
                   <TemplateOverlayBox
                     box={previewBoxes.date}
@@ -806,36 +844,12 @@ export function ClinicSettingsPanel({
                     <p className="text-[9px] leading-tight text-slate-900 sm:text-[10px]"><strong>Date:</strong> Jul 23, 2026</p>
                   </TemplateOverlayBox>
                   <TemplateOverlayBox
-                    box={previewBoxes.age}
-                    tone="content"
-                    disabled={!canEdit}
-                    onChange={(box) => updatePreviewBox("age", box)}
-                  >
-                    <p className="text-[9px] leading-tight text-slate-900 sm:text-[10px]"><strong>Age:</strong> 34 yrs</p>
-                  </TemplateOverlayBox>
-                  <TemplateOverlayBox
-                    box={previewBoxes.temp}
-                    tone="content"
-                    disabled={!canEdit}
-                    onChange={(box) => updatePreviewBox("temp", box)}
-                  >
-                    <p className="text-[9px] leading-tight text-slate-900 sm:text-[10px]"><strong>Temp:</strong> 98.4 F</p>
-                  </TemplateOverlayBox>
-                  <TemplateOverlayBox
-                    box={previewBoxes.height}
-                    tone="content"
-                    disabled={!canEdit}
-                    onChange={(box) => updatePreviewBox("height", box)}
-                  >
-                    <p className="text-[9px] leading-tight text-slate-900 sm:text-[10px]"><strong>Height:</strong> 172 cm</p>
-                  </TemplateOverlayBox>
-                  <TemplateOverlayBox
                     box={previewBoxes.noteBody}
                     tone="content"
                     disabled={!canEdit}
                     onChange={(box) => updatePreviewBox("noteBody", box)}
                   >
-                    <div className="space-y-1.5 overflow-hidden text-[8.5px] leading-[1.25] text-slate-900 sm:text-[9.5px]">
+                    <div className="space-y-3 overflow-hidden text-[8.5px] leading-[1.25] text-slate-900 sm:text-[9.5px]">
                       <p><strong>Presenting Complaint:</strong> Patient reports gradual blurring of distance vision over the last 3 months, intermittent frontal headache after prolonged screen use, mild watering in the evening, and difficulty reading small text during night driving.</p>
                       <p><strong>Clinical Notes:</strong> Visual acuity assessed with and without correction. Patient is comfortable during examination. Anterior segment appears quiet. Pupils are equal and reactive. Extraocular movements are full. No acute symptoms reported during today&apos;s visit.</p>
                       <p><strong>Diagnosis:</strong> Myopic astigmatism with accommodative eye strain related to prolonged near work and inconsistent spectacle use.</p>

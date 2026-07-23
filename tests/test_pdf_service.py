@@ -48,6 +48,34 @@ class _RecordingCanvas:
         self.buffer.write(b"canvas-pdf")
 
 
+class _TemplateLayoutCanvas:
+    last_instance = None
+
+    def __init__(self, buffer, *_args, **_kwargs) -> None:
+        self.buffer = buffer
+        self.strings: list[tuple[float, float, str]] = []
+        self.page_breaks = 0
+        _TemplateLayoutCanvas.last_instance = self
+
+    def setTitle(self, *_args, **_kwargs) -> None:
+        pass
+
+    def setFillColor(self, *_args, **_kwargs) -> None:
+        pass
+
+    def setFont(self, *_args, **_kwargs) -> None:
+        pass
+
+    def drawString(self, x, y, text, *_args, **_kwargs) -> None:
+        self.strings.append((x, y, text))
+
+    def showPage(self) -> None:
+        self.page_breaks += 1
+
+    def save(self) -> None:
+        self.buffer.write(b"canvas-pdf")
+
+
 class _SignatureCanvas:
     def __init__(self) -> None:
         self.images: list[tuple[float, float, float, float]] = []
@@ -248,6 +276,125 @@ def test_build_note_pdf_does_not_template_merge_combined_assets_bundle(monkeypat
     assert result == b"combined"
     assert apply_calls == [b"canvas-pdf"]
     assert append_calls == [(b"templated-base", b"assets-pdf")]
+
+
+def test_build_note_pdf_uses_saved_template_layout_for_real_note_content(monkeypatch) -> None:
+    monkeypatch.setattr(pdf_service.canvas, "Canvas", _TemplateLayoutCanvas)
+    monkeypatch.setattr(pdf_service, "_resolve_template", lambda *_args, **_kwargs: ("application/pdf", b"template"))
+    monkeypatch.setattr(pdf_service, "_page_size_for_template", lambda *_args, **_kwargs: (600.0, 800.0))
+    monkeypatch.setattr(pdf_service, "_content_bounds", lambda *_args, **_kwargs: (54.0, 746.0, 492.0, 54.0))
+    monkeypatch.setattr(pdf_service, "_start_page", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_apply_pdf_template", lambda raw, *_args, **_kwargs: raw)
+    monkeypatch.setattr(pdf_service, "_build_structured_data_pdf", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_build_note_assets_pdf", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_draw_template_signature", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_draw_template_doctor_name", lambda *_args, **_kwargs: None)
+
+    build_note_pdf(
+        patient={
+            "name": "Template Patient",
+            "age": 34,
+            "height": 172,
+            "weight": 68,
+            "temperature": 98.4,
+            "document_template_notes_enabled": True,
+            "document_template_note_layout": {
+                "name": {"x": 0.2, "y": 0.1, "width": 0.25, "height": 0.04},
+                "noteBody": {"x": 0.3, "y": 0.4, "width": 0.4, "height": 0.2},
+            },
+        },
+        note_content="Presenting Complaint:\nBlurred vision after screen use.\n\nTreatment:\nUpdated prescription.",
+        generated_on="Jul 23, 2026 5:30 PM",
+    )
+
+    canvas = _TemplateLayoutCanvas.last_instance
+    assert canvas is not None
+    assert (62.0, 708.0, "Name:") in canvas.strings
+    assert any(text == "Template Patient" for _x, _y, text in canvas.strings)
+    assert any(text == "Age:" for _x, _y, text in canvas.strings)
+    assert any(text == "Height:" for _x, _y, text in canvas.strings)
+    assert (182.0, 468.0, "Presenting Complaint:") in canvas.strings
+    assert any("Blurred vision" in text for _x, _y, text in canvas.strings)
+    assert any(text == "Treatment:" for _x, _y, text in canvas.strings)
+
+
+def test_build_note_pdf_continues_template_body_on_new_template_pages(monkeypatch) -> None:
+    monkeypatch.setattr(pdf_service.canvas, "Canvas", _TemplateLayoutCanvas)
+    monkeypatch.setattr(pdf_service, "_resolve_template", lambda *_args, **_kwargs: ("application/pdf", b"template"))
+    monkeypatch.setattr(pdf_service, "_page_size_for_template", lambda *_args, **_kwargs: (600.0, 800.0))
+    monkeypatch.setattr(pdf_service, "_content_bounds", lambda *_args, **_kwargs: (54.0, 746.0, 492.0, 54.0))
+    monkeypatch.setattr(pdf_service, "_start_page", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_apply_pdf_template", lambda raw, *_args, **_kwargs: raw)
+    monkeypatch.setattr(pdf_service, "_build_structured_data_pdf", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_build_note_assets_pdf", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_draw_template_signature", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_draw_template_doctor_name", lambda *_args, **_kwargs: None)
+
+    long_text = " ".join(["screen strain and intermittent blurring"] * 80)
+    build_note_pdf(
+        patient={
+            "name": "Overflow Patient",
+            "document_template_notes_enabled": True,
+            "document_template_note_layout": {
+                "noteBody": {"x": 0.1, "y": 0.35, "width": 0.45, "height": 0.04},
+            },
+        },
+        note_content=f"Presenting Complaint:\n{long_text}",
+        generated_on="Jul 23, 2026 5:30 PM",
+    )
+
+    canvas = _TemplateLayoutCanvas.last_instance
+    assert canvas is not None
+    assert canvas.page_breaks > 0
+
+
+def test_build_note_pdf_keeps_template_body_above_signature_and_name_boxes(monkeypatch) -> None:
+    monkeypatch.setattr(pdf_service.canvas, "Canvas", _TemplateLayoutCanvas)
+    monkeypatch.setattr(pdf_service, "_resolve_template", lambda *_args, **_kwargs: ("application/pdf", b"template"))
+    monkeypatch.setattr(pdf_service, "_page_size_for_template", lambda *_args, **_kwargs: (600.0, 800.0))
+    monkeypatch.setattr(pdf_service, "_content_bounds", lambda *_args, **_kwargs: (54.0, 746.0, 492.0, 54.0))
+    monkeypatch.setattr(pdf_service, "_start_page", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_apply_pdf_template", lambda raw, *_args, **_kwargs: raw)
+    monkeypatch.setattr(pdf_service, "_build_structured_data_pdf", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_build_note_assets_pdf", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_draw_template_signature", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pdf_service, "_draw_template_doctor_name", lambda *_args, **_kwargs: None)
+
+    long_text = " ".join(["visual strain after screen use"] * 60)
+    build_note_pdf(
+        patient={
+            "name": "Reserved Space Patient",
+            "doctor_name": "Dr Reserved",
+            "doctor_signature_content_type": "image/png",
+            "doctor_signature_data_base64": b64encode(b"signature").decode("ascii"),
+            "document_template_notes_enabled": True,
+            "document_template_note_layout": {
+                "noteBody": {"x": 0.1, "y": 0.28, "width": 0.65, "height": 0.55},
+            },
+            "document_template_signature_x": 0.1,
+            "document_template_signature_y": 0.72,
+            "document_template_signature_width": 0.24,
+            "document_template_signature_height": 0.08,
+            "document_template_doctor_name_x": 0.1,
+            "document_template_doctor_name_y": 0.82,
+            "document_template_doctor_name_width": 0.24,
+            "document_template_doctor_name_height": 0.04,
+        },
+        note_content=f"Presenting Complaint:\n{long_text}",
+        generated_on="Jul 23, 2026 5:30 PM",
+    )
+
+    canvas = _TemplateLayoutCanvas.last_instance
+    assert canvas is not None
+    reserved_floor = 800.0 - ((0.72 * 800.0) + (0.08 * 800.0)) + (0.08 * 800.0) + 8
+    body_strings = [
+        (x, y, text)
+        for x, y, text in canvas.strings
+        if x >= 62 and text not in {"Name:", "Reserved Space Patient", "Date:", "Jul 23, 2026 5:30 PM"}
+    ]
+    assert body_strings
+    assert all(y >= reserved_floor for _x, y, _text in body_strings)
+    assert canvas.page_breaks > 0
 
 
 def test_build_note_pdf_skips_missing_optional_patient_details(monkeypatch) -> None:

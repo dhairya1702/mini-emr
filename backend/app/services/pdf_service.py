@@ -443,6 +443,24 @@ def _template_box_to_pdf_rect(box: dict[str, Any], *, width: float, height: floa
     return x, y, box_width, box_height
 
 
+def _template_group_to_pdf_rect(
+    layout: dict[str, dict[str, float]],
+    keys: list[str],
+    *,
+    width: float,
+    height: float,
+) -> tuple[float, float, float, float]:
+    rects = [
+        _template_box_to_pdf_rect(layout.get(key) or DEFAULT_TEMPLATE_NOTE_LAYOUT[key], width=width, height=height)
+        for key in keys
+    ]
+    left = min(rect[0] for rect in rects)
+    bottom = min(rect[1] for rect in rects)
+    right = max(rect[0] + rect[2] for rect in rects)
+    top = max(rect[1] + rect[3] for rect in rects)
+    return left, bottom, right - left, top - bottom
+
+
 def _merged_note_layout(data: dict[str, Any]) -> dict[str, dict[str, float]]:
     raw_layout = data.get("document_template_note_layout") or {}
     if not isinstance(raw_layout, dict):
@@ -454,6 +472,48 @@ def _merged_note_layout(data: dict[str, Any]) -> dict[str, dict[str, float]]:
     return merged
 
 
+def _draw_template_label_value_group(
+    pdf: canvas.Canvas,
+    *,
+    x: float,
+    y: float,
+    box_width: float,
+    box_height: float,
+    items: list[tuple[str, Any]],
+    font_size: float = 10,
+) -> None:
+    line_height = font_size + 4
+    current_y = y + box_height - font_size - 2
+    available_width = max(box_width - 4, 24)
+    pdf.setFillColor(HexColor("#111827"))
+
+    for label, value in items:
+        value_text = str(value or "").strip()
+        if not value_text:
+            continue
+        if current_y < y + 2:
+            break
+
+        label_text = f"{label}:"
+        label_width = stringWidth(label_text + " ", "Helvetica-Bold", font_size)
+        first_line_width = max(available_width - label_width, 24)
+        value_lines = _wrap_text(value_text, "Helvetica", font_size, first_line_width)
+        if not value_lines:
+            continue
+
+        pdf.setFont("Helvetica-Bold", font_size)
+        pdf.drawString(x + 2, current_y, label_text)
+        pdf.setFont("Helvetica", font_size)
+        pdf.drawString(x + 2 + label_width, current_y, value_lines[0])
+        current_y -= line_height
+
+        for line in value_lines[1:]:
+            if current_y < y + 2:
+                break
+            pdf.drawString(x + 2 + label_width, current_y, line)
+            current_y -= line_height
+
+
 def _draw_template_note_preview_text(
     pdf: canvas.Canvas,
     *,
@@ -462,12 +522,12 @@ def _draw_template_note_preview_text(
     layout: dict[str, dict[str, float]],
 ) -> None:
     header_samples = {
-        "name": "Name: Sample Patient",
-        "weight": "Weight: 68 kg",
-        "date": "Date: Jul 23, 2026",
-        "age": "Age: 34 yrs",
-        "temp": "Temp: 98.4 F",
-        "height": "Height: 172 cm",
+        "name": ("Name", "Sample Patient"),
+        "weight": ("Weight", "68 kg"),
+        "date": ("Date", "Jul 23, 2026"),
+        "age": ("Age", "34 yrs"),
+        "temp": ("Temp", "98.4 F"),
+        "height": ("Height", "172 cm"),
     }
     note_sections = [
         (
@@ -491,33 +551,28 @@ def _draw_template_note_preview_text(
         ("Follow-up Advice", "Routine review in 6 months, earlier if headaches persist after new spectacles."),
     ]
     pdf.setFillColor(HexColor("#111827"))
-    for key, text in header_samples.items():
-        box = layout.get(key) or DEFAULT_TEMPLATE_NOTE_LAYOUT[key]
-        x, y, box_width, box_height = _template_box_to_pdf_rect(box, width=width, height=height)
-        font_size = 10
-        pdf.setFont("Helvetica", font_size)
-        lines = _wrap_text(text, "Helvetica", font_size, max(box_width - 4, 24))
-        line_height = font_size + 3
-        current_y = y + box_height - font_size - 2
-        for line in lines:
-            if current_y < y + 2:
-                break
-            if ":" in line:
-                label, rest = line.split(":", 1)
-                label_text = f"{label}:"
-                pdf.setFont("Helvetica-Bold", font_size)
-                pdf.drawString(x + 2, current_y, label_text)
-                pdf.setFont("Helvetica", font_size)
-                pdf.drawString(x + 2 + stringWidth(label_text + " ", "Helvetica-Bold", font_size), current_y, rest.strip())
-            else:
-                pdf.drawString(x + 2, current_y, line)
-            current_y -= line_height
+    header_groups = [
+        ["name", "age", "height"],
+        ["weight", "temp"],
+        ["date"],
+    ]
+    for keys in header_groups:
+        x, y, box_width, box_height = _template_group_to_pdf_rect(layout, keys, width=width, height=height)
+        _draw_template_label_value_group(
+            pdf,
+            x=x,
+            y=y,
+            box_width=box_width,
+            box_height=box_height,
+            items=[header_samples[key] for key in keys],
+            font_size=10,
+        )
 
     body_box = layout.get("noteBody") or DEFAULT_TEMPLATE_NOTE_LAYOUT["noteBody"]
     x, y, box_width, box_height = _template_box_to_pdf_rect(body_box, width=width, height=height)
     font_size = 9
     line_height = font_size + 3
-    section_gap = 8
+    section_gap = 14
     current_y = y + box_height - font_size - 2
     for label, content in note_sections:
         label_text = f"{label}:"
@@ -544,6 +599,212 @@ def _draw_template_note_preview_text(
             pdf.drawString(x + 2, current_y, line)
             current_y -= line_height
         current_y -= section_gap
+
+
+def _draw_template_label_value_box(
+    pdf: canvas.Canvas,
+    *,
+    width: float,
+    height: float,
+    box: dict[str, float],
+    label: str,
+    value: Any,
+    font_size: float = 10,
+) -> None:
+    value_text = str(value or "").strip()
+    if not value_text:
+        return
+
+    x, y, box_width, box_height = _template_box_to_pdf_rect(box, width=width, height=height)
+    label_text = f"{label}:"
+    available_width = max(box_width - 4, 24)
+    label_width = stringWidth(label_text + " ", "Helvetica-Bold", font_size)
+    first_line_width = max(available_width - label_width, 24)
+    value_lines = _wrap_text(value_text, "Helvetica", font_size, first_line_width)
+    if not value_lines:
+        return
+
+    line_height = font_size + 3
+    current_y = y + box_height - font_size - 2
+    if current_y < y + 2:
+        return
+
+    pdf.setFillColor(HexColor("#111827"))
+    pdf.setFont("Helvetica-Bold", font_size)
+    pdf.drawString(x + 2, current_y, label_text)
+    pdf.setFont("Helvetica", font_size)
+    pdf.drawString(x + 2 + label_width, current_y, value_lines[0])
+    current_y -= line_height
+
+    for line in value_lines[1:]:
+        if current_y < y + 2:
+            break
+        pdf.drawString(x + 2, current_y, line)
+        current_y -= line_height
+
+
+def _template_note_header_values(patient: dict[str, Any], generated_on: str) -> dict[str, tuple[str, Any]]:
+    return {
+        "name": ("Name", patient.get("name") or "Not recorded"),
+        "weight": ("Weight", f"{patient['weight']} kg" if patient.get("weight") is not None else ""),
+        "date": ("Date", generated_on.strip()),
+        "age": ("Age", patient.get("age") if patient.get("age") is not None else ""),
+        "temp": ("Temp", f"{patient['temperature']} F" if patient.get("temperature") is not None else ""),
+        "height": ("Height", f"{patient['height']} cm" if patient.get("height") is not None else ""),
+    }
+
+
+def _draw_template_note_headers(
+    pdf: canvas.Canvas,
+    *,
+    patient: dict[str, Any],
+    generated_on: str,
+    width: float,
+    height: float,
+    layout: dict[str, dict[str, float]],
+) -> None:
+    values = _template_note_header_values(patient, generated_on)
+    header_groups = [
+        ["name", "age", "height"],
+        ["weight", "temp"],
+        ["date"],
+    ]
+    for keys in header_groups:
+        x, y, box_width, box_height = _template_group_to_pdf_rect(layout, keys, width=width, height=height)
+        _draw_template_label_value_group(
+            pdf,
+            x=x,
+            y=y,
+            box_width=box_width,
+            box_height=box_height,
+            items=[values[key] for key in keys],
+            font_size=10,
+        )
+
+
+def _draw_template_note_body(
+    pdf: canvas.Canvas,
+    *,
+    template: tuple[str, bytes] | None,
+    width: float,
+    height: float,
+    layout: dict[str, dict[str, float]],
+    data: dict[str, Any],
+    note_sections: list[tuple[str, str]],
+) -> None:
+    body_box = layout.get("noteBody") or DEFAULT_TEMPLATE_NOTE_LAYOUT["noteBody"]
+    x, y, box_width, box_height = _template_box_to_pdf_rect(body_box, width=width, height=height)
+    font_size = 10
+    line_height = font_size + 4
+    section_gap = 14
+    available_width = max(box_width - 4, 24)
+    body_floor = y + 2
+    reserved_boxes = []
+    if data.get("doctor_signature_content_type") and data.get("doctor_signature_data_base64"):
+        reserved_boxes.append(
+            {
+                "x": data.get("document_template_signature_x", DEFAULT_TEMPLATE_SIGNATURE_BOX["x"]),
+                "y": data.get("document_template_signature_y", DEFAULT_TEMPLATE_SIGNATURE_BOX["y"]),
+                "width": data.get("document_template_signature_width", DEFAULT_TEMPLATE_SIGNATURE_BOX["width"]),
+                "height": data.get("document_template_signature_height", DEFAULT_TEMPLATE_SIGNATURE_BOX["height"]),
+            }
+        )
+    if str(data.get("doctor_name") or "").strip():
+        reserved_boxes.append(
+            {
+                "x": data.get("document_template_doctor_name_x", DEFAULT_TEMPLATE_DOCTOR_NAME_BOX["x"]),
+                "y": data.get("document_template_doctor_name_y", DEFAULT_TEMPLATE_DOCTOR_NAME_BOX["y"]),
+                "width": data.get("document_template_doctor_name_width", DEFAULT_TEMPLATE_DOCTOR_NAME_BOX["width"]),
+                "height": data.get("document_template_doctor_name_height", DEFAULT_TEMPLATE_DOCTOR_NAME_BOX["height"]),
+            }
+        )
+    for reserved_box in reserved_boxes:
+        reserved_x, reserved_y, reserved_width, reserved_height = _template_box_to_pdf_rect(
+            reserved_box,
+            width=width,
+            height=height,
+        )
+        overlaps_horizontally = reserved_x < x + box_width and reserved_x + reserved_width > x
+        overlaps_vertically = reserved_y < y + box_height and reserved_y + reserved_height > y
+        if overlaps_horizontally and overlaps_vertically:
+            body_floor = max(body_floor, reserved_y + reserved_height + section_gap)
+    if body_floor > y + box_height - font_size - line_height:
+        body_floor = y + 2
+    current_y = y + box_height - font_size - 2
+
+    def ensure_space() -> None:
+        nonlocal current_y
+        if current_y >= body_floor:
+            return
+        pdf.showPage()
+        _start_page(pdf, template, width, height)
+        current_y = y + box_height - font_size - 2
+
+    pdf.setFillColor(HexColor("#111827"))
+    for section_label, section_content in note_sections:
+        prose_lines, _tables = _split_text_and_tables(section_content)
+        paragraphs = [line.strip() for line in prose_lines if line.strip()]
+        if not paragraphs:
+            continue
+
+        label_text = f"{section_label}:"
+        label_width = stringWidth(label_text + " ", "Helvetica-Bold", font_size)
+        ensure_space()
+        pdf.setFont("Helvetica-Bold", font_size)
+        pdf.drawString(x + 2, current_y, label_text)
+        pdf.setFont("Helvetica", font_size)
+
+        first_paragraph = paragraphs[0]
+        first_line_width = max(available_width - label_width, 24)
+        first_lines = _wrap_text(first_paragraph, "Helvetica", font_size, first_line_width)
+        if first_lines:
+            pdf.drawString(x + 2 + label_width, current_y, first_lines[0])
+            current_y -= line_height
+            for line in first_lines[1:]:
+                ensure_space()
+                pdf.drawString(x + 2, current_y, line)
+                current_y -= line_height
+        else:
+            current_y -= line_height
+
+        for paragraph in paragraphs[1:]:
+            current_y -= 2
+            for line in _wrap_text(paragraph, "Helvetica", font_size, available_width):
+                ensure_space()
+                pdf.drawString(x + 2, current_y, line)
+                current_y -= line_height
+
+        current_y -= section_gap
+
+
+def _draw_template_note_pdf_content(
+    pdf: canvas.Canvas,
+    *,
+    patient: dict[str, Any],
+    generated_on: str,
+    note_sections: list[tuple[str, str]],
+    template: tuple[str, bytes] | None,
+    width: float,
+    height: float,
+) -> None:
+    layout = _merged_note_layout(patient)
+    _draw_template_note_headers(
+        pdf,
+        patient=patient,
+        generated_on=generated_on,
+        width=width,
+        height=height,
+        layout=layout,
+    )
+    _draw_template_note_body(
+        pdf,
+        template=template,
+        width=width,
+        height=height,
+        layout=layout,
+        data=patient,
+        note_sections=note_sections,
+    )
 
 
 def build_template_note_preview_pdf(data: dict[str, Any]) -> bytes:
@@ -1237,10 +1498,61 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
     custom_header = patient.get("custom_header", "")
     custom_footer = patient.get("custom_footer", "")
     pdf.setTitle(f"{patient_name} Consultation Note")
+    note_sections = _parse_note_sections(note_content)
+    vitals_rows, medicines_table, eye_exam_table = _classify_structured_tables(note_sections)
 
     if use_template:
         _start_page(pdf, template, width, height)
-        y = _template_content_start_y(top_y, height, "note")
+        _draw_template_note_pdf_content(
+            pdf,
+            patient=patient,
+            generated_on=generated_on,
+            note_sections=note_sections,
+            template=template,
+            width=width,
+            height=height,
+        )
+        _draw_document_signature(
+            pdf,
+            patient,
+            use_template=use_template,
+            width=width,
+            height=height,
+            margin_x=margin_x,
+            bottom_limit=bottom_limit,
+            max_width=max_width,
+            y=bottom_limit,
+        )
+        pdf.save()
+        buffer.seek(0)
+        base_pdf = _apply_pdf_template(buffer.getvalue(), template)
+        structured_pdf = _build_structured_data_pdf(
+            width=width,
+            height=height,
+            template=template,
+            use_template=use_template,
+            margin_x=margin_x,
+            top_y=top_y,
+            max_width=max_width,
+            bottom_limit=bottom_limit,
+            vitals_rows=vitals_rows,
+            eye_exam_table=eye_exam_table,
+            medicines_table=medicines_table,
+        )
+        if structured_pdf:
+            base_pdf = _append_pdf_bytes(base_pdf, structured_pdf)
+        assets_pdf = _build_note_assets_pdf(
+            assets or [],
+            width=width,
+            height=height,
+            template=template,
+            use_template=use_template,
+            margin_x=margin_x,
+            top_y=top_y,
+            max_width=max_width,
+            bottom_limit=bottom_limit,
+        )
+        return _append_pdf_bytes(base_pdf, assets_pdf)
     else:
         pdf.setFillColor(HexColor("#0f172a"))
         pdf.setFont("Helvetica-Bold", 18)
@@ -1287,8 +1599,6 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
         y = _draw_detail_pair_row(pdf, margin_x, y, left, right, max_width)
 
     y -= 14
-    note_sections = _parse_note_sections(note_content)
-    vitals_rows, medicines_table, eye_exam_table = _classify_structured_tables(note_sections)
 
     for section_label, section_content in note_sections:
         if y < bottom_limit + 28:
