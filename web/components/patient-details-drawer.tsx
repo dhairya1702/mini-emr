@@ -1307,7 +1307,6 @@ export function PatientDetailsDrawer({
   const [aiSummary, setAiSummary] = useState<PatientSummary | null>(null);
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
-  const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false);
   const onLoadVisitsRef = useRef(onLoadVisits);
   const onLoadVisitDetailRef = useRef(onLoadVisitDetail);
   const onLoadTimelineRef = useRef(onLoadTimeline);
@@ -1418,7 +1417,6 @@ export function PatientDetailsDrawer({
     setAiSummary(null);
     setSummaryError("");
     setIsSummaryLoading(false);
-    setIsRegeneratingSummary(false);
     setIsTbiEvaluationOpen(false);
     setIsBinocularVisionOpen(false);
   }, [patient]);
@@ -1436,25 +1434,6 @@ export function PatientDetailsDrawer({
         const result = await api.getPatientSummary(patientId);
         if (active) {
           setAiSummary(result);
-        }
-        if (result.stale && active) {
-          setIsRegeneratingSummary(true);
-          try {
-            const refreshed = await api.regeneratePatientSummary(patientId);
-            if (active) {
-              setAiSummary(refreshed);
-            }
-          } catch (regenerateError) {
-            if (active && !result.summary) {
-              setSummaryError(
-                regenerateError instanceof Error ? regenerateError.message : "Failed to generate summary."
-              );
-            }
-          } finally {
-            if (active) {
-              setIsRegeneratingSummary(false);
-            }
-          }
         }
       } catch (loadError) {
         if (active) {
@@ -2500,7 +2479,6 @@ export function PatientDetailsDrawer({
                     <Sparkles className="h-3.5 w-3.5" />
                   </span>
                   <span className="flex-1 text-xs font-bold tracking-[0.06em] text-[#1d4d72]">AI SUMMARY</span>
-                  {isRegeneratingSummary ? <span className="text-xs font-medium text-[#2f6c98]">Updating…</span> : null}
                   <ChevronDown className={`h-4 w-4 text-[#2a6fa8] transition ${isSummaryCollapsed ? "-rotate-90" : ""}`} />
                 </button>
                 {!isSummaryCollapsed ? (
@@ -2712,9 +2690,6 @@ export function PatientDetailsDrawer({
                     </span>
                     <span className="text-sm font-semibold text-[#1d4d72]">Summary</span>
                   </div>
-                  {isRegeneratingSummary ? (
-                    <span className="text-xs font-medium text-[#2f6c98]">Updating…</span>
-                  ) : null}
                 </div>
 
                 <div className="mt-3">

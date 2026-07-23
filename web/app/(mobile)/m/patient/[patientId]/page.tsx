@@ -549,7 +549,6 @@ export default function MobilePatientPage() {
   const [aiSummary, setAiSummary] = useState<PatientSummary | null>(null);
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
-  const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false);
   const [isSummaryOpen, setIsSummaryOpen] = useState(true);
 
   useEffect(() => {
@@ -622,25 +621,6 @@ export default function MobilePatientPage() {
       .then(async (result) => {
         if (active) {
           setAiSummary(result);
-        }
-        if (result.stale && active) {
-          setIsRegeneratingSummary(true);
-          try {
-            const refreshed = await api.regeneratePatientSummary(patientId);
-            if (active) {
-              setAiSummary(refreshed);
-            }
-          } catch (regenerateError) {
-            if (active && !result.summary) {
-              setSummaryError(
-                regenerateError instanceof Error ? regenerateError.message : "Failed to generate summary."
-              );
-            }
-          } finally {
-            if (active) {
-              setIsRegeneratingSummary(false);
-            }
-          }
         }
       })
       .catch((loadError) => {
@@ -1256,7 +1236,6 @@ export default function MobilePatientPage() {
                     <Sparkles className="h-3 w-3" />
                   </span>
                   <span className="flex-1 text-xs font-bold tracking-[0.04em] text-[#1d4d72]">AI SUMMARY</span>
-                  {isRegeneratingSummary ? <span className="text-[11px] font-medium text-[#2f6c98]">Updating…</span> : null}
                   <ChevronDown className={`h-4 w-4 text-[#2a6fa8] transition ${isSummaryOpen ? "" : "-rotate-90"}`} />
                 </button>
                 {isSummaryOpen ? (

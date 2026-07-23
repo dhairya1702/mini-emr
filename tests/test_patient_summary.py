@@ -22,30 +22,121 @@ def _create_patient(test_client, headers, *, phone: str):
     ).json()
 
 
-def test_patient_summary_get_is_read_only_and_regenerate_caches(client):
+def _finalize_note(test_client, headers, patient_id: str, *, diagnosis: str):
+    generated = test_client.post(
+        "/generate-note",
+        json={
+            "patient_id": patient_id,
+            "symptoms": "Cough and fever",
+            "diagnosis": diagnosis,
+            "medications": "Rest and hydration",
+            "notes": "Review in a week.",
+        },
+        headers=headers,
+    )
+    assert generated.status_code == 200
+    finalized = test_client.post(
+        "/notes/finalize",
+        json={"note_id": generated.json()["note_id"]},
+        headers=headers,
+    )
+    assert finalized.status_code == 200
+    return finalized.json()
+
+
+def test_patient_summary_get_returns_blank_without_finalized_note_and_does_not_generate(client, monkeypatch):
     test_client, repo = client
     session = register_test_clinic(
         test_client, identifier="summary@clinic.com", clinic_name="Summary Clinic"
     )
     headers = auth_headers_for_token(session["token"])
     patient = _create_patient(test_client, headers, phone="5550107777")
+    calls = 0
 
-    cached = test_client.get(f"/patients/{patient['id']}/summary", headers=headers)
-    assert cached.status_code == 200
-    assert cached.json()["summary"] == ""
-    assert cached.json()["stale"] is True
+    async def fake_generate_summary(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return {"content": "Generated summary", "used_fallback": False, "warning": None}
 
-    response = test_client.post(
-        f"/patients/{patient['id']}/summary/regenerate", headers=headers
+    monkeypatch.setattr(
+        patient_summary_workflow,
+        "generate_patient_summary",
+        fake_generate_summary,
     )
+
+    response = test_client.get(f"/patients/{patient['id']}/summary", headers=headers)
+
     assert response.status_code == 200
-    body = response.json()
-    assert body["summary"]
-    assert body["stale"] is False
-    # GEMINI is unconfigured in tests, so the deterministic fallback is used.
-    assert body["used_fallback"] is True
+    assert response.json()["summary"] == ""
+    assert response.json()["stale"] is False
+    assert calls == 0
+    assert not repo.patients[patient["id"]].get("ai_summary")
+
+
+def test_patient_summary_get_generates_once_after_finalized_note_and_reuses_cache(client, monkeypatch):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client, identifier="summary-lazy@clinic.com", clinic_name="Lazy Summary Clinic"
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = _create_patient(test_client, headers, phone="5550107878")
+    _finalize_note(test_client, headers, patient["id"], diagnosis="Bronchitis")
+    calls = 0
+
+    async def fake_generate_summary(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return {"content": f"Generated summary {calls}", "used_fallback": False, "warning": None}
+
+    monkeypatch.setattr(
+        patient_summary_workflow,
+        "generate_patient_summary",
+        fake_generate_summary,
+    )
+
+    first = test_client.get(f"/patients/{patient['id']}/summary", headers=headers)
+    second = test_client.get(f"/patients/{patient['id']}/summary", headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["summary"] == "Generated summary 1"
+    assert second.json()["summary"] == "Generated summary 1"
+    assert first.json()["stale"] is False
+    assert second.json()["stale"] is False
+    assert calls == 1
     assert repo.patients[patient["id"]]["ai_summary_stale"] is False
-    assert repo.patients[patient["id"]]["ai_summary"]
+
+
+def test_patient_summary_get_regenerates_once_after_new_finalized_note(client, monkeypatch):
+    test_client, _repo = client
+    session = register_test_clinic(
+        test_client, identifier="summary-new-note@clinic.com", clinic_name="New Note Summary Clinic"
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = _create_patient(test_client, headers, phone="5550107979")
+    calls = 0
+
+    async def fake_generate_summary(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return {"content": f"Generated summary {calls}", "used_fallback": False, "warning": None}
+
+    monkeypatch.setattr(
+        patient_summary_workflow,
+        "generate_patient_summary",
+        fake_generate_summary,
+    )
+
+    _finalize_note(test_client, headers, patient["id"], diagnosis="Bronchitis")
+    first = test_client.get(f"/patients/{patient['id']}/summary", headers=headers)
+    _finalize_note(test_client, headers, patient["id"], diagnosis="Persistent bronchitis")
+    second = test_client.get(f"/patients/{patient['id']}/summary", headers=headers)
+    third = test_client.get(f"/patients/{patient['id']}/summary", headers=headers)
+
+    assert first.json()["summary"] == "Generated summary 1"
+    assert second.json()["summary"] == "Generated summary 2"
+    assert third.json()["summary"] == "Generated summary 2"
+    assert calls == 2
 
 
 def test_finalizing_a_note_marks_summary_stale(client):

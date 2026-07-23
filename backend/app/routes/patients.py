@@ -40,7 +40,7 @@ from app.schema_domains.specialty import (
     TbiEvaluationOut,
 )
 from app.services.case_study_workflow import build_case_study_source_view
-from app.services.patient_summary_workflow import generate_patient_summary_workflow, load_patient_summary_source
+from app.services.patient_summary_workflow import generate_patient_summary_workflow, load_or_generate_patient_summary_workflow
 from app.services.patient_views import (
     build_patient_visit_detail_view,
     build_patient_growth_history_view,
@@ -507,22 +507,12 @@ async def get_patient_summary(
 ) -> PatientSummaryOut:
     try:
         org_id = str(current_user.org_id)
-        patient = await repo.get_patient(org_id, patient_id)
-        cached = str(patient.get("ai_summary") or "").strip()
-        source = await load_patient_summary_source(repo, org_id, patient_id, patient=patient)
-        is_stale = not cached or str(patient.get("ai_summary_source_hash") or "") != source["source_hash"]
-        if not is_stale:
-            return PatientSummaryOut(
-                summary=cached,
-                updated_at=patient.get("ai_summary_updated_at"),
-                stale=False,
-                used_fallback=False,
-            )
+        result = await load_or_generate_patient_summary_workflow(repo, org_id, patient_id)
         return PatientSummaryOut(
-            summary=cached,
-            updated_at=patient.get("ai_summary_updated_at"),
-            stale=True,
-            used_fallback=False,
+            summary=result["summary"],
+            updated_at=result["updated_at"],
+            stale=False,
+            used_fallback=result["used_fallback"],
         )
     except ValueError as exc:
         raise bad_request_error(exc) from exc

@@ -153,7 +153,7 @@ export function AddPatientModal({
     }));
     setExistingMatches([]);
     setSearchPhone(match.phone);
-    setSearchFeedback(`Loaded ${match.name}. You can update the visit reason below before saving.`);
+    setSearchFeedback("");
     setSelectedExistingMatchId(match.id);
     setError("");
   }
