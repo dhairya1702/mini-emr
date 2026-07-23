@@ -66,6 +66,8 @@ function createId() {
 const MAX_ATTACHMENT_SIZE_BYTES = 6 * 1024 * 1024;
 const MAX_ATTACHMENT_COUNT = 6;
 const SUPPORTED_ATTACHMENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+const MEDICATION_TABLE_HEADER = "Medicine | Strength | Dose | Route | Schedule | Duration | Quantity | Instructions";
+const MEDICATION_TABLE_SEPARATOR = "--- | --- | --- | --- | --- | --- | --- | ---";
 const PEDIATRIC_FOLLOW_UP_DEFAULTS: Record<string, { days: number; interval: string; notePrefix: string }> = {
   routine_review: { days: 90, interval: "3 months", notePrefix: "Routine pediatric review" },
   growth_recheck: { days: 60, interval: "2 months", notePrefix: "Growth recheck" },
@@ -84,6 +86,52 @@ type PrescriptionDraft = {
   afternoon: boolean;
   night: boolean;
 };
+
+function noteTableCell(value: string | number | null | undefined) {
+  const cleaned = String(value ?? "").replace(/\|/g, "/").replace(/\s+/g, " ").trim();
+  return cleaned || "—";
+}
+
+function syncDraftMedicationTable(content: string, extractions: ClinicalExtractions) {
+  const medicines = extractions.medications_prescribed || [];
+  const contentWithoutMedicationTable = content
+    .replace(/\n\nMedications Prescribed:\n[\s\S]*?(?=\n\nFollow-up Advice:\n|$)/, "")
+    .trim();
+
+  if (!medicines.length) {
+    return contentWithoutMedicationTable;
+  }
+
+  const medicineRows = medicines.map((medicine) => (
+    [
+      medicine.name,
+      medicine.strength,
+      medicine.dose,
+      medicine.route,
+      medicine.schedule,
+      medicine.duration,
+      medicine.quantity,
+      medicine.instructions,
+    ].map(noteTableCell).join(" | ")
+  ));
+  const medicationSection = [
+    "Medications Prescribed:",
+    MEDICATION_TABLE_HEADER,
+    MEDICATION_TABLE_SEPARATOR,
+    ...medicineRows,
+  ].join("\n");
+
+  const followUpMatch = contentWithoutMedicationTable.match(/\n\nFollow-up Advice:\n/);
+  if (!followUpMatch || followUpMatch.index === undefined) {
+    return `${contentWithoutMedicationTable}\n\n${medicationSection}`.trim();
+  }
+
+  return [
+    contentWithoutMedicationTable.slice(0, followUpMatch.index).trim(),
+    medicationSection,
+    contentWithoutMedicationTable.slice(followUpMatch.index + 2).trim(),
+  ].filter(Boolean).join("\n\n");
+}
 
 const PRESCRIPTION_NOTE_OPTIONS = [
   "Before food",
@@ -987,8 +1035,12 @@ export function ConsultationDrawer({
       setIsDraftDirty(false);
       return;
     }
+    const syncedContent = syncDraftMedicationTable(form.generatedNote, clinicalExtractions);
+    if (syncedContent !== form.generatedNote) {
+      setForm((current) => ({ ...current, generatedNote: syncedContent }));
+    }
     const saved = await api.updateNoteDraft(currentNoteId, {
-      content: form.generatedNote.trim(),
+      content: syncedContent.trim(),
       extractions: clinicalExtractions,
     });
     setForm((current) => ({ ...current, generatedNote: saved.content }));
@@ -1185,10 +1237,14 @@ export function ConsultationDrawer({
 
     setIsGeneratingPdf(true);
     try {
+      const syncedContent = syncDraftMedicationTable(form.generatedNote, clinicalExtractions);
+      if (syncedContent !== form.generatedNote) {
+        setForm((current) => ({ ...current, generatedNote: syncedContent }));
+      }
       const blob = await onGeneratePdf({
         note_id: currentNoteId && (noteStatus === "final" || noteStatus === "sent") ? currentNoteId : undefined,
         patient_id: currentPatient.id,
-        content: form.generatedNote,
+        content: syncedContent,
         assets: form.assets,
       });
       const url = URL.createObjectURL(blob);
