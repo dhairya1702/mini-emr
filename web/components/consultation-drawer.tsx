@@ -2597,9 +2597,6 @@ export function ConsultationDrawer({
                 className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                 placeholder="Prescriptions, dosage, duration"
               />
-              <p className="mt-2 text-xs text-slate-500">
-                Selected inventory medicines are forced into the treatment section of the generated note.
-              </p>
             </label>
 
             <label className="block">
