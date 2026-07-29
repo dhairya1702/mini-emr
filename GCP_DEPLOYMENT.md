@@ -64,6 +64,7 @@ Enable at least:
 
 The repo now includes manual deploy helpers:
 
+- `./scripts/deploy-all-human.sh`
 - `./scripts/deploy-backend.sh`
 - `./scripts/deploy-web.sh`
 - `./scripts/deploy-all.sh`
@@ -91,6 +92,42 @@ superadmin allowlist:
 
 The secret values themselves must remain in Google Secret Manager. The Cloud Run
 runtime service account needs `roles/secretmanager.secretAccessor`.
+
+### Human Full Production Deployment
+
+For the normal human-run deployment of both the backend and frontend, run this from
+the repository root:
+
+```bash
+./scripts/deploy-all-human.sh
+```
+
+The script authenticates directly as `dhairya911@gmail.com` for its process. It does
+not impersonate the deployment agent and does not change the impersonation setting
+saved in the `clinic-emr` gcloud configuration.
+
+The script performs the complete production workflow:
+
+1. Validates the active account, project, region, service names, database target,
+   storage bucket, and production URLs.
+2. Refuses to deploy from a dirty or untracked Git working tree.
+3. Builds and pushes the backend image using the current Git commit as its tag.
+4. Deploys and executes the required Cloud Run database migration job.
+5. Deploys the backend revision and promotes it to 100% production traffic.
+6. Resolves the deployed backend URL.
+7. Builds the frontend with its `/api` proxy targeting that backend.
+8. Deploys the frontend revision and promotes it to 100% production traffic.
+9. Verifies the backend health endpoint and confirms the frontend responds.
+
+The production URLs are:
+
+- Backend: `https://clinic-emr-backend-388811826415.asia-south1.run.app`
+- Frontend: `https://clinic-os-ai-388811826415.asia-south1.run.app`
+
+The script exits immediately if validation, build, migration, deployment, promotion,
+or URL verification fails. Google may occasionally require the human account to log
+in again when its credentials expire; that is separate from service-account
+impersonation.
 
 ## Cloud Run URL Note
 
