@@ -15,6 +15,8 @@ WHATSAPP_PHONE_NUMBER_ID=meta-phone-number-id
 WHATSAPP_GRAPH_API_VERSION=v23.0
 WHATSAPP_DOCUMENT_TEMPLATE_NAME=
 WHATSAPP_DOCUMENT_TEMPLATE_LANGUAGE=en
+WHATSAPP_FOLLOW_UP_TEMPLATE_NAME=
+WHATSAPP_FOLLOW_UP_TEMPLATE_LANGUAGE=en
 ```
 
 `INTERNAL_SCHEDULER_TOKEN` is also required for the temporary binding seed endpoint.
@@ -34,6 +36,31 @@ For production deployment, set `WHATSAPP_ENABLED=true` and configure the four
 secret names. Set `WHATSAPP_DOCUMENT_TEMPLATE_NAME` after Meta approves the
 utility template with a document header. The deploy script never reads or prints
 the secret values.
+
+## Follow-Up Booking Invitation
+
+When a clinic creates a follow-up, the backend can send one proactive WhatsApp
+utility-template message to the patient's phone. Updates, reminder jobs,
+bookings, reschedules, and cancellations do not send additional WhatsApp
+messages.
+
+Create and approve a Meta utility template with:
+
+```text
+Name: follow_up_booking_invitation
+Body:
+Hi {{1}}, {{2}} would like you to book your follow-up appointment for {{3}}.
+Use the button below to book, reschedule, or cancel.
+
+URL button label: Manage appointment
+URL: https://<web-host>/follow-up?token={{1}}
+```
+
+The body variables are patient first name, clinic name, and follow-up reason.
+The URL-button variable is the signed booking token. Set the approved template
+name in `WHATSAPP_FOLLOW_UP_TEMPLATE_NAME`; the language defaults to `en`.
+The link remains valid for 400 days and manages the same linked appointment
+through booking, rescheduling, cancellation, and rebooking.
 
 For local testing, run the repo dev script:
 
@@ -105,4 +132,6 @@ followups due
 help
 ```
 
-Phase 1 does not send patient messages, invoices, prescriptions, templates, or proactive digests.
+The owner assistant does not send proactive digests. Patient document sends and
+the one-time follow-up booking invitation are separate, explicitly triggered
+workflows.

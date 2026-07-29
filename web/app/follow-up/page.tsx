@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
-import { Calendar, CheckCircle2, Clock3, RefreshCw } from "lucide-react";
+import { Calendar, CheckCircle2, Clock3, RefreshCw, XCircle } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
 import {
@@ -22,8 +22,27 @@ type FollowUpBookingContext = {
   scheduled_for: string;
   notes: string;
   booking_token: string;
+  appointment_id: string | null;
+  appointment_status: string | null;
+  appointment_scheduled_for: string | null;
   suggested_slots: string[];
 };
+
+async function fetchBookingContext(token: string): Promise<FollowUpBookingContext> {
+  const response = await fetch(
+    `${API_BASE_URL}/public/follow-up-booking?token=${encodeURIComponent(token)}`,
+    { cache: "no-store" },
+  );
+  const payload = (await response.json()) as FollowUpBookingContext | { detail?: string };
+  if (!response.ok) {
+    throw new Error(
+      typeof (payload as { detail?: string }).detail === "string"
+        ? (payload as { detail?: string }).detail
+        : "Failed to load booking link.",
+    );
+  }
+  return payload as FollowUpBookingContext;
+}
 
 function FollowUpBookingPageContent() {
   const searchParams = useSearchParams();
@@ -33,6 +52,7 @@ function FollowUpBookingPageContent() {
   const [scheduledFor, setScheduledFor] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -54,23 +74,12 @@ function FollowUpBookingPageContent() {
       setIsLoading(true);
       setError("");
       try {
-        const response = await fetch(
-          `${API_BASE_URL}/public/follow-up-booking?token=${encodeURIComponent(token)}`,
-          { cache: "no-store" },
-        );
-        const payload = (await response.json()) as FollowUpBookingContext | { detail?: string };
-        if (!response.ok) {
-          throw new Error(
-            typeof (payload as { detail?: string }).detail === "string"
-              ? (payload as { detail?: string }).detail
-              : "Failed to load booking link.",
-          );
-        }
+        const payload = await fetchBookingContext(token);
         if (!active) {
           return;
         }
-        setContext(payload as FollowUpBookingContext);
-        const bookingContext = payload as FollowUpBookingContext;
+        setContext(payload);
+        const bookingContext = payload;
         setScheduledFor(
           bookingContext.suggested_slots[0]
             ? toDateTimeInputInTimeZone(bookingContext.suggested_slots[0], bookingContext.timezone)
@@ -122,14 +131,12 @@ function FollowUpBookingPageContent() {
         } catch {}
         throw new Error(message);
       }
-      setSuccessMessage("Follow-up confirmed. The clinic schedule has been updated.");
-      setContext((current) =>
-        current
-          ? {
-              ...current,
-              scheduled_for: zonedDateTimeInputToUtcIso(scheduledFor, current.timezone),
-            }
-          : current,
+      const refreshed = await fetchBookingContext(token);
+      setContext(refreshed);
+      setSuccessMessage(
+        context?.appointment_status === "scheduled"
+          ? "Appointment rescheduled."
+          : "Appointment booked.",
       );
     } catch (submitError) {
       setError(
@@ -137,6 +144,35 @@ function FollowUpBookingPageContent() {
       );
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleCancel() {
+    if (!token || !window.confirm("Cancel this appointment? You can use this link to book again later.")) {
+      return;
+    }
+    setIsCancelling(true);
+    setError("");
+    setSuccessMessage("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/public/follow-up-booking/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json()) as { detail?: string };
+        throw new Error(payload.detail || "Could not cancel this appointment.");
+      }
+      const refreshed = await fetchBookingContext(token);
+      setContext(refreshed);
+      setSuccessMessage("Appointment cancelled. This link remains available if you need to book again.");
+    } catch (cancelError) {
+      setError(
+        cancelError instanceof Error ? cancelError.message : "Could not cancel this appointment.",
+      );
+    } finally {
+      setIsCancelling(false);
     }
   }
 
@@ -149,11 +185,10 @@ function FollowUpBookingPageContent() {
               Follow-Up Booking
             </p>
             <h1 className="mt-3 text-3xl font-semibold text-slate-900 sm:text-4xl">
-              Confirm or reschedule your review
+              Book or manage your appointment
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
-              Pick a time that works for you. The clinic will see the updated follow-up slot
-              immediately.
+              Choose a time, reschedule an existing booking, or cancel it from this page.
             </p>
           </div>
           <div className="rounded-xl bg-[#f3f8fb] p-3 text-[#2a6fa8]">
@@ -181,10 +216,15 @@ function FollowUpBookingPageContent() {
                 <p className="mt-2 text-lg font-semibold text-slate-900">{context.patient_name}</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Current time</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                  {context.appointment_status === "scheduled" ? "Booked time" : "Follow-up due"}
+                </p>
                 <p className="mt-2 inline-flex items-center gap-2 text-sm text-slate-700">
                   <Clock3 className="h-4 w-4 text-[#2a6fa8]" />
-                  {formatDateTimeInTimeZone(context.scheduled_for, context.timezone)}
+                  {formatDateTimeInTimeZone(
+                    context.appointment_scheduled_for || context.scheduled_for,
+                    context.timezone,
+                  )}
                 </p>
               </div>
               <div>
@@ -195,6 +235,30 @@ function FollowUpBookingPageContent() {
               </div>
             </section>
 
+            {context.appointment_status ? (
+              <div
+                className={`inline-flex items-center gap-2 rounded-lg border px-4 py-3 text-sm ${
+                  context.appointment_status === "scheduled"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : context.appointment_status === "cancelled"
+                      ? "border-slate-200 bg-slate-50 text-slate-700"
+                      : "border-blue-200 bg-blue-50 text-blue-700"
+                }`}
+              >
+                {context.appointment_status === "cancelled" ? (
+                  <XCircle className="h-4 w-4" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                {context.appointment_status === "scheduled"
+                  ? "Appointment booked"
+                  : context.appointment_status === "cancelled"
+                    ? "Appointment cancelled"
+                    : "Appointment checked in"}
+              </div>
+            ) : null}
+
+            {context.appointment_status === "checked_in" ? null : (
             <form
               onSubmit={handleSubmit}
               className="rounded-[18px] border border-[#dbe7ef] bg-white p-5 shadow-[0_8px_24px_rgba(64,131,181,0.06)]"
@@ -225,7 +289,9 @@ function FollowUpBookingPageContent() {
               ) : null}
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-slate-700">
-                  Choose follow-up time
+                  {context.appointment_status === "scheduled"
+                    ? "Choose a new time"
+                    : "Choose appointment time"}
                 </span>
                 <input
                   type="datetime-local"
@@ -256,13 +322,28 @@ function FollowUpBookingPageContent() {
                   className="inline-flex items-center gap-2 rounded-xl bg-[#2f8fd3] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSubmitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
-                  {isSubmitting ? "Saving..." : "Confirm follow-up"}
+                  {isSubmitting
+                    ? "Saving..."
+                    : context.appointment_status === "scheduled"
+                      ? "Reschedule appointment"
+                      : context.appointment_status === "cancelled"
+                        ? "Book again"
+                        : "Book appointment"}
                 </button>
-                <p className="text-sm text-slate-500">
-                  The clinic schedule is updated as soon as you confirm.
-                </p>
+                {context.appointment_status === "scheduled" ? (
+                  <button
+                    type="button"
+                    disabled={isSubmitting || isCancelling}
+                    onClick={handleCancel}
+                    className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-5 py-3 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isCancelling ? <RefreshCw className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                    {isCancelling ? "Cancelling..." : "Cancel appointment"}
+                  </button>
+                ) : null}
               </div>
             </form>
+            )}
           </div>
         ) : null}
       </div>

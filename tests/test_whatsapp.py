@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -12,6 +13,8 @@ from test_app import auth_headers_for_token, client, register_test_clinic
 from app import config as config_module
 from app.routes import whatsapp as whatsapp_route
 from app.services import whatsapp_assistant
+from app.services import whatsapp_client as whatsapp_client_module
+from app.services import whatsapp_followup_workflow
 
 
 def _settings(**overrides):
@@ -94,6 +97,10 @@ class FakeWhatsAppClient:
         FakeWhatsAppClient.sent.append(kwargs)
         return SimpleNamespace(message_id="wamid.outbound", raw={"messages": [{"id": "wamid.outbound"}]})
 
+    def send_follow_up_booking_template(self, **kwargs):
+        FakeWhatsAppClient.sent.append(kwargs)
+        return SimpleNamespace(message_id="wamid.follow-up", raw={"messages": [{"id": "wamid.follow-up"}]})
+
 
 def _bind_owner(repo, org_id: str) -> None:
     import asyncio
@@ -115,6 +122,104 @@ def _post_whatsapp_text(test_client, text: str):
         content=body,
         headers={"X-Hub-Signature-256": _signature(body), "Content-Type": "application/json"},
     )
+
+
+def test_follow_up_booking_invitation_uses_template_once(client, monkeypatch: pytest.MonkeyPatch):
+    _test_client, repo = client
+    settings = _settings(
+        app_origin="https://clinic.example",
+        whatsapp_follow_up_template_name="follow_up_booking_invitation",
+        whatsapp_follow_up_template_language="en",
+    )
+    monkeypatch.setattr(whatsapp_followup_workflow, "get_settings", lambda: settings)
+    monkeypatch.setattr(whatsapp_followup_workflow, "build_whatsapp_client", lambda: FakeWhatsAppClient())
+    FakeWhatsAppClient.sent = []
+
+    follow_up = {
+        "id": "follow-up-1",
+        "patient_id": "patient-1",
+        "notes": "Review your eye pressure",
+    }
+    patient = {
+        "id": "patient-1",
+        "name": "Asha Patel",
+        "phone": "9876543210",
+    }
+    clinic_settings = {"clinic_name": "Fika Eye Care"}
+
+    first = asyncio.run(
+        whatsapp_followup_workflow.send_follow_up_booking_invitation(
+            repo,
+            org_id="org-1",
+            follow_up=follow_up,
+            patient=patient,
+            clinic_settings=clinic_settings,
+        )
+    )
+    second = asyncio.run(
+        whatsapp_followup_workflow.send_follow_up_booking_invitation(
+            repo,
+            org_id="org-1",
+            follow_up=follow_up,
+            patient=patient,
+            clinic_settings=clinic_settings,
+        )
+    )
+
+    assert first["status"] == "accepted"
+    assert second["id"] == first["id"]
+    assert len(FakeWhatsAppClient.sent) == 1
+    sent = FakeWhatsAppClient.sent[0]
+    assert sent["to"] == "919876543210"
+    assert sent["template_name"] == "follow_up_booking_invitation"
+    assert sent["patient_first_name"] == "Asha"
+    assert sent["clinic_name"] == "Fika Eye Care"
+    assert sent["booking_token"]
+    assert first["intent"] == "follow_up_booking_invitation"
+    assert first["raw_payload"]["booking_url"].startswith("https://clinic.example/follow-up?token=")
+
+
+def test_follow_up_template_payload_has_dynamic_url_button(monkeypatch: pytest.MonkeyPatch):
+    captured: dict = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self) -> bytes:
+            return b'{"messages":[{"id":"wamid.template"}]}'
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(whatsapp_client_module, "urlopen", fake_urlopen)
+    client = whatsapp_client_module.WhatsAppClient(
+        access_token="access-token",
+        phone_number_id="phone-number-id",
+    )
+    result = client.send_follow_up_booking_template(
+        to="919876543210",
+        template_name="follow_up_booking_invitation",
+        language_code="en",
+        patient_first_name="Asha",
+        clinic_name="Fika Eye Care",
+        follow_up_reason="Eye pressure review",
+        booking_token="signed-booking-token",
+    )
+
+    assert result.message_id == "wamid.template"
+    template = captured["payload"]["template"]
+    assert template["name"] == "follow_up_booking_invitation"
+    assert template["components"][0]["parameters"][1]["text"] == "Fika Eye Care"
+    button = template["components"][1]
+    assert button["type"] == "button"
+    assert button["sub_type"] == "url"
+    assert button["parameters"] == [{"type": "text", "text": "signed-booking-token"}]
 
 
 def test_whatsapp_webhook_verification(client, monkeypatch: pytest.MonkeyPatch):

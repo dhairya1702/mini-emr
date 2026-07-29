@@ -1322,8 +1322,21 @@ begin
     raise exception 'Follow-up not found.';
   end if;
 
-  if v_follow_up.status <> 'scheduled' then
+  select *
+  into v_appointment
+  from public.appointments
+  where org_id = p_org_id
+    and follow_up_id = p_follow_up_id
+  order by created_at desc
+  limit 1
+  for update;
+
+  if v_follow_up.status <> 'scheduled' and v_appointment.id is null then
     raise exception 'This follow-up is no longer available for booking.';
+  end if;
+
+  if v_appointment.status = 'checked_in' then
+    raise exception 'This appointment has already been checked in.';
   end if;
 
   select *
@@ -1343,6 +1356,7 @@ begin
     where org_id = p_org_id
       and status = 'scheduled'
       and scheduled_for = v_scheduled_for
+      and id is distinct from v_appointment.id
   ) then
     raise exception 'That follow-up slot is already booked. Choose another time.';
   end if;
@@ -1353,6 +1367,7 @@ begin
     where org_id = p_org_id
       and status = 'scheduled'
       and date_trunc('hour', scheduled_for at time zone v_timezone) = v_hour_bucket
+      and id is distinct from v_appointment.id
   ) >= v_capacity then
     raise exception 'That hour is fully booked. Choose another follow-up slot.';
   end if;
@@ -1361,13 +1376,23 @@ begin
   set
     scheduled_for = v_scheduled_for,
     status = 'completed',
-    completed_at = now()
+    completed_at = coalesce(completed_at, now())
   where id = v_follow_up.id
   returning * into v_follow_up;
 
-  v_reason := 'Follow-up: ' || coalesce(nullif(trim(v_patient.reason), ''), 'Review');
+  if v_appointment.id is not null then
+    update public.appointments
+    set
+      scheduled_for = v_scheduled_for,
+      status = 'scheduled',
+      checked_in_patient_id = null,
+      checked_in_at = null
+    where id = v_appointment.id
+    returning * into v_appointment;
+  else
+    v_reason := 'Follow-up: ' || coalesce(nullif(trim(v_patient.reason), ''), 'Review');
 
-  insert into public.appointments (
+    insert into public.appointments (
     org_id,
     name,
     phone,
@@ -1403,7 +1428,8 @@ begin
     'scheduled',
     v_follow_up.id
   )
-  returning * into v_appointment;
+    returning * into v_appointment;
+  end if;
 
   return jsonb_build_object(
     'follow_up', to_jsonb(v_follow_up),

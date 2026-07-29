@@ -38,3 +38,4 @@ psql "$DATABASE_URL" -f db/migrations/<file>.sql
 | 2026-07-29 | `2026-07-29_myopia_care_program.sql` | Adds catalog-backed Myopia Care programs, patient enrollments, and program events. |
 | 2026-07-29 | `2026-07-29_whatsapp_document_delivery.sql` | Adds document linkage, idempotency, and provider delivery states to WhatsApp message events. |
 | 2026-07-29 | `2026-07-29_platform_email_sender.sql` | Adds the encrypted ClinicOS Gmail sender and per-clinic sender selection. |
+| 2026-07-29 | `2026-07-29_persistent_follow_up_booking.sql` | Makes a follow-up booking link reusable for booking, rescheduling, cancellation, and rebooking against one appointment. |

@@ -766,6 +766,62 @@ class PostgresPatientFlowRepository:
 
         return await asyncio.to_thread(_book)
 
+    async def get_appointment_for_follow_up(self, org_id: str, follow_up_id: str) -> dict[str, Any] | None:
+        def _get() -> dict[str, Any] | None:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        select {_columns_sql(APPOINTMENT_COLUMNS)}
+                        from public.appointments
+                        where org_id = %s and follow_up_id = %s
+                        order by created_at desc
+                        limit 1
+                        """,
+                        (org_id, follow_up_id),
+                    )
+                    row = cursor.fetchone()
+                    return _row_to_dict(row, cursor) if row else None
+
+        return await asyncio.to_thread(_get)
+
+    async def cancel_self_booked_follow_up_appointment(
+        self,
+        *,
+        org_id: str,
+        patient_id: str,
+        follow_up_id: str,
+    ) -> dict[str, Any]:
+        def _cancel() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        update public.appointments
+                        set status = 'cancelled'
+                        where id = (
+                          select appointment.id
+                          from public.appointments appointment
+                          join public.follow_ups follow_up on follow_up.id = appointment.follow_up_id
+                          where appointment.org_id = %s
+                            and appointment.follow_up_id = %s
+                            and follow_up.patient_id = %s
+                            and appointment.status = 'scheduled'
+                          order by appointment.created_at desc
+                          limit 1
+                          for update of appointment
+                        )
+                        returning {_columns_sql(APPOINTMENT_COLUMNS)}
+                        """,
+                        (org_id, follow_up_id, patient_id),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("This appointment is not currently scheduled.")
+                    return _row_to_dict(row, cursor)
+
+        return await asyncio.to_thread(_cancel)
+
     async def list_appointments(
         self,
         org_id: str,

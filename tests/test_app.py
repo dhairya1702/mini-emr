@@ -2426,8 +2426,18 @@ class FakeRepo:
         follow_up = self.follow_ups.get(follow_up_id)
         if not follow_up or follow_up["org_id"] != org_id or follow_up["patient_id"] != patient_id:
             raise ValueError("Follow-up not found.")
-        if follow_up["status"] != "scheduled":
+        existing_appointment = next(
+            (
+                appointment
+                for appointment in self.appointments.values()
+                if appointment["org_id"] == org_id and appointment.get("follow_up_id") == follow_up_id
+            ),
+            None,
+        )
+        if follow_up["status"] != "scheduled" and not existing_appointment:
             raise ValueError("This follow-up is no longer available for booking.")
+        if existing_appointment and existing_appointment["status"] == "checked_in":
+            raise ValueError("This appointment has already been checked in.")
         patient = self.patients.get(patient_id)
         if not patient or patient["org_id"] != org_id:
             raise ValueError("Patient not found for this organization.")
@@ -2436,7 +2446,9 @@ class FakeRepo:
         hour_bucket = normalized.replace(minute=0, second=0, microsecond=0)
         scheduled_appointments = [
             appointment for appointment in self.appointments.values()
-            if appointment["org_id"] == org_id and appointment["status"] == "scheduled"
+            if appointment["org_id"] == org_id
+            and appointment["status"] == "scheduled"
+            and appointment["id"] != (existing_appointment or {}).get("id")
         ]
         if any(_as_utc_minute(appointment["scheduled_for"]) == normalized for appointment in scheduled_appointments):
             raise ValueError("That follow-up slot is already booked. Choose another time.")
@@ -2451,31 +2463,71 @@ class FakeRepo:
         follow_up["scheduled_for"] = normalized
         follow_up["status"] = "completed"
         follow_up["completed_at"] = _now()
-        appointment_id = str(uuid4())
-        appointment = {
-            "id": appointment_id,
-            "org_id": org_id,
-            "name": patient["name"],
-            "phone": patient["phone"],
-            "email": patient.get("email", ""),
-            "address": patient.get("address", ""),
-            "reason": f"Follow-up: {str(patient.get('reason') or '').strip() or 'Review'}",
-            "date_of_birth": patient.get("date_of_birth"),
-            "sex_at_birth": patient.get("sex_at_birth"),
-            "gender_identity": patient.get("gender_identity", ""),
-            "age": patient.get("age"),
-            "weight": patient.get("weight"),
-            "height": patient.get("height"),
-            "temperature": patient.get("temperature"),
-            "scheduled_for": normalized,
-            "status": "scheduled",
-            "checked_in_patient_id": None,
-            "checked_in_at": None,
-            "follow_up_id": follow_up_id,
-            "created_at": _now(),
-        }
-        self.appointments[appointment_id] = appointment
+        if existing_appointment:
+            appointment = existing_appointment
+            appointment.update(
+                {
+                    "scheduled_for": normalized,
+                    "status": "scheduled",
+                    "checked_in_patient_id": None,
+                    "checked_in_at": None,
+                }
+            )
+        else:
+            appointment_id = str(uuid4())
+            appointment = {
+                "id": appointment_id,
+                "org_id": org_id,
+                "name": patient["name"],
+                "phone": patient["phone"],
+                "email": patient.get("email", ""),
+                "address": patient.get("address", ""),
+                "reason": f"Follow-up: {str(patient.get('reason') or '').strip() or 'Review'}",
+                "date_of_birth": patient.get("date_of_birth"),
+                "sex_at_birth": patient.get("sex_at_birth"),
+                "gender_identity": patient.get("gender_identity", ""),
+                "age": patient.get("age"),
+                "weight": patient.get("weight"),
+                "height": patient.get("height"),
+                "temperature": patient.get("temperature"),
+                "scheduled_for": normalized,
+                "status": "scheduled",
+                "checked_in_patient_id": None,
+                "checked_in_at": None,
+                "follow_up_id": follow_up_id,
+                "created_at": _now(),
+            }
+            self.appointments[appointment_id] = appointment
         return follow_up, appointment
+
+    async def get_appointment_for_follow_up(self, org_id: str, follow_up_id: str) -> dict | None:
+        return next(
+            (
+                appointment
+                for appointment in self.appointments.values()
+                if appointment["org_id"] == org_id and appointment.get("follow_up_id") == follow_up_id
+            ),
+            None,
+        )
+
+    async def cancel_self_booked_follow_up_appointment(
+        self,
+        *,
+        org_id: str,
+        patient_id: str,
+        follow_up_id: str,
+    ) -> dict:
+        follow_up = self.follow_ups.get(follow_up_id)
+        appointment = await self.get_appointment_for_follow_up(org_id, follow_up_id)
+        if (
+            not follow_up
+            or follow_up["patient_id"] != patient_id
+            or not appointment
+            or appointment["status"] != "scheduled"
+        ):
+            raise ValueError("This appointment is not currently scheduled.")
+        appointment["status"] = "cancelled"
+        return appointment
 
     async def claim_due_follow_ups(
         self,
@@ -2695,19 +2747,59 @@ def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
     assert book_response.status_code == 204
 
     reused_response = test_client.get(f"/public/follow-up-booking?token={booking_token}")
-    assert reused_response.status_code == 400
+    assert reused_response.status_code == 200
+    booked_context = reused_response.json()
+    assert booked_context["appointment_status"] == "scheduled"
+    appointment_id = booked_context["appointment_id"]
+    assert datetime.fromisoformat(booked_context["appointment_scheduled_for"].replace("Z", "+00:00")) == second_slot
+
+    third_slot = second_slot + timedelta(days=1)
+    reschedule_response = test_client.post(
+        "/public/follow-up-booking",
+        json={"token": booking_token, "scheduled_for": third_slot.isoformat()},
+    )
+    assert reschedule_response.status_code == 204
+
+    rescheduled_context = test_client.get(f"/public/follow-up-booking?token={booking_token}")
+    assert rescheduled_context.status_code == 200
+    assert rescheduled_context.json()["appointment_id"] == appointment_id
+    assert datetime.fromisoformat(
+        rescheduled_context.json()["appointment_scheduled_for"].replace("Z", "+00:00")
+    ) == third_slot
+
+    cancel_response = test_client.post(
+        "/public/follow-up-booking/cancel",
+        json={"token": booking_token},
+    )
+    assert cancel_response.status_code == 204
+    cancelled_context = test_client.get(f"/public/follow-up-booking?token={booking_token}")
+    assert cancelled_context.status_code == 200
+    assert cancelled_context.json()["appointment_status"] == "cancelled"
+
+    rebook_response = test_client.post(
+        "/public/follow-up-booking",
+        json={"token": booking_token, "scheduled_for": second_slot.isoformat()},
+    )
+    assert rebook_response.status_code == 204
+    assert len(
+        [
+            appointment
+            for appointment in repo.appointments.values()
+            if appointment.get("follow_up_id") == follow_up["id"]
+        ]
+    ) == 1
 
     follow_ups_response = test_client.get(
-        f"/follow-ups?scheduled_date={datetime.fromisoformat(rescheduled_for).date().isoformat()}",
+        f"/follow-ups?scheduled_date={second_slot.date().isoformat()}",
         headers=auth_headers_for_token(token),
     )
     assert follow_ups_response.status_code == 200
     refreshed_follow_up = follow_ups_response.json()[0]
-    assert datetime.fromisoformat(refreshed_follow_up["scheduled_for"].replace("Z", "+00:00")) == datetime.fromisoformat(rescheduled_for)
+    assert datetime.fromisoformat(refreshed_follow_up["scheduled_for"].replace("Z", "+00:00")) == second_slot
     assert refreshed_follow_up["status"] == "completed"
 
     appointments_response = test_client.get(
-        f"/appointments?scheduled_date={datetime.fromisoformat(rescheduled_for).date().isoformat()}",
+        f"/appointments?scheduled_date={second_slot.date().isoformat()}",
         headers=auth_headers_for_token(token),
     )
     assert appointments_response.status_code == 200
@@ -2717,6 +2809,8 @@ def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
     appointment_events = [event for event in repo.audit_events.values() if event["entity_type"] == "appointment"]
     assert any(event["actor_user_id"] is None for event in appointment_events)
     assert any(event.get("metadata", {}).get("source") == "public_follow_up_booking" for event in appointment_events)
+    assert any(event["action"] == "appointment_rescheduled" for event in appointment_events)
+    assert any(event["action"] == "appointment_cancelled" for event in appointment_events)
 
 
 def test_follow_up_slot_normalizer_accepts_iso_strings() -> None:

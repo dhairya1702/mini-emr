@@ -210,3 +210,64 @@ class WhatsAppClient:
         messages = raw.get("messages") if isinstance(raw, dict) else None
         message_id = str((messages[0] or {}).get("id") or "") if isinstance(messages, list) and messages else ""
         return WhatsAppSendResult(message_id=message_id, raw=raw)
+
+    def send_follow_up_booking_template(
+        self,
+        *,
+        to: str,
+        template_name: str,
+        language_code: str,
+        patient_first_name: str,
+        clinic_name: str,
+        follow_up_reason: str,
+        booking_token: str,
+    ) -> WhatsAppSendResult:
+        if not self.access_token or not self.phone_number_id:
+            raise WhatsAppClientError("WhatsApp credentials are not configured.")
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": language_code},
+                "components": [
+                    {
+                        "type": "body",
+                        "parameters": [
+                            {"type": "text", "text": patient_first_name},
+                            {"type": "text", "text": clinic_name},
+                            {"type": "text", "text": follow_up_reason},
+                        ],
+                    },
+                    {
+                        "type": "button",
+                        "sub_type": "url",
+                        "index": "0",
+                        "parameters": [{"type": "text", "text": booking_token}],
+                    },
+                ],
+            },
+        }
+        url = f"https://graph.facebook.com/{self.graph_api_version}/{self.phone_number_id}/messages"
+        request = Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                raw = json.loads(response.read().decode("utf-8") or "{}")
+        except HTTPError as exc:
+            body_text = exc.read().decode("utf-8", errors="ignore")
+            raise WhatsAppClientError(f"WhatsApp template send failed: HTTP {exc.code} {body_text[:500]}") from exc
+        except (URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise WhatsAppClientError(f"WhatsApp template send failed: {exc}") from exc
+        messages = raw.get("messages") if isinstance(raw, dict) else None
+        message_id = str((messages[0] or {}).get("id") or "") if isinstance(messages, list) and messages else ""
+        return WhatsAppSendResult(message_id=message_id, raw=raw)

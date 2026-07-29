@@ -348,9 +348,16 @@ class FollowUpBookingContextOut(BaseModel):
     scheduled_for: datetime
     notes: str
     booking_token: str
+    appointment_id: UUID | None = None
+    appointment_status: str | None = None
+    appointment_scheduled_for: datetime | None = None
     suggested_slots: list[datetime] = Field(default_factory=list)
 
 
 class FollowUpBookingRequest(BaseModel):
     token: str = Field(min_length=20)
     scheduled_for: datetime
+
+
+class FollowUpBookingCancelRequest(BaseModel):
+    token: str = Field(min_length=20)

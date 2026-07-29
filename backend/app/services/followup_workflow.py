@@ -11,6 +11,7 @@ from app.schema_domains.patients import FollowUpCreate, FollowUpOut, FollowUpUpd
 from app.services.audit_service import record_follow_up_created, record_follow_up_updated
 from app.services.followup_booking_service import create_follow_up_booking_token, decode_follow_up_booking_token
 from app.services.email_service import EmailDeliveryError, send_clinic_email_message
+from app.services.whatsapp_followup_workflow import send_follow_up_booking_invitation
 
 FOLLOW_UP_SUGGESTION_DAYS = 7
 logger = logging.getLogger(__name__)
@@ -219,6 +220,41 @@ async def _record_immediate_reminder_failure(
         logger.exception("Failed to record immediate follow-up reminder delivery failure.")
 
 
+async def _record_booking_invitation_failure(
+    repo: AppRepository,
+    current_user: UserOut,
+    follow_up: dict,
+    exc: Exception,
+) -> None:
+    logger.warning(
+        "Follow-up WhatsApp invitation failed for org=%s follow_up=%s: %s",
+        current_user.org_id,
+        follow_up.get("id"),
+        exc,
+    )
+    create_platform_error = getattr(repo, "create_platform_error", None)
+    if not callable(create_platform_error):
+        return
+    try:
+        await create_platform_error(
+            org_id=str(current_user.org_id),
+            user_id=str(current_user.id),
+            identifier=current_user.identifier,
+            path="/follow-ups/whatsapp-invitation",
+            method="BACKGROUND",
+            status_code=None,
+            error_type=type(exc).__name__,
+            message=str(exc),
+            details="The one-time WhatsApp follow-up booking invitation failed after creation.",
+            context={
+                "follow_up_id": str(follow_up.get("id") or ""),
+                "patient_id": str(follow_up.get("patient_id") or ""),
+            },
+        )
+    except Exception:
+        logger.exception("Failed to record WhatsApp follow-up invitation failure.")
+
+
 async def send_due_follow_up_emails_workflow(
     repo: AppRepository,
     current_user: UserOut,
@@ -248,7 +284,7 @@ async def send_due_follow_up_emails_workflow(
 async def get_follow_up_booking_context_workflow(
     repo: AppRepository,
     token: str,
-) -> tuple[dict, dict, dict, str, list[datetime]]:
+) -> tuple[dict, dict, dict, dict | None, list[datetime]]:
     payload = decode_follow_up_booking_token(token)
     org_id = str(payload["org_id"])
     patient_id = str(payload["patient_id"])
@@ -257,12 +293,13 @@ async def get_follow_up_booking_context_workflow(
     follow_up = next((item for item in await repo.list_follow_ups_for_patient(org_id, patient_id) if str(item["id"]) == follow_up_id), None)
     if not follow_up:
         raise HTTPException(status_code=404, detail="Follow-up not found.")
-    if str(follow_up.get("status") or "") != "scheduled":
+    appointment = await repo.get_appointment_for_follow_up(org_id, follow_up_id)
+    if str(follow_up.get("status") or "") != "scheduled" and not appointment:
         raise HTTPException(status_code=400, detail="This follow-up is no longer available for booking.")
     patient = await repo.get_patient(org_id, patient_id)
     clinic_settings = await repo.get_clinic_settings(org_id)
     suggested_slots = await _suggest_follow_up_slots(repo, org_id, clinic_settings, earliest_at=_as_utc_minute(follow_up["scheduled_for"]))
-    return follow_up, patient, clinic_settings, token, suggested_slots
+    return follow_up, patient, clinic_settings, appointment, suggested_slots
 
 
 async def self_book_follow_up_workflow(
@@ -270,7 +307,7 @@ async def self_book_follow_up_workflow(
     token: str,
     scheduled_for: datetime,
 ) -> None:
-    follow_up, patient, clinic_settings, _token, _suggested_slots = await get_follow_up_booking_context_workflow(repo, token)
+    follow_up, patient, clinic_settings, existing_appointment, _suggested_slots = await get_follow_up_booking_context_workflow(repo, token)
     org_id = str(follow_up["org_id"])
     patient_id = str(follow_up["patient_id"])
     follow_up_id = str(follow_up["id"])
@@ -281,7 +318,9 @@ async def self_book_follow_up_workflow(
         raise HTTPException(status_code=400, detail="Follow-up time must be within clinic booking hours.")
     capacity = _appointments_per_hour(clinic_settings)
     timezone = str(clinic_settings.get("timezone") or "UTC")
-    _updated_follow_up, created = await repo.self_book_follow_up_atomic(
+    if existing_appointment and str(existing_appointment.get("status") or "") == "checked_in":
+        raise HTTPException(status_code=400, detail="This appointment has already been checked in.")
+    _updated_follow_up, appointment = await repo.self_book_follow_up_atomic(
         org_id=org_id,
         patient_id=patient_id,
         follow_up_id=follow_up_id,
@@ -290,17 +329,53 @@ async def self_book_follow_up_workflow(
         timezone=timezone,
     )
     actor_name = str(clinic_settings.get("doctor_name") or clinic_settings.get("clinic_name") or "Clinic Team").strip() or "Clinic Team"
+    was_rescheduled = bool(existing_appointment)
     await repo.create_audit_event(
         org_id=org_id,
         actor_user_id=None,
         actor_name=actor_name,
         entity_type="appointment",
-        entity_id=str(created["id"]),
-        action="appointment_created",
-        summary=f"Booked appointment for {created['name']} on {created['scheduled_for']}.",
+        entity_id=str(appointment["id"]),
+        action="appointment_rescheduled" if was_rescheduled else "appointment_created",
+        summary=(
+            f"Rescheduled appointment for {appointment['name']} to {appointment['scheduled_for']}."
+            if was_rescheduled
+            else f"Booked appointment for {appointment['name']} on {appointment['scheduled_for']}."
+        ),
         metadata={
-            "patient_name": created.get("name"),
-            "status": created.get("status"),
+            "patient_name": appointment.get("name"),
+            "status": appointment.get("status"),
+            "source": "public_follow_up_booking",
+        },
+    )
+
+
+async def cancel_self_booked_follow_up_workflow(
+    repo: AppRepository,
+    token: str,
+) -> None:
+    follow_up, _patient, clinic_settings, appointment, _suggested_slots = await get_follow_up_booking_context_workflow(repo, token)
+    if not appointment:
+        raise HTTPException(status_code=400, detail="There is no booked appointment to cancel.")
+    if str(appointment.get("status") or "") != "scheduled":
+        raise HTTPException(status_code=400, detail="This appointment is not currently scheduled.")
+    cancelled = await repo.cancel_self_booked_follow_up_appointment(
+        org_id=str(follow_up["org_id"]),
+        patient_id=str(follow_up["patient_id"]),
+        follow_up_id=str(follow_up["id"]),
+    )
+    actor_name = str(clinic_settings.get("doctor_name") or clinic_settings.get("clinic_name") or "Clinic Team").strip() or "Clinic Team"
+    await repo.create_audit_event(
+        org_id=str(follow_up["org_id"]),
+        actor_user_id=None,
+        actor_name=actor_name,
+        entity_type="appointment",
+        entity_id=str(cancelled["id"]),
+        action="appointment_cancelled",
+        summary=f"Cancelled appointment for {cancelled['name']} scheduled on {cancelled['scheduled_for']}.",
+        metadata={
+            "patient_name": cancelled.get("name"),
+            "status": cancelled.get("status"),
             "source": "public_follow_up_booking",
         },
     )
@@ -331,6 +406,16 @@ async def create_follow_up_workflow(
         patient_name,
         format_display_datetime(created["scheduled_for"], str(clinic_settings.get("timezone") or "UTC")),
     )
+    try:
+        await send_follow_up_booking_invitation(
+            repo,
+            org_id=str(current_user.org_id),
+            follow_up=created,
+            patient=patient,
+            clinic_settings=clinic_settings,
+        )
+    except Exception as exc:
+        await _record_booking_invitation_failure(repo, current_user, created, exc)
     lead_hours = max(
         1,
         min(int(getattr(get_settings(), "follow_up_reminder_lead_hours", 24)), 168),
