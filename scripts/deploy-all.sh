@@ -17,4 +17,8 @@ bash scripts/deploy-backend.sh
 export BACKEND_URL="${BACKEND_URL:-$(resolve_backend_url)}"
 bash scripts/deploy-web.sh
 
-echo "Production deploy complete. Backend and web traffic were promoted to their new revisions."
+if [[ "$PROMOTE" == "1" ]]; then
+  echo "Production deploy complete. Backend and web traffic were promoted to their new revisions."
+else
+  echo "Deploy complete. Backend and web revisions were prepared with zero traffic."
+fi

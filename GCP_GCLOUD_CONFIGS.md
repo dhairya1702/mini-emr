@@ -339,16 +339,15 @@ Do not replace that with plain comma syntax, or backend deploys will fail when m
 
 Cloud Build source upload currently works reliably when impersonation is temporarily disabled and commands run as `dhairya911@gmail.com` owner. The deploy-agent has Cloud Run, logs, SQL, Scheduler, Secret Manager, Artifact Registry, Cloud Build, Service Usage, and Storage Object roles, but source upload to the Cloud Build staging bucket may still fail under impersonation in this project.
 
-If that happens:
+For a full human-run production deployment, use:
 
 ```bash
-gcloud config unset auth/impersonate_service_account --quiet
-./scripts/deploy-all.sh
-gcloud config set auth/impersonate_service_account \
-  clinic-emr-deploy-agent@project-e8d0eb79-8682-4bd9-b31.iam.gserviceaccount.com
+./scripts/deploy-all-human.sh
 ```
 
-Always restore impersonation after deploy.
+The wrapper disables impersonation only in its own process, runs directly as
+`dhairya911@gmail.com`, deploys and promotes both services, and verifies the production
+backend and frontend URLs. The saved `clinic-emr` impersonation setting is unchanged.
 
 ## Safety Checklist
 

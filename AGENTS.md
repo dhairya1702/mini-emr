@@ -78,6 +78,15 @@ gcloud config configurations activate clinic-emr
 ./scripts/deploy-all.sh
 ```
 
+Human-run full production deploy (direct account authentication, promotes both services):
+
+```bash
+./scripts/deploy-all-human.sh
+```
+
+This command runs as `dhairya911@gmail.com` without impersonation for that process only.
+It does not change the saved impersonation setting in the `clinic-emr` gcloud configuration.
+
 Backend-only deploy:
 
 ```bash

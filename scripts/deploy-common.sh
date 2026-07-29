@@ -64,6 +64,7 @@ export WHATSAPP_DOCUMENT_TEMPLATE_NAME="${WHATSAPP_DOCUMENT_TEMPLATE_NAME:-}"
 export WHATSAPP_DOCUMENT_TEMPLATE_LANGUAGE="${WHATSAPP_DOCUMENT_TEMPLATE_LANGUAGE:-en}"
 export PROMOTE="${PROMOTE:-0}"
 export BREAK_GLASS_DEPLOY_TARGET="${BREAK_GLASS_DEPLOY_TARGET:-0}"
+export DEPLOY_AUTH_MODE="${DEPLOY_AUTH_MODE:-agent}"
 
 validate_expected_value() {
   local name="$1"
@@ -114,7 +115,20 @@ ensure_expected_gcloud_target() {
 
   ensure_expected_deploy_variables
 
-  local active_config active_account active_project active_region active_impersonation
+  local active_config active_account active_project active_region active_impersonation expected_impersonation
+  case "$DEPLOY_AUTH_MODE" in
+    agent)
+      expected_impersonation="$EXPECTED_IMPERSONATION"
+      ;;
+    human)
+      expected_impersonation=""
+      ;;
+    *)
+      echo "Refusing to deploy. DEPLOY_AUTH_MODE must be 'agent' or 'human', got '$DEPLOY_AUTH_MODE'." >&2
+      exit 1
+      ;;
+  esac
+
   active_config="$(gcloud config configurations list --filter='is_active=true' --format='value(name)' 2>/dev/null | tr -d '\r')"
   active_account="$(gcloud config get-value account 2>/dev/null | tr -d '\r')"
   active_project="$(gcloud config get-value project 2>/dev/null | tr -d '\r')"
@@ -125,7 +139,7 @@ ensure_expected_gcloud_target() {
   validate_expected_value "active gcloud account" "$active_account" "$EXPECTED_ACCOUNT"
   validate_expected_value "active gcloud project" "$active_project" "$EXPECTED_PROJECT_ID"
   validate_expected_value "active gcloud run/region" "$active_region" "$EXPECTED_REGION"
-  validate_expected_value "active gcloud auth/impersonate_service_account" "$active_impersonation" "$EXPECTED_IMPERSONATION"
+  validate_expected_value "active gcloud auth/impersonate_service_account" "$active_impersonation" "$expected_impersonation"
 }
 
 ensure_clean_release_tree() {
