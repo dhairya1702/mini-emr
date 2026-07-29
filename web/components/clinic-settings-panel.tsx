@@ -7,6 +7,7 @@ import { ExternalLink, FileText, RotateCcw, Trash2, Upload } from "lucide-react"
 
 import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS } from "@/lib/clinic-specialty";
+import { PasswordInput } from "@/components/password-input";
 import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
 import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload } from "@/lib/types";
 
@@ -25,6 +26,12 @@ type ClinicSettingsForm = {
   appointment_start_time: string;
   appointment_end_time: string;
   appointments_per_hour: string;
+  sender_name: string;
+  sender_email: string;
+  sender_email_app_password: string;
+  email_sender_mode: "clinicos" | "clinic";
+  clinic_email_configured: boolean;
+  clinicos_email_available: boolean;
   document_template_notes_enabled: boolean;
   document_template_letters_enabled: boolean;
   document_template_invoices_enabled: boolean;
@@ -177,6 +184,12 @@ function createForm(settings: ClinicSettings | null): ClinicSettingsForm {
     appointment_start_time: settings?.appointment_start_time ?? "09:00",
     appointment_end_time: settings?.appointment_end_time ?? "18:00",
     appointments_per_hour: String(settings?.appointments_per_hour ?? 4),
+    sender_name: settings?.sender_name ?? "",
+    sender_email: settings?.sender_email ?? "",
+    sender_email_app_password: "",
+    email_sender_mode: settings?.email_sender_mode ?? "clinicos",
+    clinic_email_configured: settings?.clinic_email_configured ?? false,
+    clinicos_email_available: settings?.clinicos_email_available ?? false,
     document_template_notes_enabled: settings?.document_template_notes_enabled ?? false,
     document_template_letters_enabled: settings?.document_template_letters_enabled ?? false,
     document_template_invoices_enabled: settings?.document_template_invoices_enabled ?? false,
@@ -425,6 +438,16 @@ export function ClinicSettingsPanel({
       setError("Appointments / hour must be at least 1.");
       return;
     }
+    if (form.email_sender_mode === "clinic") {
+      if (!form.sender_email.trim() || !form.sender_email.includes("@")) {
+        setError("Enter a valid clinic Gmail address.");
+        return;
+      }
+      if (!form.clinic_email_configured && !form.sender_email_app_password.trim()) {
+        setError("Enter the clinic Gmail app password.");
+        return;
+      }
+    }
 
     const templateMargins = {
       top: Number(form.document_template_margin_top),
@@ -441,7 +464,7 @@ export function ClinicSettingsPanel({
     setError("");
     setStatus("");
     try {
-      const saved = await onSave({
+      const payload: ClinicSettingsUpdatePayload = {
         clinic_name: form.clinic_name.trim(),
         clinic_address: form.clinic_address.trim(),
         clinic_phone: form.clinic_phone.trim(),
@@ -451,9 +474,12 @@ export function ClinicSettingsPanel({
         appointment_end_time: form.appointment_end_time,
         appointments_per_hour: appointmentsPerHour,
         doctor_name: settings.doctor_name,
-        sender_name: settings.sender_name,
-        sender_email: settings.sender_email,
-        email_configured: settings.email_configured,
+        sender_name: form.sender_name.trim(),
+        sender_email: form.sender_email.trim(),
+        email_sender_mode: form.email_sender_mode,
+        email_configured: form.email_sender_mode === "clinic"
+          ? form.clinic_email_configured || Boolean(form.sender_email_app_password.trim())
+          : form.clinicos_email_available,
         custom_header: settings.custom_header,
         custom_footer: settings.custom_footer,
         document_template_name: settings.document_template_name,
@@ -474,7 +500,11 @@ export function ClinicSettingsPanel({
         document_template_doctor_name_width: parseFinite(form.document_template_doctor_name_width, DEFAULT_DOCTOR_NAME_BOX.width),
         document_template_doctor_name_height: parseFinite(form.document_template_doctor_name_height, DEFAULT_DOCTOR_NAME_BOX.height),
         document_template_note_layout: previewBoxes,
-      });
+      };
+      if (form.email_sender_mode === "clinic" && form.sender_email_app_password.trim()) {
+        payload.sender_email_app_password = form.sender_email_app_password.trim();
+      }
+      const saved = await onSave(payload);
       if (saved) {
         onSaved?.(saved);
       }
@@ -699,6 +729,107 @@ export function ClinicSettingsPanel({
             />
           </label>
         </div>
+
+        <section className="mt-3 border-t border-[#dbe7ef] pt-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Email delivery</p>
+              <h2 className="mt-2 text-lg font-semibold text-slate-900">Patient email sender</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                Use the shared ClinicOS mailbox or connect this clinic&apos;s Gmail account.
+              </p>
+            </div>
+            <span className={`px-3 py-2 text-xs font-semibold ${
+              (form.email_sender_mode === "clinic"
+                ? form.clinic_email_configured
+                : form.clinicos_email_available)
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-amber-50 text-amber-700"
+            }`}>
+              {(form.email_sender_mode === "clinic"
+                ? form.clinic_email_configured
+                : form.clinicos_email_available)
+                ? "Ready"
+                : "Not available"}
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              disabled={!canEdit}
+              onClick={() => setForm((current) => ({ ...current, email_sender_mode: "clinicos" }))}
+              className={`border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                form.email_sender_mode === "clinicos"
+                  ? "border-[#2f8fd3] bg-[#eef7fd]"
+                  : "border-[#bfd7e8] bg-white"
+              }`}
+            >
+              <span className="block text-sm font-semibold text-slate-900">ClinicOS email</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-500">No clinic Gmail password required.</span>
+            </button>
+            <button
+              type="button"
+              disabled={!canEdit}
+              onClick={() => setForm((current) => ({ ...current, email_sender_mode: "clinic" }))}
+              className={`border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                form.email_sender_mode === "clinic"
+                  ? "border-[#2f8fd3] bg-[#eef7fd]"
+                  : "border-[#bfd7e8] bg-white"
+              }`}
+            >
+              <span className="block text-sm font-semibold text-slate-900">Clinic Gmail</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-500">Use the clinic&apos;s Gmail and app password.</span>
+            </button>
+          </div>
+
+          {form.email_sender_mode === "clinic" ? (
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <label className="grid gap-2">
+                <span className="text-sm font-medium text-slate-700">Sender name</span>
+                <input
+                  value={form.sender_name}
+                  disabled={!canEdit}
+                  onChange={(event) => setForm((current) => ({ ...current, sender_name: event.target.value }))}
+                  placeholder="Dr Sharma Clinic"
+                  className="h-11 border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8] disabled:text-slate-500"
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm font-medium text-slate-700">Sender Gmail</span>
+                <input
+                  type="email"
+                  value={form.sender_email}
+                  disabled={!canEdit}
+                  onChange={(event) => setForm((current) => ({ ...current, sender_email: event.target.value }))}
+                  placeholder="clinicname@gmail.com"
+                  className="h-11 border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8] disabled:text-slate-500"
+                />
+              </label>
+              <div className="md:col-span-2">
+                <PasswordInput
+                  label="Gmail app password"
+                  value={form.sender_email_app_password}
+                  disabled={!canEdit}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    sender_email_app_password: event.target.value,
+                  }))}
+                  placeholder={form.clinic_email_configured
+                    ? "Leave blank to keep the current app password"
+                    : "16-character Gmail app password"}
+                />
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  Gmail requires 2-Step Verification and an App Password. ClinicOS does not receive or route replies.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-4 text-xs leading-5 text-slate-500">
+              Patients will see the clinic name through the shared ClinicOS mailbox. This mailbox is not monitored.
+            </p>
+          )}
+        </section>
 
         <section className="mt-3 border-t border-[#dbe7ef] pt-6">
           <div className="flex flex-wrap items-start justify-between gap-4">

@@ -30,7 +30,6 @@ import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/setti
 import { SettingsDrawerAppointmentsPanel } from "@/components/settings-drawer-appointments-panel";
 import { SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-panel";
 import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/settings-drawer-inventory-panel";
-import { PasswordInput } from "@/components/password-input";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
 import { api, resolveApiAssetUrl } from "@/lib/api";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
@@ -48,7 +47,7 @@ function createId() {
 }
 
 export type SettingsTab = "settings" | "training" | "about" | "contact" | "billing" | "clinic" | "users" | "letter" | "catalog" | "appointments" | "audit" | "exports";
-export type ClinicSettingsSection = "specialty" | "hours" | "email" | "template";
+export type ClinicSettingsSection = "specialty" | "hours" | "template";
 type DrawerMenuItem =
   | { href: string; label: string; icon: typeof Settings2 }
   | { tab: SettingsTab; label: string; icon: typeof Settings2 };
@@ -636,7 +635,6 @@ export function SettingsDrawer({
   const [hasLoadedBillingPatients, setHasLoadedBillingPatients] = useState(false);
   const specialtySectionRef = useRef<HTMLDivElement | null>(null);
   const hoursSectionRef = useRef<HTMLDivElement | null>(null);
-  const emailSectionRef = useRef<HTMLDivElement | null>(null);
   const templateSectionRef = useRef<HTMLDivElement | null>(null);
 
   const serviceItems = useMemo(
@@ -923,7 +921,6 @@ export function SettingsDrawer({
     const sectionRef = {
       specialty: specialtySectionRef,
       hours: hoursSectionRef,
-      email: emailSectionRef,
       template: templateSectionRef,
     }[initialClinicSection];
 
@@ -1806,108 +1803,6 @@ export function SettingsDrawer({
                   Public follow-up booking uses these hours and hourly capacity limits.
                 </p>
               </div>
-            </div>
-          </section>
-
-          <section ref={emailSectionRef} className="rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="max-w-3xl">
-                <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Email Sending</p>
-                <h3 className="mt-2 text-xl font-semibold text-slate-900">Email sender</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Send through ClinicOS, or connect the clinic Gmail account that patients should see as the sender.
-                </p>
-              </div>
-              <div className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-4 py-2 text-sm font-medium text-[#2a6fa8]">
-                {form.email_configured ? "Ready" : "Not available"}
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setForm((current) => ({
-                    ...current,
-                    email_sender_mode: "clinicos",
-                    email_configured: current.clinicos_email_available,
-                  }))}
-                  className={`border p-4 text-left transition ${
-                    form.email_sender_mode === "clinicos"
-                      ? "border-[#2f8fd3] bg-[#eef7fd]"
-                      : "border-[#bfd7e8] bg-white"
-                  }`}
-                >
-                  <span className="block text-sm font-semibold text-slate-900">ClinicOS email</span>
-                  <span className="mt-1 block text-xs leading-5 text-slate-500">
-                    No clinic Gmail password required.
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setForm((current) => ({
-                    ...current,
-                    email_sender_mode: "clinic",
-                    email_configured: current.clinic_email_configured,
-                  }))}
-                  className={`border p-4 text-left transition ${
-                    form.email_sender_mode === "clinic"
-                      ? "border-[#2f8fd3] bg-[#eef7fd]"
-                      : "border-[#bfd7e8] bg-white"
-                  }`}
-                >
-                  <span className="block text-sm font-semibold text-slate-900">Clinic Gmail</span>
-                  <span className="mt-1 block text-xs leading-5 text-slate-500">
-                    Use the clinic&apos;s Gmail address and app password.
-                  </span>
-                </button>
-              </div>
-
-              {form.email_sender_mode === "clinic" ? (
-                <>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Sender Name</span>
-                <input
-                  value={form.sender_name}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, sender_name: event.target.value }))
-                  }
-                  placeholder="Dr Sharma Clinic"
-                  className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Sender Gmail</span>
-                <input
-                  type="email"
-                  value={form.sender_email}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, sender_email: event.target.value }))
-                  }
-                  placeholder="clinicname@gmail.com"
-                  className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
-                />
-              </label>
-
-              <PasswordInput
-                label="Gmail App Password"
-                value={form.sender_email_app_password}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, sender_email_app_password: event.target.value }))
-                }
-                placeholder={form.clinic_email_configured ? "Leave blank to keep current app password" : "16-character Gmail app password"}
-              />
-
-              <p className="text-xs leading-6 text-slate-500">
-                Turn on 2-Step Verification for the Gmail account, create an App Password in Google Account settings, and paste it here. Leave this field blank on future saves if the password has not changed.
-              </p>
-                </>
-              ) : (
-                <p className="text-xs leading-6 text-slate-500">
-                  Patients will see the clinic name through the shared ClinicOS Gmail. This mailbox is not monitored.
-                </p>
-              )}
             </div>
           </section>
 
