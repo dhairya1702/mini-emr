@@ -7,6 +7,7 @@ import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
 import { api } from "@/lib/api";
+import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { printBlob } from "@/lib/print";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
@@ -595,6 +596,13 @@ export default function BillingPage() {
       const invoice = await ensureSavedInvoice();
       const result = await handleSendInvoiceWhatsApp({ invoice_id: invoice.id, recipient_phone: selectedBillingPatient.phone });
       setBillingStatus(result.message);
+      trackWhatsAppDelivery(result.delivery, "Invoice", (message, delivery) => {
+        if (delivery.status === "failed") {
+          setBillingError(message);
+          return;
+        }
+        setBillingStatus(message);
+      });
       setSavedInvoice(result.invoice);
       setInvoices((current) => upsertInvoice(current, result.invoice));
       setIsInvoiceDirty(false);

@@ -13,6 +13,7 @@ import { LowVisionModal } from "@/components/optometry/low-vision-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia-management-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
 import { api } from "@/lib/api";
+import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import {
   assetDataUrl,
   isNoteAssetFile,
@@ -473,6 +474,7 @@ export default function MobileConsultationPage() {
         recipient_phone: phone,
       });
       setStatusMessage(result.message || "Note sent on WhatsApp.");
+      trackWhatsAppDelivery(result.delivery, "Consultation note", (message) => setStatusMessage(message));
       if (scope) {
         clearMobileConsultationDraft(scope);
       }

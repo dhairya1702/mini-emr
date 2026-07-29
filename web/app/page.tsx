@@ -25,6 +25,7 @@ import { PatientCard } from "@/components/patient-card";
 import { PatientColumn } from "@/components/patient-column";
 import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
 import { api } from "@/lib/api";
+import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import {
   canMovePatientStatus,
   createEmptyQueueOrder,
@@ -1280,6 +1281,13 @@ export default function HomePage() {
       const invoice = await ensureSavedInvoice();
       const result = await handleSendInvoiceWhatsApp({ invoice_id: invoice.id, recipient_phone: selectedBillingPatient.phone });
       setBillingStatus(result.message);
+      trackWhatsAppDelivery(result.delivery, "Invoice", (message, delivery) => {
+        if (delivery.status === "failed") {
+          setBillingError(message);
+          return;
+        }
+        setBillingStatus(message);
+      });
       setSavedInvoice(result.invoice);
       await completeBillingWorkflow(true);
     } catch (sendError) {

@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { printBlob } from "@/lib/print";
 import { hasUserSignature } from "@/lib/setup-checklist";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
+import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 
 const emptyLetterForm: LetterFormState = {
   to: "",
@@ -171,13 +172,14 @@ export default function GenerateLetterPage() {
     setLetterError("");
     setLetterStatus("");
     try {
-      const message = await handleSendLetterWhatsApp({
+      const result = await handleSendLetterWhatsApp({
         recipient_phone: letterForm.recipient_phone.trim(),
         recipient_name: letterForm.recipient_name.trim(),
         subject: letterForm.subject.trim(),
         content,
       });
-      setLetterStatus(message);
+      setLetterStatus(result.message);
+      trackWhatsAppDelivery(result.delivery, "Letter", (message) => setLetterStatus(message));
     } catch (sendError) {
       setLetterError(sendError instanceof Error ? sendError.message : "Failed to send letter on WhatsApp.");
     } finally {

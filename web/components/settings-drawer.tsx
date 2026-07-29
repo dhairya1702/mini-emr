@@ -33,6 +33,7 @@ import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/set
 import { PasswordInput } from "@/components/password-input";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
 import { api, resolveApiAssetUrl } from "@/lib/api";
+import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { printBlob } from "@/lib/print";
 import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
@@ -89,7 +90,7 @@ interface SettingsDrawerProps {
   onGenerateLetter: (payload: { to: string; subject: string; content: string }) => Promise<string>;
   onGenerateLetterPdf: (payload: { content: string }) => Promise<Blob>;
   onSendLetter: (payload: { recipient_email: string; subject: string; content: string }) => Promise<string>;
-  onSendLetterWhatsApp?: (payload: { recipient_phone: string; recipient_name: string; subject: string; content: string }) => Promise<string>;
+  onSendLetterWhatsApp?: (payload: { recipient_phone: string; recipient_name: string; subject: string; content: string }) => ReturnType<typeof api.sendLetterWhatsApp>;
   onCreateInvoice: (payload: {
     invoice_id?: string | null;
     patient_id: string;
@@ -1379,13 +1380,14 @@ export function SettingsDrawer({
     setLetterError("");
     setLetterStatus("");
     try {
-      const message = await onSendLetterWhatsApp({
+      const result = await onSendLetterWhatsApp({
         recipient_phone: letterForm.recipient_phone.trim(),
         recipient_name: letterForm.recipient_name.trim(),
         subject: letterForm.subject.trim(),
         content: letterForm.generated.trim(),
       });
-      setLetterStatus(message);
+      setLetterStatus(result.message);
+      trackWhatsAppDelivery(result.delivery, "Letter", (message) => setLetterStatus(message));
     } catch (sendError) {
       setLetterError(sendError instanceof Error ? sendError.message : "Failed to send letter on WhatsApp.");
     } finally {

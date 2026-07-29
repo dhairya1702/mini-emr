@@ -7,6 +7,7 @@ import { MobileAdminGate } from "@/components/mobile/mobile-admin-gate";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
 import { api } from "@/lib/api";
+import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { printBlob } from "@/lib/print";
 import type { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
@@ -416,6 +417,13 @@ function MobileBillingContent({
       const result = await api.sendInvoice({ invoice_id: invoice.id, recipient_email: recipientEmail.trim() });
       setSavedInvoice(result.invoice);
       setBillingStatus(result.message);
+      trackWhatsAppDelivery(result.delivery, "Invoice", (message, delivery) => {
+        if (delivery.status === "failed") {
+          setBillingError(message);
+          return;
+        }
+        setBillingStatus(message);
+      });
       setIsInvoiceDirty(false);
     } catch (error) {
       setBillingError(error instanceof Error ? error.message : "Failed to send invoice.");

@@ -7,6 +7,7 @@ import { MobileAdminGate } from "@/components/mobile/mobile-admin-gate";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { LetterFormState, SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-panel";
 import { api } from "@/lib/api";
+import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { printBlob } from "@/lib/print";
 import { hasUserSignature } from "@/lib/setup-checklist";
 
@@ -133,13 +134,20 @@ export default function MobileGenerateLetterPage() {
     setLetterError("");
     setLetterStatus("");
     try {
-      await api.sendLetterWhatsApp({
+      const result = await api.sendLetterWhatsApp({
         recipient_phone: letterForm.recipient_phone.trim(),
         recipient_name: letterForm.recipient_name.trim(),
         subject: letterForm.subject.trim(),
         content,
       });
-      setLetterStatus("Letter sent on WhatsApp.");
+      setLetterStatus(result.message);
+      trackWhatsAppDelivery(result.delivery, "Letter", (message, delivery) => {
+        if (delivery.status === "failed") {
+          setLetterError(message);
+          return;
+        }
+        setLetterStatus(message);
+      });
     } catch (sendError) {
       setLetterError(sendError instanceof Error ? sendError.message : "Failed to send letter on WhatsApp.");
     } finally {
