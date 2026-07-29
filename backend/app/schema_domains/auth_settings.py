@@ -20,6 +20,7 @@ DEFAULT_DOCUMENT_TEMPLATE_NOTE_LAYOUT: dict[str, dict[str, float]] = {
     "noteBody": {"x": 0.1, "y": 0.305, "width": 0.76, "height": 0.41},
 }
 WorkspaceMode = Literal["solo", "team"]
+EmailSenderMode = Literal["clinicos", "clinic"]
 
 
 class ClinicSettingsUpdate(BaseModel):
@@ -35,6 +36,7 @@ class ClinicSettingsUpdate(BaseModel):
     sender_name: str | None = Field(default=None, max_length=120)
     sender_email: str | None = Field(default=None, max_length=200)
     sender_email_app_password: str | None = Field(default=None, max_length=128)
+    email_sender_mode: EmailSenderMode | None = None
     email_configured: bool | None = None
     custom_header: str | None = Field(default=None, max_length=500)
     custom_footer: str | None = Field(default=None, max_length=500)
@@ -136,7 +138,10 @@ class ClinicSettingsOut(BaseModel):
     doctor_name: str = ""
     sender_name: str = ""
     sender_email: str = ""
+    email_sender_mode: EmailSenderMode = "clinicos"
     email_configured: bool = False
+    clinic_email_configured: bool = False
+    clinicos_email_available: bool = False
     custom_header: str = ""
     custom_footer: str = ""
     document_template_name: str | None = None

@@ -253,6 +253,7 @@ async def send_invoice_workflow(
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
     try:
         await send_clinic_email_message(
+            repo=repo,
             clinic_settings=clinic_settings,
             recipient=recipient_email,
             subject=f"{clinic_name} invoice for {patient_name}",

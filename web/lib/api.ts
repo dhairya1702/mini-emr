@@ -95,6 +95,8 @@ import {
   TbiEvaluationCreatePayload,
   TbiEvaluationRecord,
   PlatformError,
+  PlatformEmailSettings,
+  PlatformEmailSettingsUpdatePayload,
   ProgramEnrollment,
   ProgramEnrollmentSummary,
   ProgramReport,
@@ -499,6 +501,18 @@ export const api = {
   getSuperdashboardUsageByOrg: () =>
     request<SuperdashboardUsageByOrg>("/superdashboard/dashboard/usage-by-org"),
   getSuperdashboardOnboarding: () => request<SuperdashboardOnboarding>("/superdashboard/onboarding"),
+  getPlatformEmailSettings: () =>
+    request<PlatformEmailSettings>("/superdashboard/settings/email"),
+  testPlatformEmailSettings: (payload: { sender_email?: string; sender_email_app_password?: string }) =>
+    request<{ success: boolean; message: string }>("/superdashboard/settings/email/test", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updatePlatformEmailSettings: (payload: PlatformEmailSettingsUpdatePayload) =>
+    request<PlatformEmailSettings>("/superdashboard/settings/email", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   createSuperdashboardCustomer: (payload: CustomerOnboardingCreatePayload) =>
     request<CustomerOnboarding>("/superdashboard/onboarding/customers", {
       method: "POST",

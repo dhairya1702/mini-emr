@@ -147,6 +147,16 @@ class FakeRepo:
         self.api_request_metrics: list[dict] = []
         self.customer_onboarding: dict[str, dict] = {}
         self.rate_limits: dict[tuple[str, str], tuple[float, int]] = {}
+        self.platform_email_settings: dict = {
+            "sender_name": "ClinicOS",
+            "sender_email": "",
+            "sender_email_app_password": None,
+            "is_enabled": False,
+            "last_tested_at": None,
+            "last_test_succeeded": False,
+            "last_error": "",
+            "updated_at": _now(),
+        }
 
     async def consume_rate_limit(
         self,
@@ -957,6 +967,7 @@ class FakeRepo:
             "document_template_doctor_name_height": 0.04,
             "document_template_note_layout": {},
             "sender_email_app_password": None,
+            "email_sender_mode": "clinicos",
             "clinic_specialty": None,
             "timezone": "UTC",
             "onboarding_required": False,
@@ -970,6 +981,33 @@ class FakeRepo:
 
     async def get_clinic_settings(self, org_id: str) -> dict:
         return self.clinic_settings.get(org_id, {})
+
+    async def get_platform_email_settings(self) -> dict:
+        return dict(self.platform_email_settings)
+
+    async def upsert_platform_email_settings(
+        self,
+        *,
+        sender_name: str,
+        sender_email: str,
+        sender_email_app_password: str,
+        is_enabled: bool,
+        last_test_succeeded: bool,
+        last_error: str,
+        updated_by: str,
+    ) -> dict:
+        self.platform_email_settings = {
+            "sender_name": sender_name,
+            "sender_email": sender_email,
+            "sender_email_app_password": sender_email_app_password,
+            "is_enabled": is_enabled,
+            "last_tested_at": _now(),
+            "last_test_succeeded": last_test_succeeded,
+            "last_error": last_error,
+            "updated_by": updated_by,
+            "updated_at": _now(),
+        }
+        return dict(self.platform_email_settings)
 
     async def upsert_clinic_settings(self, org_id: str, payload) -> dict:
         current = self.clinic_settings.get(org_id)
@@ -992,6 +1030,7 @@ class FakeRepo:
                     "document_template_doctor_name_height": 0.04,
                     "document_template_note_layout": {},
                     "sender_email_app_password": None,
+                    "email_sender_mode": "clinicos",
                     "clinic_specialty": None,
                     "timezone": "UTC",
                     "onboarding_required": False,

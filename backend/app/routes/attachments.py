@@ -279,6 +279,7 @@ async def send_patient_attachment(
             f"Sent from {clinic_name}."
         )
         await send_clinic_email_message(
+            repo=repo,
             clinic_settings=clinic_settings,
             recipient=recipient_email,
             subject=payload.subject.strip(),

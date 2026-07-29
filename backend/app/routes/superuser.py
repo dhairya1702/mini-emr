@@ -18,6 +18,10 @@ from app.schema_domains.admin import (
     OrganizationWorkspaceModeUpdate,
     OrganizationUsersAllowedOut,
     OrganizationUsersAllowedUpdate,
+    PlatformEmailSettingsOut,
+    PlatformEmailSettingsTest,
+    PlatformEmailSettingsUpdate,
+    PlatformEmailTestOut,
     PlatformErrorOut,
     SuperdashboardDashboardOut,
     SuperdashboardMetricPointOut,
@@ -33,9 +37,94 @@ from app.schema_domains.admin import (
 )
 from app.schema_domains.auth_settings import ClinicSettingsOut, ClinicSettingsUpdate, UserOut, UserRoleUpdate
 from app.schema_domains.patients import AuditEventOut
+from app.email_validation import normalize_single_email
+from app.services.email_service import EmailDeliveryError, test_email_credentials
 
 
 router = APIRouter()
+
+
+def _serialize_platform_email(settings: dict) -> PlatformEmailSettingsOut:
+    return PlatformEmailSettingsOut(
+        sender_name=str(settings.get("sender_name") or "ClinicOS"),
+        sender_email=str(settings.get("sender_email") or ""),
+        is_enabled=bool(settings.get("is_enabled")),
+        is_configured=bool(
+            str(settings.get("sender_email") or "").strip()
+            and str(settings.get("sender_email_app_password") or "").strip()
+        ),
+        last_tested_at=settings.get("last_tested_at"),
+        last_test_succeeded=bool(settings.get("last_test_succeeded")),
+        last_error=str(settings.get("last_error") or ""),
+        updated_at=settings.get("updated_at"),
+    )
+
+
+@router.get("/superdashboard/settings/email", response_model=PlatformEmailSettingsOut)
+async def get_platform_email_settings(
+    current_user: UserOut = Depends(require_super_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> PlatformEmailSettingsOut:
+    del current_user
+    return _serialize_platform_email(await repo.get_platform_email_settings())
+
+
+@router.post("/superdashboard/settings/email/test", response_model=PlatformEmailTestOut)
+async def test_platform_email_settings(
+    payload: PlatformEmailSettingsTest,
+    current_user: UserOut = Depends(require_super_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> PlatformEmailTestOut:
+    del current_user
+    current = await repo.get_platform_email_settings()
+    try:
+        sender_email = normalize_single_email(payload.sender_email or str(current.get("sender_email") or ""))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Enter a valid Gmail address.") from exc
+    app_password = str(payload.sender_email_app_password or current.get("sender_email_app_password") or "").strip()
+    if not app_password:
+        raise HTTPException(status_code=400, detail="Enter a Gmail app password.")
+    try:
+        await test_email_credentials(sender_email=sender_email, app_password=app_password)
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PlatformEmailTestOut(success=True, message="Gmail authentication succeeded.")
+
+
+@router.put("/superdashboard/settings/email", response_model=PlatformEmailSettingsOut)
+async def update_platform_email_settings(
+    payload: PlatformEmailSettingsUpdate,
+    current_user: UserOut = Depends(require_super_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> PlatformEmailSettingsOut:
+    current = await repo.get_platform_email_settings()
+    try:
+        sender_email = normalize_single_email(payload.sender_email)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Enter a valid Gmail address.") from exc
+    app_password = str(payload.sender_email_app_password or current.get("sender_email_app_password") or "").strip()
+    if not app_password:
+        raise HTTPException(status_code=400, detail="Enter a Gmail app password.")
+
+    test_succeeded = False
+    last_error = ""
+    if payload.is_enabled:
+        try:
+            await test_email_credentials(sender_email=sender_email, app_password=app_password)
+            test_succeeded = True
+        except EmailDeliveryError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    saved = await repo.upsert_platform_email_settings(
+        sender_name=payload.sender_name.strip(),
+        sender_email=sender_email,
+        sender_email_app_password=app_password,
+        is_enabled=payload.is_enabled,
+        last_test_succeeded=test_succeeded,
+        last_error=last_error,
+        updated_by=str(current_user.id),
+    )
+    return _serialize_platform_email(saved)
 
 
 def _parse_datetime(value: object) -> datetime | None:

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, Copy, ExternalLink, LogOut, RefreshCw, Zap } from "lucide-react";
+import { AlertTriangle, ArrowRight, Copy, ExternalLink, LogOut, Mail, RefreshCw, Settings2, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
@@ -10,6 +10,7 @@ import { CLINIC_SPECIALTY_OPTIONS } from "@/lib/clinic-specialty";
 import {
   CustomerOnboarding,
   PlatformError,
+  PlatformEmailSettings,
   SuperdashboardDashboard,
   SuperdashboardOnboarding,
   SuperdashboardTrends,
@@ -18,7 +19,7 @@ import {
   WorkspaceMode,
 } from "@/lib/types";
 
-type Tab = "dashboard" | "onboard" | "errors";
+type Tab = "dashboard" | "onboard" | "errors" | "settings";
 
 const emptyDashboard: SuperdashboardDashboard = {
   org_count: 0,
@@ -164,11 +165,11 @@ function Header({ tab, setTab, onRefresh }: { tab: Tab; setTab: (tab: Tab) => vo
           <p className="text-xl font-black tracking-[-0.04em] text-slate-950">ClinicOS Ops</p>
         </div>
         <div className="absolute left-1/2 flex -translate-x-1/2 rounded-[22px] border border-slate-200 bg-slate-100 p-2 shadow-sm">
-          {(["dashboard", "onboard", "errors"] as Tab[]).map((item) => (
+          {(["dashboard", "onboard", "errors", "settings"] as Tab[]).map((item) => (
             <button
               key={item}
               onClick={() => setTab(item)}
-              className={`min-w-40 rounded-2xl px-7 py-3 text-xl font-black capitalize transition ${
+              className={`min-w-32 rounded-2xl px-5 py-3 text-lg font-black capitalize transition ${
                 tab === item ? "bg-white text-slate-950 shadow-sm ring-4 ring-blue-600/90" : "text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -209,6 +210,13 @@ export default function SuperdashboardPage() {
   const [orgs, setOrgs] = useState<SuperuserOrgSummary[]>([]);
   const [onboarding, setOnboarding] = useState(emptyOnboarding);
   const [errors, setErrors] = useState<PlatformError[]>([]);
+  const [platformEmail, setPlatformEmail] = useState<PlatformEmailSettings | null>(null);
+  const [platformSenderName, setPlatformSenderName] = useState("ClinicOS");
+  const [platformSenderEmail, setPlatformSenderEmail] = useState("");
+  const [platformAppPassword, setPlatformAppPassword] = useState("");
+  const [platformEmailEnabled, setPlatformEmailEnabled] = useState(false);
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
   const [clinicName, setClinicName] = useState("");
   const [phone, setPhone] = useState("");
   const [usersAllowed, setUsersAllowed] = useState("2");
@@ -229,13 +237,14 @@ export default function SuperdashboardPage() {
     setIsLoading(true);
     setMessage("");
     try {
-      const [dashboardData, trendsData, usageData, orgData, onboardingData, errorData] = await Promise.all([
+      const [dashboardData, trendsData, usageData, orgData, onboardingData, errorData, emailData] = await Promise.all([
         api.getSuperdashboardDashboard(),
         api.getSuperdashboardTrends(),
         api.getSuperdashboardUsageByOrg(),
         api.listSuperdashboardOrgs(),
         api.getSuperdashboardOnboarding(),
         api.listPlatformErrors(100),
+        api.getPlatformEmailSettings(),
       ]);
       setDashboard(dashboardData);
       setTrends(trendsData);
@@ -243,6 +252,10 @@ export default function SuperdashboardPage() {
       setOrgs(orgData);
       setOnboarding(onboardingData);
       setErrors(errorData);
+      setPlatformEmail(emailData);
+      setPlatformSenderName(emailData.sender_name);
+      setPlatformSenderEmail(emailData.sender_email);
+      setPlatformEmailEnabled(emailData.is_enabled);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to load Superdashboard.");
     } finally {
@@ -375,6 +388,43 @@ export default function SuperdashboardPage() {
   function copyText(value: string) {
     navigator.clipboard?.writeText(value);
     setMessage(`Copied ${value}`);
+  }
+
+  async function testPlatformEmail() {
+    setIsTestingEmail(true);
+    setMessage("");
+    try {
+      const result = await api.testPlatformEmailSettings({
+        sender_email: platformSenderEmail.trim(),
+        sender_email_app_password: platformAppPassword.trim() || undefined,
+      });
+      setMessage(result.message);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Gmail authentication failed.");
+    } finally {
+      setIsTestingEmail(false);
+    }
+  }
+
+  async function savePlatformEmail(event: FormEvent) {
+    event.preventDefault();
+    setIsSavingEmail(true);
+    setMessage("");
+    try {
+      const saved = await api.updatePlatformEmailSettings({
+        sender_name: platformSenderName.trim(),
+        sender_email: platformSenderEmail.trim(),
+        sender_email_app_password: platformAppPassword.trim() || undefined,
+        is_enabled: platformEmailEnabled,
+      });
+      setPlatformEmail(saved);
+      setPlatformAppPassword("");
+      setMessage(saved.is_enabled ? "ClinicOS email delivery is enabled." : "ClinicOS email settings saved.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to save email settings.");
+    } finally {
+      setIsSavingEmail(false);
+    }
   }
 
   return (
@@ -682,6 +732,100 @@ export default function SuperdashboardPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        ) : null}
+
+        {tab === "settings" ? (
+          <div className="mx-auto max-w-4xl">
+            <div className="mb-7 flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center border border-blue-100 bg-blue-50 text-blue-700">
+                <Settings2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-black text-slate-950">Platform settings</h1>
+                <p className="mt-1 text-sm font-semibold text-slate-500">Shared services used across clinics.</p>
+              </div>
+            </div>
+            <form onSubmit={savePlatformEmail} className="border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-start justify-between gap-5 border-b border-slate-200 px-7 py-6">
+                <div className="flex gap-4">
+                  <div className="flex h-11 w-11 items-center justify-center bg-blue-50 text-blue-700">
+                    <Mail className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black">Email delivery</h2>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">
+                      Global Gmail used by clinics that select ClinicOS email.
+                    </p>
+                  </div>
+                </div>
+                <span className={`px-3 py-1.5 text-xs font-black ${
+                  platformEmail?.is_enabled ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
+                }`}>
+                  {platformEmail?.is_enabled ? "Enabled" : "Disabled"}
+                </span>
+              </div>
+              <div className="grid gap-5 px-7 py-7 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-black text-slate-700">Sender name</span>
+                  <input
+                    value={platformSenderName}
+                    onChange={(event) => setPlatformSenderName(event.target.value)}
+                    required
+                    className="h-12 w-full border border-slate-200 bg-slate-50 px-4 font-semibold outline-none focus:border-blue-500"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-black text-slate-700">Gmail address</span>
+                  <input
+                    type="email"
+                    value={platformSenderEmail}
+                    onChange={(event) => setPlatformSenderEmail(event.target.value)}
+                    required
+                    placeholder="clinicos.sender@gmail.com"
+                    className="h-12 w-full border border-slate-200 bg-slate-50 px-4 font-semibold outline-none focus:border-blue-500"
+                  />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className="mb-2 block text-sm font-black text-slate-700">Gmail app password</span>
+                  <input
+                    type="password"
+                    value={platformAppPassword}
+                    onChange={(event) => setPlatformAppPassword(event.target.value)}
+                    placeholder={platformEmail?.is_configured ? "Leave blank to keep the current password" : "Enter the 16-character app password"}
+                    className="h-12 w-full border border-slate-200 bg-slate-50 px-4 font-semibold outline-none focus:border-blue-500"
+                  />
+                </label>
+                <label className="flex items-center gap-3 sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={platformEmailEnabled}
+                    onChange={(event) => setPlatformEmailEnabled(event.target.checked)}
+                    className="h-5 w-5"
+                  />
+                  <span className="text-sm font-black text-slate-700">Enable as the shared ClinicOS sender</span>
+                </label>
+                <p className="text-sm font-semibold leading-6 text-slate-500 sm:col-span-2">
+                  This mailbox is treated as outbound only. ClinicOS does not receive or route replies.
+                </p>
+              </div>
+              <div className="flex justify-end gap-3 border-t border-slate-200 px-7 py-5">
+                <button
+                  type="button"
+                  onClick={testPlatformEmail}
+                  disabled={isTestingEmail || !platformSenderEmail.trim()}
+                  className="h-11 border border-slate-300 bg-white px-5 font-black text-slate-700 disabled:opacity-50"
+                >
+                  {isTestingEmail ? "Testing..." : "Test connection"}
+                </button>
+                <button
+                  disabled={isSavingEmail}
+                  className="h-11 bg-blue-600 px-6 font-black text-white disabled:opacity-50"
+                >
+                  {isSavingEmail ? "Saving..." : "Save changes"}
+                </button>
+              </div>
+            </form>
           </div>
         ) : null}
       </section>

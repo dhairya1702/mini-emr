@@ -37,6 +37,9 @@ export type MockClinicSettings = {
   sender_name: string;
   sender_email: string;
   email_configured: boolean;
+  email_sender_mode: "clinicos" | "clinic";
+  clinic_email_configured: boolean;
+  clinicos_email_available: boolean;
   custom_header: string;
   custom_footer: string;
   document_template_name: string | null;
@@ -165,6 +168,9 @@ export function buildClinicSettings(overrides: Partial<MockClinicSettings> = {})
     sender_name: "Bluebird Clinic",
     sender_email: "clinic@example.com",
     email_configured: true,
+    email_sender_mode: "clinic",
+    clinic_email_configured: true,
+    clinicos_email_available: true,
     custom_header: "",
     custom_footer: "",
     document_template_name: null,

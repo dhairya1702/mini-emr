@@ -48,6 +48,7 @@ function settingsPayload(settings: ClinicSettings, patch: Partial<ClinicSettings
     doctor_name: settings.doctor_name,
     sender_name: settings.sender_name,
     sender_email: settings.sender_email,
+    email_sender_mode: settings.email_sender_mode,
     email_configured: settings.email_configured,
     custom_header: settings.custom_header,
     custom_footer: settings.custom_footer,
@@ -109,7 +110,12 @@ export default function OnboardingSetupPage() {
     perHour: "4",
   });
   const timeZoneOptions = listSupportedTimeZones(hours.timezone);
-  const [email, setEmail] = useState({ sender_name: "", sender_email: "", app_password: "" });
+  const [email, setEmail] = useState({
+    mode: "clinicos" as "clinicos" | "clinic",
+    sender_name: "",
+    sender_email: "",
+    app_password: "",
+  });
   const [staff, setStaff] = useState({ identifier: "", password: "" });
   const [createdStaffUsers, setCreatedStaffUsers] = useState<AuthUser[]>([]);
   const [patient, setPatient] = useState({ name: "", phone: "", reason: "" });
@@ -144,6 +150,7 @@ export default function OnboardingSetupPage() {
       setCompletedSteps((current) => new Set(current).add("hours"));
     }
     setEmail({
+      mode: clinicSettings.email_sender_mode || "clinicos",
       sender_name: clinicSettings.sender_name || "",
       sender_email: clinicSettings.sender_email || "",
       app_password: "",
@@ -276,11 +283,11 @@ export default function OnboardingSetupPage() {
       setError("Clinic settings are still loading.");
       return;
     }
-    if (!email.sender_email.trim() || !email.sender_email.includes("@")) {
+    if (email.mode === "clinic" && (!email.sender_email.trim() || !email.sender_email.includes("@"))) {
       setError("Enter a valid sender email, or skip this step.");
       return;
     }
-    if (!clinicSettings.email_configured && !email.app_password.trim()) {
+    if (email.mode === "clinic" && !clinicSettings.clinic_email_configured && !email.app_password.trim()) {
       setError("Enter a Gmail app password, or skip this step.");
       return;
     }
@@ -288,10 +295,13 @@ export default function OnboardingSetupPage() {
     setError("");
     try {
       const saved = await api.updateClinicSettings(settingsPayload(clinicSettings, {
+        email_sender_mode: email.mode,
         sender_name: email.sender_name.trim(),
         sender_email: email.sender_email.trim(),
-        sender_email_app_password: email.app_password.trim() || undefined,
-        email_configured: true,
+        sender_email_app_password: email.mode === "clinic" ? email.app_password.trim() || undefined : undefined,
+        email_configured: email.mode === "clinic"
+          ? clinicSettings.clinic_email_configured || Boolean(email.app_password.trim())
+          : clinicSettings.clinicos_email_available,
       }));
       applyClinicSettings(saved);
       markComplete("email");
@@ -541,6 +551,28 @@ export default function OnboardingSetupPage() {
 
           {activeStep.key === "email" ? (
             <form className="space-y-4" onSubmit={saveEmail}>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEmail((current) => ({ ...current, mode: "clinicos" }))}
+                  className={`border px-4 py-3 text-left text-sm font-medium ${
+                    email.mode === "clinicos" ? "border-[#2f8fd3] bg-[#eef7fd]" : "border-[#bfd7e8]"
+                  }`}
+                >
+                  ClinicOS email
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEmail((current) => ({ ...current, mode: "clinic" }))}
+                  className={`border px-4 py-3 text-left text-sm font-medium ${
+                    email.mode === "clinic" ? "border-[#2f8fd3] bg-[#eef7fd]" : "border-[#bfd7e8]"
+                  }`}
+                >
+                  Clinic Gmail
+                </button>
+              </div>
+              {email.mode === "clinic" ? (
+                <>
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-slate-700">Sender name</span>
                 <input value={email.sender_name} onChange={(event) => setEmail((current) => ({ ...current, sender_name: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none" />
@@ -549,7 +581,13 @@ export default function OnboardingSetupPage() {
                 <span className="mb-2 block text-sm font-medium text-slate-700">Sender Gmail</span>
                 <input type="email" value={email.sender_email} onChange={(event) => setEmail((current) => ({ ...current, sender_email: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none" />
               </label>
-              <PasswordInput label="Gmail app password" value={email.app_password} onChange={(event) => setEmail((current) => ({ ...current, app_password: event.target.value }))} placeholder={clinicSettings?.email_configured ? "Leave blank to keep current app password" : "16-character Gmail app password"} />
+              <PasswordInput label="Gmail app password" value={email.app_password} onChange={(event) => setEmail((current) => ({ ...current, app_password: event.target.value }))} placeholder={clinicSettings?.clinic_email_configured ? "Leave blank to keep current app password" : "16-character Gmail app password"} />
+                </>
+              ) : (
+                <p className="text-sm leading-6 text-slate-600">
+                  ClinicOS will send patient documents through the shared outbound mailbox.
+                </p>
+              )}
               <OptionalActions isSaving={isSaving} onBack={() => setActiveIndex((current) => current - 1)} onSkip={skipOptional} submitLabel="Save and continue" />
             </form>
           ) : null}

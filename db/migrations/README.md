@@ -37,3 +37,4 @@ psql "$DATABASE_URL" -f db/migrations/<file>.sql
 | 2026-07-22 | `2026-07-22_whatsapp_owner_assistant.sql` | Adds WhatsApp owner bindings and message-event audit records for the owner assistant pilot. |
 | 2026-07-29 | `2026-07-29_myopia_care_program.sql` | Adds catalog-backed Myopia Care programs, patient enrollments, and program events. |
 | 2026-07-29 | `2026-07-29_whatsapp_document_delivery.sql` | Adds document linkage, idempotency, and provider delivery states to WhatsApp message events. |
+| 2026-07-29 | `2026-07-29_platform_email_sender.sql` | Adds the encrypted ClinicOS Gmail sender and per-clinic sender selection. |

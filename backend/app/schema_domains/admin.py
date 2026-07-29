@@ -168,5 +168,33 @@ class OrganizationUsersAllowedOut(BaseModel):
     users_allowed: int
 
 
+class PlatformEmailSettingsUpdate(BaseModel):
+    sender_name: str = Field(min_length=1, max_length=120)
+    sender_email: str = Field(min_length=5, max_length=200)
+    sender_email_app_password: str | None = Field(default=None, max_length=128)
+    is_enabled: bool = False
+
+
+class PlatformEmailSettingsTest(BaseModel):
+    sender_email: str | None = Field(default=None, max_length=200)
+    sender_email_app_password: str | None = Field(default=None, max_length=128)
+
+
+class PlatformEmailSettingsOut(BaseModel):
+    sender_name: str = "ClinicOS"
+    sender_email: str = ""
+    is_enabled: bool = False
+    is_configured: bool = False
+    last_tested_at: datetime | None = None
+    last_test_succeeded: bool = False
+    last_error: str = ""
+    updated_at: datetime | None = None
+
+
+class PlatformEmailTestOut(BaseModel):
+    success: bool
+    message: str
+
+
 class ExportRow(BaseModel):
     row: dict[str, Any]

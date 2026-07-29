@@ -114,6 +114,7 @@ create table if not exists public.clinic_settings (
   sender_name text not null default '',
   sender_email text not null default '',
   sender_email_app_password text,
+  email_sender_mode text not null default 'clinicos' check (email_sender_mode in ('clinicos', 'clinic')),
   custom_header text not null default '',
   custom_footer text not null default '',
   document_template_name text,
@@ -140,6 +141,19 @@ create table if not exists public.clinic_settings (
   onboarding_completed_at timestamptz,
   users_allowed integer not null default 2 check (users_allowed > 0),
   workspace_mode text not null default 'solo' check (workspace_mode in ('solo', 'team')),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.platform_email_settings (
+  id text primary key check (id = 'default'),
+  sender_name text not null default 'ClinicOS',
+  sender_email text not null default '',
+  sender_email_app_password text,
+  is_enabled boolean not null default false,
+  last_tested_at timestamptz,
+  last_test_succeeded boolean not null default false,
+  last_error text not null default '',
+  updated_by uuid,
   updated_at timestamptz not null default now()
 );
 

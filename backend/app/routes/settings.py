@@ -30,17 +30,27 @@ ALLOWED_TEMPLATE_EXTENSIONS = {
 MAX_TEMPLATE_BYTES = 10 * 1024 * 1024
 
 
-def _serialize_clinic_settings(settings_row: dict) -> ClinicSettingsOut:
+def _serialize_clinic_settings(settings_row: dict, platform_email_settings: dict | None = None) -> ClinicSettingsOut:
     nil_uuid = UUID("00000000-0000-0000-0000-000000000000")
     defaults = ClinicSettingsOut.model_construct(id=nil_uuid, org_id=nil_uuid).model_dump()
     row = {**defaults, **{key: value for key, value in dict(settings_row).items() if value is not None}}
     has_template = bool(row.get("document_template_name") and settings_row.get("document_template_data_base64"))
     row["document_template_url"] = "/settings/clinic/document-template/file" if has_template else None
     row["doctor_name"] = row.get("doctor_name") or ""
-    row["email_configured"] = bool(
+    clinic_email_configured = bool(
         str(settings_row.get("sender_email") or "").strip()
         and str(settings_row.get("sender_email_app_password") or "").strip()
     )
+    platform_email_settings = platform_email_settings or {}
+    clinicos_email_available = bool(
+        platform_email_settings.get("is_enabled")
+        and str(platform_email_settings.get("sender_email") or "").strip()
+        and str(platform_email_settings.get("sender_email_app_password") or "").strip()
+    )
+    mode = str(row.get("email_sender_mode") or "clinicos")
+    row["clinic_email_configured"] = clinic_email_configured
+    row["clinicos_email_available"] = clinicos_email_available
+    row["email_configured"] = clinic_email_configured if mode == "clinic" else clinicos_email_available
     row.pop("sender_email_app_password", None)
     return ClinicSettingsOut(**row)
 
@@ -80,7 +90,7 @@ async def get_clinic_settings(
                 ClinicSettingsUpdate(),
             )
         settings_row["doctor_name"] = current_user.name or str(settings_row.get("doctor_name") or "")
-        return _serialize_clinic_settings(settings_row)
+        return _serialize_clinic_settings(settings_row, await repo.get_platform_email_settings())
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="get_clinic_settings") from exc
 
@@ -94,12 +104,17 @@ async def update_clinic_settings(
     if {"workspace_mode", "users_allowed"} & payload.model_fields_set:
         raise HTTPException(status_code=403, detail="Workspace mode and user limits are managed by ClinicOS Ops.")
     try:
+        if (
+            "email_sender_mode" not in payload.model_fields_set
+            and {"sender_email", "sender_email_app_password"} & payload.model_fields_set
+        ):
+            payload = payload.model_copy(update={"email_sender_mode": "clinic"})
         saved = await repo.upsert_clinic_settings(
             str(current_user.org_id),
             payload.model_copy(update={"doctor_name": None}),
         )
         saved["doctor_name"] = current_user.name or str(saved.get("doctor_name") or "")
-        return _serialize_clinic_settings(saved)
+        return _serialize_clinic_settings(saved, await repo.get_platform_email_settings())
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="update_clinic_settings") from exc
 
@@ -121,7 +136,7 @@ async def complete_clinic_onboarding(
             ),
         )
         saved["doctor_name"] = current_user.name or str(saved.get("doctor_name") or "")
-        return _serialize_clinic_settings(saved)
+        return _serialize_clinic_settings(saved, await repo.get_platform_email_settings())
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover
@@ -154,7 +169,7 @@ async def upload_clinic_template(
             data_base64=b64encode(raw_bytes).decode("ascii"),
         )
         saved["doctor_name"] = current_user.name or str(saved.get("doctor_name") or "")
-        return _serialize_clinic_settings(saved)
+        return _serialize_clinic_settings(saved, await repo.get_platform_email_settings())
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="upload_clinic_template") from exc
 
@@ -220,6 +235,6 @@ async def delete_clinic_template(
     try:
         saved = await repo.clear_clinic_document_template(str(current_user.org_id))
         saved["doctor_name"] = current_user.name or str(saved.get("doctor_name") or "")
-        return _serialize_clinic_settings(saved)
+        return _serialize_clinic_settings(saved, await repo.get_platform_email_settings())
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="delete_clinic_template") from exc

@@ -5,6 +5,7 @@ export type QueuePriority = "normal" | "urgent";
 export type SexAtBirth = "female" | "male" | "intersex" | "prefer_not_to_say" | "unknown";
 export type VisitKind = "new" | "follow_up";
 export type WorkspaceMode = "solo" | "team";
+export type EmailSenderMode = "clinicos" | "clinic";
 
 export interface CurrentVisitSummary {
   id: string;
@@ -841,7 +842,10 @@ export interface ClinicSettings {
   doctor_name: string;
   sender_name: string;
   sender_email: string;
+  email_sender_mode: EmailSenderMode;
   email_configured: boolean;
+  clinic_email_configured: boolean;
+  clinicos_email_available: boolean;
   custom_header: string;
   custom_footer: string;
   document_template_name: string | null;
@@ -1026,6 +1030,24 @@ export interface SuperdashboardOnboarding {
     default_users_allowed: number;
   };
   customers: CustomerOnboarding[];
+}
+
+export interface PlatformEmailSettings {
+  sender_name: string;
+  sender_email: string;
+  is_enabled: boolean;
+  is_configured: boolean;
+  last_tested_at: string | null;
+  last_test_succeeded: boolean;
+  last_error: string;
+  updated_at: string | null;
+}
+
+export interface PlatformEmailSettingsUpdatePayload {
+  sender_name: string;
+  sender_email: string;
+  sender_email_app_password?: string;
+  is_enabled: boolean;
 }
 
 export type ControlRoomStatusValue = "healthy" | "warning" | "failing" | "unknown";
@@ -1487,6 +1509,7 @@ export interface ClinicSettingsUpdatePayload {
   sender_name: string;
   sender_email: string;
   sender_email_app_password?: string;
+  email_sender_mode?: EmailSenderMode;
   email_configured: boolean;
   custom_header: string;
   custom_footer: string;

@@ -155,7 +155,10 @@ type ClinicFormState = {
   sender_name: string;
   sender_email: string;
   sender_email_app_password: string;
+  email_sender_mode: "clinicos" | "clinic";
   email_configured: boolean;
+  clinic_email_configured: boolean;
+  clinicos_email_available: boolean;
   custom_header: string;
   custom_footer: string;
   document_template_name: string | null;
@@ -482,7 +485,10 @@ function createClinicFormState(settings?: ClinicSettings | null): ClinicFormStat
     sender_name: settings?.sender_name ?? "",
     sender_email: settings?.sender_email ?? "",
     sender_email_app_password: "",
+    email_sender_mode: settings?.email_sender_mode ?? "clinicos",
     email_configured: settings?.email_configured ?? false,
+    clinic_email_configured: settings?.clinic_email_configured ?? false,
+    clinicos_email_available: settings?.clinicos_email_available ?? false,
     custom_header: settings?.custom_header ?? "",
     custom_footer: settings?.custom_footer ?? "",
     document_template_name: settings?.document_template_name ?? null,
@@ -1051,6 +1057,7 @@ export function SettingsDrawer({
         appointments_per_hour: appointmentsPerHour,
         sender_name: form.sender_name.trim(),
         sender_email: form.sender_email.trim(),
+        email_sender_mode: form.email_sender_mode,
         email_configured: form.email_configured,
         custom_header: form.custom_header.trim(),
         custom_footer: form.custom_footer.trim(),
@@ -1806,17 +1813,58 @@ export function SettingsDrawer({
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="max-w-3xl">
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Email Sending</p>
-                <h3 className="mt-2 text-xl font-semibold text-slate-900">Clinic Gmail sender</h3>
+                <h3 className="mt-2 text-xl font-semibold text-slate-900">Email sender</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Use the clinic or doctor Gmail account that should appear as the sender. This is the Gmail identity patients will see when notes are emailed.
+                  Send through ClinicOS, or connect the clinic Gmail account that patients should see as the sender.
                 </p>
               </div>
               <div className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-4 py-2 text-sm font-medium text-[#2a6fa8]">
-                {form.email_configured ? "Configured" : "Not configured"}
+                {form.email_configured ? "Ready" : "Not available"}
               </div>
             </div>
 
             <div className="mt-6 grid gap-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setForm((current) => ({
+                    ...current,
+                    email_sender_mode: "clinicos",
+                    email_configured: current.clinicos_email_available,
+                  }))}
+                  className={`border p-4 text-left transition ${
+                    form.email_sender_mode === "clinicos"
+                      ? "border-[#2f8fd3] bg-[#eef7fd]"
+                      : "border-[#bfd7e8] bg-white"
+                  }`}
+                >
+                  <span className="block text-sm font-semibold text-slate-900">ClinicOS email</span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">
+                    No clinic Gmail password required.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm((current) => ({
+                    ...current,
+                    email_sender_mode: "clinic",
+                    email_configured: current.clinic_email_configured,
+                  }))}
+                  className={`border p-4 text-left transition ${
+                    form.email_sender_mode === "clinic"
+                      ? "border-[#2f8fd3] bg-[#eef7fd]"
+                      : "border-[#bfd7e8] bg-white"
+                  }`}
+                >
+                  <span className="block text-sm font-semibold text-slate-900">Clinic Gmail</span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">
+                    Use the clinic&apos;s Gmail address and app password.
+                  </span>
+                </button>
+              </div>
+
+              {form.email_sender_mode === "clinic" ? (
+                <>
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-slate-700">Sender Name</span>
                 <input
@@ -1848,12 +1896,18 @@ export function SettingsDrawer({
                 onChange={(event) =>
                   setForm((current) => ({ ...current, sender_email_app_password: event.target.value }))
                 }
-                placeholder={form.email_configured ? "Leave blank to keep current app password" : "16-character Gmail app password"}
+                placeholder={form.clinic_email_configured ? "Leave blank to keep current app password" : "16-character Gmail app password"}
               />
 
               <p className="text-xs leading-6 text-slate-500">
                 Turn on 2-Step Verification for the Gmail account, create an App Password in Google Account settings, and paste it here. Leave this field blank on future saves if the password has not changed.
               </p>
+                </>
+              ) : (
+                <p className="text-xs leading-6 text-slate-500">
+                  Patients will see the clinic name through the shared ClinicOS Gmail. This mailbox is not monitored.
+                </p>
+              )}
             </div>
           </section>
 

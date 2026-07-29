@@ -486,6 +486,7 @@ async def send_letter_workflow(
     )
     try:
         await send_clinic_email_message(
+            repo=repo,
             clinic_settings=clinic_settings,
             recipient=normalized_email,
             subject=subject.strip(),
@@ -617,6 +618,7 @@ async def send_note_workflow(
     subject = f"{clinic_name} consultation note for {patient_name}"
     try:
         await send_clinic_email_message(
+            repo=repo,
             clinic_settings=clinic_settings,
             recipient=recipient_email,
             subject=subject,

@@ -174,6 +174,7 @@ async def _send_follow_up_email_if_needed(repo: AppRepository, current_user: Use
         booking_window=_format_booking_window(clinic_settings),
     )
     await send_clinic_email_message(
+        repo=repo,
         clinic_settings=clinic_settings,
         recipient=recipient,
         subject=subject,
