@@ -7,7 +7,7 @@ import { CatalogItem, Invoice, Patient, PaymentStatus } from "@/lib/types";
 export type DraftInvoiceItem = {
   id: string;
   catalog_item_id?: string | null;
-  item_type: "service" | "medicine";
+  item_type: "service" | "medicine" | "program";
   label: string;
   quantity: number;
   unit_price: number;
@@ -208,9 +208,10 @@ export function SettingsDrawerBillingPanel({
                   <p className="min-w-0 truncate text-sm font-medium text-slate-900">{item.label}</p>
                   <input
                     value={item.quantity}
+                    disabled={item.item_type === "program"}
                     inputMode="decimal"
                     aria-label={`${item.label} quantity`}
-                    onChange={(event) => onUpdateInvoiceItem(item.id, { quantity: Number(event.target.value) || 0 })}
+                    onChange={(event) => onUpdateInvoiceItem(item.id, { quantity: item.item_type === "program" ? 1 : Number(event.target.value) || 0 })}
                     className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-slate-800 outline-none transition hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
                   />
                   <input

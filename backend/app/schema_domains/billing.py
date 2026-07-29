@@ -1,10 +1,13 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.email_validation import normalize_single_email
+from app.schema_domains.care_programs import ProgramEnrollmentSummaryOut
 from app.schema_domains.common import CatalogItemType, PaymentStatus
+from app.schema_domains.documents import WhatsAppDeliveryOut
 
 
 class CatalogItemBase(BaseModel):
@@ -16,6 +19,10 @@ class CatalogItemBase(BaseModel):
     low_stock_threshold: float = Field(default=0, ge=0, le=1000000)
     unit: str = Field(default="", max_length=40)
     aliases: list[str] = Field(default_factory=list, max_length=30)
+    description: str = Field(default="", max_length=1000)
+    program_key: str | None = Field(default=None, max_length=80)
+    program_definition: dict[str, Any] | None = None
+    is_active: bool = True
 
     @field_validator("aliases")
     @classmethod
@@ -96,13 +103,20 @@ class SendInvoiceRequest(BaseModel):
 class SendInvoiceWhatsAppRequest(BaseModel):
     invoice_id: UUID
     recipient_phone: str | None = Field(default=None, max_length=40)
+    idempotency_key: str = Field(default="", max_length=200)
 
 
 class FinalizeInvoiceRequest(BaseModel):
     invoice_id: UUID
 
 
+class InvoicePaymentUpdate(BaseModel):
+    amount_paid: float = Field(gt=0, le=100000000)
+
+
 class InvoiceActionResponse(BaseModel):
     success: bool
     message: str
     invoice: InvoiceOut
+    program_enrollments: list[ProgramEnrollmentSummaryOut] = Field(default_factory=list)
+    delivery: WhatsAppDeliveryOut | None = None

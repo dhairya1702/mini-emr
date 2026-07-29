@@ -9,7 +9,7 @@ import { AuthUser } from "@/lib/types";
 interface AppHeaderProps {
   clinicName: string;
   currentUser: AuthUser | null;
-  active?: "queue" | "appointments" | "patients" | "history" | "earnings" | "billing" | "users" | "audit" | "inventory" | "account" | "case-study";
+  active?: "queue" | "appointments" | "patients" | "care-programs" | "history" | "earnings" | "billing" | "users" | "audit" | "inventory" | "account" | "case-study";
   onLogout: () => void;
   onOpenSettings?: () => void;
   timezone?: string;

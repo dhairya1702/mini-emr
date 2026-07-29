@@ -1432,6 +1432,10 @@ def _catalog_item_row(*, stock_quantity: float = 10) -> tuple:
         "org-1",
         "Consultation",
         "service",
+        "",
+        None,
+        None,
+        True,
         500,
         True,
         stock_quantity,
@@ -1562,7 +1566,21 @@ def test_postgres_billing_repository_catalog_and_stock_flow():
     )
     updated = asyncio.run(repo.update_catalog_stock("org-1", "catalog-1", CatalogStockUpdate(delta=2)))
 
-    assert cursor.executed[0][1] == ("org-1", "Consultation", "service", 500.0, True, 10.0, 2.0, "unit", "[]")
+    assert cursor.executed[0][1] == (
+        "org-1",
+        "Consultation",
+        "service",
+        "",
+        None,
+        None,
+        True,
+        500.0,
+        True,
+        10.0,
+        2.0,
+        "unit",
+        "[]",
+    )
     assert cursor.executed[2][1] == (12.0, "org-1", "catalog-1")
     assert created["id"] == "catalog-1"
     assert updated["stock_quantity"] == 12
@@ -1602,7 +1620,7 @@ def test_postgres_billing_repository_invoice_rpc_and_invoice_items():
             _invoice_row(),
         ],
         fetchall_rows=[
-            [("00000000-0000-0000-0000-000000000002",)],
+            [("00000000-0000-0000-0000-000000000002", "service", True, None)],
             [_invoice_item_row()],
             [_invoice_item_row()],
         ],

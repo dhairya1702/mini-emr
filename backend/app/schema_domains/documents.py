@@ -1,5 +1,5 @@
 from uuid import UUID
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -107,6 +107,8 @@ class SendLetterWhatsAppRequest(BaseModel):
     recipient_name: str = Field(min_length=1, max_length=120)
     subject: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1, max_length=50000)
+    patient_id: UUID | None = None
+    idempotency_key: str = Field(default="", max_length=200)
 
 
 class SendNoteRequest(BaseModel):
@@ -124,8 +126,20 @@ class SendNoteWhatsAppRequest(BaseModel):
     note_id: UUID
     patient_id: UUID
     recipient_phone: str = Field(min_length=5, max_length=40)
+    idempotency_key: str = Field(default="", max_length=200)
+
+
+class WhatsAppDeliveryOut(BaseModel):
+    event_id: UUID
+    document_type: str
+    document_id: str
+    recipient: str
+    provider_message_id: str = ""
+    status: Literal["queued", "accepted", "sent", "delivered", "read", "failed"]
+    error: str = ""
 
 
 class SendNoteResponse(BaseModel):
     success: bool
     message: str
+    delivery: WhatsAppDeliveryOut | None = None

@@ -8,7 +8,7 @@ import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { Invoice, PaymentStatus } from "@/lib/types";
+import { CatalogItemType, Invoice, PaymentStatus } from "@/lib/types";
 
 type GroupMode = "week" | "month" | "year";
 
@@ -294,7 +294,7 @@ export default function EarningsPage() {
     patient_id: string;
     items: Array<{
       catalog_item_id?: string | null;
-      item_type: "service" | "medicine";
+      item_type: CatalogItemType;
       label: string;
       quantity: number;
       unit_price: number;

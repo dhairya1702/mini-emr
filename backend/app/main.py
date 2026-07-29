@@ -27,6 +27,7 @@ from app.routes import (
     auth_router,
     billing_router,
     case_studies_router,
+    care_programs_router,
     catalog_router,
     clinical_assistant_router,
     controlroom_router,
@@ -207,6 +208,7 @@ for router in (
     notes_router,
     billing_router,
     case_studies_router,
+    care_programs_router,
     whatsapp_router,
 ):
     app.include_router(router)

@@ -7,7 +7,7 @@ SexAtBirth = Literal["female", "male", "intersex", "prefer_not_to_say", "unknown
 VisitKind = Literal["new", "follow_up"]
 UserRole = Literal["admin", "staff"]
 ClinicSpecialty = Literal["optometry", "general_physician", "pediatrics", "dentistry"]
-CatalogItemType = Literal["service", "medicine"]
+CatalogItemType = Literal["service", "medicine", "program"]
 PaymentStatus = Literal["unpaid", "paid", "partial"]
 FollowUpStatus = Literal["scheduled", "completed", "cancelled"]
 AppointmentStatus = Literal["scheduled", "checked_in", "cancelled"]
@@ -30,4 +30,7 @@ TimelineEventType = Literal[
     "bill_sent",
     "follow_up_scheduled",
     "follow_up_completed",
+    "care_program_enrolled",
+    "care_program_review",
+    "care_program_completed",
 ]

@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Boxes, PackagePlus, Pill, Plus, Search, Stethoscope, Trash2, X } from "lucide-react";
+import { AlertTriangle, Boxes, ClipboardList, PackagePlus, Pill, Plus, Search, Settings2, Stethoscope, Trash2, X } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import type { CatalogFormState } from "@/components/settings-drawer-inventory-panel";
@@ -17,11 +17,12 @@ const filterOptions: Array<{ value: InventoryFilter; label: string }> = [
   { value: "all", label: "All" },
   { value: "service", label: "Services" },
   { value: "medicine", label: "Medicines" },
+  { value: "program", label: "Programs" },
   { value: "tracked", label: "Stock tracked" },
   { value: "low_stock", label: "Low stock" },
 ];
 
-function emptyCatalogForm(itemType: CatalogItemType = "service"): CatalogFormState {
+function emptyCatalogForm(itemType: CatalogFormState["item_type"] = "service"): CatalogFormState {
   return {
     name: "",
     item_type: itemType,
@@ -35,7 +36,9 @@ function emptyCatalogForm(itemType: CatalogItemType = "service"): CatalogFormSta
 }
 
 function itemTypeLabel(value: CatalogItemType) {
-  return value === "service" ? "Service" : "Medicine";
+  if (value === "service") return "Service";
+  if (value === "program") return "Program";
+  return "Medicine";
 }
 
 function stockLabel(item: CatalogItem) {
@@ -104,10 +107,8 @@ export default function InventoryPage() {
   const sortedCatalogItems = useMemo(
     () =>
       [...catalogItems].sort((left, right) => {
-        if (left.item_type !== right.item_type) {
-          return left.item_type === "service" ? -1 : 1;
-        }
-        return left.name.localeCompare(right.name);
+        const rank: Record<CatalogItemType, number> = { service: 0, program: 1, medicine: 2 };
+        return rank[left.item_type] - rank[right.item_type] || left.name.localeCompare(right.name);
       }),
     [catalogItems],
   );
@@ -128,7 +129,7 @@ export default function InventoryPage() {
       if (inventoryFilter === "low_stock") {
         return isLowStock(item);
       }
-      if (inventoryFilter === "service" || inventoryFilter === "medicine") {
+      if (inventoryFilter === "service" || inventoryFilter === "medicine" || inventoryFilter === "program") {
         return item.item_type === inventoryFilter;
       }
       return true;
@@ -136,6 +137,7 @@ export default function InventoryPage() {
   }, [inventoryFilter, inventorySearch, sortedCatalogItems]);
   const serviceCount = catalogItems.filter((item) => item.item_type === "service").length;
   const medicineCount = catalogItems.filter((item) => item.item_type === "medicine").length;
+  const programCount = catalogItems.filter((item) => item.item_type === "program").length;
   const lowStockCount = catalogItems.filter(isLowStock).length;
 
   useEffect(() => {
@@ -253,6 +255,7 @@ export default function InventoryPage() {
               <div className="mt-4 flex flex-wrap gap-2 text-sm">
                 <span className="rounded-xl bg-[#f3f8fb] px-3 py-1 text-slate-600">{serviceCount} services</span>
                 <span className="rounded-xl bg-[#f3f8fb] px-3 py-1 text-slate-600">{medicineCount} medicines</span>
+                <span className="rounded-xl bg-[#f3f8fb] px-3 py-1 text-slate-600">{programCount} programs</span>
                 {lowStockCount ? (
                   <span className="rounded-xl bg-amber-50 px-3 py-1 text-amber-700">{lowStockCount} low stock</span>
                 ) : null}
@@ -330,7 +333,7 @@ export default function InventoryPage() {
                       ) : null}
                     </div>
                     <div className="flex items-center gap-2 text-sm text-slate-700">
-                      {item.item_type === "service" ? <Stethoscope className="h-4 w-4 text-[#2a6fa8]" /> : <Pill className="h-4 w-4 text-[#2a6fa8]" />}
+                      {item.item_type === "service" ? <Stethoscope className="h-4 w-4 text-[#2a6fa8]" /> : item.item_type === "program" ? <ClipboardList className="h-4 w-4 text-[#2a6fa8]" /> : <Pill className="h-4 w-4 text-[#2a6fa8]" />}
                       {itemTypeLabel(item.item_type)}
                     </div>
                     <p className="truncate text-sm text-slate-600">{item.unit || "per entry"}</p>
@@ -360,16 +363,28 @@ export default function InventoryPage() {
                       ) : null}
                     </div>
                     <div className="flex justify-end">
-                      <button
-                        type="button"
-                        disabled={deletingCatalogId === item.id || currentUser?.role !== "admin"}
-                        onClick={() => void handleDeleteCatalog(item.id)}
-                        aria-label={`Delete ${item.name}`}
-                        title={`Delete ${item.name}`}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#bfd7e8] bg-white text-slate-600 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      {item.item_type === "program" ? (
+                        <button
+                          type="button"
+                          onClick={() => router.push("/care-programs/manage/myopia-care")}
+                          aria-label={`Configure ${item.name}`}
+                          title={`Configure ${item.name}`}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#bfd7e8] bg-white text-[#2a6fa8] transition hover:bg-sky-50"
+                        >
+                          <Settings2 className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={deletingCatalogId === item.id || currentUser?.role !== "admin"}
+                          onClick={() => void handleDeleteCatalog(item.id)}
+                          aria-label={`Delete ${item.name}`}
+                          title={`Delete ${item.name}`}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#bfd7e8] bg-white text-slate-600 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -441,7 +456,7 @@ export default function InventoryPage() {
                     <select
                       value={catalogForm.item_type}
                       onChange={(event) => {
-                        const nextType = event.target.value as CatalogItemType;
+                        const nextType = event.target.value as CatalogFormState["item_type"];
                         setCatalogForm((current) => ({
                           ...current,
                           item_type: nextType,

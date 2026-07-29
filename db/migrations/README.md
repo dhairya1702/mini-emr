@@ -35,3 +35,5 @@ psql "$DATABASE_URL" -f db/migrations/<file>.sql
 | 2026-07-14 | `2026-07-14_follow_up_reminder_claims.sql` | Adds leased, concurrency-safe claiming and delivery-attempt metadata for follow-up reminders. |
 | 2026-07-15 | `2026-07-15_patient_summary_visit_links.sql` | Links consultation notes to visits and fingerprints the rolling two-visit patient summary source. |
 | 2026-07-22 | `2026-07-22_whatsapp_owner_assistant.sql` | Adds WhatsApp owner bindings and message-event audit records for the owner assistant pilot. |
+| 2026-07-29 | `2026-07-29_myopia_care_program.sql` | Adds catalog-backed Myopia Care programs, patient enrollments, and program events. |
+| 2026-07-29 | `2026-07-29_whatsapp_document_delivery.sql` | Adds document linkage, idempotency, and provider delivery states to WhatsApp message events. |

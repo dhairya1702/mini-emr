@@ -455,7 +455,7 @@ export default function HomePage() {
     () => billingPatients.find((patient) => patient.id === billingPatientId) ?? null,
     [billingPatientId, billingPatients],
   );
-  const serviceItems = useMemo(() => catalogItems.filter((item) => item.item_type === "service"), [catalogItems]);
+  const serviceItems = useMemo(() => catalogItems.filter((item) => item.item_type === "service" || (item.item_type === "program" && item.is_active !== false)), [catalogItems]);
   const medicineItems = useMemo(() => catalogItems.filter((item) => item.item_type === "medicine"), [catalogItems]);
   const latestConsultationNote = useMemo(() => selectedPatientNotes[0] ?? null, [selectedPatientNotes]);
   const autoDraftInvoiceItems = useMemo(
@@ -1746,6 +1746,13 @@ export default function HomePage() {
             throw new Error("Disabled in Training Mode. Nothing is sent or saved to the clinic.");
           }
           const response = await api.sendNote(payload);
+          return response.message;
+        }}
+        onSendWhatsApp={async (payload) => {
+          if (isTrainingMode) {
+            throw new Error("Disabled in Training Mode. Nothing is sent or saved to the clinic.");
+          }
+          const response = await api.sendNoteWhatsApp(payload);
           return response.message;
         }}
       />

@@ -144,7 +144,10 @@ export type PatientTimelineEventType =
   | "invoice_created"
   | "bill_sent"
   | "follow_up_scheduled"
-  | "follow_up_completed";
+  | "follow_up_completed"
+  | "care_program_enrolled"
+  | "care_program_review"
+  | "care_program_completed";
 
 export interface PatientTimelineEvent {
   id: string;
@@ -773,7 +776,7 @@ export interface FollowUp {
   created_at: string;
 }
 
-export type CatalogItemType = "service" | "medicine";
+export type CatalogItemType = "service" | "medicine" | "program";
 export type PaymentStatus = "unpaid" | "paid" | "partial";
 
 export interface CatalogItem {
@@ -787,6 +790,10 @@ export interface CatalogItem {
   low_stock_threshold: number;
   unit: string;
   aliases: string[];
+  description?: string;
+  program_key?: string | null;
+  program_definition?: MyopiaProgramDefinition | null;
+  is_active?: boolean;
   created_at: string;
 }
 
@@ -1159,6 +1166,19 @@ export interface AuthResponse {
 export interface OperationResult {
   success: boolean;
   message: string;
+  delivery?: WhatsAppDelivery | null;
+}
+
+export type WhatsAppDeliveryStatus = "queued" | "accepted" | "sent" | "delivered" | "read" | "failed";
+
+export interface WhatsAppDelivery {
+  event_id: string;
+  document_type: string;
+  document_id: string;
+  recipient: string;
+  provider_message_id: string;
+  status: WhatsAppDeliveryStatus;
+  error: string;
 }
 
 export interface StaffUserCreatePayload {
@@ -1175,6 +1195,10 @@ export interface CatalogItemCreatePayload {
   low_stock_threshold: number;
   unit: string;
   aliases?: string[];
+  description?: string;
+  program_key?: string | null;
+  program_definition?: MyopiaProgramDefinition | null;
+  is_active?: boolean;
 }
 
 export interface CatalogStockUpdatePayload {
@@ -1209,12 +1233,99 @@ export interface SendInvoicePayload {
 export interface SendInvoiceWhatsAppPayload {
   invoice_id: string;
   recipient_phone?: string | null;
+  idempotency_key?: string;
 }
 
 export interface InvoiceActionResult {
   success: boolean;
   message: string;
   invoice: Invoice;
+  program_enrollments?: ProgramEnrollmentSummary[];
+  delivery?: WhatsAppDelivery | null;
+}
+
+export type ProgramEnrollmentStatus = "pending" | "active" | "completed" | "cancelled";
+
+export interface MyopiaReviewDefinition {
+  key: "baseline" | "review_1" | "review_2" | "final_review";
+  label: string;
+  offset_days: number;
+}
+
+export interface MyopiaProgramDefinition {
+  version: 1;
+  program_type: "myopia_monitoring";
+  duration_days: number;
+  reviews: MyopiaReviewDefinition[];
+}
+
+export interface CareProgramOffering {
+  program_key: "myopia_care";
+  enabled: boolean;
+  catalog_item_id: string | null;
+  name: string;
+  description: string;
+  default_price: number | null;
+  is_active: boolean;
+  definition: MyopiaProgramDefinition;
+}
+
+export interface CareProgramEvent {
+  id: string;
+  org_id: string;
+  enrollment_id: string;
+  event_type: "review" | "progress_report";
+  sequence: number | null;
+  status: "scheduled" | "completed" | "cancelled";
+  title: string;
+  due_at: string | null;
+  completed_at: string | null;
+  source_event_id: string | null;
+  linked_entity_type: string | null;
+  linked_entity_id: string | null;
+  payload: Record<string, unknown>;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProgramEnrollmentSummary {
+  id: string;
+  org_id: string;
+  patient_id: string;
+  patient_name?: string | null;
+  patient_phone: string;
+  catalog_item_id: string;
+  program_name: string;
+  originating_invoice_id: string;
+  responsible_user_id: string | null;
+  responsible_user_name?: string | null;
+  status: ProgramEnrollmentStatus;
+  agreed_price: number;
+  started_at: string | null;
+  ends_at: string | null;
+  next_action_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  cancellation_reason: string;
+  total_reviews: number;
+  completed_reviews: number;
+  next_review_title: string | null;
+  balance_due: number;
+  created_at: string;
+}
+
+export interface ProgramEnrollment extends ProgramEnrollmentSummary {
+  program_snapshot: Record<string, unknown>;
+  events: CareProgramEvent[];
+}
+
+export interface ProgramReport {
+  id: string;
+  enrollment_id: string;
+  source_review_event_id: string;
+  version: number;
+  generated_at: string;
 }
 
 export interface AppointmentCreatePayload {
@@ -1340,6 +1451,8 @@ export interface SendLetterWhatsAppPayload {
   recipient_name: string;
   subject: string;
   content: string;
+  patient_id?: string | null;
+  idempotency_key?: string;
 }
 
 export interface SendNotePayload {
@@ -1352,6 +1465,7 @@ export interface SendNoteWhatsAppPayload {
   note_id: string;
   patient_id: string;
   recipient_phone: string;
+  idempotency_key?: string;
 }
 
 export interface SendPatientAttachmentPayload {

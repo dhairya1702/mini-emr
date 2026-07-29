@@ -13,6 +13,8 @@ WHATSAPP_APP_SECRET=meta-app-secret
 WHATSAPP_ACCESS_TOKEN=meta-whatsapp-access-token
 WHATSAPP_PHONE_NUMBER_ID=meta-phone-number-id
 WHATSAPP_GRAPH_API_VERSION=v23.0
+WHATSAPP_DOCUMENT_TEMPLATE_NAME=
+WHATSAPP_DOCUMENT_TEMPLATE_LANGUAGE=en
 ```
 
 `INTERNAL_SCHEDULER_TOKEN` is also required for the temporary binding seed endpoint.
@@ -26,6 +28,12 @@ https://<backend-host>/webhooks/whatsapp
 ```
 
 Subscribe to message events. Use the same `WHATSAPP_VERIFY_TOKEN` in Meta.
+
+For production deployment, set `WHATSAPP_ENABLED=true` and configure the four
+`WHATSAPP_*_SECRET_NAME` variables in `.env.deploy` with existing Secret Manager
+secret names. Set `WHATSAPP_DOCUMENT_TEMPLATE_NAME` after Meta approves the
+utility template with a document header. The deploy script never reads or prints
+the secret values.
 
 For local testing, run the repo dev script:
 

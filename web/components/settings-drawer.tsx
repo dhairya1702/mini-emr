@@ -7,6 +7,7 @@ import {
   BarChart3,
   Building2,
   CalendarClock,
+  ClipboardList,
   CreditCard,
   FileText,
   FilePenLine,
@@ -35,7 +36,7 @@ import { api, resolveApiAssetUrl } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { printBlob } from "@/lib/print";
 import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
-import { Appointment, AuditEvent, AuthUser, CatalogItem, ClinicSettings, ClinicSettingsUpdatePayload, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
+import { Appointment, AuditEvent, AuthUser, CatalogItem, CatalogItemType, ClinicSettings, ClinicSettingsUpdatePayload, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
 import { hasUserSignature } from "@/lib/setup-checklist";
 
 function createId() {
@@ -94,7 +95,7 @@ interface SettingsDrawerProps {
     patient_id: string;
     items: Array<{
       catalog_item_id?: string | null;
-      item_type: "service" | "medicine";
+      item_type: CatalogItemType;
       label: string;
       quantity: number;
       unit_price: number;
@@ -686,7 +687,8 @@ export function SettingsDrawer({
   ];
 
   if (!isTrainingMode && currentUser?.role === "admin") {
-    menuItems.splice(7, 0, { href: "/earnings", label: "Earnings", icon: BarChart3 });
+    menuItems.splice(3, 0, { href: "/care-programs", label: "Care Programs", icon: ClipboardList });
+    menuItems.splice(8, 0, { href: "/earnings", label: "Earnings", icon: BarChart3 });
   }
 
   useEffect(() => {

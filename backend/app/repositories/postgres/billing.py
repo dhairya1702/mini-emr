@@ -14,6 +14,10 @@ from app.repositories.base import (
     round_money,
 )
 from app.repositories.postgres.ai_usage import _row_to_dict
+from app.repositories.postgres.care_programs import (
+    activate_pending_program_enrollments,
+    provision_program_enrollments_for_invoice,
+)
 from app.schema_domains.billing import CatalogItemCreate, CatalogStockUpdate, InvoiceCreate
 
 
@@ -22,6 +26,10 @@ CATALOG_ITEM_COLUMNS = [
     "org_id",
     "name",
     "item_type",
+    "description",
+    "program_key",
+    "program_definition",
+    "is_active",
     "default_price",
     "track_inventory",
     "stock_quantity",
@@ -117,17 +125,22 @@ class PostgresBillingRepository:
                     cursor.execute(
                         f"""
                         insert into public.catalog_items (
-                          org_id, name, item_type, default_price, track_inventory,
+                          org_id, name, item_type, description, program_key, program_definition, is_active,
+                          default_price, track_inventory,
                           stock_quantity, low_stock_threshold, unit
                           , aliases
                         )
-                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                        values (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s::jsonb)
                         returning {_columns_sql(CATALOG_ITEM_COLUMNS)}
                         """,
                         (
                             org_id,
                             values["name"],
                             values["item_type"],
+                            values["description"],
+                            values["program_key"],
+                            json.dumps(values["program_definition"]) if values["program_definition"] is not None else None,
+                            values["is_active"],
                             values["default_price"],
                             values["track_inventory"],
                             values["stock_quantity"],
@@ -249,19 +262,57 @@ class PostgresBillingRepository:
                         raise ValueError("Patient not found for this organization.")
                     current_visit_id = str(patient_row[1]) if patient_row[1] else None
 
+                    if any(
+                        item["item_type"] == "program" and not item["catalog_item_id"]
+                        for item in item_payload
+                    ):
+                        raise ValueError("Care programs must be selected from the clinic catalog.")
                     catalog_item_ids = [item["catalog_item_id"] for item in item_payload if item["catalog_item_id"]]
                     if catalog_item_ids:
                         cursor.execute(
                             """
-                            select id
+                            select id, item_type, is_active, program_key
                             from public.catalog_items
                             where org_id = %s and id = any(%s::uuid[])
                             """,
                             (org_id, catalog_item_ids),
                         )
-                        found_ids = {str(row[0]) for row in cursor.fetchall()}
+                        catalog_rows = cursor.fetchall()
+                        found_ids = {str(row[0]) for row in catalog_rows}
                         if len(found_ids) != len(set(catalog_item_ids)):
                             raise ValueError("Inventory item not found for this organization.")
+                        catalog_by_id = {str(row[0]): row for row in catalog_rows}
+                        seen_program_keys: set[str] = set()
+                        for item in item_payload:
+                            if not item["catalog_item_id"]:
+                                if item["item_type"] == "program":
+                                    raise ValueError("Care programs must be selected from the clinic catalog.")
+                                continue
+                            catalog_row = catalog_by_id[item["catalog_item_id"]]
+                            if item["item_type"] != str(catalog_row[1]):
+                                raise ValueError("Invoice item type does not match its catalog item.")
+                            if item["item_type"] == "program":
+                                if not catalog_row[2]:
+                                    raise ValueError("Care program is not active for this clinic.")
+                                if decimal_quantity(item["quantity"]) != Decimal("1.000"):
+                                    raise ValueError("Care programs must use quantity one.")
+                                program_key = str(catalog_row[3] or "")
+                                if program_key in seen_program_keys:
+                                    raise ValueError("A care program can only appear once on an invoice.")
+                                seen_program_keys.add(program_key)
+                                cursor.execute(
+                                    """
+                                    select 1
+                                    from public.patient_program_enrollments e
+                                    join public.catalog_items c on c.id = e.catalog_item_id
+                                    where e.org_id = %s and e.patient_id = %s
+                                      and c.program_key = %s and e.status in ('pending', 'active')
+                                    limit 1
+                                    """,
+                                    (org_id, str(payload.patient_id), program_key),
+                                )
+                                if cursor.fetchone():
+                                    raise ValueError("Patient already has a current enrollment in this care program.")
 
                     invoice_id = str(payload.invoice_id) if payload.invoice_id else None
                     if invoice_id:
@@ -524,6 +575,15 @@ class PostgresBillingRepository:
                         )
                     updated_row = cursor.fetchone()
                     updated = _row_to_dict(updated_row, cursor) if updated_row else invoice
+                    updated["id"] = invoice_id
+                    updated["items"] = items
+                    program_enrollments = provision_program_enrollments_for_invoice(
+                        cursor,
+                        org_id=org_id,
+                        invoice=updated,
+                        items=items,
+                        actor_user_id=completed_by,
+                    )
                     return {
                         "patient_id": updated["patient_id"],
                         "completed_at": updated.get("completed_at"),
@@ -532,9 +592,75 @@ class PostgresBillingRepository:
                         "already_completed": already_completed,
                         "already_sent": already_sent,
                         "stock_deductions": stock_deductions,
+                        "program_enrollments": program_enrollments,
                     }
 
         return await asyncio.to_thread(_finalize)
+
+    async def update_invoice_payment(
+        self,
+        org_id: str,
+        invoice_id: str,
+        *,
+        amount_paid: float,
+        actor_user_id: str,
+    ) -> dict[str, Any]:
+        def _update() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        select {_columns_sql(INVOICE_COLUMNS)}
+                        from public.invoices
+                        where org_id = %s and id = %s and completed_at is not null
+                        for update
+                        """,
+                        (org_id, invoice_id),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("Completed invoice not found for this organization.")
+                    invoice = _row_to_dict(row, cursor)
+                    previous = decimal_money(invoice.get("amount_paid") or 0)
+                    requested = decimal_money(amount_paid)
+                    total = decimal_money(invoice.get("total") or 0)
+                    if requested < previous:
+                        raise ValueError("Recorded payment cannot be reduced.")
+                    if requested > total:
+                        raise ValueError("Recorded payment cannot exceed the invoice total.")
+                    payment_status = "paid" if requested == total else "partial"
+                    cursor.execute(
+                        f"""
+                        update public.invoices
+                        set amount_paid = %s, payment_status = %s,
+                          paid_at = case when %s = 'paid' then coalesce(paid_at, now()) else paid_at end
+                        where org_id = %s and id = %s
+                        returning {_columns_sql(INVOICE_COLUMNS)}
+                        """,
+                        (requested, payment_status, payment_status, org_id, invoice_id),
+                    )
+                    updated = _row_to_dict(cursor.fetchone(), cursor)
+                    activated = []
+                    if previous == 0 and requested > 0:
+                        activated = activate_pending_program_enrollments(
+                            cursor,
+                            org_id=org_id,
+                            invoice_id=invoice_id,
+                            actor_user_id=actor_user_id,
+                        )
+                    cursor.execute(
+                        f"""
+                        select {_columns_sql(INVOICE_ITEM_COLUMNS)}
+                        from public.invoice_items where org_id = %s and invoice_id = %s
+                        order by created_at
+                        """,
+                        (org_id, invoice_id),
+                    )
+                    updated["items"] = [_row_to_dict(item, cursor) for item in cursor.fetchall()]
+                    updated["program_enrollments"] = activated
+                    updated["previous_amount_paid"] = float(previous)
+                    return attach_invoice_balances(updated)
+        return await asyncio.to_thread(_update)
 
     async def get_invoice(self, org_id: str, invoice_id: str) -> dict[str, Any]:
         def _get() -> dict[str, Any]:

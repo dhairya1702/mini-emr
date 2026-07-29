@@ -9,7 +9,9 @@ import { api } from "@/lib/api";
 import type { CatalogItem } from "@/lib/types";
 
 function itemTypeLabel(item: CatalogItem) {
-  return item.item_type === "service" ? "Service" : "Medicine";
+  if (item.item_type === "service") return "Service";
+  if (item.item_type === "program") return "Program";
+  return "Medicine";
 }
 
 export default function MobileInventoryPage() {

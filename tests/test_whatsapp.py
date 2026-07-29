@@ -57,6 +57,29 @@ def _payload(text: str, *, from_wa_id: str = "919999999999") -> dict:
     }
 
 
+def _status_payload(message_id: str, status: str) -> dict:
+    return {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "value": {
+                            "statuses": [
+                                {
+                                    "id": message_id,
+                                    "recipient_id": "919600106623",
+                                    "status": status,
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ],
+    }
+
+
 def _signature(body: bytes) -> str:
     return "sha256=" + hmac.new(b"app-secret", body, hashlib.sha256).hexdigest()
 
@@ -109,6 +132,44 @@ def test_whatsapp_webhook_verification(client, monkeypatch: pytest.MonkeyPatch):
 
     assert response.status_code == 200
     assert response.text == "challenge-123"
+
+
+def test_whatsapp_delivery_webhook_updates_outbound_event(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="whatsapp-status@clinic.com", clinic_name="Status Clinic")
+    monkeypatch.setattr(config_module, "get_settings", lambda: _settings())
+    import asyncio
+
+    event = asyncio.run(
+        repo.record_whatsapp_message_event(
+            org_id=session["user"]["org_id"],
+            binding_id=None,
+            direction="outbound",
+            wa_message_id="wamid.delivery",
+            recipient_wa_id="919600106623",
+            message_text="Invoice",
+            intent="send_invoice_document",
+            status="accepted",
+            document_type="invoice",
+            document_id="invoice-1",
+        )
+    )
+    body = json.dumps(_status_payload("wamid.delivery", "delivered")).encode("utf-8")
+    response = test_client.post(
+        "/webhooks/whatsapp",
+        content=body,
+        headers={"X-Hub-Signature-256": _signature(body), "Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["processed"] == 1
+    assert repo.whatsapp_message_events[event["id"]]["status"] == "delivered"
+    delivery = test_client.get(
+        "/whatsapp/document-deliveries/invoice/invoice-1",
+        headers=auth_headers_for_token(session["token"]),
+    )
+    assert delivery.status_code == 200
+    assert delivery.json()["status"] == "delivered"
 
 
 def test_whatsapp_owner_summary_replies_and_logs_events(client, monkeypatch: pytest.MonkeyPatch):

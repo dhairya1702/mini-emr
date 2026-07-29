@@ -510,7 +510,8 @@ def test_send_letter_whatsapp_sends_generated_pdf_document(client, monkeypatch):
     events = list(repo.whatsapp_message_events.values())
     assert len(events) == 1
     assert events[0]["intent"] == "send_letter_document"
-    assert events[0]["status"] == "sent"
+    assert events[0]["status"] == "accepted"
+    assert events[0]["document_type"] == "letter"
     assert events[0]["wa_message_id"] == "wamid.letter"
     assert events[0]["recipient_wa_id"] == "919600106623"
 

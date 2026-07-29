@@ -1,7 +1,22 @@
 from __future__ import annotations
 
 from test_app import auth_headers_for_token, client, main_module, register_test_clinic
-from app.services import ai_generation_service, note_workflow
+from app.services import ai_generation_service, note_workflow, whatsapp_document_workflow
+from app.services.whatsapp_client import WhatsAppSendResult
+
+
+class FakeWhatsAppDocumentClient:
+    def __init__(self) -> None:
+        self.uploads: list[dict[str, object]] = []
+        self.documents: list[dict[str, object]] = []
+
+    def upload_media(self, *, content: bytes, filename: str, content_type: str) -> str:
+        self.uploads.append({"content": content, "filename": filename, "content_type": content_type})
+        return "media-note"
+
+    def send_document(self, *, to: str, media_id: str, filename: str, caption: str = "") -> WhatsAppSendResult:
+        self.documents.append({"to": to, "media_id": media_id, "filename": filename, "caption": caption})
+        return WhatsAppSendResult(message_id="wamid.note", raw={"messages": [{"id": "wamid.note"}]})
 
 
 def test_generate_note_inserts_eye_exam_table_when_ai_omits_it(client, monkeypatch):
@@ -161,6 +176,57 @@ def test_sent_consultation_note_is_emailed_and_locked_to_saved_record(client, mo
     assert notes.status_code == 200
     assert notes.json()[0]["sent_at"] is not None
     assert notes.json()[0]["status"] == "sent"
+
+
+def test_consultation_note_can_be_sent_on_whatsapp(client, monkeypatch):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="notes-whatsapp@clinic.com", clinic_name="Notes WhatsApp Clinic")
+    headers = auth_headers_for_token(session["token"])
+    fake_client = FakeWhatsAppDocumentClient()
+    monkeypatch.setattr(whatsapp_document_workflow, "build_whatsapp_client", lambda: fake_client)
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "WhatsApp Note Patient",
+            "phone": "9600106623",
+            "reason": "Consultation",
+            "age": 29,
+            "weight": 61,
+            "height": 166,
+            "temperature": 98.6,
+        },
+        headers=headers,
+    ).json()
+    generated = test_client.post(
+        "/generate-note",
+        json={
+            "patient_id": patient["id"],
+            "symptoms": "Blurred vision",
+            "diagnosis": "Refractive error",
+            "medications": "Spectacles",
+            "notes": "Review in one year.",
+        },
+        headers=headers,
+    ).json()
+
+    response = test_client.post(
+        "/send-note-whatsapp",
+        json={
+            "note_id": generated["note_id"],
+            "patient_id": patient["id"],
+            "recipient_phone": patient["phone"],
+            "idempotency_key": "note-send-1",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["delivery"]["status"] == "accepted"
+    assert repo.notes[generated["note_id"]]["status"] == "sent"
+    assert fake_client.documents[0]["to"] == "919600106623"
+    event = next(iter(repo.whatsapp_message_events.values()))
+    assert event["document_type"] == "consultation_note"
+    assert event["document_id"] == generated["note_id"]
 
 
 def test_note_file_attachment_is_persisted_as_patient_attachment(client):

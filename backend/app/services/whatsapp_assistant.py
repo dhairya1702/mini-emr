@@ -32,6 +32,15 @@ class WhatsAppInboundMessage:
     raw_payload: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class WhatsAppDeliveryStatus:
+    message_id: str
+    status: str
+    recipient_wa_id: str
+    error: str
+    raw_payload: dict[str, Any]
+
+
 def verify_whatsapp_signature(*, app_secret: str, signature_header: str | None, body: bytes) -> bool:
     if not app_secret:
         return False
@@ -69,6 +78,41 @@ def parse_whatsapp_messages(payload: dict[str, Any]) -> list[WhatsAppInboundMess
                         contact_name=contacts_by_wa_id.get(from_wa_id, ""),
                         phone_number_id=phone_number_id,
                         raw_payload=payload,
+                    )
+                )
+    return parsed
+
+
+def parse_whatsapp_statuses(payload: dict[str, Any]) -> list[WhatsAppDeliveryStatus]:
+    parsed: list[WhatsAppDeliveryStatus] = []
+    for entry in payload.get("entry", []) if isinstance(payload, dict) else []:
+        for change in entry.get("changes", []) if isinstance(entry, dict) else []:
+            value = change.get("value") if isinstance(change, dict) else {}
+            if not isinstance(value, dict):
+                continue
+            for status_payload in value.get("statuses", []):
+                if not isinstance(status_payload, dict):
+                    continue
+                message_id = str(status_payload.get("id") or "").strip()
+                status = str(status_payload.get("status") or "").strip().lower()
+                if not message_id or status not in {"sent", "delivered", "read", "failed"}:
+                    continue
+                errors = status_payload.get("errors") if isinstance(status_payload.get("errors"), list) else []
+                error_parts: list[str] = []
+                for item in errors:
+                    if not isinstance(item, dict):
+                        continue
+                    code = str(item.get("code") or "").strip()
+                    title = str(item.get("title") or item.get("message") or "").strip()
+                    detail = str((item.get("error_data") or {}).get("details") or "").strip()
+                    error_parts.append(" - ".join(part for part in (code, title, detail) if part))
+                parsed.append(
+                    WhatsAppDeliveryStatus(
+                        message_id=message_id,
+                        status=status,
+                        recipient_wa_id=str(status_payload.get("recipient_id") or "").strip(),
+                        error="; ".join(part for part in error_parts if part),
+                        raw_payload={"provider_status": status_payload},
                     )
                 )
     return parsed

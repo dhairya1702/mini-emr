@@ -13,6 +13,7 @@ from app.schema_domains.billing import (
     InvoiceActionResponse,
     InvoiceCreate,
     InvoiceOut,
+    InvoicePaymentUpdate,
     SendInvoiceRequest,
     SendInvoiceWhatsAppRequest,
 )
@@ -23,6 +24,7 @@ from app.services.billing_workflow import (
     finalize_invoice_workflow,
     list_invoices_with_user_names,
     send_invoice_workflow,
+    update_invoice_payment_workflow,
 )
 from app.services.document_helpers import build_document_context_for_user
 from app.services.pdf_service import build_invoice_pdf
@@ -79,6 +81,19 @@ async def finalize_invoice(
 ) -> InvoiceActionResponse:
     try:
         return await finalize_invoice_workflow(repo, current_user, payload)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+
+
+@router.patch("/invoices/{invoice_id}/payment", response_model=InvoiceActionResponse)
+async def update_invoice_payment(
+    invoice_id: str,
+    payload: InvoicePaymentUpdate,
+    current_user: UserOut = Depends(require_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> InvoiceActionResponse:
+    try:
+        return await update_invoice_payment_workflow(repo, current_user, invoice_id, payload)
     except ValueError as exc:
         raise bad_request_error(exc) from exc
 

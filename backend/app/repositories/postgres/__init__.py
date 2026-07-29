@@ -4,6 +4,7 @@ from app.repositories.postgres.auth_settings import PostgresAuthSettingsReposito
 from app.repositories.postgres.attachments import PostgresAttachmentsRepository
 from app.repositories.postgres.billing import PostgresBillingRepository
 from app.repositories.postgres.case_studies import PostgresCaseStudiesRepository
+from app.repositories.postgres.care_programs import PostgresCareProgramsRepository
 from app.repositories.postgres.controlroom import PostgresControlRoomRepository
 from app.repositories.postgres.myopia import PostgresMyopiaRepository
 from app.repositories.postgres.patient_flow import PostgresPatientFlowRepository
@@ -19,6 +20,7 @@ __all__ = [
     "PostgresAttachmentsRepository",
     "PostgresBillingRepository",
     "PostgresCaseStudiesRepository",
+    "PostgresCareProgramsRepository",
     "PostgresControlRoomRepository",
     "PostgresMyopiaRepository",
     "PostgresPatientFlowRepository",

@@ -179,9 +179,50 @@ def test_invoice_can_be_sent_on_whatsapp_with_patient_phone(client, monkeypatch)
     events = list(repo.whatsapp_message_events.values())
     assert len(events) == 1
     assert events[0]["intent"] == "send_invoice_document"
-    assert events[0]["status"] == "sent"
+    assert events[0]["status"] == "accepted"
+    assert events[0]["document_type"] == "invoice"
+    assert events[0]["document_id"] == invoice["id"]
     assert events[0]["wa_message_id"] == "wamid.invoice"
     assert events[0]["recipient_wa_id"] == "919600106623"
+
+
+def test_invoice_whatsapp_idempotency_prevents_duplicate_delivery(client, monkeypatch):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="billing-wa-idempotent@clinic.com", clinic_name="WA Idempotent Clinic")
+    headers = auth_headers_for_token(session["token"])
+    fake_client = FakeWhatsAppDocumentClient()
+    monkeypatch.setattr(whatsapp_document_workflow, "build_whatsapp_client", lambda: fake_client)
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Idempotent Patient",
+            "phone": "9600106623",
+            "reason": "Consultation",
+            "age": 30,
+            "weight": 65,
+            "height": 170,
+            "temperature": 98.4,
+        },
+        headers=headers,
+    ).json()
+    invoice = test_client.post(
+        "/invoices",
+        json={
+            "patient_id": patient["id"],
+            "payment_status": "paid",
+            "items": [{"item_type": "service", "label": "Consultation", "quantity": 1, "unit_price": 500}],
+        },
+        headers=headers,
+    ).json()
+    payload = {"invoice_id": invoice["id"], "idempotency_key": "invoice-send-1"}
+
+    first = test_client.post("/send-invoice-whatsapp", json=payload, headers=headers)
+    second = test_client.post("/send-invoice-whatsapp", json=payload, headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["delivery"]["event_id"] == second.json()["delivery"]["event_id"]
+    assert len(fake_client.documents) == 1
 
 
 def test_invoice_can_be_created_with_partial_payment_status(client):

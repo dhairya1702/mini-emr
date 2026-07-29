@@ -7,10 +7,14 @@ from pydantic import BaseModel, Field
 from starlette.responses import PlainTextResponse
 
 from app import config as config_module
+from app.auth import get_current_user
 from app.db import AppRepository, get_repository
+from app.schema_domains.auth_settings import UserOut
+from app.schema_domains.documents import WhatsAppDeliveryOut
 from app.services.whatsapp_assistant import (
     handle_inbound_message,
     parse_whatsapp_messages,
+    parse_whatsapp_statuses,
     verify_whatsapp_signature,
 )
 from app.services.whatsapp_client import WhatsAppClient
@@ -27,6 +31,38 @@ class WhatsAppOwnerBindingRequest(BaseModel):
     role: str = "owner"
     user_id: str | None = None
     is_active: bool = True
+
+
+def _delivery_from_event(event: dict) -> WhatsAppDeliveryOut:
+    return WhatsAppDeliveryOut(
+        event_id=event["id"],
+        document_type=str(event.get("document_type") or ""),
+        document_id=str(event.get("document_id") or ""),
+        recipient=str(event.get("recipient_wa_id") or ""),
+        provider_message_id=str(event.get("wa_message_id") or ""),
+        status=str(event.get("status") or "failed"),
+        error=str(event.get("error") or ""),
+    )
+
+
+@router.get(
+    "/whatsapp/document-deliveries/{document_type}/{document_id}",
+    response_model=WhatsAppDeliveryOut,
+)
+async def get_whatsapp_document_delivery(
+    document_type: str,
+    document_id: str,
+    current_user: UserOut = Depends(get_current_user),
+    repo: AppRepository = Depends(get_repository),
+) -> WhatsAppDeliveryOut:
+    event = await repo.get_latest_whatsapp_document_event(
+        str(current_user.org_id),
+        document_type,
+        document_id,
+    )
+    if not event:
+        raise HTTPException(status_code=404, detail="WhatsApp delivery not found.")
+    return _delivery_from_event(event)
 
 
 @router.get("/webhooks/whatsapp")
@@ -65,6 +101,7 @@ async def receive_whatsapp_webhook(
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Invalid WhatsApp webhook payload.") from exc
     messages = parse_whatsapp_messages(payload)
+    statuses = parse_whatsapp_statuses(payload)
     client = WhatsAppClient(
         access_token=settings.whatsapp_access_token,
         phone_number_id=settings.whatsapp_phone_number_id,
@@ -77,6 +114,14 @@ async def receive_whatsapp_webhook(
             client=client,
             message=message,
             enabled=bool(settings.whatsapp_enabled),
+        )
+        processed += 1
+    for status in statuses:
+        await repo.update_whatsapp_message_status(
+            status.message_id,
+            status=status.status,
+            error=status.error,
+            raw_payload=status.raw_payload,
         )
         processed += 1
     return {"status": "ok", "processed": processed}

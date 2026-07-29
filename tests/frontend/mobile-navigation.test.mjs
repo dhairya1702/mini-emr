@@ -4,10 +4,11 @@ import assert from "node:assert/strict";
 import { importWebModule } from "./load-web-module.mjs";
 
 const expectedAdminLabels = [
-  "Queue",
-  "Appointments",
-  "Patients",
-  "Billing",
+    "Queue",
+    "Appointments",
+    "Patients",
+    "Care Programs",
+    "Billing",
   "Inventory",
   "History",
   "Generate Letter",

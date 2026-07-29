@@ -183,6 +183,8 @@ async def send_letter_whatsapp(
         recipient_name=payload.recipient_name,
         subject=payload.subject,
         content=payload.content,
+        patient_id=str(payload.patient_id) if payload.patient_id else None,
+        idempotency_key=payload.idempotency_key,
     )
 
 

@@ -77,3 +77,16 @@ def test_tenant_integrity_schema_drift_migration_covers_invoice_items_and_indexe
     )
     assert "notes_org_visit_created_idx" in schema_sql
     assert "follow_ups_due_reminder_claim_idx" in schema_sql
+
+
+def test_myopia_care_migration_keeps_program_data_model_consolidated():
+    root = Path(__file__).resolve().parents[1]
+    migration_sql = (
+        root / "db" / "migrations" / "2026-07-29_myopia_care_program.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "item_type in ('service', 'medicine', 'program')" in migration_sql
+    assert "create table if not exists public.patient_program_enrollments" in migration_sql
+    assert "create table if not exists public.care_program_events" in migration_sql
+    assert "create table if not exists public.care_program_definitions" not in migration_sql
+    assert "patient_program_enrollments_one_current_uidx" in migration_sql

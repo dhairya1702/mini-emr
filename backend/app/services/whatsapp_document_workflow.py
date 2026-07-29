@@ -11,10 +11,11 @@ from app.config import get_settings
 from app.db import AppRepository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import InvoiceActionResponse, InvoiceOut, SendInvoiceWhatsAppRequest
-from app.schema_domains.documents import SendNoteResponse, SendNoteWhatsAppRequest
+from app.schema_domains.documents import SendNoteResponse, SendNoteWhatsAppRequest, WhatsAppDeliveryOut
 from app.services.audit_service import record_invoice_completed, record_invoice_shared
 from app.services.audit_service import get_actor_name, write_audit_event
 from app.services.document_helpers import build_document_context_for_user
+from app.services.billing_workflow import _record_program_enrollments
 from app.services.note_workflow import hydrate_note_assets_for_pdf
 from app.services.pdf_service import build_invoice_pdf, build_letter_pdf, build_note_pdf
 from app.storage import PatientAttachmentStorage
@@ -72,8 +73,11 @@ async def _record_document_event(
     error: str = "",
     raw_payload: dict[str, Any] | None = None,
     wa_message_id: str = "",
-) -> None:
-    await repo.record_whatsapp_message_event(
+    document_type: str = "",
+    document_id: str = "",
+    idempotency_key: str = "",
+) -> dict[str, Any]:
+    return await repo.record_whatsapp_message_event(
         org_id=org_id,
         binding_id=None,
         direction="outbound",
@@ -85,6 +89,9 @@ async def _record_document_event(
         status=status,
         error=error,
         raw_payload=raw_payload or {},
+        document_type=document_type,
+        document_id=document_id,
+        idempotency_key=idempotency_key,
     )
 
 
@@ -98,8 +105,45 @@ async def _send_pdf_document(
     pdf_bytes: bytes,
     intent: str,
     raw_context: dict[str, Any],
-) -> str:
+    document_type: str,
+    document_id: str,
+    idempotency_key: str = "",
+) -> WhatsAppDeliveryOut:
+    settings = get_settings()
     client = build_whatsapp_client()
+    if idempotency_key:
+        existing = await repo.get_whatsapp_message_event_by_idempotency(org_id, idempotency_key)
+        if existing:
+            existing_status = str(existing.get("status") or "")
+            if existing_status == "queued":
+                raise HTTPException(status_code=409, detail="This WhatsApp document is already being sent.")
+            if existing_status == "failed":
+                raise HTTPException(
+                    status_code=502,
+                    detail=str(existing.get("error") or "The previous WhatsApp delivery attempt failed. Retry the send."),
+                )
+            return WhatsAppDeliveryOut(
+                event_id=existing["id"],
+                document_type=str(existing.get("document_type") or document_type),
+                document_id=str(existing.get("document_id") or document_id),
+                recipient=str(existing.get("recipient_wa_id") or recipient_wa_id),
+                provider_message_id=str(existing.get("wa_message_id") or ""),
+                status=existing_status,
+                error=str(existing.get("error") or ""),
+            )
+
+    event = await _record_document_event(
+        repo,
+        org_id=org_id,
+        recipient_wa_id=recipient_wa_id,
+        message_text=caption,
+        intent=intent,
+        status="queued",
+        raw_payload=raw_context,
+        document_type=document_type,
+        document_id=document_id,
+        idempotency_key=idempotency_key,
+    )
     try:
         media_id = await asyncio.to_thread(
             client.upload_media,
@@ -107,32 +151,34 @@ async def _send_pdf_document(
             filename=filename,
             content_type="application/pdf",
         )
-        result = await asyncio.to_thread(
-            client.send_document,
-            to=recipient_wa_id,
-            media_id=media_id,
-            filename=filename,
-            caption=caption,
-        )
+        if settings.whatsapp_document_template_name.strip():
+            result = await asyncio.to_thread(
+                client.send_document_template,
+                to=recipient_wa_id,
+                media_id=media_id,
+                filename=filename,
+                template_name=settings.whatsapp_document_template_name.strip(),
+                language_code=settings.whatsapp_document_template_language.strip() or "en",
+            )
+        else:
+            result = await asyncio.to_thread(
+                client.send_document,
+                to=recipient_wa_id,
+                media_id=media_id,
+                filename=filename,
+                caption=caption,
+            )
     except WhatsAppClientError as exc:
-        await _record_document_event(
-            repo,
-            org_id=org_id,
-            recipient_wa_id=recipient_wa_id,
-            message_text=caption,
-            intent=intent,
+        await repo.update_whatsapp_message_event(
+            str(event["id"]),
             status="failed",
             error=str(exc),
             raw_payload=raw_context,
         )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    await _record_document_event(
-        repo,
-        org_id=org_id,
-        recipient_wa_id=recipient_wa_id,
-        message_text=caption,
-        intent=intent,
-        status="sent",
+    accepted_event = await repo.update_whatsapp_message_event(
+        str(event["id"]),
+        status="accepted",
         wa_message_id=result.message_id,
         raw_payload={
             **raw_context,
@@ -140,7 +186,14 @@ async def _send_pdf_document(
             "provider_response": result.raw,
         },
     )
-    return result.message_id
+    return WhatsAppDeliveryOut(
+        event_id=accepted_event["id"],
+        document_type=document_type,
+        document_id=document_id,
+        recipient=recipient_wa_id,
+        provider_message_id=result.message_id,
+        status="accepted",
+    )
 
 
 async def send_invoice_whatsapp_workflow(
@@ -198,7 +251,7 @@ async def send_invoice_whatsapp_workflow(
             "Attached for your records.",
         ]
     )
-    await _send_pdf_document(
+    delivery = await _send_pdf_document(
         repo,
         org_id=str(current_user.org_id),
         recipient_wa_id=recipient_wa_id,
@@ -214,6 +267,9 @@ async def send_invoice_whatsapp_workflow(
             "recipient_wa_id": recipient_wa_id,
             "filename": filename,
         },
+        document_type="invoice",
+        document_id=str(payload.invoice_id),
+        idempotency_key=payload.idempotency_key,
     )
     sent_invoice = await repo.mark_invoice_sent(
         str(current_user.org_id),
@@ -232,6 +288,12 @@ async def send_invoice_whatsapp_workflow(
             patient_name=patient_name,
             stock_deductions=finalized.get("stock_deductions", []),
         )
+        await _record_program_enrollments(
+            repo,
+            current_user,
+            finalized.get("program_enrollments", []),
+            patient_name=patient_name,
+        )
     await record_invoice_shared(
         repo,
         current_user,
@@ -245,12 +307,10 @@ async def send_invoice_whatsapp_workflow(
     )
     return InvoiceActionResponse(
         success=True,
-        message=(
-            f"Invoice already sent on WhatsApp to {recipient_wa_id}."
-            if finalized.get("already_sent")
-            else f"Invoice sent on WhatsApp to {recipient_wa_id}."
-        ),
+        message=f"Invoice accepted by WhatsApp for {recipient_wa_id}.",
         invoice=output_invoice,
+        program_enrollments=finalized.get("program_enrollments", []),
+        delivery=delivery,
     )
 
 
@@ -262,6 +322,8 @@ async def send_letter_whatsapp_workflow(
     recipient_name: str,
     subject: str,
     content: str,
+    patient_id: str | None = None,
+    idempotency_key: str = "",
 ) -> SendNoteResponse:
     recipient_wa_id = normalize_whatsapp_recipient(recipient_phone)
     normalized_name = " ".join(recipient_name.strip().split())
@@ -284,7 +346,8 @@ async def send_letter_whatsapp_workflow(
             "Attached for your records.",
         ]
     )
-    await _send_pdf_document(
+    document_id = str(patient_id or idempotency_key or "letter")
+    delivery = await _send_pdf_document(
         repo,
         org_id=str(current_user.org_id),
         recipient_wa_id=recipient_wa_id,
@@ -298,11 +361,16 @@ async def send_letter_whatsapp_workflow(
             "recipient_name": normalized_name,
             "recipient_wa_id": recipient_wa_id,
             "filename": filename,
+            "patient_id": str(patient_id or ""),
         },
+        document_type="letter",
+        document_id=document_id,
+        idempotency_key=idempotency_key,
     )
     return SendNoteResponse(
         success=True,
-        message=f"Letter sent on WhatsApp to {recipient_wa_id} from {clinic_name}.",
+        message=f"Letter accepted by WhatsApp for {recipient_wa_id}.",
+        delivery=delivery,
     )
 
 
@@ -359,7 +427,7 @@ async def send_note_whatsapp_workflow(
             "Attached for your records.",
         ]
     )
-    await _send_pdf_document(
+    delivery = await _send_pdf_document(
         repo,
         org_id=str(current_user.org_id),
         recipient_wa_id=recipient_wa_id,
@@ -375,6 +443,9 @@ async def send_note_whatsapp_workflow(
             "recipient_wa_id": recipient_wa_id,
             "filename": filename,
         },
+        document_type="consultation_note",
+        document_id=str(payload.note_id),
+        idempotency_key=payload.idempotency_key,
     )
     sent_note = await repo.mark_note_sent(
         str(current_user.org_id),
@@ -404,5 +475,6 @@ async def send_note_whatsapp_workflow(
     )
     return SendNoteResponse(
         success=True,
-        message=f"Consultation note sent on WhatsApp to {recipient_wa_id}.",
+        message=f"Consultation note accepted by WhatsApp for {recipient_wa_id}.",
+        delivery=delivery,
     )

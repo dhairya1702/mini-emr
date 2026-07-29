@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     whatsapp_phone_number_id: str = ""
     whatsapp_graph_api_version: str = "v23.0"
     whatsapp_skip_signature_check: bool = False
+    whatsapp_document_template_name: str = ""
+    whatsapp_document_template_language: str = "en"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -4,6 +4,7 @@ export type MobileNavItemKey =
   | "queue"
   | "appointments"
   | "patients"
+  | "care-programs"
   | "billing"
   | "inventory"
   | "history"
@@ -28,6 +29,7 @@ export const mobileNavItems: MobileNavItem[] = [
   { key: "queue", href: "/m", label: "Queue" },
   { key: "appointments", href: "/m/appointments", label: "Appointments" },
   { key: "patients", href: "/m/patients", label: "Patients" },
+  { key: "care-programs", href: "/care-programs", label: "Care Programs", adminOnly: true },
   { key: "billing", href: "/m/billing", label: "Billing", adminOnly: true },
   { key: "inventory", href: "/m/inventory", label: "Inventory", adminOnly: true },
   { key: "history", href: "/m/history", label: "History" },

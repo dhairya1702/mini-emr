@@ -13,6 +13,7 @@ from app.schema_domains.billing import (
     InvoiceActionResponse,
     InvoiceCreate,
     InvoiceOut,
+    InvoicePaymentUpdate,
     SendInvoiceRequest,
 )
 from app.services.audit_service import (
@@ -20,6 +21,40 @@ from app.services.audit_service import (
     record_invoice_created,
     record_invoice_shared,
 )
+
+
+def _program_status_message(enrollments: list[dict]) -> str:
+    if not enrollments:
+        return ""
+    if any(enrollment.get("status") == "active" for enrollment in enrollments):
+        return " Care program activated; assign its responsible doctor in Care Programs."
+    return " Care program created and will activate when the first payment is recorded."
+
+
+async def _record_program_enrollments(
+    repo: AppRepository,
+    current_user: UserOut,
+    enrollments: list[dict],
+    *,
+    patient_name: str,
+) -> None:
+    for enrollment in enrollments:
+        snapshot = enrollment.get("program_snapshot") or {}
+        status = str(enrollment.get("status") or "pending")
+        await repo.create_audit_event(
+            org_id=str(current_user.org_id),
+            actor_user_id=str(current_user.id),
+            actor_name=current_user.name.strip() or current_user.identifier,
+            entity_type="care_program_enrollment",
+            entity_id=str(enrollment["id"]),
+            action="care_program_activated" if status == "active" else "care_program_enrolled",
+            summary=f"{snapshot.get('name') or 'Care program'} {status} for {patient_name}.",
+            metadata={
+                "patient_id": str(enrollment["patient_id"]),
+                "invoice_id": str(enrollment["originating_invoice_id"]),
+                "status": status,
+            },
+        )
 
 
 async def _record_invoice_delivery_failure(
@@ -115,10 +150,60 @@ async def finalize_invoice_workflow(
             patient_name=patient_name,
             stock_deductions=finalized.get("stock_deductions", []),
         )
+        await _record_program_enrollments(
+            repo,
+            current_user,
+            finalized.get("program_enrollments", []),
+            patient_name=patient_name,
+        )
+    message = "Invoice already completed." if finalized.get("already_completed") else "Invoice completed."
     return InvoiceActionResponse(
         success=True,
-        message="Invoice already completed." if finalized.get("already_completed") else "Invoice completed.",
+        message=message + _program_status_message(finalized.get("program_enrollments", [])),
         invoice=output_invoice,
+        program_enrollments=finalized.get("program_enrollments", []),
+    )
+
+
+async def update_invoice_payment_workflow(
+    repo: AppRepository,
+    current_user: UserOut,
+    invoice_id: str,
+    payload: InvoicePaymentUpdate,
+) -> InvoiceActionResponse:
+    updated = await repo.update_invoice_payment(
+        str(current_user.org_id),
+        invoice_id,
+        amount_paid=payload.amount_paid,
+        actor_user_id=str(current_user.id),
+    )
+    patient = await repo.get_patient(str(current_user.org_id), str(updated["patient_id"]))
+    patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
+    await repo.create_audit_event(
+        org_id=str(current_user.org_id),
+        actor_user_id=str(current_user.id),
+        actor_name=current_user.name.strip() or current_user.identifier,
+        entity_type="invoice",
+        entity_id=invoice_id,
+        action="invoice_payment_updated",
+        summary=f"Updated payment for {patient_name}.",
+        metadata={
+            "previous_amount_paid": updated.get("previous_amount_paid"),
+            "amount_paid": updated.get("amount_paid"),
+            "payment_status": updated.get("payment_status"),
+        },
+    )
+    await _record_program_enrollments(
+        repo,
+        current_user,
+        updated.get("program_enrollments", []),
+        patient_name=patient_name,
+    )
+    return InvoiceActionResponse(
+        success=True,
+        message="Payment recorded." + _program_status_message(updated.get("program_enrollments", [])),
+        invoice=InvoiceOut(**{**updated, "patient_name": patient_name}),
+        program_enrollments=updated.get("program_enrollments", []),
     )
 
 
@@ -218,6 +303,12 @@ async def send_invoice_workflow(
             patient_name=patient_name,
             stock_deductions=finalized.get("stock_deductions", []),
         )
+        await _record_program_enrollments(
+            repo,
+            current_user,
+            finalized.get("program_enrollments", []),
+            patient_name=patient_name,
+        )
     await record_invoice_shared(
         repo,
         current_user,
@@ -237,4 +328,5 @@ async def send_invoice_workflow(
             else f"Invoice emailed to {recipient_email}."
         ),
         invoice=output_invoice,
+        program_enrollments=finalized.get("program_enrollments", []),
     )

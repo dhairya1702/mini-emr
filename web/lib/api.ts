@@ -11,6 +11,7 @@ import {
   AuthResponse,
   AuthUser,
   CatalogItem,
+  CareProgramOffering,
   CaseStudy,
   CaseStudySavePayload,
   CatalogItemCreatePayload,
@@ -94,6 +95,10 @@ import {
   TbiEvaluationCreatePayload,
   TbiEvaluationRecord,
   PlatformError,
+  ProgramEnrollment,
+  ProgramEnrollmentSummary,
+  ProgramReport,
+  WhatsAppDelivery,
 } from "@/lib/types";
 
 function resolveApiBaseUrl() {
@@ -123,6 +128,14 @@ function resolveApiBaseUrl() {
   } catch {
     return configured.replace(/\/$/, "");
   }
+}
+
+function withIdempotencyKey<T extends { idempotency_key?: string }>(payload: T): T {
+  const key =
+    payload.idempotency_key ||
+    globalThis.crypto?.randomUUID?.() ||
+    `wa-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return { ...payload, idempotency_key: key };
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
@@ -548,6 +561,56 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  updateInvoicePayment: (invoiceId: string, amountPaid: number) =>
+    request<InvoiceActionResult>(`/invoices/${invoiceId}/payment`, {
+      method: "PATCH",
+      body: JSON.stringify({ amount_paid: amountPaid }),
+    }),
+  listCareProgramOfferings: () =>
+    request<CareProgramOffering[]>("/care-programs/offerings"),
+  saveMyopiaCareOffering: (payload: {
+    name: string;
+    description: string;
+    default_price: number;
+    duration_days: number;
+    reviews: Array<{ key: string; label: string; offset_days: number }>;
+    is_active: boolean;
+  }) =>
+    request<CareProgramOffering>("/care-programs/offerings/myopia-care", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  listCareProgramEnrollments: (params?: { patient_id?: string; status?: string }) =>
+    request<ProgramEnrollmentSummary[]>(withQuery("/care-programs/enrollments", params ?? {})),
+  getCareProgramEnrollment: (enrollmentId: string) =>
+    request<ProgramEnrollment>(`/care-programs/enrollments/${enrollmentId}`),
+  assignCareProgramEnrollment: (enrollmentId: string, responsibleUserId: string) =>
+    request<ProgramEnrollment>(`/care-programs/enrollments/${enrollmentId}/assignee`, {
+      method: "PATCH",
+      body: JSON.stringify({ responsible_user_id: responsibleUserId }),
+    }),
+  cancelCareProgramEnrollment: (enrollmentId: string, reason: string) =>
+    request<ProgramEnrollment>(`/care-programs/enrollments/${enrollmentId}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+  completeCareProgramReview: (enrollmentId: string, eventId: string, measurementId: string) =>
+    request<ProgramEnrollment>(`/care-programs/enrollments/${enrollmentId}/reviews/${eventId}/complete`, {
+      method: "POST",
+      body: JSON.stringify({ myopia_measurement_id: measurementId }),
+    }),
+  createCareProgramReport: (enrollmentId: string, eventId: string, clinicianComment = "") =>
+    request<ProgramReport>(`/care-programs/enrollments/${enrollmentId}/reviews/${eventId}/reports`, {
+      method: "POST",
+      body: JSON.stringify({ clinician_comment: clinicianComment }),
+    }),
+  getCareProgramReportPdf: (reportId: string) =>
+    requestBlob(`/care-program-reports/${reportId}/pdf`),
+  sendCareProgramReportWhatsApp: (reportId: string, recipientPhone?: string) =>
+    request<{ success: boolean; message_id: string }>(`/care-program-reports/${reportId}/send-whatsapp`, {
+      method: "POST",
+      body: JSON.stringify({ recipient_phone: recipientPhone || null }),
+    }),
   generateInvoicePdf: (invoiceId: string) =>
     requestBlob(`/invoices/${invoiceId}/pdf`),
   exportPatientsCsv: () => requestBlob("/exports/patients.csv"),
@@ -562,7 +625,7 @@ export const api = {
   sendInvoiceWhatsApp: (payload: SendInvoiceWhatsAppPayload) =>
     request<InvoiceActionResult>("/send-invoice-whatsapp", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withIdempotencyKey(payload)),
     }),
   listFollowUps: (params?: {
     status?: "scheduled" | "completed" | "cancelled";
@@ -838,7 +901,7 @@ export const api = {
   sendLetterWhatsApp: (payload: SendLetterWhatsAppPayload) =>
     request<OperationResult>("/send-letter-whatsapp", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withIdempotencyKey(payload)),
     }),
   getClinicSettings: () => request<ClinicSettings>("/settings/clinic"),
   updateClinicSettings: (payload: ClinicSettingsUpdatePayload) =>
@@ -873,6 +936,10 @@ export const api = {
   sendNoteWhatsApp: (payload: SendNoteWhatsAppPayload) =>
     request<OperationResult>("/send-note-whatsapp", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withIdempotencyKey(payload)),
     }),
+  getWhatsAppDocumentDelivery: (documentType: string, documentId: string) =>
+    request<WhatsAppDelivery>(
+      `/whatsapp/document-deliveries/${encodeURIComponent(documentType)}/${encodeURIComponent(documentId)}`,
+    ),
 };

@@ -273,7 +273,7 @@ async def build_patient_timeline_view(
     invoices = source.get("invoices") or []
     follow_ups = source.get("follow_ups") or []
     appointments = source.get("appointments") or []
-    return build_patient_timeline(
+    timeline = build_patient_timeline(
         patient=patient,
         visits=visits,
         notes=notes,
@@ -285,6 +285,67 @@ async def build_patient_timeline_view(
         clinic_specialty=clinic_settings.get("clinic_specialty"),
         timezone_name=str(clinic_settings.get("timezone") or "UTC"),
     )
+    list_program_timeline = getattr(repo, "list_patient_program_timeline", None)
+    program_rows = (
+        await list_program_timeline(org_id, patient_id)
+        if list_program_timeline is not None
+        else []
+    )
+    seen_enrollments: set[str] = set()
+    seen_completions: set[str] = set()
+    for row in program_rows:
+        enrollment_id = str(row["enrollment_id"])
+        snapshot = row.get("program_snapshot") or {}
+        program_name = str(snapshot.get("name") or "Care program")
+        if enrollment_id not in seen_enrollments:
+            seen_enrollments.add(enrollment_id)
+            timeline.append(
+                PatientTimelineEvent(
+                    id=f"care-program-enrolled-{enrollment_id}",
+                    type="care_program_enrolled",
+                    title=f"{program_name} enrolled",
+                    timestamp=row.get("started_at") or row["enrolled_at"],
+                    description=(
+                        "Program activated after payment."
+                        if row.get("started_at")
+                        else "Program enrollment created and awaiting payment."
+                    ),
+                    entity_type="care_program_enrollment",
+                    entity_id=enrollment_id,
+                    details={"status": row["enrollment_status"]},
+                )
+            )
+        if row.get("event_id"):
+            timeline.append(
+                PatientTimelineEvent(
+                    id=f"care-program-review-{row['event_id']}",
+                    type="care_program_review",
+                    title=str(row.get("title") or "Care program review"),
+                    timestamp=row["event_completed_at"],
+                    description=f"{program_name} review completed with a recorded myopia measurement.",
+                    entity_type="care_program_event",
+                    entity_id=str(row["event_id"]),
+                    details={
+                        "enrollment_id": enrollment_id,
+                        "myopia_measurement_id": str(row.get("linked_entity_id") or ""),
+                    },
+                )
+            )
+        if row.get("enrollment_completed_at") and enrollment_id not in seen_completions:
+            seen_completions.add(enrollment_id)
+            timeline.append(
+                PatientTimelineEvent(
+                    id=f"care-program-completed-{enrollment_id}",
+                    type="care_program_completed",
+                    title=f"{program_name} completed",
+                    timestamp=row["enrollment_completed_at"],
+                    description="All four care program reviews were completed.",
+                    entity_type="care_program_enrollment",
+                    entity_id=enrollment_id,
+                    details={"status": "completed"},
+                )
+            )
+    return sorted(timeline, key=lambda event: event.timestamp, reverse=True)
 
 
 async def list_patient_chart_visits_view(

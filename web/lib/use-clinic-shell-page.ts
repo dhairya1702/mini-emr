@@ -11,7 +11,7 @@ const PAGE_LOAD_MAX_ATTEMPTS = 2;
 
 export type ClinicCatalogItemPayload = {
   name: string;
-  item_type: "service" | "medicine";
+  item_type: "service" | "medicine" | "program";
   default_price: number;
   track_inventory: boolean;
   stock_quantity: number;
@@ -25,7 +25,7 @@ export type ClinicInvoicePayload = {
   patient_id: string;
   items: Array<{
     catalog_item_id?: string | null;
-    item_type: "service" | "medicine";
+    item_type: "service" | "medicine" | "program";
     label: string;
     quantity: number;
     unit_price: number;

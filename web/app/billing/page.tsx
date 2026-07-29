@@ -333,7 +333,7 @@ export default function BillingPage() {
     }
   }, [billablePatients, selectedBillingPatientId]);
 
-  const serviceItems = useMemo(() => catalogItems.filter((item) => item.item_type === "service"), [catalogItems]);
+  const serviceItems = useMemo(() => catalogItems.filter((item) => item.item_type === "service" || (item.item_type === "program" && item.is_active !== false)), [catalogItems]);
   const medicineItems = useMemo(() => catalogItems.filter((item) => item.item_type === "medicine"), [catalogItems]);
   const latestConsultationNote = useMemo(() => selectedPatientNotes[0] ?? null, [selectedPatientNotes]);
   const autoDraftInvoiceItems = useMemo(

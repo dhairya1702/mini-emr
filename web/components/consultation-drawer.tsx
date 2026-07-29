@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, Fragment, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarPlus2, Eye, Eraser, FileText, Image as ImageIcon, Mail, Paperclip, PenLine, Plus, Printer, Sparkles, Undo2, X } from "lucide-react";
+import { CalendarPlus2, Eye, Eraser, FileText, Image as ImageIcon, Mail, MessageCircle, Paperclip, PenLine, Plus, Printer, Sparkles, Undo2, X } from "lucide-react";
 import NextImage from "next/image";
 import type { ReactNode } from "react";
 
@@ -34,6 +34,7 @@ import {
   TbiEvaluationRecord,
   TestScoreEntry,
   WellChildVisitPayload,
+  WhatsAppDeliveryStatus,
 } from "@/lib/types";
 import { api } from "@/lib/api";
 import { printBlob } from "@/lib/print";
@@ -199,6 +200,7 @@ interface ConsultationDrawerProps {
   }>;
   onGeneratePdf: (payload: { note_id?: string; patient_id: string; content: string; assets?: NoteAsset[] }) => Promise<Blob>;
   onSend: (payload: { note_id: string; patient_id: string; recipient_email: string }) => Promise<string>;
+  onSendWhatsApp: (payload: { note_id: string; patient_id: string; recipient_phone: string }) => Promise<string>;
 }
 
 function fileToBase64(file: File) {
@@ -305,6 +307,7 @@ type ConsultationWorkspaceSnapshot = {
   noteStatus: "draft" | "final" | "sent" | "";
   isSent: boolean;
   recipientEmail: string;
+  recipientPhone?: string;
   hasGeneratedNote: boolean;
   isFollowUpOpen: boolean;
   isDraftDirty?: boolean;
@@ -556,6 +559,7 @@ export function ConsultationDrawer({
   onGenerate,
   onGeneratePdf,
   onSend,
+  onSendWhatsApp,
 }: ConsultationDrawerProps) {
   const isOptometryClinic = specialtyHasModule(clinicSpecialty, "eye_exam");
   const isPediatricsClinic = specialtyHasModule(clinicSpecialty, "pediatric_growth_measurement");
@@ -575,6 +579,7 @@ export function ConsultationDrawer({
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isDraftDirty, setIsDraftDirty] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
   const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
   const [isEyeExamOpen, setIsEyeExamOpen] = useState(false);
   const [isContactLensOpen, setIsContactLensOpen] = useState(false);
@@ -600,6 +605,8 @@ export function ConsultationDrawer({
   const [noteStatus, setNoteStatus] = useState<"draft" | "final" | "sent" | "">("");
   const [isSent, setIsSent] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState("");
+  const [recipientPhone, setRecipientPhone] = useState("");
+  const [whatsappDeliveryStatus, setWhatsAppDeliveryStatus] = useState<WhatsAppDeliveryStatus | "">("");
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawingMode, setDrawingMode] = useState<"draw" | "erase">("draw");
   const [brushSize, setBrushSize] = useState(3);
@@ -659,6 +666,7 @@ export function ConsultationDrawer({
     setIsSavingDraft(false);
     setIsDraftDirty(cachedWorkspace?.isDraftDirty ?? false);
     setIsSending(false);
+    setIsSendingWhatsApp(false);
     setIsEyeExamOpen(false);
     setIsContactLensOpen(false);
     setIsBinocularVisionOpen(false);
@@ -747,6 +755,8 @@ export function ConsultationDrawer({
     setNoteStatus(cachedWorkspace?.noteStatus ?? "");
     setIsSent(cachedWorkspace?.isSent ?? false);
     setRecipientEmail(cachedWorkspace?.recipientEmail ?? patient.email ?? "");
+    setRecipientPhone(cachedWorkspace?.recipientPhone ?? patient.phone ?? "");
+    setWhatsAppDeliveryStatus("");
 
     void Promise.allSettled([
       api.listCatalogItems(),
@@ -779,6 +789,28 @@ export function ConsultationDrawer({
   }, [clinicSpecialty, isTrainingMode, patient, specialtyModules.length, workspaceScope]);
 
   useEffect(() => {
+    if (!currentNoteId || !["queued", "accepted", "sent"].includes(whatsappDeliveryStatus)) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      void api
+        .getWhatsAppDocumentDelivery("consultation_note", currentNoteId)
+        .then((delivery) => {
+          setWhatsAppDeliveryStatus(delivery.status);
+          if (delivery.status === "delivered") {
+            setStatusMessage(`Consultation note delivered on WhatsApp to ${delivery.recipient}.`);
+          } else if (delivery.status === "read") {
+            setStatusMessage(`Consultation note read on WhatsApp by ${delivery.recipient}.`);
+          } else if (delivery.status === "failed") {
+            setStatusMessage(delivery.error || "WhatsApp delivery failed. Retry when ready.");
+          }
+        })
+        .catch(() => undefined);
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [currentNoteId, whatsappDeliveryStatus]);
+
+  useEffect(() => {
     if (!patient || !workspaceScope) {
       return;
     }
@@ -792,6 +824,7 @@ export function ConsultationDrawer({
       noteStatus,
       isSent,
       recipientEmail,
+      recipientPhone,
       hasGeneratedNote,
       isFollowUpOpen,
       isDraftDirty,
@@ -812,6 +845,7 @@ export function ConsultationDrawer({
     openSections,
     patient,
     recipientEmail,
+    recipientPhone,
     selectedMedicineIds,
     workspaceScope,
   ]);
@@ -1219,11 +1253,6 @@ export function ConsultationDrawer({
       setStatusMessage("Enter a recipient email before sending.");
       return;
     }
-    if (isSent) {
-      setStatusMessage("This saved note has already been emailed and is locked.");
-      return;
-    }
-
     setIsSending(true);
     try {
       await persistDraftIfNeeded();
@@ -1234,6 +1263,7 @@ export function ConsultationDrawer({
       });
       setNoteStatus("sent");
       setIsSent(true);
+      setWhatsAppDeliveryStatus("accepted");
       setStatusMessage(message);
       if (workspaceScope) {
         clearConsultationWorkspace(workspaceScope);
@@ -1242,6 +1272,35 @@ export function ConsultationDrawer({
       setStatusMessage(error instanceof Error ? error.message : "Failed to send email.");
     } finally {
       setIsSending(false);
+    }
+  }
+
+  async function handleSendWhatsApp() {
+    if (!form.generatedNote.trim() || !currentNoteId) {
+      setStatusMessage("Generate and save the note before sending it.");
+      return;
+    }
+    if (!recipientPhone.trim()) {
+      setStatusMessage("Enter a WhatsApp number before sending.");
+      return;
+    }
+
+    setIsSendingWhatsApp(true);
+    setStatusMessage("");
+    try {
+      await persistDraftIfNeeded();
+      const message = await onSendWhatsApp({
+        note_id: currentNoteId,
+        patient_id: currentPatient.id,
+        recipient_phone: recipientPhone.trim(),
+      });
+      setNoteStatus("sent");
+      setIsSent(true);
+      setStatusMessage(message);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Failed to send on WhatsApp. The note remains finalized; retry when ready.");
+    } finally {
+      setIsSendingWhatsApp(false);
     }
   }
 
@@ -3163,6 +3222,23 @@ export function ConsultationDrawer({
                         className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
+                    <label className="mt-3 block">
+                      <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+                        WhatsApp number
+                      </span>
+                      <input
+                        type="tel"
+                        value={recipientPhone}
+                        onChange={(event) => setRecipientPhone(event.target.value)}
+                        placeholder="+91 98765 43210"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                      />
+                      {whatsappDeliveryStatus ? (
+                        <span className="mt-2 block text-xs font-medium text-slate-600">
+                          WhatsApp: {whatsappDeliveryStatus === "accepted" ? "Accepted" : whatsappDeliveryStatus.charAt(0).toUpperCase() + whatsappDeliveryStatus.slice(1)}
+                        </span>
+                      ) : null}
+                    </label>
                   </div>
                   <div className="flex flex-col gap-3">
                     <button
@@ -3176,12 +3252,21 @@ export function ConsultationDrawer({
                     </button>
                     <button
                       type="button"
-                      disabled={isSending || !currentNoteId || isSent || !recipientEmail.trim()}
+                      disabled={isSending || isSendingWhatsApp || !currentNoteId || !recipientEmail.trim()}
                       onClick={handleSend}
                       className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                     >
                       <Mail className="h-4 w-4" />
-                      {isSending ? "Sending..." : isSent ? "Sent and Locked" : "Send Email"}
+                      {isSending ? "Sending..." : isSent ? "Send Email Again" : "Send Email"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSending || isSendingWhatsApp || !currentNoteId || !recipientPhone.trim()}
+                      onClick={handleSendWhatsApp}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1f9d68] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#18885a] disabled:opacity-60"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      {isSendingWhatsApp ? "Sending..." : isSent ? "Send WhatsApp Again" : "Send WhatsApp"}
                     </button>
                     <div className="space-y-3">
                       <div className="flex flex-wrap gap-3">

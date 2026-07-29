@@ -313,6 +313,9 @@ function getTimelineIcon(type: PatientTimelineEvent["type"]) {
 
 function timelineMeta(type: PatientTimelineEvent["type"]): { label: string; node: string; kind: string } {
   const value = String(type || "").toLowerCase();
+  if (value.includes("care_program")) {
+    return { label: "Care", node: "bg-emerald-500 border-emerald-100", kind: "text-emerald-700" };
+  }
   if (value.includes("eval") || value.includes("measurement") || value === "myopia_measurement") {
     return { label: "Test", node: "bg-[#f0b44c] border-[#fff2da]", kind: "text-[#b45309]" };
   }

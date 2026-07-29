@@ -260,7 +260,20 @@ class FakeRepo:
         status: str,
         error: str = "",
         raw_payload: dict | None = None,
+        document_type: str = "",
+        document_id: str = "",
+        idempotency_key: str = "",
     ) -> dict:
+        existing = next(
+            (
+                row
+                for row in self.whatsapp_message_events.values()
+                if idempotency_key and row.get("org_id") == org_id and row.get("idempotency_key") == idempotency_key
+            ),
+            None,
+        )
+        if existing:
+            return dict(existing)
         event_id = str(uuid4())
         row = {
             "id": event_id,
@@ -275,10 +288,78 @@ class FakeRepo:
             "status": status,
             "error": error,
             "raw_payload": raw_payload or {},
+            "document_type": document_type,
+            "document_id": document_id,
+            "idempotency_key": idempotency_key,
             "created_at": _now(),
+            "updated_at": _now(),
         }
         self.whatsapp_message_events[event_id] = row
         return dict(row)
+
+    async def get_whatsapp_message_event_by_idempotency(self, org_id: str, idempotency_key: str) -> dict | None:
+        return next(
+            (
+                dict(row)
+                for row in self.whatsapp_message_events.values()
+                if row.get("org_id") == org_id and row.get("idempotency_key") == idempotency_key
+            ),
+            None,
+        )
+
+    async def update_whatsapp_message_status(
+        self,
+        wa_message_id: str,
+        *,
+        status: str,
+        error: str = "",
+        raw_payload: dict | None = None,
+    ) -> dict | None:
+        ranks = {"sent": 1, "accepted": 1, "delivered": 2, "read": 3, "failed": 4}
+        for row in self.whatsapp_message_events.values():
+            if row.get("wa_message_id") != wa_message_id:
+                continue
+            if status == "failed" or ranks.get(status, 0) >= ranks.get(str(row.get("status")), 0):
+                row["status"] = status
+            if error:
+                row["error"] = error
+            row["raw_payload"] = {**row.get("raw_payload", {}), **(raw_payload or {})}
+            row["updated_at"] = _now()
+            return dict(row)
+        return None
+
+    async def update_whatsapp_message_event(
+        self,
+        event_id: str,
+        *,
+        status: str,
+        wa_message_id: str = "",
+        error: str = "",
+        raw_payload: dict | None = None,
+    ) -> dict:
+        row = self.whatsapp_message_events[event_id]
+        row["status"] = status
+        if wa_message_id:
+            row["wa_message_id"] = wa_message_id
+        row["error"] = error
+        row["raw_payload"] = {**row.get("raw_payload", {}), **(raw_payload or {})}
+        row["updated_at"] = _now()
+        return dict(row)
+
+    async def get_latest_whatsapp_document_event(
+        self,
+        org_id: str,
+        document_type: str,
+        document_id: str,
+    ) -> dict | None:
+        matches = [
+            row
+            for row in self.whatsapp_message_events.values()
+            if row.get("org_id") == org_id
+            and row.get("document_type") == document_type
+            and row.get("document_id") == document_id
+        ]
+        return dict(matches[-1]) if matches else None
 
     async def create_ai_usage_event(
         self,

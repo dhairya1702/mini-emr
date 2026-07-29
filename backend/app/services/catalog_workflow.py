@@ -13,6 +13,12 @@ async def create_catalog_item_workflow(
     current_user: UserOut,
     payload: CatalogItemCreate,
 ) -> CatalogItemOut:
+    if (
+        payload.item_type == "program"
+        or payload.program_key is not None
+        or payload.program_definition is not None
+    ):
+        raise ValueError("Configure care programs from the Care Programs page.")
     created = await repo.create_catalog_item(str(current_user.org_id), payload)
     await record_catalog_item_created(repo, current_user, created)
     return CatalogItemOut(**created)
