@@ -161,6 +161,13 @@ def test_sent_consultation_note_is_emailed_and_locked_to_saved_record(client, mo
     assert repo.notes[note_id]["asset_payload"]
     assert len(sent_messages) == 1
     assert sent_messages[0]["recipient"] == "patient@example.com"
+    assert sent_messages[0]["subject"] == "Your consultation note from Notes Lock Clinic"
+    assert sent_messages[0]["text_content"] == (
+        "Hi Note,\n\n"
+        "Thank you for visiting Notes Lock Clinic. We've attached your consultation note "
+        "from your visit for your records.\n\n"
+        "Take care,\nNotes Lock Clinic"
+    )
     assert sent_messages[0]["attachments"]
 
     resent = test_client.post(

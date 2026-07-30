@@ -110,6 +110,13 @@ def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypat
     assert repo.invoices[invoice["id"]]["completed_by"] == session["user"]["id"]
     assert len(sent_messages) == 1
     assert sent_messages[0]["recipient"] == patient["email"]
+    assert sent_messages[0]["subject"] == "Your invoice from Billing Clinic"
+    assert sent_messages[0]["text_content"] == (
+        "Hi Bill,\n\n"
+        "Thank you for visiting Billing Clinic. We've attached the invoice from your visit "
+        "for your records.\n\n"
+        "Thank you,\nBilling Clinic"
+    )
 
     second_send = test_client.post(
         "/send-invoice",

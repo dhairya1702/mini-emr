@@ -1825,8 +1825,7 @@ export default function HomePage() {
           if (isTrainingMode) {
             throw new Error("Disabled in Training Mode. Nothing is sent or saved to the clinic.");
           }
-          const response = await api.sendNoteWhatsApp(payload);
-          return response.message;
+          return api.sendNoteWhatsApp(payload);
         }}
       />
 

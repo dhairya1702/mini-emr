@@ -28,6 +28,7 @@ import {
   LongitudinalTrackRecord,
   MyopiaMeasurementPayload,
   NoteAsset,
+  OperationResult,
   Patient,
   PediatricGrowthMeasurementPayload,
   TbiEvaluationCreatePayload,
@@ -200,7 +201,7 @@ interface ConsultationDrawerProps {
   }>;
   onGeneratePdf: (payload: { note_id?: string; patient_id: string; content: string; assets?: NoteAsset[] }) => Promise<Blob>;
   onSend: (payload: { note_id: string; patient_id: string; recipient_email: string }) => Promise<string>;
-  onSendWhatsApp: (payload: { note_id: string; patient_id: string; recipient_phone: string }) => Promise<string>;
+  onSendWhatsApp: (payload: { note_id: string; patient_id: string; recipient_phone: string }) => Promise<OperationResult>;
 }
 
 function fileToBase64(file: File) {
@@ -305,7 +306,9 @@ type ConsultationWorkspaceSnapshot = {
   medicineSearch: string;
   currentNoteId: string;
   noteStatus: "draft" | "final" | "sent" | "";
-  isSent: boolean;
+  isSent?: boolean;
+  isEmailSent?: boolean;
+  isWhatsAppSent?: boolean;
   recipientEmail: string;
   recipientPhone?: string;
   hasGeneratedNote: boolean;
@@ -603,7 +606,8 @@ export function ConsultationDrawer({
     medications_prescribed: [],
   });
   const [noteStatus, setNoteStatus] = useState<"draft" | "final" | "sent" | "">("");
-  const [isSent, setIsSent] = useState(false);
+  const [isEmailSent, setIsEmailSent] = useState(false);
+  const [isWhatsAppSent, setIsWhatsAppSent] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
   const [whatsappDeliveryStatus, setWhatsAppDeliveryStatus] = useState<WhatsAppDeliveryStatus | "">("");
@@ -753,7 +757,8 @@ export function ConsultationDrawer({
     setCurrentNoteId(cachedWorkspace?.currentNoteId ?? "");
     setClinicalExtractions(cachedWorkspace?.clinicalExtractions ?? { services_performed: [], medications_prescribed: [] });
     setNoteStatus(cachedWorkspace?.noteStatus ?? "");
-    setIsSent(cachedWorkspace?.isSent ?? false);
+    setIsEmailSent(cachedWorkspace?.isEmailSent ?? false);
+    setIsWhatsAppSent(cachedWorkspace?.isWhatsAppSent ?? false);
     setRecipientEmail(cachedWorkspace?.recipientEmail ?? patient.email ?? "");
     setRecipientPhone(cachedWorkspace?.recipientPhone ?? patient.phone ?? "");
     setWhatsAppDeliveryStatus("");
@@ -805,7 +810,9 @@ export function ConsultationDrawer({
             setStatusMessage(delivery.error || "WhatsApp delivery failed. Retry when ready.");
           }
         })
-        .catch(() => undefined);
+        .catch(() => {
+          setWhatsAppDeliveryStatus("");
+        });
     }, 3000);
     return () => window.clearInterval(interval);
   }, [currentNoteId, whatsappDeliveryStatus]);
@@ -822,7 +829,8 @@ export function ConsultationDrawer({
       medicineSearch,
       currentNoteId,
       noteStatus,
-      isSent,
+      isEmailSent,
+      isWhatsAppSent,
       recipientEmail,
       recipientPhone,
       hasGeneratedNote,
@@ -839,7 +847,8 @@ export function ConsultationDrawer({
     hasGeneratedNote,
     isFollowUpOpen,
     isDraftDirty,
-    isSent,
+    isEmailSent,
+    isWhatsAppSent,
     medicineSearch,
     noteStatus,
     openSections,
@@ -1064,7 +1073,8 @@ export function ConsultationDrawer({
       setClinicalExtractions(generated.extractions ?? { services_performed: [], medications_prescribed: [] });
       setNoteStatus(generated.status || "draft");
       setIsDraftDirty(false);
-      setIsSent(false);
+      setIsEmailSent(false);
+      setIsWhatsAppSent(false);
       const baseMessage = refreshingDraft ? "Draft note refreshed." : "Draft SOAP note generated.";
       setStatusMessage(generated.usedFallback ? `${baseMessage} ${generated.warning || "AI unavailable, used fallback template."}` : baseMessage);
     } catch (error) {
@@ -1262,8 +1272,7 @@ export function ConsultationDrawer({
         recipient_email: recipientEmail.trim(),
       });
       setNoteStatus("sent");
-      setIsSent(true);
-      setWhatsAppDeliveryStatus("accepted");
+      setIsEmailSent(true);
       setStatusMessage(message);
       if (workspaceScope) {
         clearConsultationWorkspace(workspaceScope);
@@ -1289,14 +1298,15 @@ export function ConsultationDrawer({
     setStatusMessage("");
     try {
       await persistDraftIfNeeded();
-      const message = await onSendWhatsApp({
+      const result = await onSendWhatsApp({
         note_id: currentNoteId,
         patient_id: currentPatient.id,
         recipient_phone: recipientPhone.trim(),
       });
       setNoteStatus("sent");
-      setIsSent(true);
-      setStatusMessage(message);
+      setIsWhatsAppSent(true);
+      setWhatsAppDeliveryStatus(result.delivery?.status ?? "accepted");
+      setStatusMessage(result.message);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to send on WhatsApp. The note remains finalized; retry when ready.");
     } finally {
@@ -2929,7 +2939,7 @@ export function ConsultationDrawer({
               ) : null}
               <p className="mt-2 text-xs text-slate-500">
                 {noteStatus === "draft" ? "Edit the note prose here and use the structured fields in this card to change services or the medicine table, then save or finalize." : "Finalized notes are read-only."}
-                {isSent ? " This note has been sent and is locked." : ""}
+                {noteStatus === "sent" ? " This note has been sent and is locked." : ""}
               </p>
             </div>
           </div>
@@ -3254,7 +3264,7 @@ export function ConsultationDrawer({
                       className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
                     >
                       <Mail className="h-4 w-4" />
-                      {isSending ? "Sending..." : isSent ? "Send Email Again" : "Send Email"}
+                      {isSending ? "Sending..." : isEmailSent ? "Send Email Again" : "Send Email"}
                     </button>
                     <button
                       type="button"
@@ -3263,7 +3273,7 @@ export function ConsultationDrawer({
                       className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1f9d68] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#18885a] disabled:opacity-60"
                     >
                       <MessageCircle className="h-4 w-4" />
-                      {isSendingWhatsApp ? "Sending..." : isSent ? "Send WhatsApp Again" : "Send WhatsApp"}
+                      {isSendingWhatsApp ? "Sending..." : isWhatsAppSent ? "Send WhatsApp Again" : "Send WhatsApp"}
                     </button>
                     <div className="space-y-3">
                       <div className="flex flex-wrap gap-3">

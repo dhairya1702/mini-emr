@@ -614,8 +614,9 @@ async def send_note_workflow(
         assets=note_assets,
     )
     patient_name = str(patient.get("name") or "").strip() or "Patient"
+    patient_first_name = patient_name.split(maxsplit=1)[0]
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
-    subject = f"{clinic_name} consultation note for {patient_name}"
+    subject = f"Your consultation note from {clinic_name}"
     try:
         await send_clinic_email_message(
             repo=repo,
@@ -623,8 +624,10 @@ async def send_note_workflow(
             recipient=recipient_email,
             subject=subject,
             text_content=(
-                f"Consultation note for {patient_name} is attached as a PDF.\n\n"
-                f"Sent from {clinic_name}."
+                f"Hi {patient_first_name},\n\n"
+                f"Thank you for visiting {clinic_name}. We've attached your consultation note "
+                "from your visit for your records.\n\n"
+                f"Take care,\n{clinic_name}"
             ),
             attachments=[
                 (f"{patient_name.replace(' ', '_') or 'patient'}_consultation_note.pdf", pdf_bytes, "application/pdf"),

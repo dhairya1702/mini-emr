@@ -251,15 +251,18 @@ async def send_invoice_workflow(
         generated_on=generated_on,
     )
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
+    patient_first_name = patient_name.split(maxsplit=1)[0]
     try:
         await send_clinic_email_message(
             repo=repo,
             clinic_settings=clinic_settings,
             recipient=recipient_email,
-            subject=f"{clinic_name} invoice for {patient_name}",
+            subject=f"Your invoice from {clinic_name}",
             text_content=(
-                f"Invoice for {patient_name} is attached as a PDF.\n\n"
-                f"Sent from {clinic_name}."
+                f"Hi {patient_first_name},\n\n"
+                f"Thank you for visiting {clinic_name}. We've attached the invoice from your visit "
+                "for your records.\n\n"
+                f"Thank you,\n{clinic_name}"
             ),
             attachments=[
                 (f"{patient_name.replace(' ', '_') or 'patient'}_invoice.pdf", pdf_bytes, "application/pdf"),
