@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, type ChangeEvent, type ReactNode } from "react";
+import { type ChangeEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, ArrowLeft, CalendarClock, ChevronDown, ChevronRight, ClipboardList, Clock3, Eye, FileText, Image as ImageIcon, LineChart, Mail, Pencil, Sparkles, Upload, UserRound, X } from "lucide-react";
 
@@ -11,6 +11,7 @@ import { LowVisionModal } from "@/components/optometry/low-vision-modal";
 import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-myopia-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia/myopia-management-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
+import { EyeExamFields } from "@/components/optometry/eye-exam-fields";
 import { api } from "@/lib/api";
 import {
   buildBinocularVisionSummary,
@@ -28,6 +29,9 @@ import {
   ContactLensEyeEntry,
   ContactLensPayload,
   EyeExamEntry,
+  EyeExamPayload,
+  EyeExamRow,
+  EyeExamSection,
   LongitudinalTrackRecord,
   LowVisionPayload,
   MyopiaHistory,
@@ -45,6 +49,12 @@ import {
   TbiEvaluationCreatePayload,
   TbiEvaluationRecord,
 } from "@/lib/types";
+import {
+  buildEyeExamSummary,
+  createEmptyEyeExam,
+  hasEyeExamData,
+  normalizeEyeExamPayload,
+} from "@/lib/structured-modules";
 
 type ChartTab = "visits" | "attachments" | "tests" | "timeline";
 
@@ -101,7 +111,7 @@ function formatDateTime(value: string) {
 }
 
 const MODULE_LABELS: Record<SpecialtyModuleKey, string> = {
-  eye_exam: "Eye exam / Refraction",
+  eye_exam: "Eye Exam",
   contact_lens: "Contact lens",
   binocular_vision: "Binocular vision",
   low_vision: "Low vision",
@@ -115,36 +125,6 @@ const MODULE_LABELS: Record<SpecialtyModuleKey, string> = {
 
 function moduleLabel(moduleKey: SpecialtyModuleKey) {
   return MODULE_LABELS[moduleKey] ?? moduleKey.replaceAll("_", " ");
-}
-
-function createEmptyEyeExam(): EyeExamEntry[] {
-  return [
-    { eye: "right", sphere: "", cylinder: "", axis: "", vision: "" },
-    { eye: "left", sphere: "", cylinder: "", axis: "", vision: "" },
-  ];
-}
-
-function hasEyeExamData(entries: EyeExamEntry[]) {
-  return entries.some((entry) =>
-    entry.sphere.trim() ||
-    entry.cylinder.trim() ||
-    entry.axis.trim() ||
-    entry.vision.trim(),
-  );
-}
-
-function buildEyeExamSummary(entries: EyeExamEntry[]) {
-  const parts = entries
-    .filter((entry) => entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim())
-    .map((entry) => {
-      const eye = entry.eye === "right" ? "OD" : "OS";
-      const refraction = [entry.sphere, entry.cylinder, entry.axis ? `x ${entry.axis}` : ""]
-        .map((value) => value.trim())
-        .filter(Boolean)
-        .join(" ");
-      return [eye, refraction, entry.vision.trim() ? `VA ${entry.vision.trim()}` : ""].filter(Boolean).join(" ");
-    });
-  return parts.join(" · ") || "Eye exam saved.";
 }
 
 function formatModuleSummary(entry: LongitudinalTrackRecord) {
@@ -256,6 +236,71 @@ function PhotoPreviewModal({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={preview.src} alt={preview.alt} className="max-h-[82dvh] max-w-full object-contain" />
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfilePhotoManagerModal({
+  open,
+  patientName,
+  photoSrc,
+  isBusy,
+  onChange,
+  onRemove,
+  onClose,
+}: {
+  open: boolean;
+  patientName: string;
+  photoSrc: string;
+  isBusy: boolean;
+  onChange: () => void;
+  onRemove: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isBusy) {
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isBusy, onClose, open]);
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[96] flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-label={`Manage ${patientName} profile photo`}>
+      <button type="button" className="absolute inset-0" onClick={isBusy ? undefined : onClose} aria-label="Close profile photo manager" />
+      <div className="relative z-10 w-full max-w-md rounded-[22px] border border-[#bfd7e8] bg-white p-5 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+        <div className="flex items-center justify-between gap-4">
+          <h3 className="text-lg font-semibold text-slate-900">Profile photo</h3>
+          <button type="button" disabled={isBusy} onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl border border-[#bfd7e8] text-slate-600 transition hover:bg-[#f3f8fb] disabled:opacity-50" aria-label="Close profile photo manager">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="mt-4 flex min-h-72 items-center justify-center overflow-hidden rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]">
+          {photoSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={photoSrc} alt={`${patientName} profile photo`} className="max-h-[55vh] w-full object-contain" />
+          ) : (
+            <p className="text-sm text-slate-500">Loading photo...</p>
+          )}
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <button type="button" disabled={isBusy} onClick={onChange} className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60">
+            {isBusy ? "Uploading..." : "Change photo"}
+          </button>
+          <button type="button" disabled={isBusy} onClick={onRemove} className="rounded-xl border border-rose-200 bg-white px-4 py-3 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-60">
+            Remove photo
+          </button>
         </div>
       </div>
     </div>
@@ -807,50 +852,6 @@ function PatientStructuredModuleShell({
   );
 }
 
-function EyeExamFields({
-  open,
-  value,
-  onChange,
-  onSave,
-}: {
-  open: boolean;
-  value: EyeExamEntry[];
-  onChange: (eye: "right" | "left", patch: Partial<EyeExamEntry>) => void;
-  onSave: () => void;
-}) {
-  if (!open) {
-    return null;
-  }
-  return (
-    <div>
-      <div>
-        <h3 className="text-2xl font-semibold text-slate-900">Refraction</h3>
-      </div>
-        <div className="mt-6 grid gap-3 md:grid-cols-[110px_repeat(4,minmax(0,1fr))]">
-          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Eye</div>
-          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Sphere</div>
-          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Cylinder</div>
-          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Axis</div>
-          <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Vision</div>
-          {value.map((entry) => (
-            <Fragment key={entry.eye}>
-              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm font-medium capitalize text-slate-700">{entry.eye}</div>
-              <input value={entry.sphere} onChange={(event) => onChange(entry.eye, { sphere: event.target.value })} placeholder="-1.25" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-              <input value={entry.cylinder} onChange={(event) => onChange(entry.eye, { cylinder: event.target.value })} placeholder="-0.50" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-              <input value={entry.axis} onChange={(event) => onChange(entry.eye, { axis: event.target.value })} placeholder="90" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-              <input value={entry.vision} onChange={(event) => onChange(entry.eye, { vision: event.target.value })} placeholder="6/6" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-            </Fragment>
-          ))}
-        </div>
-        <div className="mt-6 flex justify-end">
-          <button type="button" onClick={onSave} className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
-            Save
-          </button>
-        </div>
-    </div>
-  );
-}
-
 function TestsPanel({
   latestGrowthRecord,
   moduleEntryError,
@@ -1254,6 +1255,7 @@ export function PatientDetailsDrawer({
   const [isUploadingProfilePhoto, setIsUploadingProfilePhoto] = useState(false);
   const [profilePhotoVersion, setProfilePhotoVersion] = useState(0);
   const [profilePhotoObjectUrl, setProfilePhotoObjectUrl] = useState("");
+  const [isProfilePhotoManagerOpen, setIsProfilePhotoManagerOpen] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<PhotoPreview | null>(null);
   const [attachmentSendDraft, setAttachmentSendDraft] = useState<{
     attachmentId: string;
@@ -1268,9 +1270,10 @@ export function PatientDetailsDrawer({
   const [moduleEntries, setModuleEntries] = useState<LongitudinalTrackRecord[]>([]);
   const [tbiEvaluations, setTbiEvaluations] = useState<TbiEvaluationRecord[]>([]);
   const [binocularVisionEvaluations, setBinocularVisionEvaluations] = useState<BinocularVisionEvaluationRecord[]>([]);
-  const [eyeExam, setEyeExam] = useState<EyeExamEntry[]>(createEmptyEyeExam);
+  const [eyeExam, setEyeExam] = useState<EyeExamPayload>(createEmptyEyeExam);
   const [contactLens, setContactLens] = useState<ContactLensPayload>(createEmptyContactLens);
   const [lowVision, setLowVision] = useState<LowVisionPayload>(createEmptyLowVision);
+  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
   const [isMyopiaLoading, setIsMyopiaLoading] = useState(false);
   const [myopiaError, setMyopiaError] = useState("");
   const [isTbiLoading, setIsTbiLoading] = useState(false);
@@ -1387,6 +1390,7 @@ export function PatientDetailsDrawer({
     setPatientAttachments([]);
     setAttachmentError("");
     setAttachmentSendDraft(null);
+    setIsProfilePhotoManagerOpen(false);
     setPhotoPreview((current) => {
       if (current?.revokeOnClose && current.src.startsWith("blob:")) {
         URL.revokeObjectURL(current.src);
@@ -1830,8 +1834,11 @@ export function PatientDetailsDrawer({
     }
   }
 
-  function updateEyeExam(eye: "right" | "left", patch: Partial<EyeExamEntry>) {
-    setEyeExam((current) => current.map((entry) => (entry.eye === eye ? { ...entry, ...patch } : entry)));
+  function updateEyeExam(section: EyeExamSection, row: EyeExamRow, patch: Partial<EyeExamEntry>) {
+    setEyeExam((current) => ({
+      ...current,
+      [section]: current[section].map((entry) => (entry.eye === row ? { ...entry, ...patch } : entry)),
+    }));
   }
 
   function updateContactLens(patch: Partial<ContactLensPayload>) {
@@ -1859,17 +1866,7 @@ export function PatientDetailsDrawer({
   }
 
   function selectEyeExamEntry(entry: LongitudinalTrackRecord) {
-    const entries = Array.isArray(entry.raw_payload?.entries) ? entry.raw_payload.entries : [];
-    const normalized = createEmptyEyeExam().map((emptyEntry) => {
-      const saved = entries.find((candidate) =>
-        typeof candidate === "object" &&
-        candidate !== null &&
-        "eye" in candidate &&
-        (candidate as { eye?: unknown }).eye === emptyEntry.eye,
-      ) as Partial<EyeExamEntry> | undefined;
-      return { ...emptyEntry, ...saved };
-    });
-    setEyeExam(normalized);
+    setEyeExam(normalizeEyeExamPayload(entry.raw_payload));
     setSelectedEyeExamEntryId(entry.id);
   }
 
@@ -1942,7 +1939,15 @@ export function PatientDetailsDrawer({
   }
 
   async function handleSaveEyeExam() {
-    const saved = await saveStructuredModuleEntry("eye_exam", { entries: eyeExam.filter((entry) => hasEyeExamData([entry])) }, buildEyeExamSummary(eyeExam));
+    if (!hasEyeExamData(eyeExam)) {
+      setGenericModuleEntryError("Enter eye exam values before saving.");
+      return;
+    }
+    const saved = await saveStructuredModuleEntry(
+      "eye_exam",
+      eyeExam as unknown as Record<string, unknown>,
+      buildEyeExamSummary(eyeExam),
+    );
     if (saved) {
       setSelectedEyeExamEntryId(saved.id);
     }
@@ -2105,6 +2110,21 @@ export function PatientDetailsDrawer({
     });
   }
 
+  function handleProfilePhotoClick() {
+    if (!currentPatient) {
+      return;
+    }
+    if (!readOnly && !isTrainingMode) {
+      if (currentPatient.profile_photo_url) {
+        setIsProfilePhotoManagerOpen(true);
+      } else {
+        profilePhotoInputRef.current?.click();
+      }
+      return;
+    }
+    handleOpenProfilePhotoPreview();
+  }
+
   function handleOpenNoteImage(asset: NoteAsset) {
     const src = noteAssetImageSrc(asset);
     if (!src) {
@@ -2235,6 +2255,7 @@ export function PatientDetailsDrawer({
       setCurrentPatient(updated);
       setProfilePhotoVersion((current) => current + 1);
       onPatientUpdated?.(updated);
+      setIsProfilePhotoManagerOpen(false);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Failed to upload patient photo.");
     } finally {
@@ -2256,6 +2277,7 @@ export function PatientDetailsDrawer({
       setCurrentPatient(updated);
       setProfilePhotoVersion((current) => current + 1);
       onPatientUpdated?.(updated);
+      setIsProfilePhotoManagerOpen(false);
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "Failed to remove patient photo.");
     } finally {
@@ -2352,34 +2374,22 @@ export function PatientDetailsDrawer({
               <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 flex-1 items-start gap-4">
                   <div className="shrink-0">
-                    {profilePhotoObjectUrl ? (
-                      <button
-                        type="button"
-                        onClick={handleOpenProfilePhotoPreview}
-                        className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[18px] bg-gradient-to-br from-[#2f8fd3] to-[#245f92] text-xl font-bold text-white shadow-[0_10px_22px_rgba(37,111,168,0.28)] transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#6daed8]"
-                        aria-label="Open patient photo"
-                      >
+                    <button
+                      type="button"
+                      onClick={handleProfilePhotoClick}
+                      disabled={!profilePhotoObjectUrl && (readOnly || isTrainingMode)}
+                      className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[18px] bg-gradient-to-br from-[#2f8fd3] to-[#245f92] text-xl font-bold text-white shadow-[0_10px_22px_rgba(37,111,168,0.28)] transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#6daed8] disabled:cursor-default disabled:hover:opacity-100"
+                      aria-label={currentPatient.profile_photo_url && !readOnly && !isTrainingMode ? "Manage patient photo" : currentPatient.profile_photo_url ? "Open patient photo" : "Add patient photo"}
+                    >
+                      {profilePhotoObjectUrl ? (
+                        <>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={profilePhotoObjectUrl} alt={`${currentPatient.name} profile photo`} className="h-full w-full object-cover" />
-                      </button>
-                    ) : (
-                      <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[18px] bg-gradient-to-br from-[#2f8fd3] to-[#245f92] text-xl font-bold text-white shadow-[0_10px_22px_rgba(37,111,168,0.28)]">
+                        </>
+                      ) : (
                         <span aria-hidden="true">{patientInitials(currentPatient)}</span>
-                      </div>
-                    )}
-                    {!readOnly && !isTrainingMode ? (
-                      <div className="mt-2 flex flex-col gap-1.5">
-                        <label className="cursor-pointer rounded-lg border border-[#dbe7ef] px-2.5 py-1 text-center text-[11px] font-medium text-[#2a6fa8] transition hover:border-[#9fc7e1] hover:bg-[#f3f8fb]">
-                          {isUploadingProfilePhoto ? "Uploading..." : currentPatient.profile_photo_url ? "Change" : "Add photo"}
-                          <input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" className="sr-only" disabled={isUploadingProfilePhoto} onChange={handleProfilePhotoFileChange} />
-                        </label>
-                        {currentPatient.profile_photo_url ? (
-                          <button type="button" disabled={isUploadingProfilePhoto} onClick={handleRemoveProfilePhoto} className="rounded-lg border border-rose-100 px-2.5 py-1 text-[11px] font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-60">
-                            Remove
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null}
+                      )}
+                    </button>
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">Patient Chart</p>
@@ -2480,7 +2490,7 @@ export function PatientDetailsDrawer({
                   <ChevronDown className={`h-4 w-4 text-[#2a6fa8] transition ${isSummaryCollapsed ? "-rotate-90" : ""}`} />
                 </button>
                 {!isSummaryCollapsed ? (
-                  <div className="mt-2 max-w-[1150px]">
+                  <div className="mt-2 w-full">
                     {isSummaryLoading && !aiSummary ? (
                       <div className="space-y-2">
                         <div className="h-3 w-11/12 animate-pulse rounded bg-[#d7e9f7]" />
@@ -2526,53 +2536,26 @@ export function PatientDetailsDrawer({
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 flex-1 items-start gap-4">
               <div className="shrink-0">
-                {profilePhotoObjectUrl ? (
-                  <button
-                    type="button"
-                    onClick={handleOpenProfilePhotoPreview}
-                    className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-[#dbe7ef] bg-[#f3f8fb] text-2xl font-semibold text-[#2a6fa8] shadow-[0_10px_26px_rgba(64,131,181,0.08)] transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#6daed8]"
-                    aria-label="Open patient photo"
-                  >
+                <button
+                  type="button"
+                  onClick={handleProfilePhotoClick}
+                  disabled={!profilePhotoObjectUrl && (readOnly || isTrainingMode)}
+                  className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-[#dbe7ef] bg-[#f3f8fb] text-2xl font-semibold text-[#2a6fa8] shadow-[0_10px_26px_rgba(64,131,181,0.08)] transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#6daed8] disabled:cursor-default disabled:hover:opacity-100"
+                  aria-label={currentPatient.profile_photo_url && !readOnly && !isTrainingMode ? "Manage patient photo" : currentPatient.profile_photo_url ? "Open patient photo" : "Add patient photo"}
+                >
+                  {profilePhotoObjectUrl ? (
+                    <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={profilePhotoObjectUrl}
                       alt={`${currentPatient.name} profile photo`}
                       className="h-full w-full object-cover"
                     />
-                  </button>
-                ) : (
-                  <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-[#dbe7ef] bg-[#f3f8fb] text-2xl font-semibold text-[#2a6fa8] shadow-[0_10px_26px_rgba(64,131,181,0.08)]">
+                    </>
+                  ) : (
                     <span aria-hidden="true">{patientInitials(currentPatient)}</span>
-                  </div>
-                )}
-                {!readOnly && !isTrainingMode ? (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <label className="cursor-pointer rounded-lg border border-[#dbe7ef] px-2.5 py-1.5 text-xs font-medium text-[#2a6fa8] transition hover:border-[#9fc7e1] hover:bg-[#f3f8fb]">
-                      {isUploadingProfilePhoto
-                        ? "Uploading..."
-                        : currentPatient.profile_photo_url
-                          ? "Change"
-                          : "Add photo"}
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
-                        className="sr-only"
-                        disabled={isUploadingProfilePhoto}
-                        onChange={handleProfilePhotoFileChange}
-                      />
-                    </label>
-                    {currentPatient.profile_photo_url ? (
-                      <button
-                        type="button"
-                        disabled={isUploadingProfilePhoto}
-                        onClick={handleRemoveProfilePhoto}
-                        className="rounded-lg border border-rose-100 px-2.5 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-60"
-                      >
-                        Remove
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
+                  )}
+                </button>
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Patient Chart</p>
@@ -2898,6 +2881,23 @@ export function PatientDetailsDrawer({
           </div>
         ) : null}
       </div>
+      <input
+        ref={profilePhotoInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+        className="sr-only"
+        disabled={isUploadingProfilePhoto}
+        onChange={handleProfilePhotoFileChange}
+      />
+      <ProfilePhotoManagerModal
+        open={isProfilePhotoManagerOpen}
+        patientName={currentPatient.name}
+        photoSrc={profilePhotoObjectUrl}
+        isBusy={isUploadingProfilePhoto}
+        onChange={() => profilePhotoInputRef.current?.click()}
+        onRemove={() => void handleRemoveProfilePhoto()}
+        onClose={() => setIsProfilePhotoManagerOpen(false)}
+      />
       <PhotoPreviewModal preview={photoPreview} onClose={closePhotoPreview} />
       {hasMyopiaManagement ? (
         <HistoricalMyopiaModal
@@ -2962,12 +2962,14 @@ export function PatientDetailsDrawer({
         onNew={() => startNewStructuredModule("eye_exam")}
         onSelectEntry={selectEyeExamEntry}
       >
-        <EyeExamFields
-          open
-          value={eyeExam}
-          onChange={updateEyeExam}
-          onSave={handleSaveEyeExam}
-        />
+        <div>
+          <EyeExamFields value={eyeExam} onChange={updateEyeExam} />
+          <div className="mt-6 flex justify-end">
+            <button type="button" onClick={handleSaveEyeExam} className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+              Save
+            </button>
+          </div>
+        </div>
         {genericModuleEntryError ? <p className="mt-3 text-sm font-medium text-rose-600">{genericModuleEntryError}</p> : null}
       </PatientStructuredModuleShell>
       <PatientStructuredModuleShell

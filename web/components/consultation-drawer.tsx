@@ -1,7 +1,7 @@
 "use client";
 
-import { ChangeEvent, Fragment, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarPlus2, Eye, Eraser, FileText, Image as ImageIcon, Mail, MessageCircle, Paperclip, PenLine, Plus, Printer, Sparkles, Undo2, X } from "lucide-react";
+import { ChangeEvent, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CalendarPlus2, Eye, Eraser, FileText, Mail, MessageCircle, Paperclip, PenLine, Plus, Printer, Sparkles, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
 import NextImage from "next/image";
 import type { ReactNode } from "react";
 
@@ -24,6 +24,8 @@ import {
   ContactLensEyeEntry,
   ContactLensPayload,
   EyeExamEntry,
+  EyeExamRow,
+  EyeExamSection,
   GenerateNotePayload,
   LowVisionPayload,
   LongitudinalTrackRecord,
@@ -45,6 +47,15 @@ import { ContactLensModal } from "@/components/optometry/contact-lens-modal";
 import { LowVisionModal } from "@/components/optometry/low-vision-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia-management-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
+import { EyeExamFields } from "@/components/optometry/eye-exam-fields";
+import { OptometryHistoryPanel } from "@/components/optometry/history-panel";
+import {
+  buildEyeExamSummary,
+  createEmptyEyeExam,
+  flattenEyeExamForNote,
+  hasEyeExamData,
+  normalizeEyeExamPayload,
+} from "@/lib/structured-modules";
 import {
   buildBinocularVisionSummary,
   buildLowVisionSummary,
@@ -71,6 +82,15 @@ const MAX_ATTACHMENT_COUNT = 6;
 const SUPPORTED_ATTACHMENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
 const MEDICATION_TABLE_HEADER = "Medicine | Strength | Dose | Route | Schedule | Duration | Quantity | Instructions";
 const MEDICATION_TABLE_SEPARATOR = "--- | --- | --- | --- | --- | --- | --- | ---";
+const DRAWING_COLOR_PRESETS = [
+  { label: "Black", value: "#0f172a" },
+  { label: "Red", value: "#dc2626" },
+  { label: "Blue", value: "#2563eb" },
+  { label: "Green", value: "#16a34a" },
+  { label: "Purple", value: "#9333ea" },
+  { label: "Yellow", value: "#ca8a04" },
+  { label: "Brown", value: "#92400e" },
+] as const;
 const PEDIATRIC_FOLLOW_UP_DEFAULTS: Record<string, { days: number; interval: string; notePrefix: string }> = {
   routine_review: { days: 90, interval: "3 months", notePrefix: "Routine pediatric review" },
   growth_recheck: { days: 60, interval: "2 months", notePrefix: "Growth recheck" },
@@ -230,10 +250,7 @@ function createEmptyForm() {
     spo2: "",
     bloodSugar: "",
     testScores: [{ id: createId(), label: "", value: "" }],
-    eyeExam: [
-      { eye: "right", sphere: "", cylinder: "", axis: "", vision: "" },
-      { eye: "left", sphere: "", cylinder: "", axis: "", vision: "" },
-    ] as EyeExamEntry[],
+    eyeExam: createEmptyEyeExam(),
     contactLens: createEmptyContactLens(),
     binocularVision: createEmptyBinocularVision(),
     lowVision: createEmptyLowVision(),
@@ -324,7 +341,7 @@ type PediatricModuleKey = "growth" | "wellChild" | "parentHandout" | "pediatricF
 type AssistantStage = "idle" | "questions" | "analysis";
 
 const TEST_MODULE_COPY: Record<SpecialtyModuleKey, { label: string }> = {
-  eye_exam: { label: "Refraction" },
+  eye_exam: { label: "Eye Exam" },
   contact_lens: { label: "Contact lens" },
   binocular_vision: { label: "Binocular vision" },
   low_vision: { label: "Low vision" },
@@ -335,36 +352,6 @@ const TEST_MODULE_COPY: Record<SpecialtyModuleKey, { label: string }> = {
   parent_handout_request: { label: "Handout" },
   pediatric_follow_up_plan: { label: "Follow-up" },
 };
-
-function createEmptyEyeExam(): EyeExamEntry[] {
-  return [
-    { eye: "right", sphere: "", cylinder: "", axis: "", vision: "" },
-    { eye: "left", sphere: "", cylinder: "", axis: "", vision: "" },
-  ];
-}
-
-function hasEyeExamData(entries: EyeExamEntry[]) {
-  return entries.some((entry) =>
-    entry.sphere.trim() ||
-    entry.cylinder.trim() ||
-    entry.axis.trim() ||
-    entry.vision.trim(),
-  );
-}
-
-function buildEyeExamSummary(entries: EyeExamEntry[]) {
-  const parts = entries
-    .filter((entry) => entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim())
-    .map((entry) => {
-      const eye = entry.eye === "right" ? "OD" : "OS";
-      const refraction = [entry.sphere, entry.cylinder, entry.axis ? `x ${entry.axis}` : ""]
-        .map((value) => value.trim())
-        .filter(Boolean)
-        .join(" ");
-      return [eye, refraction, entry.vision.trim() ? `VA ${entry.vision.trim()}` : ""].filter(Boolean).join(" ");
-    });
-  return parts.join(" · ") || "Eye exam saved.";
-}
 
 function formatModuleSummary(entry: LongitudinalTrackRecord) {
   const summary = entry.summary_fields?.summary;
@@ -612,9 +599,12 @@ export function ConsultationDrawer({
   const [recipientEmail, setRecipientEmail] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
   const [whatsappDeliveryStatus, setWhatsAppDeliveryStatus] = useState<WhatsAppDeliveryStatus | "">("");
+  const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawingMode, setDrawingMode] = useState<"draw" | "erase">("draw");
+  const [drawingColor, setDrawingColor] = useState("#0f172a");
   const [brushSize, setBrushSize] = useState(3);
+  const [drawingZoom, setDrawingZoom] = useState(1);
   const [isGeneratingHandout, setIsGeneratingHandout] = useState(false);
   const [isGeneratingHandoutPdf, setIsGeneratingHandoutPdf] = useState(false);
   const [assistantQuestions, setAssistantQuestions] = useState<ClinicalQuestionsResponse | null>(null);
@@ -679,6 +669,8 @@ export function ConsultationDrawer({
     setIsLowVisionOpen(false);
     setIsMyopiaManagementOpen(false);
     setIsTbiEvaluationOpen(false);
+    setIsDrawingModalOpen(false);
+    setIsDrawing(false);
     setTbiEvaluations([]);
     setBinocularVisionEvaluations([]);
     setIsBinocularVisionLoading(false);
@@ -694,9 +686,7 @@ export function ConsultationDrawer({
         ? {
             ...baseForm,
             ...cachedForm,
-            eyeExam: Array.isArray(cachedForm.eyeExam) && cachedForm.eyeExam.length
-              ? cachedForm.eyeExam
-              : baseForm.eyeExam,
+            eyeExam: normalizeEyeExamPayload(cachedForm.eyeExam),
             testScores: Array.isArray(cachedForm.testScores) && cachedForm.testScores.length
               ? cachedForm.testScores
               : baseForm.testScores,
@@ -866,6 +856,7 @@ export function ConsultationDrawer({
       return;
     }
     context.clearRect(0, 0, canvas.width, canvas.height);
+    drawingHistoryRef.current = [];
     if (!drawingAsset) {
       return;
     }
@@ -874,7 +865,7 @@ export function ConsultationDrawer({
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
     };
     image.src = `data:${drawingAsset.content_type};base64,${drawingAsset.data_base64}`;
-  }, [drawingAsset, openSections.drawing]);
+  }, [drawingAsset, isDrawingModalOpen]);
 
   useEffect(() => {
     if (!patientId || !isOptometryClinic || !isBinocularVisionOpen) {
@@ -1016,7 +1007,7 @@ export function ConsultationDrawer({
       test_scores: form.testScores
         .filter((entry) => entry.label.trim() && entry.value.trim())
         .map((entry) => ({ label: entry.label.trim(), value: entry.value.trim() })),
-      eye_exam: [],
+      eye_exam: flattenEyeExamForNote(form.eyeExam),
       contact_lens: null,
       binocular_vision: null,
       low_vision: null,
@@ -1414,13 +1405,6 @@ export function ConsultationDrawer({
     }
   }
 
-  function toggleConsultationSection(section: keyof ReturnType<typeof createClosedConsultationSections>) {
-    setOpenSections((current) => ({
-      ...current,
-      [section]: !current[section],
-    }));
-  }
-
   function openOptometryModule(section: "contactLens" | "binocularVision" | "lowVision" | "myopiaManagement" | "tbiEvaluation") {
     if (section === "contactLens") {
       setIsContactLensOpen(true);
@@ -1445,10 +1429,13 @@ export function ConsultationDrawer({
     setIsEyeExamOpen(true);
   }
 
-  function updateEyeExam(eye: "right" | "left", patch: Partial<EyeExamEntry>) {
+  function updateEyeExam(section: EyeExamSection, row: EyeExamRow, patch: Partial<EyeExamEntry>) {
     setForm((current) => ({
       ...current,
-      eyeExam: current.eyeExam.map((entry) => (entry.eye === eye ? { ...entry, ...patch } : entry)),
+      eyeExam: {
+        ...current.eyeExam,
+        [section]: current.eyeExam[section].map((entry) => (entry.eye === row ? { ...entry, ...patch } : entry)),
+      },
     }));
   }
 
@@ -1470,17 +1457,7 @@ export function ConsultationDrawer({
   }
 
   function selectEyeExamEntry(entry: LongitudinalTrackRecord) {
-    const entries = Array.isArray(entry.raw_payload?.entries) ? entry.raw_payload.entries : [];
-    const normalized = createEmptyEyeExam().map((emptyEntry) => {
-      const saved = entries.find((candidate) =>
-        typeof candidate === "object" &&
-        candidate !== null &&
-        "eye" in candidate &&
-        (candidate as { eye?: unknown }).eye === emptyEntry.eye,
-      ) as Partial<EyeExamEntry> | undefined;
-      return { ...emptyEntry, ...saved };
-    });
-    setForm((current) => ({ ...current, eyeExam: normalized }));
+    setForm((current) => ({ ...current, eyeExam: normalizeEyeExamPayload(entry.raw_payload) }));
   }
 
   function selectContactLensEntry(entry: LongitudinalTrackRecord) {
@@ -1604,11 +1581,11 @@ export function ConsultationDrawer({
   }
 
   async function saveEyeExam() {
-    const payload = { entries: form.eyeExam.filter((entry) => hasEyeExamData([entry])) };
-    if (!payload.entries.length) {
+    if (!hasEyeExamData(form.eyeExam)) {
       setModuleEntryError("Enter eye exam values before saving.");
       return;
     }
+    const payload = form.eyeExam as unknown as Record<string, unknown>;
     await saveStructuredModuleEntry("eye_exam", payload, buildEyeExamSummary(form.eyeExam));
   }
 
@@ -2022,12 +1999,13 @@ export function ConsultationDrawer({
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     context.globalCompositeOperation = drawingMode === "erase" ? "destination-out" : "source-over";
-    context.strokeStyle = "#0f172a";
+    context.strokeStyle = drawingColor;
     context.lineWidth = drawingMode === "erase" ? brushSize * 4 : brushSize;
     context.lineCap = "round";
     context.lineJoin = "round";
     context.beginPath();
     context.moveTo((event.clientX - rect.left) * scaleX, (event.clientY - rect.top) * scaleY);
+    event.currentTarget.setPointerCapture(event.pointerId);
     setIsDrawing(true);
   }
 
@@ -2052,25 +2030,6 @@ export function ConsultationDrawer({
       return;
     }
     setIsDrawing(false);
-    const canvas = drawingCanvasRef.current;
-    if (!canvas) {
-      return;
-    }
-    const dataUrl = canvas.toDataURL("image/png");
-    const dataBase64 = dataUrl.split(",", 2)[1] || "";
-    setForm((current) => ({
-      ...current,
-      assets: [
-        ...current.assets.filter((asset) => asset.kind !== "drawing"),
-        {
-          id: current.assets.find((asset) => asset.kind === "drawing")?.id || createId(),
-          kind: "drawing",
-          name: "consultation-drawing.png",
-          content_type: "image/png",
-          data_base64: dataBase64,
-        },
-      ],
-    }));
   }
 
   function clearDrawing() {
@@ -2079,7 +2038,6 @@ export function ConsultationDrawer({
     if (canvas && context) {
       context.clearRect(0, 0, canvas.width, canvas.height);
     }
-    setForm((current) => ({ ...current, assets: current.assets.filter((asset) => asset.kind !== "drawing") }));
     drawingHistoryRef.current = [];
   }
 
@@ -2094,23 +2052,38 @@ export function ConsultationDrawer({
     image.onload = () => {
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL("image/png");
-      const dataBase64 = dataUrl.split(",", 2)[1] || "";
-      setForm((current) => ({
-        ...current,
-        assets: [
-          ...current.assets.filter((asset) => asset.kind !== "drawing"),
-          {
-            id: current.assets.find((asset) => asset.kind === "drawing")?.id || createId(),
-            kind: "drawing",
-            name: "consultation-drawing.png",
-            content_type: "image/png",
-            data_base64: dataBase64,
-          },
-        ],
-      }));
     };
     image.src = previous;
+  }
+
+  function saveDrawing() {
+    const canvas = drawingCanvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) {
+      return;
+    }
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const hasInk = pixels.some((channel, index) => index % 4 === 3 && channel > 0);
+    if (!hasInk) {
+      setForm((current) => ({ ...current, assets: current.assets.filter((asset) => asset.kind !== "drawing") }));
+      setIsDrawingModalOpen(false);
+      return;
+    }
+    const dataBase64 = canvas.toDataURL("image/png").split(",", 2)[1] || "";
+    setForm((current) => ({
+      ...current,
+      assets: [
+        ...current.assets.filter((asset) => asset.kind !== "drawing"),
+        {
+          id: current.assets.find((asset) => asset.kind === "drawing")?.id || createId(),
+          kind: "drawing",
+          name: "consultation-drawing.png",
+          content_type: "image/png",
+          data_base64: dataBase64,
+        },
+      ],
+    }));
+    setIsDrawingModalOpen(false);
   }
 
   const lifecycleLabel =
@@ -2590,7 +2563,9 @@ export function ConsultationDrawer({
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Medications</span>
+              <span className="mb-2 block text-sm font-medium text-slate-700">
+                {isOptometryClinic ? "Medications prescribed" : "Medications"}
+              </span>
               <textarea
                 rows={3}
                 value={form.medications}
@@ -2735,9 +2710,12 @@ export function ConsultationDrawer({
 
               <ConsultationExpandableCard
                 title="Drawing"
-                description="Sketch findings, markings, or procedure notes."
-                open={openSections.drawing}
-                onToggle={() => toggleConsultationSection("drawing")}
+                description="Open a large canvas to sketch findings, markings, or procedure notes."
+                open={false}
+                onToggle={() => {
+                  setDrawingZoom(1);
+                  setIsDrawingModalOpen(true);
+                }}
                 badge={
                   drawingAsset ? (
                     <span className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[#2a6fa8]">
@@ -2745,71 +2723,7 @@ export function ConsultationDrawer({
                     </span>
                   ) : null
                 }
-              >
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setDrawingMode("draw")}
-                      className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${drawingMode === "draw" ? "border-[#9fc7e1] bg-[#dbeaf4] text-[#235f8e]" : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"}`}
-                    >
-                      <PenLine className="mr-1 inline h-3.5 w-3.5" />
-                      Draw
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDrawingMode("erase")}
-                      className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${drawingMode === "erase" ? "border-[#9fc7e1] bg-[#dbeaf4] text-[#235f8e]" : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"}`}
-                    >
-                      <Eraser className="mr-1 inline h-3.5 w-3.5" />
-                      Erase
-                    </button>
-                    <button
-                      type="button"
-                      onClick={undoDrawing}
-                      className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
-                    >
-                      <Undo2 className="mr-1 inline h-3.5 w-3.5" />
-                      Undo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={clearDrawing}
-                      className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-                <div className="mb-3 flex items-center gap-3">
-                  <span className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Brush</span>
-                  <input
-                    type="range"
-                    min={1}
-                    max={12}
-                    value={brushSize}
-                    onChange={(event) => setBrushSize(Number(event.target.value))}
-                    className="w-36 accent-[#2f8fd3]"
-                  />
-                  <span className="text-xs text-slate-500">{brushSize}px</span>
-                </div>
-                <canvas
-                  ref={drawingCanvasRef}
-                  width={560}
-                  height={240}
-                  onPointerDown={beginDrawing}
-                  onPointerMove={continueDrawing}
-                  onPointerUp={finishDrawing}
-                  onPointerLeave={finishDrawing}
-                  className="h-[220px] w-full rounded-[20px] border border-[#dbe7ef] bg-[#f3f8fb]/30"
-                />
-                {drawingAsset ? (
-                  <div className="mt-3 flex items-center gap-2 rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/40 px-3 py-2 text-xs text-slate-600">
-                    <ImageIcon className="h-4 w-4 text-[#2f8fd3]" />
-                    Drawing will be appended as an extra page in the generated consultation PDF.
-                  </div>
-                ) : null}
-              </ConsultationExpandableCard>
+              />
             </div>
 
             <div className="rounded-[18px] border border-[#bfd7e8] bg-[#f3f8fb]/50 p-4">
@@ -2936,7 +2850,7 @@ export function ConsultationDrawer({
               </p>
             </div>
           </div>
-          <div className="space-y-4">
+          <div className={isOptometryClinic ? "space-y-4 xl:col-start-1 xl:row-start-2" : "space-y-4"}>
             {renderAssistantPanel()}
             <section className="hidden overflow-hidden rounded-[18px] border border-[#bfd7e8] bg-white/90">
               <div className="border-b border-[#dbe7ef] px-4 py-4">
@@ -3148,7 +3062,7 @@ export function ConsultationDrawer({
               {isOptometryClinic ? (
                 <>
                   <ConsultationModuleRailItem
-                    title="Eye exam"
+                    title="Eye Exam"
                     description="Refraction and vision entries"
                     onSelect={openEyeExamModule}
                   />
@@ -3345,6 +3259,11 @@ export function ConsultationDrawer({
               </div>
             </div>
           </div>
+          {isOptometryClinic ? (
+            <div className="xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:self-start xl:sticky xl:top-4">
+              <OptometryHistoryPanel patientId={patient.id} />
+            </div>
+          ) : null}
         </form>
       </div>
       <SpecialtyModuleModal
@@ -3477,6 +3396,167 @@ export function ConsultationDrawer({
         </div>
       </SpecialtyModuleModal>
 
+      {isDrawingModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-2 sm:p-5"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Consultation drawing"
+        >
+          <div className="flex h-[calc(100dvh-1rem)] w-full max-w-[1500px] flex-col overflow-hidden rounded-[22px] border border-[#bfd7e8] bg-white shadow-[0_28px_90px_rgba(15,23,42,0.4)] sm:h-[calc(100dvh-2.5rem)]">
+            <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[#dbe7ef] bg-[#f8fbfd] px-4 py-3 sm:px-6">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDrawingMode("draw")}
+                  className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${drawingMode === "draw" ? "border-[#6daed8] bg-[#dbeaf4] text-[#235f8e]" : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"}`}
+                >
+                  <PenLine className="mr-1.5 inline h-4 w-4" />
+                  Draw
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDrawingMode("erase")}
+                  className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${drawingMode === "erase" ? "border-[#6daed8] bg-[#dbeaf4] text-[#235f8e]" : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"}`}
+                >
+                  <Eraser className="mr-1.5 inline h-4 w-4" />
+                  Erase
+                </button>
+              </div>
+
+              <div className="h-8 w-px bg-[#dbe7ef]" />
+
+              <div className="flex flex-wrap items-center gap-2" aria-label="Drawing colours">
+                {DRAWING_COLOR_PRESETS.map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    title={preset.label}
+                    aria-label={`${preset.label} drawing colour`}
+                    aria-pressed={drawingColor === preset.value}
+                    onClick={() => {
+                      setDrawingColor(preset.value);
+                      setDrawingMode("draw");
+                    }}
+                    className={`h-8 w-8 rounded-full border-2 transition hover:scale-110 ${drawingColor === preset.value ? "border-slate-900 ring-2 ring-sky-200" : "border-white ring-1 ring-slate-300"}`}
+                    style={{ backgroundColor: preset.value }}
+                  />
+                ))}
+                <label className="relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-white bg-[conic-gradient(red,yellow,lime,aqua,blue,magenta,red)] ring-1 ring-slate-300" title="Custom colour">
+                  <span className="sr-only">Choose custom drawing colour</span>
+                  <input
+                    type="color"
+                    value={drawingColor}
+                    onChange={(event) => {
+                      setDrawingColor(event.target.value);
+                      setDrawingMode("draw");
+                    }}
+                    className="absolute inset-0 cursor-pointer opacity-0"
+                  />
+                </label>
+              </div>
+
+              <div className="h-8 w-px bg-[#dbe7ef]" />
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setDrawingZoom((current) => Math.max(0.5, Number((current - 0.25).toFixed(2))))}
+                  disabled={drawingZoom <= 0.5}
+                  className="rounded-lg border border-[#bfd7e8] bg-white p-2 text-slate-700 transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-45"
+                  aria-label="Zoom drawing out"
+                >
+                  <ZoomOut className="h-4 w-4" />
+                </button>
+                <span className="w-12 text-center text-xs font-medium text-slate-600">{Math.round(drawingZoom * 100)}%</span>
+                <button
+                  type="button"
+                  onClick={() => setDrawingZoom((current) => Math.min(2, Number((current + 0.25).toFixed(2))))}
+                  disabled={drawingZoom >= 2}
+                  className="rounded-lg border border-[#bfd7e8] bg-white p-2 text-slate-700 transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-45"
+                  aria-label="Zoom drawing in"
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="h-8 w-px bg-[#dbe7ef]" />
+
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Brush</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={20}
+                  value={brushSize}
+                  onChange={(event) => setBrushSize(Number(event.target.value))}
+                  className="w-28 accent-[#2f8fd3] sm:w-36"
+                />
+                <span className="w-9 text-xs text-slate-500">{brushSize}px</span>
+              </div>
+
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={undoDrawing}
+                  disabled={!drawingHistoryRef.current.length}
+                  className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <Undo2 className="mr-1.5 inline h-4 w-4" />
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  onClick={clearDrawing}
+                  className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsDrawingModalOpen(false)}
+                  className="rounded-xl border border-[#bfd7e8] bg-white p-2 text-slate-600 transition hover:bg-[#f3f8fb]"
+                  aria-label="Close drawing"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto bg-[#eef5f9] p-3 sm:p-5">
+              <canvas
+                ref={drawingCanvasRef}
+                width={1680}
+                height={800}
+                onPointerDown={beginDrawing}
+                onPointerMove={continueDrawing}
+                onPointerUp={finishDrawing}
+                onPointerCancel={finishDrawing}
+                className="aspect-[21/10] h-auto max-w-none shrink-0 touch-none rounded-[18px] border border-[#bfd7e8] bg-white shadow-inner"
+                style={{ width: `${drawingZoom * 100}%` }}
+              />
+            </div>
+
+            <div className="flex shrink-0 items-center justify-end gap-3 border-t border-[#dbe7ef] px-4 py-3 sm:px-6">
+                <button
+                  type="button"
+                  onClick={() => setIsDrawingModalOpen(false)}
+                  className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-[#f3f8fb]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveDrawing}
+                  className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  Save
+                </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <ContactLensModal
         open={isOptometryClinic && isContactLensOpen}
         value={form.contactLens}
@@ -3494,7 +3574,7 @@ export function ConsultationDrawer({
           <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-[20px] border border-[#bfd7e8] bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-2xl font-semibold text-slate-900">Refraction</h3>
+                <h3 className="text-2xl font-semibold text-slate-900">Eye Exam</h3>
               </div>
               <button type="button" onClick={() => setIsEyeExamOpen(false)} className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-[#f3f8fb]">
                 <X className="h-4 w-4" />
@@ -3505,22 +3585,7 @@ export function ConsultationDrawer({
                 {renderPreviousEvaluations("eye_exam", selectEyeExamEntry)}
               </aside>
               <div>
-                <div className="grid gap-3 md:grid-cols-[110px_repeat(4,minmax(0,1fr))]">
-                  <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Eye</div>
-                  <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Sphere</div>
-                  <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Cylinder</div>
-                  <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Axis</div>
-                  <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Vision</div>
-                  {form.eyeExam.map((entry) => (
-                    <Fragment key={entry.eye}>
-                      <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm font-medium capitalize text-slate-700">{entry.eye}</div>
-                      <input value={entry.sphere} onChange={(event) => updateEyeExam(entry.eye, { sphere: event.target.value })} placeholder="-1.25" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-                      <input value={entry.cylinder} onChange={(event) => updateEyeExam(entry.eye, { cylinder: event.target.value })} placeholder="-0.50" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-                      <input value={entry.axis} onChange={(event) => updateEyeExam(entry.eye, { axis: event.target.value })} placeholder="90" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-                      <input value={entry.vision} onChange={(event) => updateEyeExam(entry.eye, { vision: event.target.value })} placeholder="6/6" className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-                    </Fragment>
-                  ))}
-                </div>
+                <EyeExamFields value={form.eyeExam} onChange={updateEyeExam} />
                 <div className="mt-6 flex justify-end">
                   <button
                     type="button"

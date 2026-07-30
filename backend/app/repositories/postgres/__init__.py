@@ -8,6 +8,7 @@ from app.repositories.postgres.care_programs import PostgresCareProgramsReposito
 from app.repositories.postgres.checkins import PostgresCheckInsRepository
 from app.repositories.postgres.controlroom import PostgresControlRoomRepository
 from app.repositories.postgres.myopia import PostgresMyopiaRepository
+from app.repositories.postgres.optometry_history import PostgresOptometryHistoryRepository
 from app.repositories.postgres.patient_flow import PostgresPatientFlowRepository
 from app.repositories.postgres.platform_errors import PostgresPlatformErrorsRepository
 from app.repositories.postgres.platform_email import PostgresPlatformEmailRepository
@@ -26,6 +27,7 @@ __all__ = [
     "PostgresCheckInsRepository",
     "PostgresControlRoomRepository",
     "PostgresMyopiaRepository",
+    "PostgresOptometryHistoryRepository",
     "PostgresPatientFlowRepository",
     "PostgresPlatformErrorsRepository",
     "PostgresPlatformEmailRepository",

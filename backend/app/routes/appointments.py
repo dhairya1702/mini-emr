@@ -43,6 +43,7 @@ async def list_appointments(
     status: AppointmentStatus | None = Query(default=None),
     q: str | None = Query(default=None, max_length=120),
     scheduled_date: date | None = Query(default=None),
+    upcoming: bool = Query(default=False),
     limit: int = Query(default=200, ge=1, le=500),
     repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
@@ -50,6 +51,8 @@ async def list_appointments(
     clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
     effective_date = scheduled_date or clinic_today(clinic_settings)
     scheduled_from, scheduled_to = utc_day_bounds_for_clinic(effective_date, clinic_settings)
+    if upcoming and scheduled_date is None:
+        scheduled_to = None
     appointments = await repo.list_appointments(
         str(current_user.org_id),
         status=status,

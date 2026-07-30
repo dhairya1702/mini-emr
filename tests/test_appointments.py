@@ -569,3 +569,11 @@ def test_appointment_listing_uses_clinic_local_date_boundaries(client):
     assert list_appointments.status_code == 200
     assert len(list_appointments.json()) == 1
     assert list_appointments.json()[0]["name"] == "Midnight Boundary Patient"
+
+    upcoming_appointments = test_client.get(
+        "/appointments?upcoming=true",
+        headers=headers,
+    )
+    assert upcoming_appointments.status_code == 200
+    assert len(upcoming_appointments.json()) == 1
+    assert upcoming_appointments.json()[0]["name"] == "Midnight Boundary Patient"

@@ -7,12 +7,49 @@ from types import SimpleNamespace
 import pytest
 
 from test_app import auth_headers_for_token, client, register_test_clinic
+from app.services.followup_workflow import _follow_up_email_parts
 
 
 def _future_iso(*, days: int = 1, hour: int = 9, minute: int = 0) -> str:
     scheduled_for = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(days=days)
     scheduled_for = scheduled_for.replace(hour=hour, minute=minute)
     return scheduled_for.isoformat()
+
+
+def test_follow_up_email_uses_approved_minimal_copy_and_schedule_button():
+    subject, text_content, html_content = _follow_up_email_parts(
+        clinic_name="Fika Eye Care",
+        doctor_name="Dhairya Lalwani",
+        patient_name="DH",
+        booking_link="https://clinic.example/follow-up?token=abc123",
+    )
+
+    assert subject == "Schedule your follow-up with Dr. Dhairya Lalwani"
+    assert "Dr. Dhairya Lalwani would like to see you again for a follow-up and check on your progress." in text_content
+    assert "Please choose a convenient time slot using the link below." in text_content
+    assert text_content.endswith("Thank you,\nFika Eye Care\n")
+    assert "https://clinic.example/follow-up?token=abc123" in text_content
+    assert ">Schedule</a>" in html_content
+    assert 'href="https://clinic.example/follow-up?token=abc123"' in html_content
+    assert "Booking hours" not in html_content
+    assert "Notes:" not in html_content
+    assert "If the button does not work" not in html_content
+    assert "automated message" not in html_content
+    assert "Thank you,<br><strong>Fika Eye Care</strong>" in html_content
+
+
+def test_follow_up_email_escapes_patient_controlled_html():
+    _subject, _text_content, html_content = _follow_up_email_parts(
+        clinic_name="Clinic <One>",
+        doctor_name="Doctor <Two>",
+        patient_name="<script>alert(1)</script>",
+        booking_link="https://clinic.example/follow-up?token=a&next=b",
+    )
+
+    assert "<script>" not in html_content
+    assert "Clinic &lt;One&gt;" in html_content
+    assert "Doctor &lt;Two&gt;" in html_content
+    assert "token=a&amp;next=b" in html_content
 
 
 def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
@@ -303,3 +340,11 @@ def test_follow_up_listing_uses_clinic_local_date_boundaries(client):
     assert list_follow_ups.status_code == 200
     assert len(list_follow_ups.json()) == 1
     assert list_follow_ups.json()[0]["notes"] == "Midnight boundary review"
+
+    upcoming_follow_ups = test_client.get(
+        "/follow-ups?upcoming=true",
+        headers=headers,
+    )
+    assert upcoming_follow_ups.status_code == 200
+    assert len(upcoming_follow_ups.json()) == 1
+    assert upcoming_follow_ups.json()[0]["notes"] == "Midnight boundary review"

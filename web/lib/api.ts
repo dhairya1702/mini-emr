@@ -59,6 +59,8 @@ import {
   MobileFinalizeConsultationPayload,
   MobileFinalizeConsultationResponse,
   MyopiaHistory,
+  OptometryHistory,
+  OptometryHistoryPayload,
   MyopiaMeasurementPayload,
   MyopiaMeasurementRecord,
   PediatricGrowthMeasurementPayload,
@@ -204,7 +206,7 @@ function syncSessionFromResponse(response: Response, path: string) {
   authStorage.setSessionExpiry(refreshedExpiry ? Number(refreshedExpiry) : null);
 }
 
-function withQuery(path: string, params: Record<string, string | number | undefined>) {
+function withQuery(path: string, params: Record<string, string | number | boolean | undefined>) {
   const searchParams = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === "") {
@@ -724,12 +726,14 @@ export const api = {
     status?: "scheduled" | "completed" | "cancelled";
     q?: string;
     scheduled_date?: string;
+    upcoming?: boolean;
     limit?: number;
   }) => request<FollowUp[]>(withQuery("/follow-ups", params ?? {})),
   listAppointments: (params?: {
     status?: "scheduled" | "checked_in" | "cancelled";
     q?: string;
     scheduled_date?: string;
+    upcoming?: boolean;
     limit?: number;
   }) => request<Appointment[]>(withQuery("/appointments", params ?? {})),
   createAppointment: (payload: AppointmentCreatePayload) =>
@@ -791,6 +795,16 @@ export const api = {
   listQueuePatients: () =>
     request<Patient[]>(withQuery("/patients", { active_only: "true", limit: 500 })),
   getPatient: (patientId: string) => request<Patient>(`/patients/${patientId}`),
+  getPatientOptometryHistory: (patientId: string) =>
+    request<OptometryHistory>(`/patients/${patientId}/optometry-history`),
+  savePatientOptometryHistory: (
+    patientId: string,
+    payload: { expected_revision: number; payload: OptometryHistoryPayload },
+  ) =>
+    request<OptometryHistory>(`/patients/${patientId}/optometry-history`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   createPatient: (payload: PatientInput) =>
     request<Patient>("/patients", {
       method: "POST",

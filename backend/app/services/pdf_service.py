@@ -1002,7 +1002,10 @@ def _classify_structured_tables(
                 vitals_rows = body_rows
             elif _is_medicine_table(header_cells):
                 medicines_table = (header_cells, body_rows)
-            elif normalized_header == ["eye", "sphere", "cylinder", "axis", "vision"]:
+            elif normalized_header in (
+                ["eye", "sphere", "cylinder", "axis", "vision"],
+                ["section", "row", "sphere", "cylinder", "axis", "vision"],
+            ):
                 eye_exam_table = (header_cells, body_rows)
 
     return vitals_rows, medicines_table, eye_exam_table

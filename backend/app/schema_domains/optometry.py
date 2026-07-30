@@ -19,8 +19,55 @@ class TestScoreEntry(BaseModel):
     value: str = Field(min_length=1, max_length=120)
 
 
+class OptometryHistoryPowerInput(BaseModel):
+    sphere: str = Field(default="", max_length=20)
+    cylinder: str = Field(default="", max_length=20)
+    axis: str = Field(default="", max_length=20)
+    add: str = Field(default="", max_length=20)
+
+
+class OptometryHistoryPayload(BaseModel):
+    ocular: str = Field(default="", max_length=4000)
+    systemic: str = Field(default="", max_length=4000)
+    no_known_allergies: bool = False
+    allergies: str = Field(default="", max_length=2000)
+    current_medications: str = Field(default="", max_length=4000)
+    family: str = Field(default="", max_length=4000)
+    wears_glasses: bool | None = None
+    glasses_since: str = Field(default="", max_length=120)
+    glasses_usage: str = Field(default="", max_length=120)
+    lens_type: str = Field(default="", max_length=120)
+    prescription_age: str = Field(default="", max_length=120)
+    pd: str = Field(default="", max_length=40)
+    right_power: OptometryHistoryPowerInput = Field(default_factory=OptometryHistoryPowerInput)
+    left_power: OptometryHistoryPowerInput = Field(default_factory=OptometryHistoryPowerInput)
+    glasses_notes: str = Field(default="", max_length=1000)
+    wears_contact_lenses: bool | None = None
+    contacts_since: str = Field(default="", max_length=120)
+    contact_lens_type: str = Field(default="", max_length=120)
+    contact_lens_notes: str = Field(default="", max_length=1000)
+
+
+class OptometryHistoryUpdate(BaseModel):
+    expected_revision: int = Field(default=0, ge=0)
+    payload: OptometryHistoryPayload
+
+
+class OptometryHistoryOut(BaseModel):
+    history_id: UUID | None = None
+    patient_id: UUID
+    payload: OptometryHistoryPayload = Field(default_factory=OptometryHistoryPayload)
+    revision: int = 0
+    exists: bool = False
+    updated_by: UUID | None = None
+    updated_by_name: str = ""
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class EyeExamEntry(BaseModel):
-    eye: Literal["right", "left"]
+    eye: Literal["right", "left", "distance", "near"]
+    section: Literal["objective", "subjective", "cycloplegic_dilated"] = "objective"
     sphere: str = Field(default="", max_length=40)
     cylinder: str = Field(default="", max_length=40)
     axis: str = Field(default="", max_length=40)

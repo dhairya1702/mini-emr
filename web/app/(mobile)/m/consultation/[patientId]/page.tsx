@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowLeft, Check, ChevronDown, FileText, Mail, MessageCircle, Paperclip, Play, Plus, Wand2, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { ChangeEvent, FormEvent, Fragment, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { useClinicShell } from "@/components/clinic-shell-provider";
@@ -12,6 +12,8 @@ import { ContactLensModal } from "@/components/optometry/contact-lens-modal";
 import { LowVisionModal } from "@/components/optometry/low-vision-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia-management-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
+import { EyeExamFields } from "@/components/optometry/eye-exam-fields";
+import { OptometryHistoryPanel } from "@/components/optometry/history-panel";
 import { api } from "@/lib/api";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import {
@@ -40,8 +42,17 @@ import {
   resolveMobileConsultationScope,
   writeMobileConsultationDraft,
 } from "@/lib/mobile/consultation";
-import { getSpecialtyModules, type SpecialtyModuleKey } from "@/lib/specialty";
-import { formatModuleSummary, moduleEntriesFor, moduleLabel } from "@/lib/structured-modules";
+import { getSpecialtyModules, specialtyHasModule, type SpecialtyModuleKey } from "@/lib/specialty";
+import {
+  buildEyeExamSummary,
+  createEmptyEyeExam,
+  flattenEyeExamForNote,
+  formatModuleSummary,
+  hasEyeExamData,
+  moduleEntriesFor,
+  moduleLabel,
+  normalizeEyeExamPayload,
+} from "@/lib/structured-modules";
 import type { NoteAsset, PatientAttachment } from "@/lib/types";
 import type {
   BinocularVisionEvaluationCreatePayload,
@@ -49,6 +60,8 @@ import type {
   ContactLensEyeEntry,
   ContactLensPayload,
   EyeExamEntry,
+  EyeExamRow,
+  EyeExamSection,
   LongitudinalTrackRecord,
   LowVisionPayload,
   MyopiaMeasurementPayload,
@@ -104,36 +117,6 @@ function createId() {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function createEmptyEyeExam(): EyeExamEntry[] {
-  return [
-    { eye: "right", sphere: "", cylinder: "", axis: "", vision: "" },
-    { eye: "left", sphere: "", cylinder: "", axis: "", vision: "" },
-  ];
-}
-
-function hasEyeExamData(entries: EyeExamEntry[]) {
-  return entries.some((entry) =>
-    entry.sphere.trim() ||
-    entry.cylinder.trim() ||
-    entry.axis.trim() ||
-    entry.vision.trim(),
-  );
-}
-
-function buildEyeExamSummary(entries: EyeExamEntry[]) {
-  const parts = entries
-    .filter((entry) => entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim())
-    .map((entry) => {
-      const eye = entry.eye === "right" ? "OD" : "OS";
-      const refraction = [entry.sphere, entry.cylinder, entry.axis ? `x ${entry.axis}` : ""]
-        .map((value) => value.trim())
-        .filter(Boolean)
-        .join(" ");
-      return [eye, refraction, entry.vision.trim() ? `VA ${entry.vision.trim()}` : ""].filter(Boolean).join(" ");
-    });
-  return parts.join(" · ") || "Eye exam saved.";
-}
-
 function isOptometryModule(moduleKey: string): moduleKey is "eye_exam" | "contact_lens" | "binocular_vision" | "low_vision" | "myopia_management" | "tbi_evaluation" {
   return ["eye_exam", "contact_lens", "binocular_vision", "low_vision", "myopia_management", "tbi_evaluation"].includes(moduleKey);
 }
@@ -185,6 +168,7 @@ export default function MobileConsultationPage() {
     () => getSpecialtyModules(clinicSettings?.clinic_specialty ?? null),
     [clinicSettings?.clinic_specialty],
   );
+  const isOptometryClinic = specialtyHasModule(clinicSettings?.clinic_specialty ?? null, "eye_exam");
   const selectedTestValue = activeModule ?? "";
 
   const patient = useMemo(() => patients.find((row) => row.id === patientId) ?? null, [patientId, patients]);
@@ -354,6 +338,7 @@ export default function MobileConsultationPage() {
         spo2: form.spo2 ? Number(form.spo2) : null,
         blood_sugar: form.bloodSugar ? Number(form.bloodSugar) : null,
         test_scores: form.testScores.filter((entry) => entry.label.trim() && entry.value.trim()),
+        eye_exam: flattenEyeExamForNote(form.eyeExam),
         structured_modules: form.structuredModules,
         assets: form.assets,
       });
@@ -388,6 +373,7 @@ export default function MobileConsultationPage() {
       spo2: form.spo2 ? Number(form.spo2) : null,
       blood_sugar: form.bloodSugar ? Number(form.bloodSugar) : null,
       test_scores: form.testScores.filter((entry) => entry.label.trim() && entry.value.trim()),
+      eye_exam: flattenEyeExamForNote(form.eyeExam),
       structured_modules: form.structuredModules,
       assets: form.assets,
     });
@@ -600,10 +586,13 @@ export default function MobileConsultationPage() {
     }));
   }
 
-  function updateEyeExam(eye: "right" | "left", patch: Partial<EyeExamEntry>) {
+  function updateEyeExam(section: EyeExamSection, row: EyeExamRow, patch: Partial<EyeExamEntry>) {
     setForm((current) => ({
       ...current,
-      eyeExam: current.eyeExam.map((entry) => (entry.eye === eye ? { ...entry, ...patch } : entry)),
+      eyeExam: {
+        ...current.eyeExam,
+        [section]: current.eyeExam[section].map((entry) => (entry.eye === row ? { ...entry, ...patch } : entry)),
+      },
     }));
   }
 
@@ -625,17 +614,7 @@ export default function MobileConsultationPage() {
   }
 
   function selectEyeExamEntry(entry: LongitudinalTrackRecord) {
-    const entries = Array.isArray(entry.raw_payload?.entries) ? entry.raw_payload.entries : [];
-    const normalized = createEmptyEyeExam().map((emptyEntry) => {
-      const saved = entries.find((candidate) =>
-        typeof candidate === "object" &&
-        candidate !== null &&
-        "eye" in candidate &&
-        (candidate as { eye?: unknown }).eye === emptyEntry.eye,
-      ) as Partial<EyeExamEntry> | undefined;
-      return { ...emptyEntry, ...saved };
-    });
-    setForm((current) => ({ ...current, eyeExam: normalized }));
+    setForm((current) => ({ ...current, eyeExam: normalizeEyeExamPayload(entry.raw_payload) }));
   }
 
   function selectContactLensEntry(entry: LongitudinalTrackRecord) {
@@ -725,11 +704,11 @@ export default function MobileConsultationPage() {
   }
 
   async function saveEyeExam() {
-    const payload = { entries: form.eyeExam.filter((entry) => hasEyeExamData([entry])) };
-    if (!payload.entries.length) {
+    if (!hasEyeExamData(form.eyeExam)) {
       setModuleEntryError("Enter eye exam values before saving.");
       return;
     }
+    const payload = form.eyeExam as unknown as Record<string, unknown>;
     await saveStructuredModuleEntry("eye_exam", payload, buildEyeExamSummary(form.eyeExam));
   }
 
@@ -904,10 +883,14 @@ export default function MobileConsultationPage() {
             </p>
           </section>
 
+          {isOptometryClinic ? <OptometryHistoryPanel patientId={patient.id} collapsible /> : null}
+
           <section className="grid gap-2 rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5">
             {soapFields.map(([key, label]) => (
             <label key={key} className="grid grid-cols-[82px_minmax(0,1fr)] items-start gap-2 text-xs font-semibold text-slate-700">
-              <span className="pt-1.5">{label}:</span>
+              <span className="pt-1.5">
+                {isOptometryClinic && key === "medications" ? "Prescribed:" : `${label}:`}
+              </span>
               <textarea
                 value={form[key]}
                 onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}
@@ -1160,7 +1143,7 @@ export default function MobileConsultationPage() {
                 <div className="sticky top-0 z-10 border-b border-[#dbe7ef] bg-white px-4 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-xl font-semibold text-slate-900">Refraction</h3>
+                      <h3 className="text-xl font-semibold text-slate-900">Eye Exam</h3>
                       <p className="mt-1 text-xs text-slate-500">{patient.name} · {patient.phone || "No phone"}</p>
                     </div>
                     <button type="button" onClick={() => setIsEyeExamOpen(false)} className="clinic-icon-button h-10 w-10">
@@ -1172,24 +1155,7 @@ export default function MobileConsultationPage() {
                   <aside className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 p-3">
                     {renderPreviousEvaluations("eye_exam", selectEyeExamEntry)}
                   </aside>
-                  <div className="overflow-x-auto">
-                    <div className="grid min-w-[640px] grid-cols-[82px_repeat(4,minmax(0,1fr))] gap-2">
-                      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Eye</div>
-                      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Sphere</div>
-                      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Cylinder</div>
-                      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Axis</div>
-                      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Vision</div>
-                      {form.eyeExam.map((entry) => (
-                        <Fragment key={entry.eye}>
-                          <div className="rounded-lg border border-[#dbe7ef] bg-[#f3f8fb]/40 px-3 py-2 text-xs font-medium capitalize text-slate-700">{entry.eye}</div>
-                          <input value={entry.sphere} onChange={(event) => updateEyeExam(entry.eye, { sphere: event.target.value })} placeholder="-1.25" className="rounded-lg border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#6daed8]" />
-                          <input value={entry.cylinder} onChange={(event) => updateEyeExam(entry.eye, { cylinder: event.target.value })} placeholder="-0.50" className="rounded-lg border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#6daed8]" />
-                          <input value={entry.axis} onChange={(event) => updateEyeExam(entry.eye, { axis: event.target.value })} placeholder="90" className="rounded-lg border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#6daed8]" />
-                          <input value={entry.vision} onChange={(event) => updateEyeExam(entry.eye, { vision: event.target.value })} placeholder="6/6" className="rounded-lg border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#6daed8]" />
-                        </Fragment>
-                      ))}
-                    </div>
-                  </div>
+                  <EyeExamFields value={form.eyeExam} onChange={updateEyeExam} compact />
                   <button
                     type="button"
                     onClick={async () => {

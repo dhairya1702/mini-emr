@@ -31,7 +31,7 @@ class GenerateNoteRequest(BaseModel):
     spo2: int | None = Field(default=None, ge=40, le=100)
     blood_sugar: float | None = Field(default=None, ge=20, le=1000)
     test_scores: list[TestScoreEntry] = Field(default_factory=list, max_length=30)
-    eye_exam: list[EyeExamEntry] = Field(default_factory=list, max_length=2)
+    eye_exam: list[EyeExamEntry] = Field(default_factory=list, max_length=10)
     contact_lens: ContactLensInput | None = None
     binocular_vision: dict[str, Any] | None = None
     low_vision: LowVisionInput | None = None

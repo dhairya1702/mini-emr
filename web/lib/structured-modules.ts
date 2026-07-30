@@ -1,8 +1,14 @@
-import type { EyeExamEntry, LongitudinalTrackRecord } from "@/lib/types";
+import type {
+  EyeExamEntry,
+  EyeExamPayload,
+  EyeExamRow,
+  EyeExamSection,
+  LongitudinalTrackRecord,
+} from "@/lib/types";
 import type { SpecialtyModuleKey } from "@/lib/specialty";
 
 export const MODULE_LABELS: Record<SpecialtyModuleKey, string> = {
-  eye_exam: "Refraction",
+  eye_exam: "Eye Exam",
   contact_lens: "Contact lens",
   binocular_vision: "Binocular vision",
   low_vision: "Low vision",
@@ -18,34 +24,101 @@ export function moduleLabel(moduleKey: SpecialtyModuleKey) {
   return MODULE_LABELS[moduleKey] ?? moduleKey.replaceAll("_", " ");
 }
 
-export function createEmptyEyeExam(): EyeExamEntry[] {
-  return [
-    { eye: "right", sphere: "", cylinder: "", axis: "", vision: "" },
-    { eye: "left", sphere: "", cylinder: "", axis: "", vision: "" },
-  ];
+export const EYE_EXAM_SECTIONS: Array<{
+  key: EyeExamSection;
+  label: string;
+  rows: EyeExamRow[];
+}> = [
+  { key: "objective", label: "Objective", rows: ["right", "left"] },
+  { key: "subjective", label: "Subjective", rows: ["right", "left", "distance", "near"] },
+  { key: "cycloplegic_dilated", label: "Cycloplegic/Dilated", rows: ["right", "left", "distance", "near"] },
+];
+
+function emptyEyeExamEntry(eye: EyeExamRow): EyeExamEntry {
+  return { eye, sphere: "", cylinder: "", axis: "", vision: "" };
 }
 
-export function hasEyeExamData(entries: EyeExamEntry[]) {
-  return entries.some((entry) =>
+export function createEmptyEyeExam(): EyeExamPayload {
+  return {
+    objective: (["right", "left"] as EyeExamRow[]).map(emptyEyeExamEntry),
+    subjective: (["right", "left", "distance", "near"] as EyeExamRow[]).map(emptyEyeExamEntry),
+    cycloplegic_dilated: (["right", "left", "distance", "near"] as EyeExamRow[]).map(emptyEyeExamEntry),
+  };
+}
+
+function normalizeEyeExamSection(raw: unknown, rows: EyeExamRow[]) {
+  const entries = Array.isArray(raw) ? raw : [];
+  return rows.map((eye) => {
+    const saved = entries.find((candidate) =>
+      typeof candidate === "object" &&
+      candidate !== null &&
+      "eye" in candidate &&
+      (candidate as { eye?: unknown }).eye === eye,
+    );
+    if (!saved || typeof saved !== "object") {
+      return emptyEyeExamEntry(eye);
+    }
+    const candidate = saved as Partial<EyeExamEntry>;
+    return {
+      eye,
+      sphere: typeof candidate.sphere === "string" ? candidate.sphere : "",
+      cylinder: typeof candidate.cylinder === "string" ? candidate.cylinder : "",
+      axis: typeof candidate.axis === "string" ? candidate.axis : "",
+      vision: typeof candidate.vision === "string" ? candidate.vision : "",
+    };
+  });
+}
+
+export function normalizeEyeExamPayload(raw: unknown): EyeExamPayload {
+  const payload = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  const legacyEntries = Array.isArray(raw)
+    ? raw
+    : Array.isArray(payload.entries)
+      ? payload.entries
+      : [];
+  return {
+    objective: normalizeEyeExamSection(payload.objective ?? legacyEntries, ["right", "left"]),
+    subjective: normalizeEyeExamSection(payload.subjective, ["right", "left", "distance", "near"]),
+    cycloplegic_dilated: normalizeEyeExamSection(
+      payload.cycloplegic_dilated,
+      ["right", "left", "distance", "near"],
+    ),
+  };
+}
+
+export function hasEyeExamEntryData(entry: EyeExamEntry) {
+  return Boolean(
     entry.sphere.trim() ||
     entry.cylinder.trim() ||
     entry.axis.trim() ||
-    entry.vision.trim(),
+    entry.vision.trim()
   );
 }
 
-export function buildEyeExamSummary(entries: EyeExamEntry[]) {
-  const parts = entries
-    .filter((entry) => entry.sphere.trim() || entry.cylinder.trim() || entry.axis.trim() || entry.vision.trim())
-    .map((entry) => {
-      const eye = entry.eye === "right" ? "OD" : "OS";
+export function hasEyeExamData(payload: EyeExamPayload) {
+  return EYE_EXAM_SECTIONS.some(({ key }) => payload[key].some(hasEyeExamEntryData));
+}
+
+export function flattenEyeExamForNote(payload: EyeExamPayload) {
+  return EYE_EXAM_SECTIONS.flatMap(({ key }) =>
+    payload[key]
+      .filter(hasEyeExamEntryData)
+      .map((entry) => ({ ...entry, section: key })),
+  );
+}
+
+export function buildEyeExamSummary(payload: EyeExamPayload) {
+  const parts = EYE_EXAM_SECTIONS.flatMap(({ key, label }) =>
+    payload[key].filter(hasEyeExamEntryData).map((entry) => {
+      const row = entry.eye === "right" ? "OD" : entry.eye === "left" ? "OS" : entry.eye[0].toUpperCase() + entry.eye.slice(1);
       const refraction = [entry.sphere, entry.cylinder, entry.axis ? `x ${entry.axis}` : ""]
         .map((value) => value.trim())
         .filter(Boolean)
         .join(" ");
-      return [eye, refraction, entry.vision.trim() ? `VA ${entry.vision.trim()}` : ""].filter(Boolean).join(" ");
-    });
-  return parts.join(" · ") || "Refraction saved.";
+      return [`${label} ${row}`, refraction, entry.vision.trim() ? `VA ${entry.vision.trim()}` : ""].filter(Boolean).join(" ");
+    }),
+  );
+  return parts.join(" · ") || "Eye Exam saved.";
 }
 
 export function formatModuleSummary(entry: LongitudinalTrackRecord) {

@@ -81,13 +81,14 @@ async def send_clinic_email_message(
     html_content: str | None = None,
     attachments: list[tuple[str, bytes, str]] | None = None,
     message_id: str | None = None,
+    include_automated_footer: bool = True,
 ) -> None:
     platform_settings = await repo.get_platform_email_settings()
     sender_name, sender_email, app_password, uses_clinicos_sender = _resolve_sender(
         clinic_settings,
         platform_settings,
     )
-    if uses_clinicos_sender:
+    if uses_clinicos_sender and include_automated_footer:
         text_content = f"{text_content.rstrip()}\n\n{AUTOMATED_EMAIL_FOOTER}"
         if html_content:
             html_content = f"{html_content}<p>{escape(AUTOMATED_EMAIL_FOOTER)}</p>"

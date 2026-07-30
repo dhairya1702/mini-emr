@@ -1656,7 +1656,7 @@ def test_postgres_records_repository_finalizes_and_marks_note_sent():
     assert cursor.executed[1][1][0] == "Visit note"
     assert cursor.executed[1][1][1] == "[]"
     assert cursor.executed[3][1][1] == "[]"
-    assert cursor.executed[3][1][4:6] == ("user-1", "patient@example.com")
+    assert cursor.executed[3][1][5:7] == ("user-1", "patient@example.com")
     assert finalized["status"] == "final"
     assert sent["status"] == "sent"
 

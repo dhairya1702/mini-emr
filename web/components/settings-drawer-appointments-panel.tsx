@@ -67,7 +67,7 @@ export function SettingsDrawerAppointmentsPanel({
   const [followUpFilter, setFollowUpFilter] = useState<FollowUpFilter>("all");
   const [appointmentQuery, setAppointmentQuery] = useState("");
   const [followUpQuery, setFollowUpQuery] = useState("");
-  const [selectedDate, setSelectedDate] = useState(() => getTodayIsoDateInTimeZone(clinicTimezone));
+  const [selectedDate, setSelectedDate] = useState("");
   const [checkingInId, setCheckingInId] = useState("");
   const [expandedAppointmentId, setExpandedAppointmentId] = useState("");
   const [expandedFollowUpId, setExpandedFollowUpId] = useState("");
@@ -116,7 +116,6 @@ export function SettingsDrawerAppointmentsPanel({
   }, [activeView, onActiveViewChange]);
 
   useEffect(() => {
-    setSelectedDate(todayIsoDate);
     setNewAppointment((current) => ({ ...current, date: todayIsoDate }));
     setNewFollowUp((current) => ({ ...current, date: todayIsoDate }));
   }, [todayIsoDate]);
@@ -157,6 +156,8 @@ export function SettingsDrawerAppointmentsPanel({
 
   useEffect(() => {
     let active = true;
+    const activeQuery = activeView === "appointments" ? appointmentQuery : followUpQuery;
+    const requestDelayMs = activeQuery.trim() ? 250 : 0;
     const timeoutId = window.setTimeout(() => {
       setIsLoading(true);
       setLoadError("");
@@ -165,13 +166,16 @@ export function SettingsDrawerAppointmentsPanel({
           ? api.listAppointments({
               status: appointmentFilter === "all" ? undefined : appointmentFilter,
               q: appointmentQuery.trim() || undefined,
-              scheduled_date: selectedDate,
+              scheduled_date: selectedDate || undefined,
+              upcoming: selectedDate ? undefined : true,
             }).then((rows) => {
               if (active) {
                 setAppointments(
                   rows.filter((appointment) => {
                     const scheduledDate = formatIsoDateInTimeZone(appointment.scheduled_for, clinicTimezone);
-                    return scheduledDate >= todayIsoDate && scheduledDate === selectedDate;
+                    return selectedDate
+                      ? scheduledDate === selectedDate
+                      : scheduledDate >= todayIsoDate;
                   }),
                 );
               }
@@ -179,13 +183,16 @@ export function SettingsDrawerAppointmentsPanel({
           : api.listFollowUps({
               status: followUpFilter === "all" ? undefined : followUpFilter,
               q: followUpQuery.trim() || undefined,
-              scheduled_date: selectedDate,
+              scheduled_date: selectedDate || undefined,
+              upcoming: selectedDate ? undefined : true,
             }).then((rows) => {
               if (active) {
                 setFollowUps(
                   rows.filter((followUp) => {
                     const scheduledDate = formatIsoDateInTimeZone(followUp.scheduled_for, clinicTimezone);
-                    return scheduledDate >= todayIsoDate && scheduledDate === selectedDate;
+                    return selectedDate
+                      ? scheduledDate === selectedDate
+                      : scheduledDate >= todayIsoDate;
                   }),
                 );
               }
@@ -200,7 +207,7 @@ export function SettingsDrawerAppointmentsPanel({
         .finally(() => {
           setIsLoading(false);
         });
-    }, 250);
+    }, requestDelayMs);
 
     return () => {
       active = false;
@@ -678,13 +685,6 @@ export function SettingsDrawerAppointmentsPanel({
                 placeholder="Search patient, phone, or reason"
                 className="min-w-[260px] rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
-              <input
-                type="date"
-                value={selectedDate}
-                min={todayIsoDate}
-                onChange={(event) => setSelectedDate(event.target.value)}
-                className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
-              />
               {(["all", "scheduled", "checked_in", "cancelled"] as AppointmentFilter[]).map((filter) => (
                 <button
                   key={filter}
@@ -699,6 +699,26 @@ export function SettingsDrawerAppointmentsPanel({
                   {formatStatusLabel(filter)}
                 </button>
               ))}
+              <input
+                type="date"
+                aria-label="Filter appointments by date"
+                value={selectedDate}
+                onChange={(event) => setSelectedDate(event.target.value)}
+                className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+              />
+              {selectedDate ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate("")}
+                  className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2.5 text-xs font-medium text-[#2a6fa8] transition hover:bg-[#f3f8fb]"
+                >
+                  Show all upcoming
+                </button>
+              ) : (
+                <span className="inline-flex items-center rounded-xl bg-[#edf5fa] px-3 py-2.5 text-xs font-medium text-[#2a6fa8]">
+                  All upcoming
+                </span>
+              )}
             </div>
             {appointments.length ? (
               <div className="overflow-hidden rounded-[22px] border border-[#bfd7e8]">
@@ -854,13 +874,6 @@ export function SettingsDrawerAppointmentsPanel({
                 placeholder="Search patient or follow-up notes"
                 className="min-w-[260px] rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
-              <input
-                type="date"
-                value={selectedDate}
-                min={todayIsoDate}
-                onChange={(event) => setSelectedDate(event.target.value)}
-                className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
-              />
               {(["all", "scheduled", "completed", "cancelled"] as FollowUpFilter[]).map((filter) => (
                 <button
                   key={filter}
@@ -875,6 +888,26 @@ export function SettingsDrawerAppointmentsPanel({
                   {formatStatusLabel(filter)}
                 </button>
               ))}
+              <input
+                type="date"
+                aria-label="Filter follow-ups by date"
+                value={selectedDate}
+                onChange={(event) => setSelectedDate(event.target.value)}
+                className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+              />
+              {selectedDate ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate("")}
+                  className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2.5 text-xs font-medium text-[#2a6fa8] transition hover:bg-[#f3f8fb]"
+                >
+                  Show all upcoming
+                </button>
+              ) : (
+                <span className="inline-flex items-center rounded-xl bg-[#edf5fa] px-3 py-2.5 text-xs font-medium text-[#2a6fa8]">
+                  All upcoming
+                </span>
+              )}
             </div>
             {followUps.length ? (
               <div className="overflow-hidden rounded-[22px] border border-[#bfd7e8]">

@@ -81,10 +81,40 @@ def test_generate_note_inserts_eye_exam_table_when_ai_omits_it(client, monkeypat
     assert generated.status_code == 200, generated.json()
     content = generated.json()["content"]
     assert "Clinical Notes:\nEye Exam:" in content
-    assert "Eye | Sphere | Cylinder | Axis | Vision" in content
-    assert "Right | -1.25 | -0.50 | 90 | 6/6" in content
-    assert "Left | -1.00 | -0.25 | 85 | 6/6" in content
+    assert "Section | Row | Sphere | Cylinder | Axis | Vision" in content
+    assert "Objective | Right | -1.25 | -0.50 | 90 | 6/6" in content
+    assert "Objective | Left | -1.00 | -0.25 | 85 | 6/6" in content
     assert content.index("Eye Exam:") < content.index("AI noted that the eye exam is recorded below.")
+
+
+def test_generate_note_accepts_subjective_and_cycloplegic_literal_rows(client, monkeypatch):
+    test_client, _repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="notes-eye-exam-sections@clinic.com",
+        clinic_name="Sectioned Eye Exam Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+
+    async def fake_generate_vertex_content(**_kwargs):
+        return {"candidates": [{"content": {"parts": [{"text": "Clinical Notes:\nRecorded."}]}}]}
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", fake_generate_vertex_content)
+    generated = test_client.post(
+        "/generate-note",
+        json={
+            "eye_exam": [
+                {"section": "subjective", "eye": "distance", "vision": "6/9"},
+                {"section": "cycloplegic_dilated", "eye": "near", "sphere": "+1.00"},
+            ],
+        },
+        headers=headers,
+    )
+
+    assert generated.status_code == 200, generated.json()
+    content = generated.json()["content"]
+    assert "Subjective | Distance | - | - | - | 6/9" in content
+    assert "Cycloplegic/Dilated | Near | +1.00 | - | - | -" in content
 
 
 def test_sent_consultation_note_is_emailed_and_locked_to_saved_record(client, monkeypatch):
@@ -379,3 +409,149 @@ def test_note_delivery_failure_reports_finalized_state(client, monkeypatch):
         error["path"] == "/send-note" and error["context"].get("note_id") == note_id
         for error in repo.platform_errors.values()
     )
+
+
+def test_optometry_history_persists_and_is_snapshotted_without_entering_note_generation(client, monkeypatch):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="persistent-history@clinic.com",
+        clinic_name="Persistent History Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    org_id = session["user"]["org_id"]
+    repo.clinic_settings[org_id]["clinic_specialty"] = "optometry"
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "History Patient",
+            "phone": "5550104040",
+            "reason": "Blurred distance vision",
+            "age": 34,
+            "weight": 68,
+            "height": 170,
+            "temperature": 98.4,
+        },
+        headers=headers,
+    ).json()
+
+    empty = test_client.get(
+        f"/patients/{patient['id']}/optometry-history",
+        headers=headers,
+    )
+    assert empty.status_code == 200
+    assert empty.json()["exists"] is False
+    assert empty.json()["revision"] == 0
+
+    history_payload = {
+        "ocular": "Previous allergic conjunctivitis.",
+        "systemic": "Type 2 diabetes.",
+        "no_known_allergies": True,
+        "allergies": "",
+        "current_medications": "Metformin 500 mg twice daily.",
+        "family": "Mother has glaucoma.",
+        "wears_glasses": True,
+        "glasses_since": "10 years",
+        "glasses_usage": "Full time",
+        "lens_type": "Single vision",
+        "prescription_age": "18 months",
+        "pd": "62",
+        "right_power": {"sphere": "-2.00", "cylinder": "-0.50", "axis": "90", "add": ""},
+        "left_power": {"sphere": "-1.75", "cylinder": "-0.25", "axis": "80", "add": ""},
+        "glasses_notes": "Current pair is scratched.",
+        "wears_contact_lenses": False,
+        "contacts_since": "",
+        "contact_lens_type": "",
+        "contact_lens_notes": "",
+    }
+    saved = test_client.put(
+        f"/patients/{patient['id']}/optometry-history",
+        json={"expected_revision": 0, "payload": history_payload},
+        headers=headers,
+    )
+    assert saved.status_code == 200, saved.json()
+    assert saved.json()["revision"] == 1
+    assert saved.json()["payload"]["right_power"]["sphere"] == "-2.00"
+
+    stale = test_client.put(
+        f"/patients/{patient['id']}/optometry-history",
+        json={"expected_revision": 0, "payload": history_payload},
+        headers=headers,
+    )
+    assert stale.status_code == 409
+
+    generation_prompts: list[str] = []
+
+    async def unavailable_ai(**kwargs):
+        generation_prompts.append(str(kwargs.get("prompt") or ""))
+        raise RuntimeError("AI disabled for deterministic history test.")
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", unavailable_ai)
+    generated = test_client.post(
+        "/generate-note",
+        json={
+            "patient_id": patient["id"],
+            "symptoms": "Blurred distance vision",
+            "diagnosis": "Refractive error",
+            "medications": "",
+            "notes": "Refraction performed.",
+        },
+        headers=headers,
+    )
+    assert generated.status_code == 200, generated.json()
+    assert "History:" not in generated.json()["content"]
+    assert "Previous allergic conjunctivitis." not in generated.json()["content"]
+    assert "-2.00" not in generated.json()["content"]
+    assert generation_prompts
+    assert "Previous allergic conjunctivitis." not in generation_prompts[0]
+    assert "Metformin 500 mg twice daily." not in generation_prompts[0]
+
+    note_id = generated.json()["note_id"]
+    assert repo.notes[note_id]["optometry_history"]["revision"] == 1
+    finalized = test_client.post(
+        "/notes/finalize",
+        json={"note_id": note_id},
+        headers=headers,
+    )
+    assert finalized.status_code == 200, finalized.json()
+    assert finalized.json()["snapshot_optometry_history"]["revision"] == 1
+
+    changed_payload = {**history_payload, "ocular": "Cataract surgery in the right eye."}
+    changed = test_client.put(
+        f"/patients/{patient['id']}/optometry-history",
+        json={"expected_revision": 1, "payload": changed_payload},
+        headers=headers,
+    )
+    assert changed.status_code == 200
+    assert changed.json()["revision"] == 2
+    assert finalized.json()["snapshot_optometry_history"]["payload"]["ocular"] == "Previous allergic conjunctivitis."
+
+
+def test_optometry_history_is_blocked_for_other_specialties(client):
+    test_client, _repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="history-scope@clinic.com",
+        clinic_name="General Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "General Patient",
+            "phone": "5550104041",
+            "reason": "Review",
+            "age": 40,
+            "weight": 70,
+            "height": 171,
+            "temperature": 98.5,
+        },
+        headers=headers,
+    ).json()
+
+    response = test_client.get(
+        f"/patients/{patient['id']}/optometry-history",
+        headers=headers,
+    )
+    assert response.status_code == 400

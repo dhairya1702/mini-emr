@@ -266,6 +266,7 @@ class NoteCreate(BaseModel):
     asset_payload: list[dict[str, Any]] = Field(default_factory=list)
     structured_modules: list[dict[str, Any]] = Field(default_factory=list)
     clinical_extractions: dict[str, Any] = Field(default_factory=dict)
+    optometry_history: dict[str, Any] = Field(default_factory=dict)
 
 
 class NoteOut(BaseModel):
@@ -283,6 +284,8 @@ class NoteOut(BaseModel):
     structured_modules: list[dict[str, Any]] = Field(default_factory=list)
     clinical_extractions: dict[str, Any] = Field(default_factory=dict)
     snapshot_clinical_extractions: dict[str, Any] | None = None
+    optometry_history: dict[str, Any] = Field(default_factory=dict)
+    snapshot_optometry_history: dict[str, Any] | None = None
     finalized_at: datetime | None = None
     sent_at: datetime | None = None
     sent_by: UUID | None = None

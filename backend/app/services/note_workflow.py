@@ -4,7 +4,11 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from app.clinic_context import build_clinic_context, build_measurements_context, build_patient_context
+from app.clinic_context import (
+    build_clinic_context,
+    build_measurements_context,
+    build_patient_context,
+)
 from app.db import AppRepository
 from app.email_validation import normalize_single_email
 from app.formatting import format_display_date
@@ -23,6 +27,7 @@ from app.schema_domains.patients import (
     NoteCreate,
     NoteOut,
 )
+from app.schema_domains.optometry import OptometryHistoryPayload
 from app.services.ai_generation_service import generate_clinic_letter, generate_soap_note, sync_note_medication_table
 from app.schema_domains.clinical_extractions import ClinicalExtractions
 from app.services.audit_service import get_actor_name, write_audit_event
@@ -161,12 +166,36 @@ async def generate_note_workflow(
     payload: GenerateNoteRequest,
 ) -> GenerateNoteResponse:
     await enforce_repository_rate_limit(repo, "note_generation", str(current_user.id))
-    clinic_context = build_clinic_context(await build_document_context_for_user(repo, current_user))
+    document_context = await build_document_context_for_user(repo, current_user)
+    clinic_context = build_clinic_context(document_context)
     patient = None
     if payload.patient_id:
         patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
     patient_context = build_patient_context(patient)
     measurements_context = build_measurements_context(payload)
+    optometry_history_snapshot: dict[str, Any] = {}
+    if (
+        payload.patient_id
+        and str(document_context.get("clinic_specialty") or "").strip() == "optometry"
+    ):
+        history_row = await repo.get_optometry_history(
+            str(current_user.org_id),
+            str(payload.patient_id),
+        )
+        if history_row:
+            validated_history = OptometryHistoryPayload.model_validate(
+                history_row.get("payload") or {}
+            ).model_dump(mode="json")
+            optometry_history_snapshot = {
+                "revision": int(history_row.get("revision") or 0),
+                "payload": validated_history,
+                "updated_at": (
+                    history_row["updated_at"].isoformat()
+                    if isinstance(history_row.get("updated_at"), datetime)
+                    else str(history_row.get("updated_at") or "")
+                ),
+                "captured_at": datetime.now(UTC).isoformat(),
+            }
 
     generation = await generate_soap_note(
         repo,
@@ -227,6 +256,7 @@ async def generate_note_workflow(
                     asset_payload,
                     structured_modules,
                     clinical_extractions,
+                    optometry_history_snapshot,
                 )
                 await write_audit_event(
                     repo,
@@ -251,6 +281,7 @@ async def generate_note_workflow(
                     asset_payload,
                     structured_modules,
                     clinical_extractions,
+                    optometry_history_snapshot,
                 )
                 await write_audit_event(
                     repo,
@@ -278,6 +309,7 @@ async def generate_note_workflow(
                     asset_payload=asset_payload,
                     structured_modules=structured_modules,
                     clinical_extractions=clinical_extractions,
+                    optometry_history=optometry_history_snapshot,
                 ),
             )
             await write_audit_event(

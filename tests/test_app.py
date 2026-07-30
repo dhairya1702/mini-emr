@@ -129,6 +129,8 @@ class FakeRepo:
         self.patients: dict[str, dict] = {}
         self.patient_visits: dict[str, dict] = {}
         self.notes: dict[str, dict] = {}
+        self.optometry_histories: dict[tuple[str, str], dict] = {}
+        self.optometry_history_revisions: list[dict] = []
         self.patient_attachments: dict[str, dict] = {}
         self.patient_attachment_files: dict[str, bytes] = {}
         self.myopia_measurements: dict[str, dict] = {}
@@ -1993,6 +1995,49 @@ class FakeRepo:
             raise ValueError("Patient not found for this organization.")
         return patient
 
+    async def get_optometry_history(self, org_id: str, patient_id: str) -> dict | None:
+        await self.get_patient(org_id, patient_id)
+        row = self.optometry_histories.get((org_id, patient_id))
+        return dict(row) if row else None
+
+    async def save_optometry_history(
+        self,
+        *,
+        org_id: str,
+        patient_id: str,
+        updated_by: str,
+        expected_revision: int,
+        payload: dict,
+    ) -> dict:
+        await self.get_patient(org_id, patient_id)
+        current = self.optometry_histories.get((org_id, patient_id))
+        current_revision = int(current.get("revision") or 0) if current else 0
+        if current_revision != expected_revision:
+            raise ValueError(f"OPTOMETRY_HISTORY_REVISION_CONFLICT:{current_revision}")
+        now = _now()
+        user = self.users.get(updated_by) or {}
+        row = {
+            "history_id": current["history_id"] if current else str(uuid4()),
+            "org_id": org_id,
+            "patient_id": patient_id,
+            "payload": dict(payload),
+            "revision": current_revision + 1,
+            "updated_by": updated_by,
+            "updated_by_name": user.get("name") or user.get("identifier") or "",
+            "created_at": current["created_at"] if current else now,
+            "updated_at": now,
+        }
+        self.optometry_histories[(org_id, patient_id)] = row
+        self.optometry_history_revisions.append(dict(row))
+        return dict(row)
+
+    async def list_optometry_history_revisions(self, org_id: str, patient_id: str) -> list[dict]:
+        return [
+            dict(row)
+            for row in reversed(self.optometry_history_revisions)
+            if row["org_id"] == org_id and row["patient_id"] == patient_id
+        ]
+
     async def save_patient_summary(
         self,
         org_id: str,
@@ -2228,6 +2273,7 @@ class FakeRepo:
             asset_payload=getattr(payload, "asset_payload", []),
             structured_modules=getattr(payload, "structured_modules", []),
             clinical_extractions=getattr(payload, "clinical_extractions", {}),
+            optometry_history=getattr(payload, "optometry_history", {}),
             version_number=1,
             root_note_id=None,
             amended_from_note_id=None,
@@ -2243,6 +2289,7 @@ class FakeRepo:
         asset_payload: list[dict],
         structured_modules: list[dict],
         clinical_extractions: dict,
+        optometry_history: dict,
         version_number: int,
         root_note_id: str | None,
         amended_from_note_id: str | None,
@@ -2258,6 +2305,8 @@ class FakeRepo:
             "structured_modules": structured_modules,
             "clinical_extractions": clinical_extractions,
             "snapshot_clinical_extractions": None,
+            "optometry_history": optometry_history,
+            "snapshot_optometry_history": None,
             "status": "draft",
             "version_number": version_number,
             "root_note_id": root_note_id,
@@ -2273,7 +2322,7 @@ class FakeRepo:
         self.notes[note_id] = note
         return note
 
-    async def update_note_draft(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None, structured_modules: list[dict] | None = None, clinical_extractions: dict | None = None) -> dict:
+    async def update_note_draft(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None, structured_modules: list[dict] | None = None, clinical_extractions: dict | None = None, optometry_history: dict | None = None) -> dict:
         note = await self.get_note(org_id, note_id)
         if note["status"] != "draft":
             raise ValueError("Only draft notes can be updated.")
@@ -2284,6 +2333,8 @@ class FakeRepo:
             note["structured_modules"] = structured_modules
         if clinical_extractions is not None:
             note["clinical_extractions"] = clinical_extractions
+        if optometry_history is not None:
+            note["optometry_history"] = optometry_history
         return note
 
     async def get_note(self, org_id: str, note_id: str) -> dict:
@@ -2302,10 +2353,11 @@ class FakeRepo:
         note["snapshot_content"] = note["content"]
         note["snapshot_asset_payload"] = note.get("asset_payload") or []
         note["snapshot_clinical_extractions"] = note.get("clinical_extractions") or {}
+        note["snapshot_optometry_history"] = note.get("optometry_history") or {}
         note["finalized_at"] = _now()
         return note
 
-    async def create_note_amendment(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None, structured_modules: list[dict] | None = None, clinical_extractions: dict | None = None) -> dict:
+    async def create_note_amendment(self, org_id: str, note_id: str, content: str, asset_payload: list[dict] | None = None, structured_modules: list[dict] | None = None, clinical_extractions: dict | None = None, optometry_history: dict | None = None) -> dict:
         note = await self.get_note(org_id, note_id)
         related = [
             entry for entry in self.notes.values()
@@ -2322,6 +2374,7 @@ class FakeRepo:
             asset_payload=asset_payload or note.get("asset_payload") or [],
             structured_modules=structured_modules if structured_modules is not None else note.get("structured_modules") or [],
             clinical_extractions=clinical_extractions if clinical_extractions is not None else note.get("clinical_extractions") or {},
+            optometry_history=optometry_history if optometry_history is not None else note.get("optometry_history") or {},
             version_number=next_version,
             root_note_id=str(note.get("root_note_id") or note["id"]),
             amended_from_note_id=note_id,
@@ -2341,6 +2394,7 @@ class FakeRepo:
             note["status"] = "sent"
             note["snapshot_content"] = note["snapshot_content"] or note["content"]
             note["snapshot_asset_payload"] = note.get("snapshot_asset_payload") or note.get("asset_payload") or []
+            note["snapshot_optometry_history"] = note.get("snapshot_optometry_history") or note.get("optometry_history") or {}
             note["sent_at"] = _now()
             note["sent_by"] = sent_by
             note["sent_to"] = sent_to

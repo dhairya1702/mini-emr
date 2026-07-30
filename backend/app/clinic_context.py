@@ -160,8 +160,14 @@ def build_measurements_context(payload: GenerateNoteRequest) -> str:
         for entry in payload.eye_exam:
             if not (entry.sphere or entry.cylinder or entry.axis or entry.vision):
                 continue
+            section_label = {
+                "objective": "Objective",
+                "subjective": "Subjective",
+                "cycloplegic_dilated": "Cycloplegic/Dilated",
+            }[entry.section]
             eye_rows.append(
                 [
+                    section_label,
                     entry.eye.title(),
                     entry.sphere or "-",
                     entry.cylinder or "-",
@@ -169,7 +175,11 @@ def build_measurements_context(payload: GenerateNoteRequest) -> str:
                     entry.vision or "-",
                 ]
             )
-        eye_table = _render_pipe_table("Eye Exam:", ["Eye", "Sphere", "Cylinder", "Axis", "Vision"], eye_rows)
+        eye_table = _render_pipe_table(
+            "Eye Exam:",
+            ["Section", "Row", "Sphere", "Cylinder", "Axis", "Vision"],
+            eye_rows,
+        )
         if eye_table:
             measurement_bits.append(eye_table)
     if payload.contact_lens:

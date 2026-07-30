@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, datetime, timedelta
+from html import escape
 from fastapi import HTTPException
 
 from app.clinic_timezone import as_clinic_time, clinic_day_start_utc, clinic_now, clinic_today, get_clinic_timezone
@@ -47,14 +48,6 @@ def _appointments_per_hour(clinic_settings: dict) -> int:
     return value
 
 
-def _format_booking_window(clinic_settings: dict) -> str:
-    start_minutes = _parse_time_minutes(clinic_settings.get("appointment_start_time"), "09:00")
-    end_minutes = _parse_time_minutes(clinic_settings.get("appointment_end_time"), "18:00")
-    start = datetime(2000, 1, 1, start_minutes // 60, start_minutes % 60)
-    end = datetime(2000, 1, 1, end_minutes // 60, end_minutes % 60)
-    return f"{start.strftime('%I:%M %p')} to {end.strftime('%I:%M %p')}"
-
-
 def _is_within_booking_window(candidate: datetime, clinic_settings: dict) -> bool:
     start_minutes = _parse_time_minutes(clinic_settings.get("appointment_start_time"), "09:00")
     end_minutes = _parse_time_minutes(clinic_settings.get("appointment_end_time"), "18:00")
@@ -70,25 +63,67 @@ def _hour_bucket(candidate: datetime, clinic_settings: dict) -> datetime:
 def _follow_up_email_parts(
     *,
     clinic_name: str,
+    doctor_name: str,
     patient_name: str,
-    scheduled_for: str,
-    notes: str,
-    clinic_phone: str,
     booking_link: str,
-    booking_window: str,
-) -> tuple[str, str]:
-    booking_line = f"To confirm or reschedule, use this link: {booking_link}" if booking_link else (
-        f"To confirm or reschedule, contact the clinic{f' at {clinic_phone}' if clinic_phone else ''}."
-    )
-    subject = f"{clinic_name} follow-up reminder for {patient_name}"
+) -> tuple[str, str, str]:
+    normalized_doctor_name = doctor_name.strip()
+    if normalized_doctor_name and not normalized_doctor_name.lower().startswith(("dr.", "dr ", "doctor ")):
+        normalized_doctor_name = f"Dr. {normalized_doctor_name}"
+    follow_up_sender = normalized_doctor_name or clinic_name
+    subject = f"Schedule your follow-up with {follow_up_sender}"
+    scheduling_line = f"Schedule: {booking_link}" if booking_link else f"Please contact {clinic_name} to schedule."
     body = (
         f"Hello {patient_name},\n\n"
-        f"This is a reminder for your follow-up with {clinic_name} on {scheduled_for}.\n\n"
-        f"Clinic booking hours: {booking_window}.\n\n"
-        f"Notes: {notes or 'Please return for the planned review.'}\n\n"
-        f"{booking_line}\n"
+        f"{follow_up_sender} would like to see you again for a follow-up and check on your progress.\n\n"
+        "Please choose a convenient time slot using the link below.\n\n"
+        f"{scheduling_line}\n\n"
+        f"Thank you,\n{clinic_name}\n"
     )
-    return subject, body
+    safe_patient_name = escape(patient_name)
+    safe_clinic_name = escape(clinic_name)
+    safe_follow_up_sender = escape(follow_up_sender)
+    if booking_link:
+        safe_booking_link = escape(booking_link, quote=True)
+        booking_action = (
+            '<div style="margin:28px 0;text-align:center;">'
+            f'<a href="{safe_booking_link}" '
+            'style="display:inline-block;border-radius:10px;background:#0f172a;color:#ffffff;'
+            'font-size:15px;font-weight:700;line-height:1;padding:15px 24px;text-decoration:none;">'
+            "Schedule"
+            "</a>"
+            "</div>"
+        )
+    else:
+        booking_action = (
+            '<p style="margin:24px 0 0;color:#334155;font-size:15px;line-height:24px;text-align:center;">'
+            f"Please contact {safe_clinic_name} to schedule."
+            "</p>"
+        )
+    html_body = (
+        '<div style="margin:0;background:#f1f5f9;padding:28px 12px;font-family:Arial,sans-serif;color:#0f172a;">'
+        '<div style="margin:0 auto;max-width:600px;overflow:hidden;border:1px solid #dbe7ef;'
+        'border-radius:16px;background:#ffffff;">'
+        '<div style="padding:28px 30px;">'
+        '<p style="margin:0 0 20px;font-size:16px;line-height:24px;">'
+        f"Hello {safe_patient_name},"
+        "</p>"
+        '<p style="margin:0 0 18px;font-size:16px;line-height:25px;">'
+        f"<strong>{safe_follow_up_sender}</strong> would like to see you again for a follow-up "
+        "and check on your progress."
+        "</p>"
+        '<p style="margin:0;font-size:16px;line-height:25px;">'
+        "Please choose a convenient time slot using the button below."
+        "</p>"
+        f"{booking_action}"
+        '<p style="margin:30px 0 0;font-size:15px;line-height:24px;">'
+        f"Thank you,<br><strong>{safe_clinic_name}</strong>"
+        "</p>"
+        "</div>"
+        "</div>"
+        "</div>"
+    )
+    return subject, body, html_body
 
 
 async def _suggest_follow_up_slots(
@@ -158,21 +193,17 @@ async def _send_follow_up_email_if_needed(repo: AppRepository, current_user: Use
         raise RuntimeError("Patient email is not configured.")
     clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
-    scheduled_for = format_display_datetime(follow_up["scheduled_for"], str(clinic_settings.get("timezone") or "UTC"))
     booking_token = create_follow_up_booking_token(
         org_id=str(current_user.org_id),
         patient_id=str(follow_up["patient_id"]),
         follow_up_id=str(follow_up["id"]),
     )
     booking_link = f"{get_settings().app_origin.rstrip('/')}/follow-up?token={booking_token}"
-    subject, text_content = _follow_up_email_parts(
+    subject, text_content, html_content = _follow_up_email_parts(
         clinic_name=clinic_name,
+        doctor_name=str(clinic_settings.get("doctor_name") or current_user.name or "").strip(),
         patient_name=str(patient.get("name") or "Patient").strip() or "Patient",
-        scheduled_for=scheduled_for,
-        notes=str(follow_up.get("notes") or "").strip(),
-        clinic_phone=str(clinic_settings.get("clinic_phone") or "").strip(),
         booking_link=booking_link,
-        booking_window=_format_booking_window(clinic_settings),
     )
     await send_clinic_email_message(
         repo=repo,
@@ -180,7 +211,9 @@ async def _send_follow_up_email_if_needed(repo: AppRepository, current_user: Use
         recipient=recipient,
         subject=subject,
         text_content=text_content,
+        html_content=html_content,
         message_id=f"<follow-up-{follow_up['id']}@clinicos>",
+        include_automated_footer=False,
     )
     await repo.mark_follow_up_reminder_sent(str(current_user.org_id), str(follow_up["id"]))
 

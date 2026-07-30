@@ -14,7 +14,15 @@ from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import InvoiceOut
 from app.schema_domains.case_studies import PatientCaseStudySourceOut
 from app.schema_domains.common import PatientStatus
-from app.schema_domains.optometry import MyopiaHistoryOut, MyopiaMeasurementCreate, MyopiaMeasurementOut, MyopiaMeasurementUpdate
+from app.schema_domains.optometry import (
+    MyopiaHistoryOut,
+    MyopiaMeasurementCreate,
+    MyopiaMeasurementOut,
+    MyopiaMeasurementUpdate,
+    OptometryHistoryOut,
+    OptometryHistoryPayload,
+    OptometryHistoryUpdate,
+)
 from app.schema_domains.patients import (
     NoteOut,
     PatientChartVisitOut,
@@ -826,6 +834,80 @@ async def list_patient_notes(
         raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="list_patient_notes") from exc
+
+
+@router.get(
+    "/patients/{patient_id}/optometry-history",
+    response_model=OptometryHistoryOut,
+)
+async def get_patient_optometry_history(
+    patient_id: str,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> OptometryHistoryOut:
+    org_id = str(current_user.org_id)
+    try:
+        await _require_optometry_clinic(repo, org_id)
+        row = await repo.get_optometry_history(org_id, patient_id)
+        if not row:
+            patient = await repo.get_patient(org_id, patient_id)
+            return OptometryHistoryOut(
+                patient_id=patient["id"],
+                payload=OptometryHistoryPayload(),
+            )
+        return OptometryHistoryOut(exists=True, **row)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="get_patient_optometry_history") from exc
+
+
+@router.put(
+    "/patients/{patient_id}/optometry-history",
+    response_model=OptometryHistoryOut,
+)
+async def save_patient_optometry_history(
+    patient_id: str,
+    payload: OptometryHistoryUpdate,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> OptometryHistoryOut:
+    org_id = str(current_user.org_id)
+    try:
+        await _require_optometry_clinic(repo, org_id)
+        saved = await repo.save_optometry_history(
+            org_id=org_id,
+            patient_id=patient_id,
+            updated_by=str(current_user.id),
+            expected_revision=payload.expected_revision,
+            payload=payload.payload.model_dump(mode="json"),
+        )
+        await write_audit_event_best_effort(
+            repo,
+            current_user,
+            entity_type="patient",
+            entity_id=patient_id,
+            action="optometry_history_updated",
+            summary="Updated optometry details for a patient.",
+            metadata={"revision": saved.get("revision")},
+        )
+        return OptometryHistoryOut(exists=True, **saved)
+    except ValueError as exc:
+        message = str(exc)
+        if message.startswith("OPTOMETRY_HISTORY_REVISION_CONFLICT:"):
+            current_revision = message.partition(":")[2]
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "These details were updated elsewhere. "
+                    f"Reload the latest version (revision {current_revision}) before saving."
+                ),
+            ) from exc
+        raise bad_request_error(exc) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="save_patient_optometry_history") from exc
 
 
 @router.get("/patients/{patient_id}/case-study-source", response_model=PatientCaseStudySourceOut)

@@ -247,6 +247,8 @@ export interface ConsultationNote {
   structured_modules?: StructuredModule[];
   clinical_extractions?: ClinicalExtractions;
   snapshot_clinical_extractions?: ClinicalExtractions | null;
+  optometry_history?: OptometryHistorySnapshot;
+  snapshot_optometry_history?: OptometryHistorySnapshot | null;
   finalized_at: string | null;
   sent_at: string | null;
   sent_by: string | null;
@@ -332,12 +334,70 @@ export interface TestScoreEntry {
   value: string;
 }
 
+export type EyeExamSection = "objective" | "subjective" | "cycloplegic_dilated";
+export type EyeExamRow = "right" | "left" | "distance" | "near";
+
 export interface EyeExamEntry {
-  eye: "right" | "left";
+  eye: EyeExamRow;
+  section?: EyeExamSection;
   sphere: string;
   cylinder: string;
   axis: string;
   vision: string;
+}
+
+export interface EyeExamPayload {
+  objective: EyeExamEntry[];
+  subjective: EyeExamEntry[];
+  cycloplegic_dilated: EyeExamEntry[];
+}
+
+export interface OptometryHistoryPower {
+  sphere: string;
+  cylinder: string;
+  axis: string;
+  add: string;
+}
+
+export interface OptometryHistoryPayload {
+  ocular: string;
+  systemic: string;
+  no_known_allergies: boolean;
+  allergies: string;
+  current_medications: string;
+  family: string;
+  wears_glasses: boolean | null;
+  glasses_since: string;
+  glasses_usage: string;
+  lens_type: string;
+  prescription_age: string;
+  pd: string;
+  right_power: OptometryHistoryPower;
+  left_power: OptometryHistoryPower;
+  glasses_notes: string;
+  wears_contact_lenses: boolean | null;
+  contacts_since: string;
+  contact_lens_type: string;
+  contact_lens_notes: string;
+}
+
+export interface OptometryHistory {
+  history_id: string | null;
+  patient_id: string;
+  payload: OptometryHistoryPayload;
+  revision: number;
+  exists: boolean;
+  updated_by: string | null;
+  updated_by_name: string;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface OptometryHistorySnapshot {
+  revision?: number;
+  payload?: OptometryHistoryPayload;
+  updated_at?: string;
+  captured_at?: string;
 }
 
 export interface ContactLensEyeEntry {

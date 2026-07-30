@@ -106,6 +106,42 @@ def test_global_sender_adds_automated_footer_and_no_reply_to(monkeypatch: pytest
     assert captured["sender_email"] == "clinicos.sender@gmail.com"
 
 
+def test_global_sender_can_suppress_automated_footer(monkeypatch: pytest.MonkeyPatch):
+    captured = {}
+
+    class Repo:
+        async def get_platform_email_settings(self):
+            return {
+                "sender_name": "ClinicOS",
+                "sender_email": "clinicos.sender@gmail.com",
+                "sender_email_app_password": "app-password",
+                "is_enabled": True,
+            }
+
+    def fake_send(message, *, sender_email: str, app_password: str):
+        captured["message"] = message
+
+    monkeypatch.setattr(email_service, "_send_email_sync", fake_send)
+    asyncio.run(
+        email_service.send_clinic_email_message(
+            repo=Repo(),
+            clinic_settings={"clinic_name": "Bluebird", "email_sender_mode": "clinicos"},
+            recipient="patient@example.com",
+            subject="Follow-up",
+            text_content="Thank you,\nBluebird",
+            html_content="<p>Thank you,<br><strong>Bluebird</strong></p>",
+            include_automated_footer=False,
+        )
+    )
+
+    rendered_parts = "\n".join(
+        part.get_content()
+        for part in captured["message"].walk()
+        if part.get_content_maintype() == "text"
+    )
+    assert "mailbox is not monitored" not in rendered_parts
+
+
 def test_clinic_sender_does_not_fall_back_or_add_platform_footer(monkeypatch: pytest.MonkeyPatch):
     captured = {}
 

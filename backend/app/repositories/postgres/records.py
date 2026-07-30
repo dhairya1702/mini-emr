@@ -27,6 +27,8 @@ NOTE_COLUMNS = [
     "structured_modules",
     "clinical_extractions",
     "snapshot_clinical_extractions",
+    "optometry_history",
+    "snapshot_optometry_history",
     "finalized_at",
     "sent_at",
     "sent_by",
@@ -84,6 +86,7 @@ class PostgresRecordsRepository:
                           asset_payload,
                           structured_modules,
                           clinical_extractions,
+                          optometry_history,
                           status,
                           version_number,
                           root_note_id,
@@ -91,6 +94,7 @@ class PostgresRecordsRepository:
                           snapshot_content,
                           snapshot_asset_payload,
                           snapshot_clinical_extractions,
+                          snapshot_optometry_history,
                           finalized_at,
                           sent_at,
                           sent_by,
@@ -99,8 +103,8 @@ class PostgresRecordsRepository:
                         values (
                           %s, %s, %s,
                           coalesce(%s, (select current_visit_id from public.patients where org_id = %s and id = %s)),
-                          %s, %s::jsonb, %s::jsonb, %s::jsonb, 'draft', %s, %s,
-                          %s, null, '[]'::jsonb, null, null, null, null, null
+                          %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, 'draft', %s, %s,
+                          %s, null, '[]'::jsonb, null, null, null, null, null, null
                         )
                         returning {_columns_sql(NOTE_COLUMNS)}
                         """,
@@ -115,6 +119,7 @@ class PostgresRecordsRepository:
                             json.dumps(payload.asset_payload),
                             json.dumps(payload.structured_modules),
                             json.dumps(payload.clinical_extractions),
+                            json.dumps(payload.optometry_history),
                             version_number,
                             root_note_id,
                             amended_from_note_id,
@@ -135,6 +140,7 @@ class PostgresRecordsRepository:
         asset_payload: list[dict[str, Any]] | None = None,
         structured_modules: list[dict[str, Any]] | None = None,
         clinical_extractions: dict[str, Any] | None = None,
+        optometry_history: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         def _update() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
@@ -148,7 +154,7 @@ class PostgresRecordsRepository:
                         f"""
                         update public.notes
                         set content = %s, asset_payload = %s::jsonb, structured_modules = %s::jsonb,
-                            clinical_extractions = %s::jsonb
+                            clinical_extractions = %s::jsonb, optometry_history = %s::jsonb
                         where org_id = %s and id = %s
                         returning {_columns_sql(NOTE_COLUMNS)}
                         """,
@@ -164,6 +170,11 @@ class PostgresRecordsRepository:
                                 clinical_extractions
                                 if clinical_extractions is not None
                                 else note.get("clinical_extractions") or {}
+                            ),
+                            json.dumps(
+                                optometry_history
+                                if optometry_history is not None
+                                else note.get("optometry_history") or {}
                             ),
                             org_id,
                             note_id,
@@ -215,7 +226,9 @@ class PostgresRecordsRepository:
                         f"""
                         update public.notes
                         set status = 'final', snapshot_content = %s, snapshot_asset_payload = %s::jsonb,
-                            snapshot_clinical_extractions = %s::jsonb, finalized_at = %s
+                            snapshot_clinical_extractions = %s::jsonb,
+                            snapshot_optometry_history = %s::jsonb,
+                            finalized_at = %s
                         where org_id = %s and id = %s
                         returning {_columns_sql(NOTE_COLUMNS)}
                         """,
@@ -223,6 +236,7 @@ class PostgresRecordsRepository:
                             note.get("content") or "",
                             json.dumps(note.get("asset_payload") or []),
                             json.dumps(note.get("clinical_extractions") or {}),
+                            json.dumps(note.get("optometry_history") or {}),
                             datetime.now(UTC).isoformat(),
                             org_id,
                             note_id,
@@ -243,6 +257,7 @@ class PostgresRecordsRepository:
         asset_payload: list[dict[str, Any]] | None = None,
         structured_modules: list[dict[str, Any]] | None = None,
         clinical_extractions: dict[str, Any] | None = None,
+        optometry_history: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         note = await self.get_note(org_id, note_id)
         patient_notes = await self.list_notes_for_patient(org_id, str(note["patient_id"]))
@@ -264,6 +279,9 @@ class PostgresRecordsRepository:
                 clinical_extractions=clinical_extractions
                 if clinical_extractions is not None
                 else note.get("clinical_extractions") or {},
+                optometry_history=optometry_history
+                if optometry_history is not None
+                else note.get("optometry_history") or {},
             ),
             version_number=next_version,
             root_note_id=root_note_id,
@@ -305,6 +323,7 @@ class PostgresRecordsRepository:
                             snapshot_content = %s,
                             snapshot_asset_payload = %s::jsonb,
                             snapshot_clinical_extractions = %s::jsonb,
+                            snapshot_optometry_history = %s::jsonb,
                             sent_at = %s,
                             sent_by = %s,
                             sent_to = %s
@@ -315,6 +334,7 @@ class PostgresRecordsRepository:
                             note.get("snapshot_content") or note.get("content") or "",
                             json.dumps(note.get("snapshot_asset_payload") or note.get("asset_payload") or []),
                             json.dumps(note.get("snapshot_clinical_extractions") or note.get("clinical_extractions") or {}),
+                            json.dumps(note.get("snapshot_optometry_history") or note.get("optometry_history") or {}),
                             datetime.now(UTC).isoformat(),
                             sent_by,
                             sent_to,
