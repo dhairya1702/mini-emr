@@ -2,20 +2,21 @@ from __future__ import annotations
 
 import re
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException
 
 from app.config import get_settings
 from app.db import AppRepository
+from app.formatting import format_display_date
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import InvoiceActionResponse, InvoiceOut, SendInvoiceWhatsAppRequest
 from app.schema_domains.documents import SendNoteResponse, SendNoteWhatsAppRequest, WhatsAppDeliveryOut
-from app.services.audit_service import record_invoice_completed, record_invoice_shared
+from app.services.audit_service import record_invoice_shared
 from app.services.audit_service import get_actor_name, write_audit_event
 from app.services.document_helpers import build_document_context_for_user
-from app.services.billing_workflow import _record_program_enrollments
+from app.services.billing_workflow import _invoice_completion_audit_events
 from app.services.note_workflow import hydrate_note_assets_for_pdf
 from app.services.pdf_service import build_invoice_pdf, build_letter_pdf, build_note_pdf
 from app.storage import PatientAttachmentStorage
@@ -228,6 +229,10 @@ async def send_invoice_whatsapp_workflow(
         str(payload.invoice_id),
         completed_by=str(current_user.id),
         mark_sent=False,
+        audit_event_factory=_invoice_completion_audit_events(
+            current_user,
+            patient_name=patient_name,
+        ),
     )
     refreshed_invoice = await repo.get_invoice(str(current_user.org_id), str(payload.invoice_id))
     generated_on = datetime.now().strftime("%b %d, %Y %I:%M %p")
@@ -280,20 +285,6 @@ async def send_invoice_whatsapp_workflow(
         "sent_at": sent_invoice.get("sent_at"),
     }
     output_invoice = InvoiceOut(**{**refreshed_invoice, "patient_name": patient_name})
-    if not finalized.get("already_completed"):
-        await record_invoice_completed(
-            repo,
-            current_user,
-            output_invoice.model_dump(mode="json"),
-            patient_name=patient_name,
-            stock_deductions=finalized.get("stock_deductions", []),
-        )
-        await _record_program_enrollments(
-            repo,
-            current_user,
-            finalized.get("program_enrollments", []),
-            patient_name=patient_name,
-        )
     await record_invoice_shared(
         repo,
         current_user,
@@ -403,7 +394,7 @@ async def send_note_whatsapp_workflow(
     if not snapshot_content:
         raise HTTPException(status_code=400, detail="Saved note content is empty.")
 
-    generated_on = datetime.now().strftime("%b %d, %Y %I:%M %p")
+    generated_on = format_display_date(datetime.now(UTC), clinic_settings.get("timezone"))
     note_assets = await hydrate_note_assets_for_pdf(
         repo,
         storage,

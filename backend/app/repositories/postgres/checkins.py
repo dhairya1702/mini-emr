@@ -4,6 +4,8 @@ import asyncio
 from datetime import UTC, date, datetime
 from typing import Any
 
+from psycopg.errors import UniqueViolation
+
 from app.postgres import PostgresConnectionManager
 from app.repositories.base import normalize_phone_number
 from app.repositories.postgres.ai_usage import _row_to_dict
@@ -144,46 +146,48 @@ class PostgresCheckInsRepository:
             raise ValueError("Enter a valid phone number.")
 
         def _create() -> dict[str, Any]:
-            with self.connection_manager.pool.connection() as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        select id
-                        from public.public_check_in_requests
-                        where org_id = %s
-                          and submitted_phone_normalized = %s
-                          and submitted_date_of_birth = %s
-                          and status = 'pending'
-                          and expires_at > now()
-                        limit 1
-                        """,
-                        (org_id, normalized_phone, date_of_birth),
-                    )
-                    if cursor.fetchone():
-                        raise ValueError("A check-in request with these details is already waiting for review.")
-                    cursor.execute(
-                        f"""
-                        insert into public.public_check_in_requests (
-                          org_id, submitted_name, submitted_phone,
-                          submitted_phone_normalized, submitted_email,
-                          submitted_date_of_birth, submitted_sex_at_birth,
-                          submitted_reason
+            try:
+                with self.connection_manager.pool.connection() as connection:
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            update public.public_check_in_requests
+                            set status = 'expired'
+                            where org_id = %s
+                              and submitted_phone_normalized = %s
+                              and submitted_date_of_birth = %s
+                              and status = 'pending'
+                              and expires_at <= now()
+                            """,
+                            (org_id, normalized_phone, date_of_birth),
                         )
-                        values (%s, %s, %s, %s, %s, %s, %s, %s)
-                        returning {_columns_sql(CHECK_IN_REQUEST_COLUMNS)}
-                        """,
-                        (
-                            org_id,
-                            name.strip(),
-                            phone.strip(),
-                            normalized_phone,
-                            email.strip().lower(),
-                            date_of_birth,
-                            sex_at_birth,
-                            reason.strip(),
-                        ),
-                    )
-                    return _row_to_dict(cursor.fetchone(), cursor)
+                        cursor.execute(
+                            f"""
+                            insert into public.public_check_in_requests (
+                              org_id, submitted_name, submitted_phone,
+                              submitted_phone_normalized, submitted_email,
+                              submitted_date_of_birth, submitted_sex_at_birth,
+                              submitted_reason
+                            )
+                            values (%s, %s, %s, %s, %s, %s, %s, %s)
+                            returning {_columns_sql(CHECK_IN_REQUEST_COLUMNS)}
+                            """,
+                            (
+                                org_id,
+                                name.strip(),
+                                phone.strip(),
+                                normalized_phone,
+                                email.strip().lower(),
+                                date_of_birth,
+                                sex_at_birth,
+                                reason.strip(),
+                            ),
+                        )
+                        return _row_to_dict(cursor.fetchone(), cursor)
+            except UniqueViolation as error:
+                raise ValueError(
+                    "A check-in request with these details is already waiting for review."
+                ) from error
 
         return await asyncio.to_thread(_create)
 
@@ -210,61 +214,85 @@ class PostgresCheckInsRepository:
                         (org_id,),
                     )
                     requests = [_row_to_dict(row, cursor) for row in cursor.fetchall()]
+                    if not requests:
+                        return []
+
+                    request_by_id = {str(request["id"]): request for request in requests}
                     for request in requests:
-                        digits = "".join(char for char in str(request["submitted_phone_normalized"]) if char.isdigit())
-                        submitted_email = str(request.get("submitted_email") or "").strip().lower()
-                        cursor.execute(
-                            f"""
-                            select {_columns_sql(PATIENT_COLUMNS)}
-                            from public.patients
-                            where org_id = %s
-                              and (
-                                right(regexp_replace(phone, '\\D', '', 'g'), 10) = right(%s, 10)
-                                or (%s <> '' and lower(trim(email)) = %s)
-                                or date_of_birth = %s
-                                or lower(trim(name)) = lower(trim(%s))
-                              )
-                            order by last_visit_at desc
-                            limit 20
-                            """,
-                            (
-                                org_id,
-                                digits,
-                                submitted_email,
-                                submitted_email,
-                                request["submitted_date_of_birth"],
-                                request["submitted_name"],
-                            ),
+                        request["candidates"] = []
+                    cursor.execute(
+                        f"""
+                        with ranked_candidates as (
+                          select check_in.id as check_in_request_id,
+                            {", ".join(f"patient.{column}" for column in PATIENT_COLUMNS)},
+                            row_number() over (
+                              partition by check_in.id
+                              order by patient.last_visit_at desc
+                            ) as candidate_rank
+                          from public.public_check_in_requests check_in
+                          join public.patients patient
+                            on patient.org_id = check_in.org_id
+                           and (
+                             (
+                               check_in.submitted_phone_match_key <> ''
+                               and patient.phone_match_key = check_in.submitted_phone_match_key
+                             )
+                             or (
+                               check_in.submitted_email_normalized <> ''
+                               and patient.email_normalized = check_in.submitted_email_normalized
+                             )
+                             or patient.date_of_birth = check_in.submitted_date_of_birth
+                             or patient.name_normalized = check_in.submitted_name_normalized
+                           )
+                          where check_in.org_id = %s
+                            and check_in.id = any(%s::uuid[])
                         )
-                        candidates = []
+                        select check_in_request_id,
+                          {_columns_sql(PATIENT_COLUMNS)}
+                        from ranked_candidates
+                        where candidate_rank <= 20
+                        order by check_in_request_id, candidate_rank
+                        """,
+                        (org_id, list(request_by_id)),
+                    )
+                    for row in cursor.fetchall():
+                        request_id = str(row[0])
+                        request = request_by_id.get(request_id)
+                        if request is None:
+                            continue
+                        patient = dict(zip(PATIENT_COLUMNS, row[1:], strict=True))
+                        digits = "".join(
+                            char
+                            for char in str(request["submitted_phone_normalized"])
+                            if char.isdigit()
+                        )
+                        submitted_email = str(request.get("submitted_email") or "").strip().lower()
                         submitted_name = " ".join(str(request["submitted_name"]).lower().split())
-                        for row in cursor.fetchall():
-                            patient = _row_to_dict(row, cursor)
-                            patient_digits = "".join(char for char in str(patient.get("phone") or "") if char.isdigit())
-                            patient_name = " ".join(str(patient.get("name") or "").lower().split())
-                            reasons = []
-                            score = 0
-                            if digits and patient_digits and patient_digits[-10:] == digits[-10:]:
-                                reasons.append("Phone match")
-                                score += 70
-                            if (
-                                submitted_email
-                                and str(patient.get("email") or "").strip().lower() == submitted_email
-                            ):
-                                reasons.append("Email match")
-                                score += 70
-                            if patient.get("date_of_birth") == request["submitted_date_of_birth"]:
-                                reasons.append("Date of birth match")
-                                score += 20
-                            if patient_name and patient_name == submitted_name:
-                                reasons.append("Name match")
-                                score += 20
-                            if score < 20:
-                                continue
-                            patient["match_reasons"] = reasons
-                            patient["confidence"] = "strong" if score >= 90 else "likely" if score >= 70 else "possible"
-                            candidates.append(patient)
-                        request["candidates"] = candidates[:5]
+                        patient_digits = "".join(char for char in str(patient.get("phone") or "") if char.isdigit())
+                        patient_name = " ".join(str(patient.get("name") or "").lower().split())
+                        reasons = []
+                        score = 0
+                        if digits and patient_digits and patient_digits[-10:] == digits[-10:]:
+                            reasons.append("Phone match")
+                            score += 70
+                        if (
+                            submitted_email
+                            and str(patient.get("email") or "").strip().lower() == submitted_email
+                        ):
+                            reasons.append("Email match")
+                            score += 70
+                        if patient.get("date_of_birth") == request["submitted_date_of_birth"]:
+                            reasons.append("Date of birth match")
+                            score += 20
+                        if patient_name and patient_name == submitted_name:
+                            reasons.append("Name match")
+                            score += 20
+                        if score < 20:
+                            continue
+                        patient["match_reasons"] = reasons
+                        patient["confidence"] = "strong" if score >= 90 else "likely" if score >= 70 else "possible"
+                        if len(request["candidates"]) < 5:
+                            request["candidates"].append(patient)
                     return requests
 
         return await asyncio.to_thread(_list)

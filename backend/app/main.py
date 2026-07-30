@@ -10,7 +10,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.background import BackgroundTasks
 
 from app import config as config_module
 from app.auth import (
@@ -48,6 +47,7 @@ from app.routes import (
 from app.schema_domains.auth_settings import UserOut
 from app.services.auth_flow import RATE_LIMIT_BUCKETS, RATE_LIMIT_WINDOWS
 from app.services.followup_workflow import send_due_follow_up_emails_workflow
+from app.services.request_metrics import RequestMetricsBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -98,9 +98,26 @@ async def lifespan(app: FastAPI):
         if reminder_runner_enabled
         else None
     )
+    request_metrics = RequestMetricsBuffer(
+        lambda: app.dependency_overrides.get(get_repository, get_repository)(),
+        flush_interval_seconds=float(
+            getattr(settings, "request_metrics_flush_interval_seconds", 30.0)
+        ),
+        startup_jitter_seconds=float(
+            getattr(settings, "request_metrics_startup_jitter_seconds", 5.0)
+        ),
+    )
+    request_metrics_stop = asyncio.Event()
+    request_metrics_task = asyncio.create_task(request_metrics.run(request_metrics_stop))
+    app.state.request_metrics = request_metrics
     try:
         yield
     finally:
+        request_metrics_stop.set()
+        with suppress(Exception):
+            await request_metrics_task
+        with suppress(Exception):
+            await request_metrics.flush()
         if reminder_task is not None:
             reminder_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -128,24 +145,21 @@ async def refresh_authenticated_session(request: Request, call_next):
     request_id = str(request.headers.get("X-Request-ID") or "").strip()[:128] or uuid4().hex
     request.state.request_id = request_id
 
-    async def record_request(status_code: int) -> None:
+    def record_request(status_code: int) -> None:
         if request.method == "OPTIONS" or request.url.path.startswith("/health"):
             return
         current_user = getattr(request.state, "current_user", None)
-        try:
-            repo_factory = request.app.dependency_overrides.get(get_repository, get_repository)
-            repo = repo_factory()
-            await repo.record_api_request(
+        request_metrics = getattr(request.app.state, "request_metrics", None)
+        if request_metrics is not None:
+            request_metrics.record(
                 org_id=str(current_user.org_id) if current_user is not None else None,
                 status_code=status_code,
             )
-        except Exception:
-            logger.exception("Failed to persist request metric for %s %s", request.method, request.url.path)
 
     try:
         response: Response = await call_next(request)
     except Exception as exc:  # pragma: no cover
-        await record_request(500)
+        record_request(500)
         if request.url.path != "/health":
             current_user = getattr(request.state, "current_user", None)
             try:
@@ -166,15 +180,7 @@ async def refresh_authenticated_session(request: Request, call_next):
             except Exception:
                 logger.exception("Failed to persist platform error for %s %s", request.method, request.url.path)
         raise
-    background = response.background
-    if isinstance(background, BackgroundTasks):
-        background.add_task(record_request, response.status_code)
-    else:
-        tasks = BackgroundTasks()
-        if background is not None:
-            tasks.add_task(background)
-        tasks.add_task(record_request, response.status_code)
-        response.background = tasks
+    record_request(response.status_code)
     response.headers["X-Request-ID"] = request_id
     current_user = getattr(request.state, "current_user", None)
     auth_realm = getattr(request.state, "auth_realm", CLINIC_SESSION_REALM)

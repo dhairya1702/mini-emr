@@ -57,3 +57,76 @@ test("consultation smoke generates a note and completes the patient flow", async
     page.getByRole("region", { name: "Billing queue" }).getByText("Avery Stone", { exact: true }),
   ).toBeVisible();
 });
+
+test("closing a consultation cancels pending WhatsApp delivery polling", async ({ page }) => {
+  const user = buildUser();
+  const patient = buildPatient({
+    id: "patient-consult-whatsapp-1",
+    name: "Morgan Lee",
+    phone: "+919876543210",
+    reason: "Follow-up",
+    status: "waiting",
+  });
+  let deliveryPolls = 0;
+
+  await seedSession(page, { user });
+  await mockClinicBootstrap(page, {
+    user,
+    clinicSettings: buildClinicSettings({ clinic_specialty: "general_physician" }),
+    patients: [patient],
+  });
+  await mockConsultationFlow(page);
+  await page.route("http://127.0.0.1:8001/send-note-whatsapp", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        message: "Consultation note accepted by WhatsApp.",
+        delivery: {
+          event_id: "delivery-consultation-1",
+          document_type: "consultation_note",
+          document_id: "note-1",
+          recipient: "919876543210",
+          provider_message_id: "wamid.consultation-1",
+          status: "accepted",
+          error: "",
+        },
+      }),
+    });
+  });
+  await page.route(
+    "http://127.0.0.1:8001/whatsapp/document-deliveries/consultation_note/note-1",
+    async (route) => {
+      deliveryPolls += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          event_id: "delivery-consultation-1",
+          document_type: "consultation_note",
+          document_id: "note-1",
+          recipient: "919876543210",
+          provider_message_id: "wamid.consultation-1",
+          status: "accepted",
+          error: "",
+        }),
+      });
+    },
+  );
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open chart for Morgan Lee" }).click();
+  await page.getByRole("button", { name: "Start consultation" }).click();
+  await page.getByLabel("Symptoms").fill("Symptoms improving");
+  await page.getByLabel("Diagnosis").fill("Routine follow-up");
+  await page.getByRole("button", { name: "Generate Note" }).click();
+  await page.getByRole("button", { name: "Send WhatsApp" }).click();
+  await expect(page.getByText("WhatsApp: Accepted")).toBeVisible();
+
+  await page.getByRole("complementary").locator("button").first().click();
+  await expect(page.getByRole("complementary")).toHaveCount(0);
+  await page.waitForTimeout(3500);
+
+  expect(deliveryPolls).toBe(0);
+});

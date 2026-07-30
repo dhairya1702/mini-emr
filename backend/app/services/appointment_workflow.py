@@ -12,11 +12,7 @@ from app.schema_domains.patients import (
     PatientMatchOut,
     PatientOut,
 )
-from app.services.audit_service import (
-    record_appointment_checked_in,
-    record_appointment_created,
-    record_appointment_updated,
-)
+from app.services.audit_service import get_actor_name
 from app.services.followup_workflow import (
     _appointments_per_hour,
     _as_utc_minute,
@@ -36,13 +32,26 @@ async def create_appointment_workflow(
     clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
     if not _is_within_booking_window(scheduled_for, clinic_settings):
         raise ValueError("Appointment time must be within clinic booking hours.")
+    org_id = str(current_user.org_id)
     created = await repo.create_appointment(
-        str(current_user.org_id),
+        org_id,
         payload,
+        audit_event_factory=lambda appointment: [{
+            "org_id": org_id,
+            "actor_user_id": str(current_user.id),
+            "actor_name": get_actor_name(current_user),
+            "entity_type": "appointment",
+            "entity_id": str(appointment["id"]),
+            "action": "appointment_created",
+            "summary": f"Booked appointment for {appointment['name']} on {appointment['scheduled_for']}.",
+            "metadata": {
+                "patient_name": appointment.get("name"),
+                "status": appointment.get("status"),
+            },
+        }],
         appointments_per_hour=_appointments_per_hour(clinic_settings),
         timezone=str(clinic_settings.get("timezone") or "UTC"),
     )
-    await record_appointment_created(repo, current_user, created)
     return AppointmentOut(**created)
 
 
@@ -53,11 +62,25 @@ async def check_in_appointment_workflow(
     payload: AppointmentCheckInRequest | None = None,
 ) -> PatientOut:
     await expire_stale_schedule_workflow(repo, str(current_user.org_id))
+    org_id = str(current_user.org_id)
     try:
         _appointment, patient = await repo.check_in_appointment(
-            str(current_user.org_id),
+            org_id,
             appointment_id,
             payload or AppointmentCheckInRequest(),
+            audit_event_factory=lambda result: [{
+                "org_id": org_id,
+                "actor_user_id": str(current_user.id),
+                "actor_name": get_actor_name(current_user),
+                "entity_type": "appointment",
+                "entity_id": appointment_id,
+                "action": "appointment_checked_in",
+                "summary": f"Checked in appointment into patient record {result['patient']['name']}.",
+                "metadata": {
+                    "checked_in_patient_id": str(result["patient"]["id"]),
+                    "patient_name": result["patient"].get("name"),
+                },
+            }],
         )
     except DuplicateCheckInCandidateError as exc:
         raise HTTPException(
@@ -68,7 +91,6 @@ async def check_in_appointment_workflow(
             },
         ) from exc
 
-    await record_appointment_checked_in(repo, current_user, appointment_id, patient)
     return PatientOut(**patient)
 
 
@@ -86,13 +108,26 @@ async def update_appointment_workflow(
             raise ValueError("Appointment time must be in the future.")
         if not _is_within_booking_window(scheduled_for, clinic_settings):
             raise ValueError("Appointment time must be within clinic booking hours.")
+    org_id = str(current_user.org_id)
+    changed_fields = sorted(payload.model_dump(exclude_none=True).keys())
     updated = await repo.update_appointment(
-        str(current_user.org_id),
+        org_id,
         appointment_id,
         payload,
+        audit_event_factory=lambda appointment: [{
+            "org_id": org_id,
+            "actor_user_id": str(current_user.id),
+            "actor_name": get_actor_name(current_user),
+            "entity_type": "appointment",
+            "entity_id": str(appointment["id"]),
+            "action": "appointment_updated",
+            "summary": f"Updated appointment fields: {', '.join(changed_fields)}.",
+            "metadata": {
+                "changed_fields": changed_fields,
+                "status": appointment.get("status"),
+            },
+        }],
         appointments_per_hour=_appointments_per_hour(clinic_settings),
         timezone=str(clinic_settings.get("timezone") or "UTC"),
     )
-    changed_fields = sorted(payload.model_dump(exclude_none=True).keys())
-    await record_appointment_updated(repo, current_user, updated, changed_fields)
     return AppointmentOut(**updated)

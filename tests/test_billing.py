@@ -19,6 +19,65 @@ class FakeWhatsAppDocumentClient:
         return WhatsAppSendResult(message_id="wamid.invoice", raw={"messages": [{"id": "wamid.invoice"}]})
 
 
+def test_invoice_payment_update_writes_its_audit_event_through_atomic_repository_contract(client):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="payment-audit@clinic.com",
+        clinic_name="Payment Audit Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = test_client.post(
+        "/patients",
+        headers=headers,
+        json={
+            "name": "Payment Patient",
+            "phone": "5550102021",
+            "reason": "Consultation",
+            "age": 40,
+            "temperature": 98.6,
+        },
+    ).json()
+    invoice = test_client.post(
+        "/invoices",
+        headers=headers,
+        json={
+            "patient_id": patient["id"],
+            "payment_status": "unpaid",
+            "items": [{
+                "item_type": "service",
+                "label": "Consultation",
+                "quantity": 1,
+                "unit_price": 500,
+            }],
+        },
+    ).json()
+    finalized = test_client.post(
+        "/invoices/finalize",
+        headers=headers,
+        json={"invoice_id": invoice["id"]},
+    )
+    assert finalized.status_code == 200
+
+    payment = test_client.patch(
+        f"/invoices/{invoice['id']}/payment",
+        headers=headers,
+        json={"amount_paid": 200},
+    )
+
+    assert payment.status_code == 200
+    assert payment.json()["invoice"]["amount_paid"] == 200
+    matching_events = [
+        event
+        for event in repo.audit_events.values()
+        if event["entity_id"] == invoice["id"]
+        and event["action"] == "invoice_payment_updated"
+    ]
+    assert len(matching_events) == 1
+    assert matching_events[0]["metadata"]["previous_amount_paid"] == 0
+    assert matching_events[0]["metadata"]["amount_paid"] == 200
+
+
 def test_billing_finalize_marks_patient_and_deducts_stock_once(client, monkeypatch):
     test_client, repo = client
     session = register_test_clinic(test_client, identifier="billing@clinic.com", clinic_name="Billing Clinic")

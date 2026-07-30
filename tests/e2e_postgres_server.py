@@ -63,6 +63,23 @@ class E2EPatientAttachmentStorage:
     async def download(self, storage_path: str) -> bytes:
         return self._files[storage_path]
 
+    async def upload_file(self, storage_path: str, file_obj, content_type: str) -> None:
+        file_obj.seek(0)
+        self._files[storage_path] = file_obj.read()
+
+    async def iter_download(
+        self,
+        storage_path: str,
+        *,
+        start: int = 0,
+        end: int | None = None,
+        chunk_size: int = 1024 * 1024,
+    ):
+        raw_bytes = self._files[storage_path]
+        stop = len(raw_bytes) if end is None else end + 1
+        for offset in range(start, stop, chunk_size):
+            yield raw_bytes[offset:min(offset + chunk_size, stop)]
+
     async def delete(self, storage_path: str) -> None:
         self._files.pop(storage_path, None)
 

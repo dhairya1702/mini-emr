@@ -65,6 +65,7 @@ def test_production_reminders_require_scheduler_secret():
 
     assert "require_scheduler_secret_for_reminders" in common
     assert 'require_env_vars INTERNAL_SCHEDULER_SECRET_NAME' in common
-    assert "PRODUCTION_REMINDERS_ENABLED='0'" in example_env
+    assert "PRODUCTION_REMINDERS_ENABLED='1'" in example_env
+    assert 'DEFAULT_PRODUCTION_REMINDERS_ENABLED="1"' in common
     assert "INTERNAL_SCHEDULER_SECRET_NAME=''" in example_env
     assert "require_scheduler_secret_for_reminders" in backend

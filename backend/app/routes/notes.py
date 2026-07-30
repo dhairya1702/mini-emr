@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user, require_admin
 from app.db import AppRepository, get_repository
-from app.formatting import format_display_datetime
+from app.formatting import format_display_date
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.documents import (
     FinalizeNoteRequest,
@@ -197,7 +197,7 @@ async def generate_note_pdf(
     try:
         patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
         clinic_settings = await build_document_context_for_user(repo, current_user)
-        generated_on = datetime.now().strftime("%b %d, %Y %I:%M %p")
+        generated_on = format_display_date(datetime.now(UTC), clinic_settings.get("timezone"))
         pdf_bytes = build_note_pdf(
             patient={**patient, **clinic_settings},
             note_content=payload.content,
@@ -230,7 +230,10 @@ async def generate_saved_note_pdf(
         snapshot_content = str(note.get("snapshot_content") or note.get("content") or "").strip()
         if not snapshot_content:
             raise HTTPException(status_code=400, detail="Saved note content is empty.")
-        generated_on = format_display_datetime(note.get("finalized_at") or note.get("created_at") or datetime.now())
+        generated_on = format_display_date(
+            note.get("finalized_at") or note.get("created_at") or datetime.now(UTC),
+            clinic_settings.get("timezone"),
+        )
         note_assets = await hydrate_note_assets_for_pdf(
             repo,
             storage,

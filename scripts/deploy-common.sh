@@ -23,7 +23,9 @@ DEFAULT_SUPER_ADMIN_IDENTIFIERS="dhairya911@gmail.com"
 DEFAULT_DATABASE_URL_SECRET_NAME="clinic-emr-database-url"
 DEFAULT_AUTH_SECRET_NAME="clinic-emr-auth-secret"
 DEFAULT_INTERNAL_SCHEDULER_SECRET_NAME=""
-DEFAULT_PRODUCTION_REMINDERS_ENABLED="0"
+# This production target has an enabled Cloud Scheduler reminder job. Backend
+# deploys must therefore bind its shared token unless explicitly disabled.
+DEFAULT_PRODUCTION_REMINDERS_ENABLED="1"
 DEFAULT_FOLLOW_UP_REMINDER_RUNNER_ENABLED="false"
 DEFAULT_FOLLOW_UP_REMINDER_INTERVAL_SECONDS="300"
 DEFAULT_WHATSAPP_ENABLED="false"

@@ -17,8 +17,7 @@ from app.schema_domains.billing import (
     SendInvoiceRequest,
 )
 from app.services.audit_service import (
-    record_invoice_completed,
-    record_invoice_created,
+    get_actor_name,
     record_invoice_shared,
 )
 
@@ -31,30 +30,72 @@ def _program_status_message(enrollments: list[dict]) -> str:
     return " Care program created and will activate when the first payment is recorded."
 
 
-async def _record_program_enrollments(
-    repo: AppRepository,
+def _program_enrollment_audit_events(
     current_user: UserOut,
     enrollments: list[dict],
     *,
     patient_name: str,
-) -> None:
+) -> list[dict]:
+    events: list[dict] = []
     for enrollment in enrollments:
         snapshot = enrollment.get("program_snapshot") or {}
         status = str(enrollment.get("status") or "pending")
-        await repo.create_audit_event(
-            org_id=str(current_user.org_id),
-            actor_user_id=str(current_user.id),
-            actor_name=current_user.name.strip() or current_user.identifier,
-            entity_type="care_program_enrollment",
-            entity_id=str(enrollment["id"]),
-            action="care_program_activated" if status == "active" else "care_program_enrolled",
-            summary=f"{snapshot.get('name') or 'Care program'} {status} for {patient_name}.",
-            metadata={
+        events.append({
+            "org_id": str(current_user.org_id),
+            "actor_user_id": str(current_user.id),
+            "actor_name": current_user.name.strip() or current_user.identifier,
+            "entity_type": "care_program_enrollment",
+            "entity_id": str(enrollment["id"]),
+            "action": "care_program_activated" if status == "active" else "care_program_enrolled",
+            "summary": f"{snapshot.get('name') or 'Care program'} {status} for {patient_name}.",
+            "metadata": {
                 "patient_id": str(enrollment["patient_id"]),
                 "invoice_id": str(enrollment["originating_invoice_id"]),
                 "status": status,
             },
-        )
+        })
+    return events
+
+
+def _invoice_completion_audit_events(
+    current_user: UserOut,
+    *,
+    patient_name: str,
+):
+    def build(result: dict) -> list[dict]:
+        if result.get("already_completed"):
+            return []
+        completed_invoice = result["invoice"]
+        invoice_event = {
+            "org_id": str(current_user.org_id),
+            "actor_user_id": str(current_user.id),
+            "actor_name": get_actor_name(current_user),
+            "entity_type": "invoice",
+            "entity_id": str(completed_invoice["id"]),
+            "action": "invoice_completed",
+            "summary": f"Completed invoice for {patient_name}.",
+            "metadata": {
+                "patient_id": str(completed_invoice["patient_id"]),
+                "patient_name": patient_name,
+                "completed_at": completed_invoice.get("completed_at"),
+                "completed_by": completed_invoice.get("completed_by"),
+                "completed_by_name": get_actor_name(current_user),
+                "payment_status": completed_invoice.get("payment_status"),
+                "amount_paid": completed_invoice.get("amount_paid"),
+                "balance_due": completed_invoice.get("balance_due"),
+                "stock_deductions": result.get("stock_deductions", []),
+            },
+        }
+        return [
+            invoice_event,
+            *_program_enrollment_audit_events(
+                current_user,
+                result.get("program_enrollments", []),
+                patient_name=patient_name,
+            ),
+        ]
+
+    return build
 
 
 async def _record_invoice_delivery_failure(
@@ -89,19 +130,38 @@ async def create_invoice_workflow(
     current_user: UserOut,
     payload: InvoiceCreate,
 ) -> InvoiceOut:
-    created = await repo.create_invoice(str(current_user.org_id), payload)
-    patient = await repo.get_patient(str(current_user.org_id), str(created["patient_id"]))
+    org_id = str(current_user.org_id)
+    patient = await repo.get_patient(org_id, str(payload.patient_id))
     patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
-    if payload.invoice_id:
-        await repo.create_audit_event(
-            org_id=str(current_user.org_id),
-            actor_user_id=str(current_user.id),
-            actor_name=current_user.name.strip() or current_user.identifier.strip() or "Clinic User",
-            entity_type="invoice",
-            entity_id=str(created["id"]),
-            action="invoice_updated",
-            summary=f"Updated draft invoice for {patient_name}.",
-            metadata={
+
+    def audit_events(created: dict) -> list[dict]:
+        if payload.invoice_id:
+            return [{
+                "org_id": org_id,
+                "actor_user_id": str(current_user.id),
+                "actor_name": get_actor_name(current_user),
+                "entity_type": "invoice",
+                "entity_id": str(created["id"]),
+                "action": "invoice_updated",
+                "summary": f"Updated draft invoice for {patient_name}.",
+                "metadata": {
+                    "patient_id": str(created["patient_id"]),
+                    "patient_name": patient_name,
+                    "item_count": len(created.get("items", [])),
+                    "payment_status": created.get("payment_status"),
+                    "amount_paid": created.get("amount_paid"),
+                    "balance_due": created.get("balance_due"),
+                },
+            }]
+        return [{
+            "org_id": org_id,
+            "actor_user_id": str(current_user.id),
+            "actor_name": get_actor_name(current_user),
+            "entity_type": "invoice",
+            "entity_id": str(created["id"]),
+            "action": "invoice_created",
+            "summary": f"Created invoice for {patient_name} totaling {float(created.get('total', 0)):.2f}.",
+            "metadata": {
                 "patient_id": str(created["patient_id"]),
                 "patient_name": patient_name,
                 "item_count": len(created.get("items", [])),
@@ -109,9 +169,13 @@ async def create_invoice_workflow(
                 "amount_paid": created.get("amount_paid"),
                 "balance_due": created.get("balance_due"),
             },
-        )
-    else:
-        await record_invoice_created(repo, current_user, created, patient_name)
+        }]
+
+    created = await repo.create_invoice(
+        org_id,
+        payload,
+        audit_event_factory=audit_events,
+    )
     return InvoiceOut(**{**created, "patient_name": patient_name})
 
 
@@ -134,28 +198,19 @@ async def finalize_invoice_workflow(
     invoice = await repo.get_invoice(str(current_user.org_id), str(payload.invoice_id))
     patient = await repo.get_patient(str(current_user.org_id), str(invoice["patient_id"]))
     patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
+
     finalized = await repo.finalize_invoice(
         str(current_user.org_id),
         str(payload.invoice_id),
         completed_by=str(current_user.id),
         mark_sent=False,
+        audit_event_factory=_invoice_completion_audit_events(
+            current_user,
+            patient_name=patient_name,
+        ),
     )
-    refreshed = await repo.get_invoice(str(current_user.org_id), str(payload.invoice_id))
+    refreshed = finalized["invoice"]
     output_invoice = InvoiceOut(**{**refreshed, "patient_name": patient_name})
-    if not finalized.get("already_completed"):
-        await record_invoice_completed(
-            repo,
-            current_user,
-            output_invoice.model_dump(mode="json"),
-            patient_name=patient_name,
-            stock_deductions=finalized.get("stock_deductions", []),
-        )
-        await _record_program_enrollments(
-            repo,
-            current_user,
-            finalized.get("program_enrollments", []),
-            patient_name=patient_name,
-        )
     message = "Invoice already completed." if finalized.get("already_completed") else "Invoice completed."
     return InvoiceActionResponse(
         success=True,
@@ -171,33 +226,40 @@ async def update_invoice_payment_workflow(
     invoice_id: str,
     payload: InvoicePaymentUpdate,
 ) -> InvoiceActionResponse:
+    invoice = await repo.get_invoice(str(current_user.org_id), invoice_id)
+    patient = await repo.get_patient(str(current_user.org_id), str(invoice["patient_id"]))
+    patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
+
+    def audit_events(updated: dict) -> list[dict]:
+        payment_event = {
+            "org_id": str(current_user.org_id),
+            "actor_user_id": str(current_user.id),
+            "actor_name": current_user.name.strip() or current_user.identifier,
+            "entity_type": "invoice",
+            "entity_id": invoice_id,
+            "action": "invoice_payment_updated",
+            "summary": f"Updated payment for {patient_name}.",
+            "metadata": {
+                "previous_amount_paid": updated.get("previous_amount_paid"),
+                "amount_paid": updated.get("amount_paid"),
+                "payment_status": updated.get("payment_status"),
+            },
+        }
+        return [
+            payment_event,
+            *_program_enrollment_audit_events(
+                current_user,
+                updated.get("program_enrollments", []),
+                patient_name=patient_name,
+            ),
+        ]
+
     updated = await repo.update_invoice_payment(
         str(current_user.org_id),
         invoice_id,
         amount_paid=payload.amount_paid,
         actor_user_id=str(current_user.id),
-    )
-    patient = await repo.get_patient(str(current_user.org_id), str(updated["patient_id"]))
-    patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
-    await repo.create_audit_event(
-        org_id=str(current_user.org_id),
-        actor_user_id=str(current_user.id),
-        actor_name=current_user.name.strip() or current_user.identifier,
-        entity_type="invoice",
-        entity_id=invoice_id,
-        action="invoice_payment_updated",
-        summary=f"Updated payment for {patient_name}.",
-        metadata={
-            "previous_amount_paid": updated.get("previous_amount_paid"),
-            "amount_paid": updated.get("amount_paid"),
-            "payment_status": updated.get("payment_status"),
-        },
-    )
-    await _record_program_enrollments(
-        repo,
-        current_user,
-        updated.get("program_enrollments", []),
-        patient_name=patient_name,
+        audit_event_factory=audit_events,
     )
     return InvoiceActionResponse(
         success=True,
@@ -241,6 +303,10 @@ async def send_invoice_workflow(
         str(payload.invoice_id),
         completed_by=str(current_user.id),
         mark_sent=False,
+        audit_event_factory=_invoice_completion_audit_events(
+            current_user,
+            patient_name=patient_name,
+        ),
     )
     refreshed_invoice = await repo.get_invoice(str(current_user.org_id), str(payload.invoice_id))
     generated_on = datetime.now().strftime("%b %d, %Y %I:%M %p")
@@ -299,20 +365,6 @@ async def send_invoice_workflow(
         "sent_at": sent_invoice.get("sent_at"),
     }
     output_invoice = InvoiceOut(**{**refreshed_invoice, "patient_name": patient_name})
-    if not finalized.get("already_completed"):
-        await record_invoice_completed(
-            repo,
-            current_user,
-            output_invoice.model_dump(mode="json"),
-            patient_name=patient_name,
-            stock_deductions=finalized.get("stock_deductions", []),
-        )
-        await _record_program_enrollments(
-            repo,
-            current_user,
-            finalized.get("program_enrollments", []),
-            patient_name=patient_name,
-        )
     await record_invoice_shared(
         repo,
         current_user,

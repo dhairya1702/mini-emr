@@ -90,3 +90,47 @@ def test_myopia_care_migration_keeps_program_data_model_consolidated():
     assert "create table if not exists public.care_program_events" in migration_sql
     assert "create table if not exists public.care_program_definitions" not in migration_sql
     assert "patient_program_enrollments_one_current_uidx" in migration_sql
+
+
+def test_check_in_integrity_migration_adds_atomic_identity_indexes_and_tenant_fks():
+    root = Path(__file__).resolve().parents[1]
+    migration_sql = (
+        root / "db" / "migrations" / "2026-07-30_check_in_tenant_integrity.sql"
+    ).read_text(encoding="utf-8")
+    schema_sql = (root / "db" / "schema.sql").read_text(encoding="utf-8")
+
+    for sql in (migration_sql, schema_sql):
+        assert "public_check_in_requests_pending_identity_uidx" in sql
+        assert "public_check_in_requests_pending_expiry_idx" in sql
+        assert "patient_attachments_org_patient_created_idx" in sql
+        assert "patients_org_phone_match_key_idx" in sql
+        assert "public_check_in_requests_org_approved_patient_fk" in sql
+        assert "public_check_in_requests_org_reviewed_by_fk" in sql
+        assert "appointments_org_follow_up_fk" in sql
+        assert "patient_visits_org_follow_up_fk" in sql
+        assert "patient_program_enrollments_org_invoice_item_fk" in sql
+        assert "care_program_events_org_enrollment_fk" in sql
+        assert "care_program_events_org_source_event_fk" in sql
+        assert sql.count("on delete set null") >= 6
+        assert sql.count("on delete restrict") >= 3
+
+
+def test_tenant_fk_delete_semantics_only_nulls_nullable_reference_columns():
+    root = Path(__file__).resolve().parents[1]
+    migration_sql = (
+        root / "db" / "migrations" / "2026-07-30_tenant_fk_delete_semantics.sql"
+    ).read_text(encoding="utf-8")
+    schema_sql = (root / "db" / "schema.sql").read_text(encoding="utf-8")
+
+    nullable_columns = (
+        "approved_patient_id",
+        "reviewed_by",
+        "follow_up_id",
+        "responsible_user_id",
+        "source_event_id",
+        "created_by",
+    )
+    for column in nullable_columns:
+        assert f"on delete set null ({column})" in migration_sql
+        assert f"on delete set null ({column})" in schema_sql
+    assert "on delete set null (org_id)" not in migration_sql

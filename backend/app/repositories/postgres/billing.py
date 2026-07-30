@@ -14,6 +14,7 @@ from app.repositories.base import (
     round_money,
 )
 from app.repositories.postgres.ai_usage import _row_to_dict
+from app.repositories.postgres.audit import AuditEventFactory, insert_audit_events
 from app.repositories.postgres.care_programs import (
     activate_pending_program_enrollments,
     provision_program_enrollments_for_invoice,
@@ -232,7 +233,13 @@ class PostgresBillingRepository:
 
         await asyncio.to_thread(_delete)
 
-    async def create_invoice(self, org_id: str, payload: InvoiceCreate) -> dict[str, Any]:
+    async def create_invoice(
+        self,
+        org_id: str,
+        payload: InvoiceCreate,
+        *,
+        audit_event_factory: AuditEventFactory | None = None,
+    ) -> dict[str, Any]:
         invoice_total = decimal_money(
             sum(
                 (
@@ -427,7 +434,9 @@ class PostgresBillingRepository:
                         (org_id, invoice_id),
                     )
                     invoice["items"] = [_row_to_dict(row, cursor) for row in cursor.fetchall()]
-                    return attach_invoice_balances(invoice)
+                    result = attach_invoice_balances(invoice)
+                    insert_audit_events(cursor, audit_event_factory, result)
+                    return result
 
         return await asyncio.to_thread(_create)
 
@@ -438,6 +447,7 @@ class PostgresBillingRepository:
         *,
         completed_by: str,
         mark_sent: bool = False,
+        audit_event_factory: AuditEventFactory | None = None,
     ) -> dict[str, Any]:
         def _finalize() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
@@ -584,7 +594,7 @@ class PostgresBillingRepository:
                         items=items,
                         actor_user_id=completed_by,
                     )
-                    return {
+                    result = {
                         "patient_id": updated["patient_id"],
                         "completed_at": updated.get("completed_at"),
                         "completed_by": updated.get("completed_by"),
@@ -593,7 +603,10 @@ class PostgresBillingRepository:
                         "already_sent": already_sent,
                         "stock_deductions": stock_deductions,
                         "program_enrollments": program_enrollments,
+                        "invoice": attach_invoice_balances(updated),
                     }
+                    insert_audit_events(cursor, audit_event_factory, result)
+                    return result
 
         return await asyncio.to_thread(_finalize)
 
@@ -604,6 +617,7 @@ class PostgresBillingRepository:
         *,
         amount_paid: float,
         actor_user_id: str,
+        audit_event_factory: AuditEventFactory | None = None,
     ) -> dict[str, Any]:
         def _update() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
@@ -659,7 +673,9 @@ class PostgresBillingRepository:
                     updated["items"] = [_row_to_dict(item, cursor) for item in cursor.fetchall()]
                     updated["program_enrollments"] = activated
                     updated["previous_amount_paid"] = float(previous)
-                    return attach_invoice_balances(updated)
+                    result = attach_invoice_balances(updated)
+                    insert_audit_events(cursor, audit_event_factory, result)
+                    return result
         return await asyncio.to_thread(_update)
 
     async def get_invoice(self, org_id: str, invoice_id: str) -> dict[str, Any]:

@@ -56,11 +56,14 @@ class PostgresAIUsageRepository:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
+                        "delete from public.api_rate_limits where expires_at <= now()"
+                    )
+                    cursor.execute(
                         """
                         insert into public.api_rate_limits (
-                          scope, key_hash, window_started_at, request_count, updated_at
+                          scope, key_hash, window_started_at, request_count, updated_at, expires_at
                         )
-                        values (%s, %s, now(), 1, now())
+                        values (%s, %s, now(), 1, now(), now() + make_interval(secs => %s))
                         on conflict (scope, key_hash) do update
                         set
                           request_count = case
@@ -75,10 +78,18 @@ class PostgresAIUsageRepository:
                             then now()
                             else public.api_rate_limits.window_started_at
                           end,
-                          updated_at = now()
+                          updated_at = now(),
+                          expires_at = now() + make_interval(secs => %s)
                         returning request_count
                         """,
-                        (scope, key_hash, max_window_seconds, max_window_seconds),
+                        (
+                            scope,
+                            key_hash,
+                            max_window_seconds,
+                            max_window_seconds,
+                            max_window_seconds,
+                            max_window_seconds,
+                        ),
                     )
                     row = cursor.fetchone()
                     return int(row[0] if row else 1)

@@ -12,7 +12,9 @@ import { printBlob } from "@/lib/print";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
-const BILLING_REFRESH_INTERVAL_MS = 5000;
+const BILLING_REFRESH_INTERVAL_MS = 30_000;
+const BILLABLE_PATIENT_LIMIT = 50;
+const RECENT_INVOICE_LIMIT = 5;
 
 function createId() {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
@@ -22,7 +24,8 @@ function createId() {
 }
 
 function upsertInvoice(current: Invoice[], incoming: Invoice) {
-  return [incoming, ...current.filter((invoice) => invoice.id !== incoming.id)];
+  return [incoming, ...current.filter((invoice) => invoice.id !== incoming.id)]
+    .slice(0, RECENT_INVOICE_LIMIT);
 }
 
 function extractMedicineSuggestions(note: ConsultationNote | null, medicineItems: CatalogItem[]) {
@@ -200,11 +203,12 @@ export default function BillingPage() {
   const [customItemLabel, setCustomItemLabel] = useState("");
   const [customItemQuantity, setCustomItemQuantity] = useState("1");
   const [customItemUnitPrice, setCustomItemUnitPrice] = useState("");
-  const [historyPatientFilter, setHistoryPatientFilter] = useState("all");
-  const [historyStatusFilter, setHistoryStatusFilter] = useState<PaymentStatus | "all">("all");
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(async () => {
-    const [loadedPatients, loadedInvoices] = await Promise.all([api.listQueuePatients(), api.listInvoices()]);
+    const [loadedPatients, loadedInvoices] = await Promise.all([
+      api.listPatients({ status: "done", billed: false, limit: BILLABLE_PATIENT_LIMIT }),
+      api.listInvoices({ limit: RECENT_INVOICE_LIMIT }),
+    ]);
     return { patients: loadedPatients, invoices: loadedInvoices };
   }, []);
   const onPageData = useCallback((data: { patients: Patient[]; invoices: Invoice[] }) => {
@@ -256,12 +260,6 @@ export default function BillingPage() {
     [amountPaidInput, invoiceSubtotal, paymentStatus],
   );
   const balanceDue = useMemo(() => Math.max(invoiceSubtotal - normalizedAmountPaid, 0), [invoiceSubtotal, normalizedAmountPaid]);
-  const filteredInvoiceHistory = useMemo(() => invoices.filter((invoice) => {
-    const matchesPatient = historyPatientFilter === "all" || invoice.patient_id === historyPatientFilter;
-    const matchesStatus = historyStatusFilter === "all" || invoice.payment_status === historyStatusFilter;
-    return matchesPatient && matchesStatus;
-  }), [historyPatientFilter, historyStatusFilter, invoices]);
-
   useEffect(() => {
     if (isAuthReady && currentUser?.role === "staff") {
       router.replace("/");
@@ -282,10 +280,13 @@ export default function BillingPage() {
     let active = true;
 
     async function refreshBillingData() {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
       try {
         const [nextPatients, nextInvoices] = await Promise.all([
-          api.listQueuePatients(),
-          api.listInvoices(),
+          api.listPatients({ status: "done", billed: false, limit: BILLABLE_PATIENT_LIMIT }),
+          api.listInvoices({ limit: RECENT_INVOICE_LIMIT }),
         ]);
         if (!active) {
           return;
@@ -296,8 +297,6 @@ export default function BillingPage() {
         // Keep the current billing workspace stable if a background refresh fails.
       }
     }
-
-    void refreshBillingData();
 
     const intervalId = isSoloWorkspace
       ? null
@@ -709,25 +708,11 @@ export default function BillingPage() {
           onSendInvoiceWhatsApp={handleShareInvoiceWhatsApp}
         />
         <section className="mt-4 rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900">Invoice history</h2>
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <select value={historyPatientFilter} onChange={(event) => setHistoryPatientFilter(event.target.value)} className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/50 px-4 py-3 text-sm text-slate-800">
-                <option value="all">All patients</option>
-                {patients.map((patient) => <option key={patient.id} value={patient.id}>{patient.name}</option>)}
-              </select>
-              <select value={historyStatusFilter} onChange={(event) => setHistoryStatusFilter(event.target.value as PaymentStatus | "all")} className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/50 px-4 py-3 text-sm text-slate-800">
-                <option value="all">All statuses</option>
-                <option value="paid">Paid</option>
-                <option value="partial">Partial</option>
-                <option value="unpaid">Unpaid</option>
-              </select>
-            </div>
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">Recent invoices</h2>
           </div>
           <div className="mt-5 overflow-hidden rounded-[18px] border border-[#bfd7e8] bg-white">
-            {filteredInvoiceHistory.length ? (
+            {invoices.length ? (
               <div className="overflow-x-auto">
                 <table className="min-w-full border-separate border-spacing-0">
                   <thead className="bg-[#f3f8fb]/95">
@@ -740,7 +725,7 @@ export default function BillingPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredInvoiceHistory.slice(0, 12).map((invoice) => {
+                    {invoices.map((invoice) => {
                       const patientName = invoice.patient_name || patients.find((patient) => patient.id === invoice.patient_id)?.name || "Patient";
                       const statusLabel = invoice.payment_status.charAt(0).toUpperCase() + invoice.payment_status.slice(1);
                       return (
@@ -766,7 +751,7 @@ export default function BillingPage() {
                 </table>
               </div>
             ) : (
-              <div className="rounded-[18px] border border-dashed border-[#bfd7e8] bg-[#f3f8fb]/20 px-6 py-12 text-center text-sm text-slate-500">No invoices match these filters.</div>
+              <div className="rounded-[18px] border border-dashed border-[#bfd7e8] bg-[#f3f8fb]/20 px-6 py-12 text-center text-sm text-slate-500">No recent invoices.</div>
             )}
           </div>
         </section>

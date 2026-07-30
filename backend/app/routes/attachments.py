@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
@@ -7,7 +8,7 @@ from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user
 from app.db import AppRepository, get_repository
 from app.email_validation import normalize_single_email
-from app.file_validation import validate_pdf_bytes
+from app.file_validation import validate_pdf_file
 from app.schema_domains.attachments import (
     PatientAttachmentOut,
     SendPatientAttachmentRequest,
@@ -42,6 +43,7 @@ ALLOWED_PATIENT_ATTACHMENT_EXTENSIONS = {
     ".webm": "video/webm",
 }
 MAX_PATIENT_ATTACHMENT_BYTES = 50 * 1024 * 1024
+PATIENT_ATTACHMENT_CHUNK_BYTES = 1024 * 1024
 
 
 def _content_matches_type(raw_bytes: bytes, content_type: str) -> bool:
@@ -119,18 +121,30 @@ async def upload_patient_attachment(
     current_user: UserOut = Depends(get_current_user),
 ) -> PatientAttachmentOut:
     content_type = _resolve_attachment_content_type(file)
-    raw_bytes = await file.read(MAX_PATIENT_ATTACHMENT_BYTES + 1)
-    if not raw_bytes:
+    file_size = 0
+    signature = b""
+    while True:
+        chunk = await file.read(PATIENT_ATTACHMENT_CHUNK_BYTES)
+        if not chunk:
+            break
+        if len(signature) < 16:
+            signature = (signature + chunk)[:16]
+        file_size += len(chunk)
+        if file_size > MAX_PATIENT_ATTACHMENT_BYTES:
+            break
+    if not file_size:
         raise HTTPException(status_code=400, detail="Attachment file is empty.")
-    if len(raw_bytes) > MAX_PATIENT_ATTACHMENT_BYTES:
+    if file_size > MAX_PATIENT_ATTACHMENT_BYTES:
         raise HTTPException(status_code=400, detail="Attachment must be 50 MB or smaller.")
-    if not _content_matches_type(raw_bytes, content_type):
+    if not _content_matches_type(signature, content_type):
         raise HTTPException(status_code=400, detail="Attachment content does not match its file type.")
+    await file.seek(0)
     if content_type == "application/pdf":
         try:
-            validate_pdf_bytes(raw_bytes)
+            await asyncio.to_thread(validate_pdf_file, file.file)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        await file.seek(0)
     uploaded_path = ""
     try:
         row = await repo.prepare_patient_attachment_metadata(
@@ -139,10 +153,10 @@ async def upload_patient_attachment(
             uploaded_by=str(current_user.id),
             filename=(file.filename or "attachment").strip() or "attachment",
             content_type=content_type,
-            file_size=len(raw_bytes),
+            file_size=file_size,
         )
         uploaded_path = str(row["storage_path"])
-        await storage.upload(uploaded_path, raw_bytes, content_type)
+        await storage.upload_file(uploaded_path, file.file, content_type)
         saved = await repo.create_patient_attachment_metadata(row)
         return PatientAttachmentOut(**saved)
     except ValueError as exc:
@@ -173,7 +187,9 @@ async def download_patient_attachment(
         row = await repo.get_patient_attachment(str(current_user.org_id), attachment_id)
         if not row:
             raise ValueError("Attachment not found for this organization.")
-        raw_bytes = await storage.download(str(row["storage_path"]))
+        file_size = int(row.get("file_size") or 0)
+        if file_size <= 0:
+            raise ValueError("Attachment file metadata is invalid.")
         await write_audit_event_best_effort(
             repo,
             current_user,
@@ -194,27 +210,26 @@ async def download_patient_attachment(
         }
         if range_header:
             try:
-                start, end = _byte_range(range_header, len(raw_bytes))
+                start, end = _byte_range(range_header, file_size)
             except ValueError:
                 return Response(
                     status_code=416,
-                    headers={"Content-Range": f"bytes */{len(raw_bytes)}"},
+                    headers={"Content-Range": f"bytes */{file_size}"},
                 )
-            chunk = raw_bytes[start:end + 1]
-            return Response(
-                content=chunk,
+            return StreamingResponse(
+                storage.iter_download(str(row["storage_path"]), start=start, end=end),
                 status_code=206,
                 media_type=content_type,
                 headers={
                     **headers,
-                    "Content-Range": f"bytes {start}-{end}/{len(raw_bytes)}",
-                    "Content-Length": str(len(chunk)),
+                    "Content-Range": f"bytes {start}-{end}/{file_size}",
+                    "Content-Length": str(end - start + 1),
                 },
             )
         return StreamingResponse(
-            iter([raw_bytes]),
+            storage.iter_download(str(row["storage_path"]), end=file_size - 1),
             media_type=content_type,
-            headers={**headers, "Content-Length": str(len(raw_bytes))},
+            headers={**headers, "Content-Length": str(file_size)},
         )
     except ValueError as exc:
         raise bad_request_error(exc) from exc

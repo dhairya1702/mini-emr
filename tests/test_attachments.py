@@ -418,8 +418,16 @@ def test_gcs_patient_attachment_storage_uploads_and_downloads_bytes():
             self.uploaded_bytes = raw_bytes
             self.content_type = content_type
 
-        def download_as_bytes(self):
-            return self.uploaded_bytes
+        def upload_from_file(self, file_obj, rewind=False, content_type=None):
+            if rewind:
+                file_obj.seek(0)
+            self.uploaded_bytes = file_obj.read()
+            self.content_type = content_type
+
+        def download_as_bytes(self, start=None, end=None):
+            start = 0 if start is None else start
+            end = len(self.uploaded_bytes) - 1 if end is None else end
+            return self.uploaded_bytes[start:end + 1]
 
         def delete(self):
             self.deleted = True
@@ -445,6 +453,26 @@ def test_gcs_patient_attachment_storage_uploads_and_downloads_bytes():
 
     asyncio.run(storage.upload("org/patient/attachment/video.mp4", b"video-bytes", "video/mp4"))
     downloaded = asyncio.run(storage.download("org/patient/attachment/video.mp4"))
+    asyncio.run(
+        storage.upload_file(
+            "org/patient/attachment/streamed.mp4",
+            BytesIO(b"streamed-video"),
+            "video/mp4",
+        )
+    )
+
+    async def collect_stream():
+        chunks = []
+        async for chunk in storage.iter_download(
+            "org/patient/attachment/streamed.mp4",
+            start=2,
+            end=10,
+            chunk_size=4,
+        ):
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+    streamed = asyncio.run(collect_stream())
     asyncio.run(storage.delete("org/patient/attachment/video.mp4"))
 
     blob = fake_client.fake_bucket.blobs["org/patient/attachment/video.mp4"]
@@ -453,3 +481,4 @@ def test_gcs_patient_attachment_storage_uploads_and_downloads_bytes():
     assert blob.content_type == "video/mp4"
     assert downloaded == b"video-bytes"
     assert blob.deleted is True
+    assert streamed == b"reamed-vi"

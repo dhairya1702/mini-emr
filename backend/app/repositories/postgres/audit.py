@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from collections.abc import Callable, Iterable, Mapping
+from typing import Any, TypeAlias
 
 from app.postgres import PostgresConnectionManager
 from app.repositories.postgres.ai_usage import _json_dumps, _row_to_dict
@@ -19,6 +20,56 @@ AUDIT_EVENT_COLUMNS = [
     "metadata",
     "created_at",
 ]
+
+AuditEventFactory: TypeAlias = Callable[
+    [dict[str, Any]],
+    Iterable[Mapping[str, Any]],
+]
+
+
+def insert_audit_event(cursor, event: Mapping[str, Any]) -> dict[str, Any]:
+    cursor.execute(
+        """
+        insert into public.audit_events (
+          org_id,
+          actor_user_id,
+          actor_name,
+          entity_type,
+          entity_id,
+          action,
+          summary,
+          metadata
+        )
+        values (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+        returning id, org_id, actor_user_id, actor_name, entity_type, entity_id,
+          action, summary, metadata, created_at
+        """,
+        (
+            event["org_id"],
+            event.get("actor_user_id"),
+            str(event["actor_name"]).strip(),
+            event["entity_type"],
+            event["entity_id"],
+            event["action"],
+            str(event["summary"]).strip(),
+            _json_dumps(event.get("metadata") or {}),
+        ),
+    )
+    row = cursor.fetchone()
+    if not row:
+        raise ValueError("Failed to create audit event.")
+    return _row_to_dict(row, cursor)
+
+
+def insert_audit_events(
+    cursor,
+    factory: AuditEventFactory | None,
+    result: dict[str, Any],
+) -> None:
+    if factory is None:
+        return
+    for event in factory(result):
+        insert_audit_event(cursor, event)
 
 
 class PostgresAuditRepository:
@@ -39,37 +90,19 @@ class PostgresAuditRepository:
         def _create() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        insert into public.audit_events (
-                          org_id,
-                          actor_user_id,
-                          actor_name,
-                          entity_type,
-                          entity_id,
-                          action,
-                          summary,
-                          metadata
-                        )
-                        values (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-                        returning id, org_id, actor_user_id, actor_name, entity_type, entity_id,
-                          action, summary, metadata, created_at
-                        """,
-                        (
-                            org_id,
-                            actor_user_id,
-                            actor_name.strip(),
-                            entity_type,
-                            entity_id,
-                            action,
-                            summary.strip(),
-                            _json_dumps(metadata or {}),
-                        ),
+                    return insert_audit_event(
+                        cursor,
+                        {
+                            "org_id": org_id,
+                            "actor_user_id": actor_user_id,
+                            "actor_name": actor_name,
+                            "entity_type": entity_type,
+                            "entity_id": entity_id,
+                            "action": action,
+                            "summary": summary,
+                            "metadata": metadata or {},
+                        },
                     )
-                    row = cursor.fetchone()
-                    if not row:
-                        raise ValueError("Failed to create audit event.")
-                    return _row_to_dict(row, cursor)
 
         return await asyncio.to_thread(_create)
 

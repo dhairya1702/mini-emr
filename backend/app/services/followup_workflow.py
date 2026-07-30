@@ -320,33 +320,33 @@ async def self_book_follow_up_workflow(
     timezone = str(clinic_settings.get("timezone") or "UTC")
     if existing_appointment and str(existing_appointment.get("status") or "") == "checked_in":
         raise HTTPException(status_code=400, detail="This appointment has already been checked in.")
-    _updated_follow_up, appointment = await repo.self_book_follow_up_atomic(
+    actor_name = str(clinic_settings.get("doctor_name") or clinic_settings.get("clinic_name") or "Clinic Team").strip() or "Clinic Team"
+    was_rescheduled = bool(existing_appointment)
+    await repo.self_book_follow_up_atomic(
         org_id=org_id,
         patient_id=patient_id,
         follow_up_id=follow_up_id,
         scheduled_for=scheduled_for,
         appointments_per_hour=capacity,
         timezone=timezone,
-    )
-    actor_name = str(clinic_settings.get("doctor_name") or clinic_settings.get("clinic_name") or "Clinic Team").strip() or "Clinic Team"
-    was_rescheduled = bool(existing_appointment)
-    await repo.create_audit_event(
-        org_id=org_id,
-        actor_user_id=None,
-        actor_name=actor_name,
-        entity_type="appointment",
-        entity_id=str(appointment["id"]),
-        action="appointment_rescheduled" if was_rescheduled else "appointment_created",
-        summary=(
-            f"Rescheduled appointment for {appointment['name']} to {appointment['scheduled_for']}."
-            if was_rescheduled
-            else f"Booked appointment for {appointment['name']} on {appointment['scheduled_for']}."
-        ),
-        metadata={
-            "patient_name": appointment.get("name"),
-            "status": appointment.get("status"),
-            "source": "public_follow_up_booking",
-        },
+        audit_event_factory=lambda saved: [{
+            "org_id": org_id,
+            "actor_user_id": None,
+            "actor_name": actor_name,
+            "entity_type": "appointment",
+            "entity_id": str(saved["id"]),
+            "action": "appointment_rescheduled" if was_rescheduled else "appointment_created",
+            "summary": (
+                f"Rescheduled appointment for {saved['name']} to {saved['scheduled_for']}."
+                if was_rescheduled
+                else f"Booked appointment for {saved['name']} on {saved['scheduled_for']}."
+            ),
+            "metadata": {
+                "patient_name": saved.get("name"),
+                "status": saved.get("status"),
+                "source": "public_follow_up_booking",
+            },
+        }],
     )
 
 
@@ -359,25 +359,25 @@ async def cancel_self_booked_follow_up_workflow(
         raise HTTPException(status_code=400, detail="There is no booked appointment to cancel.")
     if str(appointment.get("status") or "") != "scheduled":
         raise HTTPException(status_code=400, detail="This appointment is not currently scheduled.")
-    cancelled = await repo.cancel_self_booked_follow_up_appointment(
+    actor_name = str(clinic_settings.get("doctor_name") or clinic_settings.get("clinic_name") or "Clinic Team").strip() or "Clinic Team"
+    await repo.cancel_self_booked_follow_up_appointment(
         org_id=str(follow_up["org_id"]),
         patient_id=str(follow_up["patient_id"]),
         follow_up_id=str(follow_up["id"]),
-    )
-    actor_name = str(clinic_settings.get("doctor_name") or clinic_settings.get("clinic_name") or "Clinic Team").strip() or "Clinic Team"
-    await repo.create_audit_event(
-        org_id=str(follow_up["org_id"]),
-        actor_user_id=None,
-        actor_name=actor_name,
-        entity_type="appointment",
-        entity_id=str(cancelled["id"]),
-        action="appointment_cancelled",
-        summary=f"Cancelled appointment for {cancelled['name']} scheduled on {cancelled['scheduled_for']}.",
-        metadata={
-            "patient_name": cancelled.get("name"),
-            "status": cancelled.get("status"),
-            "source": "public_follow_up_booking",
-        },
+        audit_event_factory=lambda saved: [{
+            "org_id": str(follow_up["org_id"]),
+            "actor_user_id": None,
+            "actor_name": actor_name,
+            "entity_type": "appointment",
+            "entity_id": str(saved["id"]),
+            "action": "appointment_cancelled",
+            "summary": f"Cancelled appointment for {saved['name']} scheduled on {saved['scheduled_for']}.",
+            "metadata": {
+                "patient_name": saved.get("name"),
+                "status": saved.get("status"),
+                "source": "public_follow_up_booking",
+            },
+        }],
     )
 
 

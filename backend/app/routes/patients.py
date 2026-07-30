@@ -13,6 +13,7 @@ from app.exports import build_history_visit_rows
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import InvoiceOut
 from app.schema_domains.case_studies import PatientCaseStudySourceOut
+from app.schema_domains.common import PatientStatus
 from app.schema_domains.optometry import MyopiaHistoryOut, MyopiaMeasurementCreate, MyopiaMeasurementOut, MyopiaMeasurementUpdate
 from app.schema_domains.patients import (
     NoteOut,
@@ -180,6 +181,8 @@ def _profile_photo_extension(content_type: str) -> str:
 @router.get("/patients", response_model=list[PatientOut])
 async def get_patients(
     active_only: bool = Query(default=False),
+    status: PatientStatus | None = Query(default=None),
+    billed: bool | None = Query(default=None),
     q: str | None = Query(default=None, max_length=120),
     limit: int = Query(default=500, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -190,6 +193,8 @@ async def get_patients(
         rows = await repo.list_patients(
             str(current_user.org_id),
             active_only=active_only,
+            status=status,
+            billed=billed,
             query=q,
             limit=limit,
             offset=offset,

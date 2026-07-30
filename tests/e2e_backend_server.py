@@ -52,8 +52,19 @@ app.dependency_overrides[get_patient_attachment_storage] = _storage
 
 @app.post("/__e2e/reset")
 async def reset_e2e_state() -> dict[str, bool]:
+    request_metrics = getattr(app.state, "request_metrics", None)
+    if request_metrics is not None:
+        request_metrics.clear()
     repo_holder["repo"] = FakeRepo()
     RATE_LIMIT_BUCKETS.clear()
+    return {"ok": True}
+
+
+@app.post("/__e2e/flush-request-metrics")
+async def flush_e2e_request_metrics() -> dict[str, bool]:
+    request_metrics = getattr(app.state, "request_metrics", None)
+    if request_metrics is not None:
+        await request_metrics.flush()
     return {"ok": True}
 
 

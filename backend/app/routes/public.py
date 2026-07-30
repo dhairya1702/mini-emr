@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from ipaddress import ip_address
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.api_errors import bad_request_error
 from app.db import AppRepository, get_repository
@@ -33,6 +35,26 @@ from app.services.public_appointment_workflow import (
 
 
 router = APIRouter()
+
+
+def _public_client_ip(request: Request) -> str:
+    # Google external load balancers append the verified client IP and then
+    # the forwarding-rule IP. Any caller-supplied values remain to their left,
+    # so the penultimate entry is the spoof-resistant client address.
+    forwarded = [
+        value.strip()
+        for value in request.headers.get("x-forwarded-for", "").split(",")
+        if value.strip()
+    ]
+    candidates = [forwarded[-2]] if len(forwarded) >= 2 else []
+    if request.client and request.client.host:
+        candidates.append(request.client.host)
+    for candidate in candidates:
+        try:
+            return ip_address(candidate).compressed
+        except ValueError:
+            continue
+    return "unknown"
 
 
 def _public_appointment_view(
@@ -126,9 +148,21 @@ async def list_public_appointment_slots(
 @router.post("/public/check-in/appointment", response_model=PublicAppointmentOut, status_code=201)
 async def book_public_appointment(
     payload: PublicAppointmentCreate,
+    request: Request,
     repo: AppRepository = Depends(get_repository),
 ) -> PublicAppointmentOut:
     try:
+        config = await repo.get_public_check_in_config_by_token(str(payload.token))
+        await enforce_repository_rate_limit(
+            repo,
+            "public_appointment_post_ip",
+            _public_client_ip(request),
+        )
+        await enforce_repository_rate_limit(
+            repo,
+            "public_appointment_post_clinic",
+            str(config["org_id"]),
+        )
         await enforce_repository_rate_limit(
             repo,
             "public_appointment_post",

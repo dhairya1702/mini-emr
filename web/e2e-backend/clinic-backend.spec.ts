@@ -886,6 +886,8 @@ test("superdashboard routes manage onboarding, organizations, users, and access 
   const forbidden = await request.get("/superdashboard/orgs", { headers: managedHeaders });
   expect(forbidden.status()).toBe(401);
 
+  const flushMetrics = await request.post("/__e2e/flush-request-metrics");
+  expect(flushMetrics.ok()).toBeTruthy();
   const dashboard = await request.get("/superdashboard/dashboard", { headers: opsHeaders });
   expect(dashboard.status()).toBe(200);
   expect((await dashboard.json()).org_count).toBeGreaterThanOrEqual(2);

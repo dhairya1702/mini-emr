@@ -42,3 +42,6 @@ psql "$DATABASE_URL" -f db/migrations/<file>.sql
 | 2026-07-29 | `2026-07-29_public_queue_check_in.sql` | Adds clinic QR check-in configuration and staff-reviewed public queue requests. |
 | 2026-07-30 | `2026-07-30_public_queue_check_in_email.sql` | Adds optional patient email capture to public QR check-in requests. |
 | 2026-07-30 | `2026-07-30_sex_values_and_check_in.sql` | Standardizes new sex values to female, male, or other and adds QR check-in capture without backfilling existing rows. |
+| 2026-07-30 | `2026-07-30_public_appointment_abuse_controls.sql` | Adds expiring rate-limit counters and an active appointment lookup index for public-booking abuse controls. |
+| 2026-07-30 | `2026-07-30_check_in_tenant_integrity.sql` | Makes pending QR check-ins unique, adds indexed normalized patient match keys, and enforces tenant-safe check-in, follow-up, and care-program relationships. |
+| 2026-07-30 | `2026-07-30_tenant_fk_delete_semantics.sql` | Preserves tenant IDs when composite nullable relationships apply their original `ON DELETE SET NULL` behavior. |

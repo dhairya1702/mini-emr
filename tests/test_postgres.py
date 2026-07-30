@@ -21,6 +21,7 @@ from app.repositories.postgres.auth_settings import (
 )
 from app.repositories.postgres.billing import CATALOG_ITEM_COLUMNS, INVOICE_COLUMNS, INVOICE_ITEM_COLUMNS, PostgresBillingRepository
 from app.repositories.postgres.case_studies import CASE_STUDY_COLUMNS, PostgresCaseStudiesRepository
+from app.repositories.postgres.checkins import CHECK_IN_REQUEST_COLUMNS, PostgresCheckInsRepository
 from app.repositories.postgres.myopia import MYOPIA_MEASUREMENT_COLUMNS, PostgresMyopiaRepository
 from app.repositories.postgres.patient_flow import (
     APPOINTMENT_COLUMNS,
@@ -160,6 +161,28 @@ def test_postgres_connection_manager_uses_pool_for_health_check():
     assert pool.opened is True
     assert pool.closed is True
     assert pool.cursor.statements == ["select 1"]
+
+
+def test_postgres_rate_limit_consumption_deletes_expired_rows_and_refreshes_ttl():
+    cursor = ScriptedCursor(
+        descriptions=[[], ["request_count"]],
+        fetchone_rows=[(3,)],
+    )
+    repo = PostgresAIUsageRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    count = asyncio.run(
+        repo.consume_rate_limit(
+            scope="public_appointment_post_ip",
+            key_hash="hashed-ip",
+            max_window_seconds=300,
+        )
+    )
+
+    assert count == 3
+    assert "delete from public.api_rate_limits where expires_at <= now()" in cursor.executed[0][0]
+    upsert, params = cursor.executed[1]
+    assert "expires_at = now() + make_interval" in upsert
+    assert params == ("public_appointment_post_ip", "hashed-ip", 300, 300, 300, 300)
 
 
 def test_postgres_ai_usage_repository_creates_event_with_total_tokens():
@@ -722,6 +745,38 @@ def test_postgres_platform_errors_repository_lists_errors_for_org():
     assert rows[0]["identifier"] == "admin@example.com"
 
 
+def test_postgres_platform_errors_repository_records_request_metric_batch():
+    cursor = ScriptedCursor(descriptions=[])
+    repo = PostgresPlatformErrorsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    asyncio.run(
+        repo.record_api_request_batch(
+            [
+                {
+                    "metric_date": "2026-07-30",
+                    "org_id": "11111111-1111-1111-1111-111111111111",
+                    "request_count": 12,
+                    "error_response_count": 2,
+                },
+                {
+                    "metric_date": "2026-07-30",
+                    "org_id": "",
+                    "request_count": 3,
+                    "error_response_count": 0,
+                },
+            ]
+        )
+    )
+
+    statement, params = cursor.executed[0]
+    payload = __import__("json").loads(params[1])
+    assert "jsonb_to_recordset" in statement
+    assert "metrics.request_count + excluded.request_count" in statement
+    assert params[0] == "00000000-0000-0000-0000-000000000000"
+    assert payload[0]["request_count"] == 12
+    assert payload[1]["org_id"] == ""
+
+
 def test_postgres_auth_settings_repository_creates_organization_and_user():
     cursor = ScriptedCursor(
         descriptions=[["id", "name", "created_at"], USER_COLUMNS],
@@ -1109,6 +1164,81 @@ def _patient_row(patient_id: str = "patient-1", *, phone: str = "1234567890", cu
     )
 
 
+def _check_in_request_row(request_id: str = "check-in-1") -> tuple:
+    return (
+        request_id,
+        "org-1",
+        "DL",
+        "+91 12345 67890",
+        "+911234567890",
+        "dl@example.com",
+        date(2014, 1, 20),
+        "female",
+        "Eye exam",
+        "pending",
+        None,
+        None,
+        None,
+        "",
+        datetime(2026, 7, 30, 9, tzinfo=UTC),
+        datetime(2026, 7, 30, 21, tzinfo=UTC),
+    )
+
+
+def test_postgres_check_in_creation_relies_on_atomic_pending_unique_index():
+    cursor = ScriptedCursor(
+        descriptions=[[], CHECK_IN_REQUEST_COLUMNS],
+        fetchone_rows=[_check_in_request_row()],
+    )
+    repo = PostgresCheckInsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    created = asyncio.run(
+        repo.create_public_check_in_request(
+            org_id="org-1",
+            name="DL",
+            phone="+91 12345 67890",
+            email="DL@example.com",
+            date_of_birth=date(2014, 1, 20),
+            sex_at_birth="female",
+            reason="Eye exam",
+        )
+    )
+
+    statements = [statement for statement, _params in cursor.executed]
+    assert len(statements) == 2
+    assert "set status = 'expired'" in statements[0]
+    assert "insert into public.public_check_in_requests" in statements[1]
+    assert not any("select id" in statement for statement in statements)
+    assert created["id"] == "check-in-1"
+
+
+def test_postgres_check_in_listing_bulk_loads_candidates_using_stored_match_keys():
+    cursor = ScriptedCursor(
+        descriptions=[
+            [],
+            CHECK_IN_REQUEST_COLUMNS,
+            ["check_in_request_id", *PATIENT_COLUMNS],
+        ],
+        fetchall_rows=[
+            [_check_in_request_row()],
+            [("check-in-1", *_patient_row())],
+        ],
+    )
+    repo = PostgresCheckInsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    requests = asyncio.run(repo.list_public_check_in_requests("org-1"))
+
+    assert len(cursor.executed) == 3
+    candidate_statement, candidate_params = cursor.executed[2]
+    assert "check_in.id = any(%s::uuid[])" in candidate_statement
+    assert "patient.phone_match_key = check_in.submitted_phone_match_key" in candidate_statement
+    assert "patient.email_normalized = check_in.submitted_email_normalized" in candidate_statement
+    assert "regexp_replace(phone" not in candidate_statement
+    assert candidate_params == ("org-1", ["check-in-1"])
+    assert requests[0]["candidates"][0]["id"] == "patient-1"
+    assert requests[0]["candidates"][0]["confidence"] == "strong"
+
+
 def _appointment_row(*, status: str = "scheduled", phone: str = "1234567890") -> tuple:
     return (
         "appointment-1",
@@ -1233,6 +1363,37 @@ def test_postgres_patient_flow_repository_lists_appointments_with_filters():
     assert rows[0]["id"] == "appointment-1"
 
 
+def test_postgres_public_appointment_duplicate_check_is_locked_and_atomic():
+    cursor = ScriptedCursor(
+        descriptions=[[], [], ["exists"]],
+        fetchone_rows=[(1,)],
+    )
+    repo = PostgresPatientFlowRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    with pytest.raises(
+        ValueError,
+        match="An active appointment already exists for this phone number",
+    ):
+        asyncio.run(
+            repo.create_appointment(
+                "org-1",
+                AppointmentCreate(
+                    name="Duplicate Patient",
+                    phone="(555) 010-7002",
+                    reason="Review",
+                    scheduled_for=datetime(2026, 8, 1, 10, tzinfo=UTC),
+                ),
+                reject_duplicate_phone=True,
+            )
+        )
+
+    assert "public-appointment:5550107002" in cursor.executed[1][1]
+    duplicate_query, duplicate_params = cursor.executed[2]
+    assert "scheduled_for >= now()" in duplicate_query
+    assert duplicate_params == ("org-1", "5550107002")
+    assert not any("insert into public.appointments" in statement for statement, _ in cursor.executed)
+
+
 def test_postgres_patient_flow_repository_detects_duplicate_check_in_matches():
     cursor = ScriptedCursor(
         descriptions=[APPOINTMENT_COLUMNS, PATIENT_COLUMNS],
@@ -1288,6 +1449,128 @@ def test_postgres_patient_flow_repository_updates_appointment_with_validation():
 
     assert cursor.executed[1][1] == ("cancelled", "org-1", "appointment-1")
     assert updated["status"] == "cancelled"
+
+
+def test_postgres_appointment_audit_failure_exits_the_mutation_transaction_with_error():
+    class FailingAuditCursor(ScriptedCursor):
+        def execute(self, statement: str, params: tuple = ()) -> None:
+            if "insert into public.audit_events" in statement:
+                raise RuntimeError("audit insert failed")
+            super().execute(statement, params)
+
+    class TrackingConnection(ScriptedConnection):
+        exit_exception: type[BaseException] | None = None
+
+        def __exit__(self, exc_type, *_args):
+            self.exit_exception = exc_type
+            return None
+
+    class TrackingPool:
+        def __init__(self, cursor: ScriptedCursor) -> None:
+            self.connection_instance = TrackingConnection(cursor)
+
+        def connection(self):
+            return self.connection_instance
+
+    class TrackingManager:
+        def __init__(self, cursor: ScriptedCursor) -> None:
+            self.pool = TrackingPool(cursor)
+
+    cursor = FailingAuditCursor(
+        descriptions=[APPOINTMENT_COLUMNS, APPOINTMENT_COLUMNS],
+        fetchone_rows=[
+            _appointment_row(status="scheduled"),
+            _appointment_row(status="cancelled"),
+        ],
+    )
+    manager = TrackingManager(cursor)
+    repo = PostgresPatientFlowRepository(manager)  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="audit insert failed"):
+        asyncio.run(
+            repo.update_appointment(
+                "org-1",
+                "appointment-1",
+                AppointmentUpdate(status="cancelled"),
+                audit_event_factory=lambda appointment: [{
+                    "org_id": "org-1",
+                    "actor_user_id": None,
+                    "actor_name": "Clinic Team",
+                    "entity_type": "appointment",
+                    "entity_id": appointment["id"],
+                    "action": "appointment_cancelled",
+                    "summary": "Cancelled appointment.",
+                    "metadata": {},
+                }],
+            )
+        )
+
+    assert any("update public.appointments" in statement for statement, _params in cursor.executed)
+    assert manager.pool.connection_instance.exit_exception is RuntimeError
+
+
+def test_postgres_invoice_payment_audit_failure_exits_the_mutation_transaction_with_error():
+    class FailingAuditCursor(ScriptedCursor):
+        def execute(self, statement: str, params: tuple = ()) -> None:
+            if "insert into public.audit_events" in statement:
+                raise RuntimeError("audit insert failed")
+            super().execute(statement, params)
+
+    class TrackingConnection(ScriptedConnection):
+        exit_exception: type[BaseException] | None = None
+
+        def __exit__(self, exc_type, *_args):
+            self.exit_exception = exc_type
+            return None
+
+    class TrackingPool:
+        def __init__(self, cursor: ScriptedCursor) -> None:
+            self.connection_instance = TrackingConnection(cursor)
+
+        def connection(self):
+            return self.connection_instance
+
+    class TrackingManager:
+        def __init__(self, cursor: ScriptedCursor) -> None:
+            self.pool = TrackingPool(cursor)
+
+    cursor = FailingAuditCursor(
+        descriptions=[
+            INVOICE_COLUMNS,
+            INVOICE_COLUMNS,
+            INVOICE_ITEM_COLUMNS,
+        ],
+        fetchone_rows=[
+            _invoice_row(amount_paid=100),
+            _invoice_row(amount_paid=200),
+        ],
+        fetchall_rows=[[_invoice_item_row()]],
+    )
+    manager = TrackingManager(cursor)
+    repo = PostgresBillingRepository(manager)  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="audit insert failed"):
+        asyncio.run(
+            repo.update_invoice_payment(
+                "org-1",
+                "invoice-1",
+                amount_paid=200,
+                actor_user_id="user-1",
+                audit_event_factory=lambda invoice: [{
+                    "org_id": "org-1",
+                    "actor_user_id": "user-1",
+                    "actor_name": "Dr Test",
+                    "entity_type": "invoice",
+                    "entity_id": invoice["id"],
+                    "action": "invoice_payment_updated",
+                    "summary": "Updated payment.",
+                    "metadata": {},
+                }],
+            )
+        )
+
+    assert any("update public.invoices" in statement for statement, _params in cursor.executed)
+    assert manager.pool.connection_instance.exit_exception is RuntimeError
 
 
 def test_postgres_patient_flow_repository_gets_timeline_source():

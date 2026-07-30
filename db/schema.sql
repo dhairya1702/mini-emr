@@ -20,6 +20,13 @@ create table if not exists public.patients (
   name text not null,
   phone text not null,
   email text not null default '',
+  phone_match_key text generated always as (
+    right(regexp_replace(phone, '\D', '', 'g'), 10)
+  ) stored,
+  email_normalized text generated always as (lower(btrim(email))) stored,
+  name_normalized text generated always as (
+    lower(regexp_replace(btrim(name), '\s+', ' ', 'g'))
+  ) stored,
   address text not null default '',
   reason text not null,
   date_of_birth date,
@@ -276,6 +283,7 @@ create table if not exists public.api_rate_limits (
   window_started_at timestamptz not null default now(),
   request_count integer not null default 0,
   updated_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '5 minutes'),
   primary key (scope, key_hash)
 );
 
@@ -286,6 +294,13 @@ create table if not exists public.public_check_in_requests (
   submitted_phone text not null,
   submitted_phone_normalized text not null,
   submitted_email text not null default '',
+  submitted_phone_match_key text generated always as (
+    right(regexp_replace(submitted_phone_normalized, '\D', '', 'g'), 10)
+  ) stored,
+  submitted_email_normalized text generated always as (lower(btrim(submitted_email))) stored,
+  submitted_name_normalized text generated always as (
+    lower(regexp_replace(btrim(submitted_name), '\s+', ' ', 'g'))
+  ) stored,
   submitted_date_of_birth date not null,
   submitted_sex_at_birth text not null
     check (submitted_sex_at_birth in ('female', 'male', 'other')),
@@ -310,8 +325,39 @@ create index if not exists public_check_in_requests_org_email_idx
   on public.public_check_in_requests (org_id, lower(submitted_email))
   where submitted_email <> '';
 
+create unique index if not exists public_check_in_requests_pending_identity_uidx
+  on public.public_check_in_requests (
+    org_id, submitted_phone_normalized, submitted_date_of_birth
+  )
+  where status = 'pending';
+
+create index if not exists public_check_in_requests_pending_expiry_idx
+  on public.public_check_in_requests (org_id, expires_at)
+  where status = 'pending';
+
+create index if not exists patients_org_phone_match_key_idx
+  on public.patients (org_id, phone_match_key)
+  where phone_match_key <> '';
+
+create index if not exists patients_org_email_normalized_idx
+  on public.patients (org_id, email_normalized)
+  where email_normalized <> '';
+
+create index if not exists patients_org_name_normalized_idx
+  on public.patients (org_id, name_normalized);
+
+create index if not exists patients_org_date_of_birth_idx
+  on public.patients (org_id, date_of_birth)
+  where date_of_birth is not null;
+
+create index if not exists patient_attachments_org_patient_created_idx
+  on public.patient_attachments (org_id, patient_id, created_at desc);
+
 create index if not exists api_rate_limits_updated_at_idx
   on public.api_rate_limits(updated_at);
+
+create index if not exists api_rate_limits_expires_at_idx
+  on public.api_rate_limits(expires_at);
 
 create table if not exists public.api_request_metrics (
   metric_date date not null,
@@ -611,6 +657,14 @@ create unique index if not exists patient_visits_org_id_id_uidx
   on public.patient_visits(org_id, id);
 create unique index if not exists whatsapp_owner_bindings_org_id_id_uidx
   on public.whatsapp_owner_bindings(org_id, id);
+create unique index if not exists invoice_items_org_id_id_uidx
+  on public.invoice_items(org_id, id);
+create unique index if not exists follow_ups_org_id_id_uidx
+  on public.follow_ups(org_id, id);
+create unique index if not exists patient_program_enrollments_org_id_id_uidx
+  on public.patient_program_enrollments(org_id, id);
+create unique index if not exists care_program_events_org_id_id_uidx
+  on public.care_program_events(org_id, id);
 
 do $$
 begin
@@ -668,11 +722,47 @@ begin
   if not exists (select 1 from pg_constraint where conname = 'appointments_org_checked_in_patient_fk') then
     alter table public.appointments add constraint appointments_org_checked_in_patient_fk foreign key (org_id, checked_in_patient_id) references public.patients(org_id, id);
   end if;
+  if not exists (select 1 from pg_constraint where conname = 'public_check_in_requests_org_approved_patient_fk') then
+    alter table public.public_check_in_requests add constraint public_check_in_requests_org_approved_patient_fk foreign key (org_id, approved_patient_id) references public.patients(org_id, id) on delete set null (approved_patient_id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'public_check_in_requests_org_reviewed_by_fk') then
+    alter table public.public_check_in_requests add constraint public_check_in_requests_org_reviewed_by_fk foreign key (org_id, reviewed_by) references public.clinic_users(org_id, id) on delete set null (reviewed_by);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'appointments_org_follow_up_fk') then
+    alter table public.appointments add constraint appointments_org_follow_up_fk foreign key (org_id, follow_up_id) references public.follow_ups(org_id, id) on delete set null (follow_up_id);
+  end if;
   if not exists (select 1 from pg_constraint where conname = 'patient_visits_org_patient_fk') then
     alter table public.patient_visits add constraint patient_visits_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
   end if;
   if not exists (select 1 from pg_constraint where conname = 'patient_visits_org_appointment_fk') then
     alter table public.patient_visits add constraint patient_visits_org_appointment_fk foreign key (org_id, appointment_id) references public.appointments(org_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'patient_visits_org_follow_up_fk') then
+    alter table public.patient_visits add constraint patient_visits_org_follow_up_fk foreign key (org_id, follow_up_id) references public.follow_ups(org_id, id) on delete set null (follow_up_id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'patient_program_enrollments_org_patient_fk') then
+    alter table public.patient_program_enrollments add constraint patient_program_enrollments_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'patient_program_enrollments_org_catalog_item_fk') then
+    alter table public.patient_program_enrollments add constraint patient_program_enrollments_org_catalog_item_fk foreign key (org_id, catalog_item_id) references public.catalog_items(org_id, id) on delete restrict;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'patient_program_enrollments_org_invoice_fk') then
+    alter table public.patient_program_enrollments add constraint patient_program_enrollments_org_invoice_fk foreign key (org_id, originating_invoice_id) references public.invoices(org_id, id) on delete restrict;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'patient_program_enrollments_org_invoice_item_fk') then
+    alter table public.patient_program_enrollments add constraint patient_program_enrollments_org_invoice_item_fk foreign key (org_id, originating_invoice_item_id) references public.invoice_items(org_id, id) on delete restrict;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'patient_program_enrollments_org_responsible_user_fk') then
+    alter table public.patient_program_enrollments add constraint patient_program_enrollments_org_responsible_user_fk foreign key (org_id, responsible_user_id) references public.clinic_users(org_id, id) on delete set null (responsible_user_id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'care_program_events_org_enrollment_fk') then
+    alter table public.care_program_events add constraint care_program_events_org_enrollment_fk foreign key (org_id, enrollment_id) references public.patient_program_enrollments(org_id, id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'care_program_events_org_source_event_fk') then
+    alter table public.care_program_events add constraint care_program_events_org_source_event_fk foreign key (org_id, source_event_id) references public.care_program_events(org_id, id) on delete set null (source_event_id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'care_program_events_org_created_by_fk') then
+    alter table public.care_program_events add constraint care_program_events_org_created_by_fk foreign key (org_id, created_by) references public.clinic_users(org_id, id) on delete set null (created_by);
   end if;
   if not exists (select 1 from pg_constraint where conname = 'myopia_measurements_org_patient_fk') then
     alter table public.myopia_measurements add constraint myopia_measurements_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
@@ -1110,6 +1200,9 @@ add column if not exists address text not null default '';
 
 create unique index if not exists clinic_settings_org_id_key on public.clinic_settings (org_id);
 create index if not exists patients_org_status_idx on public.patients (org_id, status, created_at desc);
+create index if not exists patients_org_unbilled_done_idx
+on public.patients (org_id, last_visit_at desc)
+where status = 'done' and billed = false;
 create index if not exists patients_org_last_visit_idx on public.patients (org_id, last_visit_at desc);
 create index if not exists patients_org_phone_last_visit_idx on public.patients (org_id, phone, last_visit_at desc);
 create index if not exists patient_visits_patient_created_idx on public.patient_visits (patient_id, created_at desc);
@@ -1143,6 +1236,9 @@ create index if not exists follow_ups_due_reminder_claim_idx on public.follow_up
 create index if not exists appointments_org_status_scheduled_idx on public.appointments (org_id, status, scheduled_for asc);
 create index if not exists appointments_org_checked_in_patient_created_idx on public.appointments (org_id, checked_in_patient_id, created_at desc);
 create index if not exists appointments_org_follow_up_idx on public.appointments (org_id, follow_up_id);
+create index if not exists appointments_org_phone_scheduled_idx
+  on public.appointments (org_id, phone, scheduled_for desc)
+  where status = 'scheduled';
 create index if not exists patient_visits_org_follow_up_idx on public.patient_visits (org_id, follow_up_id);
 create index if not exists notes_org_visit_created_idx on public.notes(org_id, visit_id, created_at desc);
 

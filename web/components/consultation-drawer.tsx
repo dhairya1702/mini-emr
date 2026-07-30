@@ -9,6 +9,7 @@ import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { getSpecialtyModules, specialtyHasModule, type SpecialtyModuleKey } from "@/lib/specialty";
 import { clearConsultationWorkspace, readConsultationWorkspace, writeConsultationWorkspace } from "@/lib/consultation-workspace";
 import { zonedDateTimeInputToUtcIso } from "@/lib/timezone";
+import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import {
   AuthUser,
   BinocularVisionEvaluationCreatePayload,
@@ -626,6 +627,7 @@ export function ConsultationDrawer({
   const [assistantError, setAssistantError] = useState("");
   const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingHistoryRef = useRef<string[]>([]);
+  const cancelWhatsAppDeliveryTrackingRef = useRef<(() => void) | null>(null);
   const patientId = patient?.id ?? "";
   const currentUserId = currentUser?.id ?? "";
   const currentOrgId = currentUser?.org_id ?? "";
@@ -790,32 +792,10 @@ export function ConsultationDrawer({
 
     return () => {
       active = false;
+      cancelWhatsAppDeliveryTrackingRef.current?.();
+      cancelWhatsAppDeliveryTrackingRef.current = null;
     };
   }, [clinicSpecialty, isTrainingMode, patient, specialtyModules.length, workspaceScope]);
-
-  useEffect(() => {
-    if (!currentNoteId || !["queued", "accepted", "sent"].includes(whatsappDeliveryStatus)) {
-      return;
-    }
-    const interval = window.setInterval(() => {
-      void api
-        .getWhatsAppDocumentDelivery("consultation_note", currentNoteId)
-        .then((delivery) => {
-          setWhatsAppDeliveryStatus(delivery.status);
-          if (delivery.status === "delivered") {
-            setStatusMessage(`Consultation note delivered on WhatsApp to ${delivery.recipient}.`);
-          } else if (delivery.status === "read") {
-            setStatusMessage(`Consultation note read on WhatsApp by ${delivery.recipient}.`);
-          } else if (delivery.status === "failed") {
-            setStatusMessage(delivery.error || "WhatsApp delivery failed. Retry when ready.");
-          }
-        })
-        .catch(() => {
-          setWhatsAppDeliveryStatus("");
-        });
-    }, 3000);
-    return () => window.clearInterval(interval);
-  }, [currentNoteId, whatsappDeliveryStatus]);
 
   useEffect(() => {
     if (!patient || !workspaceScope) {
@@ -1305,8 +1285,21 @@ export function ConsultationDrawer({
       });
       setNoteStatus("sent");
       setIsWhatsAppSent(true);
-      setWhatsAppDeliveryStatus(result.delivery?.status ?? "accepted");
       setStatusMessage(result.message);
+      cancelWhatsAppDeliveryTrackingRef.current?.();
+      cancelWhatsAppDeliveryTrackingRef.current = null;
+      if (result.delivery) {
+        cancelWhatsAppDeliveryTrackingRef.current = trackWhatsAppDelivery(
+          result.delivery,
+          "Consultation note",
+          (message, delivery) => {
+            setWhatsAppDeliveryStatus(delivery.status);
+            setStatusMessage(message);
+          },
+        );
+      } else {
+        setWhatsAppDeliveryStatus("accepted");
+      }
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to send on WhatsApp. The note remains finalized; retry when ready.");
     } finally {

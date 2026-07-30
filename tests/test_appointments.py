@@ -1,14 +1,173 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+
+import pytest
 
 from test_app import auth_headers_for_token, client, register_test_clinic
+
+from app.schema_domains.patients import AppointmentCreate
+from app.routes.public import _public_client_ip
+from app.services import public_appointment_workflow
 
 
 def _future_iso(*, days: int = 1, hour: int = 9, minute: int = 0) -> str:
     scheduled_for = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(days=days)
     scheduled_for = scheduled_for.replace(hour=hour, minute=minute)
     return scheduled_for.isoformat()
+
+
+def test_public_booking_client_ip_uses_verified_load_balancer_position():
+    request = SimpleNamespace(
+        headers={
+            "x-forwarded-for": (
+                "caller-supplied-value, 203.0.113.17, 198.51.100.8"
+            )
+        },
+        client=SimpleNamespace(host="10.0.0.4"),
+    )
+    direct_request = SimpleNamespace(
+        headers={"x-forwarded-for": "caller-controlled-value"},
+        client=SimpleNamespace(host="203.0.113.18"),
+    )
+
+    assert _public_client_ip(request) == "203.0.113.17"
+    assert _public_client_ip(direct_request) == "203.0.113.18"
+
+
+def test_public_booking_generates_management_token_before_writing_appointment(client, monkeypatch):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="public-token-first@clinic.com",
+        clinic_name="Token First Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    enabled = test_client.patch("/check-in/config", headers=headers, json={"enabled": True})
+    public_token = enabled.json()["public_url"].split("token=", 1)[1]
+    slots = test_client.get(
+        "/public/check-in/appointment-slots",
+        params={"token": public_token},
+    ).json()["suggested_slots"]
+    appointment_count_before = len(repo.appointments)
+
+    def fail_token_creation(**_kwargs):
+        raise ValueError("token configuration failed")
+
+    monkeypatch.setattr(
+        public_appointment_workflow,
+        "create_public_appointment_booking_token",
+        fail_token_creation,
+    )
+
+    with pytest.raises(ValueError, match="token configuration failed"):
+        asyncio.run(
+            public_appointment_workflow.create_public_appointment(
+                repo,
+                clinic_token=public_token,
+                payload=AppointmentCreate(
+                    name="Token Test Patient",
+                    phone="5550107001",
+                    reason="Review",
+                    scheduled_for=datetime.fromisoformat(slots[0]),
+                ),
+            )
+        )
+
+    assert len(repo.appointments) == appointment_count_before
+
+
+def test_public_booking_rejects_a_second_active_appointment_for_same_phone(client):
+    test_client, _repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="public-duplicate@clinic.com",
+        clinic_name="Public Duplicate Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    enabled = test_client.patch("/check-in/config", headers=headers, json={"enabled": True})
+    public_token = enabled.json()["public_url"].split("token=", 1)[1]
+    slots = test_client.get(
+        "/public/check-in/appointment-slots",
+        params={"token": public_token},
+    ).json()["suggested_slots"]
+    assert len(slots) >= 2
+
+    payload = {
+        "token": public_token,
+        "name": "Duplicate Patient",
+        "phone": "(555) 010-7002",
+        "reason": "Review",
+        "date_of_birth": "1990-01-01",
+        "sex_at_birth": "other",
+        "scheduled_for": slots[0],
+    }
+    first = test_client.post("/public/check-in/appointment", json=payload)
+    duplicate = test_client.post(
+        "/public/check-in/appointment",
+        json={**payload, "phone": "5550107002", "scheduled_for": slots[1]},
+    )
+
+    assert first.status_code == 201
+    assert duplicate.status_code == 400
+    assert duplicate.json()["detail"] == (
+        "An active appointment already exists for this phone number."
+    )
+
+
+@pytest.mark.parametrize(
+    ("limited_scope", "expected_limit"),
+    [
+        ("public_appointment_post_ip", 2),
+        ("public_appointment_post_clinic", 2),
+    ],
+)
+def test_public_booking_enforces_stable_abuse_limits(
+    client,
+    monkeypatch: pytest.MonkeyPatch,
+    limited_scope: str,
+    expected_limit: int,
+):
+    from app.services import auth_flow
+
+    test_client, _repo = client
+    monkeypatch.setitem(auth_flow.RATE_LIMIT_WINDOWS, "public_appointment_post_ip", (100, 300.0))
+    monkeypatch.setitem(auth_flow.RATE_LIMIT_WINDOWS, "public_appointment_post_clinic", (100, 300.0))
+    monkeypatch.setitem(auth_flow.RATE_LIMIT_WINDOWS, limited_scope, (expected_limit, 300.0))
+    session = register_test_clinic(
+        test_client,
+        identifier=f"{limited_scope}@clinic.com",
+        clinic_name="Stable Limit Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    enabled = test_client.patch("/check-in/config", headers=headers, json={"enabled": True})
+    public_token = enabled.json()["public_url"].split("token=", 1)[1]
+    slot = test_client.get(
+        "/public/check-in/appointment-slots",
+        params={"token": public_token},
+    ).json()["suggested_slots"][0]
+
+    statuses = []
+    for index in range(expected_limit + 1):
+        response = test_client.post(
+            "/public/check-in/appointment",
+            json={
+                "token": public_token,
+                "name": f"Rate Limit Patient {index}",
+                    "phone": f"55501071{index:02d}",
+                    "reason": "Review",
+                    "date_of_birth": "1990-01-01",
+                    "sex_at_birth": "other",
+                    "scheduled_for": slot,
+            },
+        )
+        statuses.append(response.status_code)
+
+    assert statuses[:expected_limit] == [201, 400]
+    assert statuses[-1] == 429
+    assert response.json()["detail"] == "Too many requests. Please wait and try again."
 
 
 def test_appointment_can_be_created_listed_and_checked_into_queue(client):

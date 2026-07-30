@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     follow_up_reminder_lead_hours: int = 24
     session_ttl_hours: int = 12
     superdashboard_session_ttl_hours: int = 4
+    request_metrics_flush_interval_seconds: float = 30.0
+    request_metrics_startup_jitter_seconds: float = 5.0
     db_pool_min_size: int = 1
     db_pool_max_size: int = 10
     db_pool_timeout_seconds: float = 10.0

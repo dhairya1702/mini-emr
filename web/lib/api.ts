@@ -185,7 +185,7 @@ function shouldClearSessionOnError(message: string) {
 function getActiveToken(path: string) {
   void path;
   authStorage.clearExpiredSession();
-  return "";
+  return authStorage.getToken();
 }
 
 function isSuperdashboardPath(path: string) {
@@ -764,9 +764,18 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  listPatients: (options?: { activeOnly?: boolean; q?: string; limit?: number; offset?: number }) =>
+  listPatients: (options?: {
+    activeOnly?: boolean;
+    status?: PatientStatus;
+    billed?: boolean;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) =>
     request<Patient[]>(withQuery("/patients", {
       active_only: options?.activeOnly ? "true" : undefined,
+      status: options?.status,
+      billed: options?.billed === undefined ? undefined : String(options.billed),
       q: options?.q,
       limit: options?.limit,
       offset: options?.offset,

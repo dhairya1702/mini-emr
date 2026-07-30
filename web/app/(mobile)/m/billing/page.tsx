@@ -11,6 +11,8 @@ import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { printBlob } from "@/lib/print";
 import type { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
+const BILLABLE_PATIENT_LIMIT = 50;
+
 function createId() {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
@@ -163,7 +165,10 @@ function MobileBillingContent({
     }
     let active = true;
     setIsLoading(true);
-    Promise.all([api.listQueuePatients(), api.listCatalogItems()])
+    Promise.all([
+      api.listPatients({ status: "done", billed: false, limit: BILLABLE_PATIENT_LIMIT }),
+      api.listCatalogItems(),
+    ])
       .then(([patientRows, catalogRows]) => {
         if (!active) return;
         setPatients(patientRows);

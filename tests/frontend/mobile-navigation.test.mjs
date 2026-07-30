@@ -7,6 +7,7 @@ const expectedAdminLabels = [
     "Queue",
     "Appointments",
     "Patients",
+    "QR Code",
     "Care Programs",
     "Billing",
   "Inventory",
@@ -36,7 +37,7 @@ test("mobile staff navigation hides admin-only destinations", async () => {
 
   assert.deepEqual(
     getVisibleMobileNavItems("staff").map((item) => item.label),
-    ["Queue", "Appointments", "Patients", "History", "Account", "Training Mode", "About"],
+    ["Queue", "Appointments", "Patients", "QR Code", "History", "Account", "Training Mode", "About"],
   );
 });
 

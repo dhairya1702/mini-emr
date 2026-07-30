@@ -17,6 +17,7 @@ from app.repositories.base import (
     visit_payload,
 )
 from app.repositories.postgres.ai_usage import _row_to_dict
+from app.repositories.postgres.audit import AuditEventFactory, insert_audit_events
 from app.schema_domains.patients import (
     AppointmentCheckInRequest,
     AppointmentCreate,
@@ -428,6 +429,8 @@ class PostgresPatientFlowRepository:
         org_id: str,
         *,
         active_only: bool = False,
+        status: str | None = None,
+        billed: bool | None = None,
         query: str | None = None,
         limit: int | None = None,
         offset: int = 0,
@@ -440,6 +443,8 @@ class PostgresPatientFlowRepository:
                         if active_only
                         else ""
                     )
+                    status_clause = "and status = %s" if status is not None else ""
+                    billed_clause = "and billed = %s" if billed is not None else ""
                     query_clause = ""
                     query_params: list[Any] = []
                     normalized_query = str(query or "").strip()
@@ -451,21 +456,34 @@ class PostgresPatientFlowRepository:
                         )
                         query_params.extend([pattern, pattern, pattern])
                     paging_clause = "limit %s offset %s" if limit is not None else ""
-                    params_list: list[Any] = [org_id, *query_params]
+                    filter_params: list[Any] = []
+                    if status is not None:
+                        filter_params.append(status)
+                    if billed is not None:
+                        filter_params.append(billed)
+                    params_list: list[Any] = [org_id, *filter_params, *query_params]
                     if limit is not None:
                         params_list.extend([limit, offset])
+                    order_clause = (
+                        "last_visit_at desc"
+                        if status == "done" and billed is False
+                        else """
+                          case status when 'waiting' then 0 when 'consultation' then 1 else 2 end,
+                          case when queue_priority = 'urgent' then 0 else 1 end,
+                          queue_position asc,
+                          last_visit_at desc
+                        """
+                    )
                     cursor.execute(
                         f"""
                         select {_columns_sql(PATIENT_COLUMNS)}
                         from public.patients
                         where org_id = %s
                         {active_clause}
+                        {status_clause}
+                        {billed_clause}
                         {query_clause}
-                        order by
-                          case status when 'waiting' then 0 when 'consultation' then 1 else 2 end,
-                          case when queue_priority = 'urgent' then 0 else 1 end,
-                          queue_position asc,
-                          last_visit_at desc
+                        order by {order_clause}
                         {paging_clause}
                         """,
                         tuple(params_list),
@@ -644,6 +662,9 @@ class PostgresPatientFlowRepository:
         org_id: str,
         payload: AppointmentCreate,
         *,
+        appointment_id: str | None = None,
+        reject_duplicate_phone: bool = False,
+        audit_event_factory: AuditEventFactory | None = None,
         appointments_per_hour: int = 4,
         timezone: str = "UTC",
     ) -> dict[str, Any]:
@@ -671,6 +692,32 @@ class PostgresPatientFlowRepository:
                         """,
                         (org_id, lock_bucket),
                     )
+                    if reject_duplicate_phone:
+                        cursor.execute(
+                            """
+                            select pg_advisory_xact_lock(
+                              hashtext(%s),
+                              hashtext(%s)
+                            )
+                            """,
+                            (org_id, f"public-appointment:{values['phone']}"),
+                        )
+                        cursor.execute(
+                            """
+                            select 1
+                            from public.appointments
+                            where org_id = %s
+                              and phone = %s
+                              and status = 'scheduled'
+                              and scheduled_for >= now()
+                            limit 1
+                            """,
+                            (org_id, values["phone"]),
+                        )
+                        if cursor.fetchone():
+                            raise ValueError(
+                                "An active appointment already exists for this phone number."
+                            )
                     cursor.execute(
                         """
                         select
@@ -697,14 +744,15 @@ class PostgresPatientFlowRepository:
                     cursor.execute(
                         f"""
                         insert into public.appointments (
-                          org_id, name, phone, email, address, reason, date_of_birth, sex_at_birth,
+                          id, org_id, name, phone, email, address, reason, date_of_birth, sex_at_birth,
                           gender_identity, age, weight,
                           height, temperature, scheduled_for, status
                         )
-                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'scheduled')
+                        values (coalesce(%s::uuid, gen_random_uuid()), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'scheduled')
                         returning {_columns_sql(APPOINTMENT_COLUMNS)}
                         """,
                         (
+                            appointment_id,
                             org_id,
                             values["name"],
                             values["phone"],
@@ -724,7 +772,9 @@ class PostgresPatientFlowRepository:
                     row = cursor.fetchone()
                     if not row:
                         raise ValueError("Failed to create appointment.")
-                    return _row_to_dict(row, cursor)
+                    appointment = _row_to_dict(row, cursor)
+                    insert_audit_events(cursor, audit_event_factory, appointment)
+                    return appointment
 
         return await asyncio.to_thread(_create)
 
@@ -737,6 +787,7 @@ class PostgresPatientFlowRepository:
         scheduled_for: datetime,
         appointments_per_hour: int,
         timezone: str,
+        audit_event_factory: AuditEventFactory | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         def _book() -> tuple[dict[str, Any], dict[str, Any]]:
             with self.connection_manager.pool.connection() as connection:
@@ -762,6 +813,7 @@ class PostgresPatientFlowRepository:
                     appointment = payload_data.get("appointment")
                     if not follow_up or not appointment:
                         raise ValueError("Failed to book follow-up appointment.")
+                    insert_audit_events(cursor, audit_event_factory, appointment)
                     return follow_up, appointment
 
         return await asyncio.to_thread(_book)
@@ -791,6 +843,7 @@ class PostgresPatientFlowRepository:
         org_id: str,
         patient_id: str,
         follow_up_id: str,
+        audit_event_factory: AuditEventFactory | None = None,
     ) -> dict[str, Any]:
         def _cancel() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
@@ -818,7 +871,9 @@ class PostgresPatientFlowRepository:
                     row = cursor.fetchone()
                     if not row:
                         raise ValueError("This appointment is not currently scheduled.")
-                    return _row_to_dict(row, cursor)
+                    appointment = _row_to_dict(row, cursor)
+                    insert_audit_events(cursor, audit_event_factory, appointment)
+                    return appointment
 
         return await asyncio.to_thread(_cancel)
 
@@ -1018,6 +1073,8 @@ class PostgresPatientFlowRepository:
         org_id: str,
         appointment_id: str,
         payload: AppointmentCheckInRequest,
+        *,
+        audit_event_factory: AuditEventFactory | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         def _check_in() -> tuple[dict[str, Any], dict[str, Any]]:
             if payload.existing_patient_id is None and not payload.force_new:
@@ -1056,6 +1113,11 @@ class PostgresPatientFlowRepository:
                             "scheduled_for": appointment.get("scheduled_for"),
                         }
                     saved["billing_summary"] = None
+                    insert_audit_events(
+                        cursor,
+                        audit_event_factory,
+                        {"appointment": appointment, "patient": saved},
+                    )
                     return appointment, saved
 
         return await asyncio.to_thread(_check_in)
@@ -1117,6 +1179,7 @@ class PostgresPatientFlowRepository:
         appointment_id: str,
         payload: AppointmentUpdate,
         *,
+        audit_event_factory: AuditEventFactory | None = None,
         appointments_per_hour: int = 4,
         timezone: str = "UTC",
     ) -> dict[str, Any]:
@@ -1208,7 +1271,9 @@ class PostgresPatientFlowRepository:
                     updated_row = cursor.fetchone()
                     if not updated_row:
                         raise ValueError("Failed to update appointment.")
-                    return _row_to_dict(updated_row, cursor)
+                    appointment = _row_to_dict(updated_row, cursor)
+                    insert_audit_events(cursor, audit_event_factory, appointment)
+                    return appointment
 
         return await asyncio.to_thread(_update)
 

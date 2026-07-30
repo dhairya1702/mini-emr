@@ -114,26 +114,53 @@ class PostgresPlatformErrorsRepository:
 
         return await asyncio.to_thread(_list)
 
-    async def record_api_request(self, *, org_id: str | None, status_code: int) -> None:
+    async def record_api_request_batch(self, rows: list[dict[str, str | int]]) -> None:
+        if not rows:
+            return
         anonymous_org_id = "00000000-0000-0000-0000-000000000000"
+        payload = [
+            {
+                "metric_date": str(row["metric_date"]),
+                "org_id": str(row.get("org_id") or ""),
+                "request_count": int(row["request_count"]),
+                "error_response_count": int(row["error_response_count"]),
+            }
+            for row in rows
+            if int(row.get("request_count") or 0) > 0
+        ]
+        if not payload:
+            return
 
         def _record() -> None:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        insert into public.api_request_metrics (
+                        with batch as (
+                          select item.metric_date,
+                            coalesce(nullif(item.org_id, '')::uuid, %s::uuid) as org_id,
+                            item.request_count,
+                            item.error_response_count
+                          from jsonb_to_recordset(%s::jsonb) as item(
+                            metric_date date,
+                            org_id text,
+                            request_count bigint,
+                            error_response_count bigint
+                          )
+                        )
+                        insert into public.api_request_metrics as metrics (
                           metric_date, org_id, request_count, error_response_count
                         )
-                        values (current_date, %s, 1, %s)
+                        select metric_date, org_id, request_count, error_response_count
+                        from batch
                         on conflict (metric_date, org_id)
                         do update set
-                          request_count = public.api_request_metrics.request_count + 1,
-                          error_response_count = public.api_request_metrics.error_response_count
+                          request_count = metrics.request_count + excluded.request_count,
+                          error_response_count = metrics.error_response_count
                             + excluded.error_response_count,
                           updated_at = now()
                         """,
-                        (org_id or anonymous_org_id, 1 if status_code >= 500 else 0),
+                        (anonymous_org_id, json.dumps(payload)),
                     )
 
         await asyncio.to_thread(_record)

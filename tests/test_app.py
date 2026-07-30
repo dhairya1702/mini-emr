@@ -212,6 +212,12 @@ class FakeRepo:
         self.audit_events[audit_id] = row
         return row
 
+    async def _apply_audit_event_factory(self, factory, result: dict) -> None:
+        if factory is None:
+            return
+        for event in factory(result):
+            await self.create_audit_event(**event)
+
     async def list_audit_events(self, org_id: str, limit: int = 100) -> list[dict]:
         rows = [
             row for row in self.audit_events.values()
@@ -719,14 +725,17 @@ class FakeRepo:
         rows.sort(key=lambda row: row["created_at"], reverse=True)
         return rows[:limit]
 
-    async def record_api_request(self, *, org_id: str | None, status_code: int) -> None:
-        self.api_request_metrics.append(
-            {
-                "org_id": org_id,
-                "status_code": status_code,
-                "created_at": _now(),
-            }
-        )
+    async def record_api_request_batch(self, rows: list[dict[str, str | int]]) -> None:
+        for row in rows:
+            metric_date = datetime.fromisoformat(str(row["metric_date"])).replace(tzinfo=UTC)
+            self.api_request_metrics.append(
+                {
+                    "org_id": str(row.get("org_id") or "") or None,
+                    "request_count": int(row["request_count"]),
+                    "error_response_count": int(row["error_response_count"]),
+                    "created_at": metric_date,
+                }
+            )
 
     async def get_superdashboard_request_metrics(self, days: int = 7) -> dict:
         since = _now().date() - timedelta(days=max(days, 1) - 1)
@@ -745,12 +754,17 @@ class FakeRepo:
                 key,
                 {"date": key, "request_count": 0, "error_response_count": 0},
             )
-            metric["request_count"] += 1
-            metric["error_response_count"] += int(row["status_code"] >= 500)
+            metric["request_count"] += int(row.get("request_count", 1))
+            metric["error_response_count"] += int(
+                row.get("error_response_count", int(row.get("status_code", 0) >= 500))
+            )
         contexts = Counter(str(row.get("path") or row.get("error_type") or "unknown") for row in errors)
         return {
-            "request_count": len(requests),
-            "error_response_count": sum(int(row["status_code"] >= 500) for row in requests),
+            "request_count": sum(int(row.get("request_count", 1)) for row in requests),
+            "error_response_count": sum(
+                int(row.get("error_response_count", int(row.get("status_code", 0) >= 500)))
+                for row in requests
+            ),
             "error_count": len(errors),
             "top_error_context": contexts.most_common(1)[0][0] if contexts else "",
             "daily": list(daily.values()),
@@ -860,8 +874,11 @@ class FakeRepo:
         return {
             "database": database,
             "request_metrics_24h": {
-                "request_count": len(requests),
-                "error_response_count": sum(int(row["status_code"] >= 500) for row in requests),
+                "request_count": sum(int(row.get("request_count", 1)) for row in requests),
+                "error_response_count": sum(
+                    int(row.get("error_response_count", int(row.get("status_code", 0) >= 500)))
+                    for row in requests
+                ),
             },
             "errors_1h": {
                 "error_count": len(errors_1h),
@@ -1514,6 +1531,9 @@ class FakeRepo:
         org_id: str,
         payload,
         *,
+        appointment_id: str | None = None,
+        reject_duplicate_phone: bool = False,
+        audit_event_factory=None,
         appointments_per_hour: int = 4,
         timezone: str = "UTC",
     ) -> dict:
@@ -1530,7 +1550,15 @@ class FakeRepo:
             raise ValueError("That appointment slot is already booked.")
         if len(same_hour) >= appointments_per_hour:
             raise ValueError("That hour is fully booked.")
-        appointment_id = str(uuid4())
+        if reject_duplicate_phone and any(
+            appointment["org_id"] == org_id
+            and appointment["status"] == "scheduled"
+            and appointment["phone"] == _normalize_phone(payload.phone)
+            and _as_utc_minute(appointment["scheduled_for"]) >= _now()
+            for appointment in self.appointments.values()
+        ):
+            raise ValueError("An active appointment already exists for this phone number.")
+        appointment_id = appointment_id or str(uuid4())
         appointment = {
             "id": appointment_id,
             "org_id": org_id,
@@ -1545,6 +1573,7 @@ class FakeRepo:
             "created_at": _now(),
         }
         self.appointments[appointment_id] = appointment
+        await self._apply_audit_event_factory(audit_event_factory, appointment)
         return appointment
 
     async def list_appointments(
@@ -1630,7 +1659,14 @@ class FakeRepo:
             if patient["org_id"] == org_id and not patient["billed"] and patient["phone"] == appointment["phone"]
         ]
 
-    async def check_in_appointment(self, org_id: str, appointment_id: str, payload) -> tuple[dict, dict]:
+    async def check_in_appointment(
+        self,
+        org_id: str,
+        appointment_id: str,
+        payload,
+        *,
+        audit_event_factory=None,
+    ) -> tuple[dict, dict]:
         appointment = self.appointments[appointment_id]
         if appointment["org_id"] != org_id:
             raise ValueError("Appointment not found for this organization.")
@@ -1723,6 +1759,10 @@ class FakeRepo:
         appointment["status"] = "checked_in"
         appointment["checked_in_patient_id"] = patient["id"]
         appointment["checked_in_at"] = _now()
+        await self._apply_audit_event_factory(
+            audit_event_factory,
+            {"appointment": appointment, "patient": patient},
+        )
         return appointment, patient
 
     async def update_appointment(
@@ -1731,6 +1771,7 @@ class FakeRepo:
         appointment_id: str,
         payload,
         *,
+        audit_event_factory=None,
         appointments_per_hour: int = 4,
         timezone: str = "UTC",
     ) -> dict:
@@ -1767,6 +1808,7 @@ class FakeRepo:
             if updates["status"] == "cancelled" and appointment["status"] != "scheduled":
                 raise ValueError("Only scheduled appointments can be cancelled.")
             appointment["status"] = updates["status"]
+        await self._apply_audit_event_factory(audit_event_factory, appointment)
         return appointment
 
     async def list_patients(
@@ -1774,6 +1816,8 @@ class FakeRepo:
         org_id: str,
         *,
         active_only: bool = False,
+        status: str | None = None,
+        billed: bool | None = None,
         query: str | None = None,
         limit: int | None = None,
         offset: int = 0,
@@ -1788,6 +1832,8 @@ class FakeRepo:
                     or patient["status"] in {"waiting", "consultation"}
                     or (patient["status"] == "done" and not patient["billed"])
                 )
+                and (status is None or patient["status"] == status)
+                and (billed is None or patient["billed"] is billed)
                 and (
                     not normalized_query
                     or normalized_query in str(patient.get("name") or "").lower()
@@ -2336,7 +2382,13 @@ class FakeRepo:
             raise ValueError("Inventory item not found for this organization.")
         self.catalog_items.pop(item_id, None)
 
-    async def create_invoice(self, org_id: str, payload) -> dict:
+    async def create_invoice(
+        self,
+        org_id: str,
+        payload,
+        *,
+        audit_event_factory=None,
+    ) -> dict:
         patient = self.patients.get(str(payload.patient_id))
         if not patient or patient["org_id"] != org_id:
             raise ValueError("Patient not found for this organization.")
@@ -2400,6 +2452,7 @@ class FakeRepo:
             "items": items,
         })
         self.invoices[invoice_id] = invoice
+        await self._apply_audit_event_factory(audit_event_factory, invoice)
         return invoice
 
     async def get_invoice(self, org_id: str, invoice_id: str) -> dict:
@@ -2472,14 +2525,22 @@ class FakeRepo:
             "appointments": await self.list_appointments_for_patient(org_id, patient_id),
         }
 
-    async def finalize_invoice(self, org_id: str, invoice_id: str, *, completed_by: str, mark_sent: bool = False) -> dict:
+    async def finalize_invoice(
+        self,
+        org_id: str,
+        invoice_id: str,
+        *,
+        completed_by: str,
+        mark_sent: bool = False,
+        audit_event_factory=None,
+    ) -> dict:
         invoice = self.invoices[invoice_id]
         if invoice["org_id"] != org_id:
             raise ValueError("Invoice not found for this organization.")
         already_completed = invoice["completed_at"] is not None
         already_sent = invoice["sent_at"] is not None
         if already_completed and (already_sent or not mark_sent):
-            return {
+            result = {
                 "patient_id": invoice["patient_id"],
                 "completed_at": invoice["completed_at"],
                 "completed_by": invoice["completed_by"],
@@ -2487,7 +2548,11 @@ class FakeRepo:
                 "already_completed": True,
                 "already_sent": already_sent,
                 "stock_deductions": [],
+                "program_enrollments": [],
+                "invoice": dict(invoice),
             }
+            await self._apply_audit_event_factory(audit_event_factory, result)
+            return result
 
         stock_deductions: list[dict] = []
         if not already_completed:
@@ -2522,7 +2587,7 @@ class FakeRepo:
             invoice["completed_by"] = invoice["completed_by"] or completed_by
         if mark_sent and invoice["sent_at"] is None:
             invoice["sent_at"] = _now()
-        return {
+        result = {
             "patient_id": invoice["patient_id"],
             "completed_at": invoice["completed_at"],
             "completed_by": invoice["completed_by"],
@@ -2530,7 +2595,41 @@ class FakeRepo:
             "already_completed": already_completed,
             "already_sent": already_sent,
             "stock_deductions": stock_deductions,
+            "program_enrollments": [],
+            "invoice": dict(invoice),
         }
+        await self._apply_audit_event_factory(audit_event_factory, result)
+        return result
+
+    async def update_invoice_payment(
+        self,
+        org_id: str,
+        invoice_id: str,
+        *,
+        amount_paid: float,
+        actor_user_id: str,
+        audit_event_factory=None,
+    ) -> dict:
+        del actor_user_id
+        invoice = self.invoices[invoice_id]
+        if invoice["org_id"] != org_id or invoice["completed_at"] is None:
+            raise ValueError("Completed invoice not found for this organization.")
+        previous = float(invoice.get("amount_paid") or 0)
+        requested = round(float(amount_paid), 2)
+        total = float(invoice.get("total") or 0)
+        if requested < previous:
+            raise ValueError("Recorded payment cannot be reduced.")
+        if requested > total:
+            raise ValueError("Recorded payment cannot exceed the invoice total.")
+        invoice["amount_paid"] = requested
+        invoice["payment_status"] = "paid" if requested == total else "partial"
+        invoice["balance_due"] = round(max(total - requested, 0), 2)
+        if invoice["payment_status"] == "paid":
+            invoice["paid_at"] = invoice.get("paid_at") or _now()
+        invoice["previous_amount_paid"] = previous
+        invoice["program_enrollments"] = []
+        await self._apply_audit_event_factory(audit_event_factory, invoice)
+        return invoice
 
     async def mark_invoice_sent(self, org_id: str, invoice_id: str) -> dict:
         invoice = self.invoices[invoice_id]
@@ -2638,6 +2737,7 @@ class FakeRepo:
         scheduled_for: datetime,
         appointments_per_hour: int,
         timezone: str,
+        audit_event_factory=None,
     ) -> tuple[dict, dict]:
         del timezone
         follow_up = self.follow_ups.get(follow_up_id)
@@ -2715,6 +2815,7 @@ class FakeRepo:
                 "created_at": _now(),
             }
             self.appointments[appointment_id] = appointment
+        await self._apply_audit_event_factory(audit_event_factory, appointment)
         return follow_up, appointment
 
     async def get_appointment_for_follow_up(self, org_id: str, follow_up_id: str) -> dict | None:
@@ -2733,6 +2834,7 @@ class FakeRepo:
         org_id: str,
         patient_id: str,
         follow_up_id: str,
+        audit_event_factory=None,
     ) -> dict:
         follow_up = self.follow_ups.get(follow_up_id)
         appointment = await self.get_appointment_for_follow_up(org_id, follow_up_id)
@@ -2744,6 +2846,7 @@ class FakeRepo:
         ):
             raise ValueError("This appointment is not currently scheduled.")
         appointment["status"] = "cancelled"
+        await self._apply_audit_event_factory(audit_event_factory, appointment)
         return appointment
 
     async def claim_due_follow_ups(
@@ -2793,6 +2896,23 @@ class FakePatientAttachmentStorage:
 
     async def download(self, storage_path: str) -> bytes:
         return self.repo.patient_attachment_files[storage_path]
+
+    async def upload_file(self, storage_path: str, file_obj, content_type: str) -> None:
+        file_obj.seek(0)
+        self.repo.patient_attachment_files[storage_path] = file_obj.read()
+
+    async def iter_download(
+        self,
+        storage_path: str,
+        *,
+        start: int = 0,
+        end: int | None = None,
+        chunk_size: int = 1024 * 1024,
+    ):
+        raw_bytes = self.repo.patient_attachment_files[storage_path]
+        stop = len(raw_bytes) if end is None else end + 1
+        for offset in range(start, stop, chunk_size):
+            yield raw_bytes[offset:min(offset + chunk_size, stop)]
 
     async def delete(self, storage_path: str) -> None:
         self.repo.patient_attachment_files.pop(storage_path, None)

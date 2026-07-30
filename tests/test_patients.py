@@ -81,6 +81,32 @@ def test_queue_priority_and_shared_order_are_authoritative(client):
     assert [row["id"] for row in listed.json()] == [urgent["id"], second["id"], first["id"]]
 
 
+def test_patient_list_filters_completed_unbilled_patients_for_billing(client):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="billing-patient-filter@clinic.com",
+        clinic_name="Billing Patient Filter Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    billable = _create_queue_patient(test_client, headers, "Billable Patient", "5550101101")
+    billed = _create_queue_patient(test_client, headers, "Billed Patient", "5550101102")
+    waiting = _create_queue_patient(test_client, headers, "Waiting Patient", "5550101103")
+    repo.patients[billable["id"]]["status"] = "done"
+    repo.patients[billed["id"]]["status"] = "done"
+    repo.patients[billed["id"]]["billed"] = True
+
+    response = test_client.get(
+        "/patients",
+        params={"status": "done", "billed": "false", "limit": 50},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()] == [billable["id"]]
+    assert waiting["id"] not in {row["id"] for row in response.json()}
+
+
 def test_queue_reorder_moves_stages_and_rejects_duplicate_ids(client):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="queue-stage@clinic.com", clinic_name="Queue Stage Clinic")

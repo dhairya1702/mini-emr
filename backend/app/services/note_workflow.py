@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from app.clinic_context import build_clinic_context, build_measurements_context, build_patient_context
 from app.db import AppRepository
 from app.email_validation import normalize_single_email
-from app.formatting import format_display_datetime
+from app.formatting import format_display_date
 from app.file_validation import validate_pdf_bytes
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.documents import (
@@ -600,7 +600,10 @@ async def send_note_workflow(
     snapshot_content = str(finalized_note.get("snapshot_content") or finalized_note.get("content") or "").strip()
     if not snapshot_content:
         raise HTTPException(status_code=400, detail="Saved note content is empty.")
-    generated_on = format_display_datetime(finalized_note.get("finalized_at") or finalized_note.get("created_at") or datetime.now())
+    generated_on = format_display_date(
+        finalized_note.get("finalized_at") or finalized_note.get("created_at") or datetime.now(UTC),
+        clinic_settings.get("timezone"),
+    )
     note_assets = await hydrate_note_assets_for_pdf(
         repo,
         storage,

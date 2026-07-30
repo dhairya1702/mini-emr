@@ -24,6 +24,23 @@ def format_display_datetime(value: datetime | str, timezone_name: str | None = N
     return f"{month} {day}, {hour}:{minute_period}"
 
 
+def format_display_date(value: datetime | str, timezone_name: str | None = None) -> str:
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        raw = str(value).strip()
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return raw
+
+    if parsed.tzinfo:
+        local_value = parsed.astimezone(get_clinic_timezone({"timezone": timezone_name}) if timezone_name else None)
+    else:
+        local_value = parsed
+    return local_value.strftime("%d/%m/%Y")
+
+
 def format_export_datetime(value: datetime | str, timezone_name: str | None = None) -> str:
     if isinstance(value, datetime):
         parsed = value

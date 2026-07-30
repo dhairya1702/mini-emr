@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from base64 import b64encode
 from io import BytesIO
 
@@ -390,6 +391,7 @@ def test_saved_clinic_template_offsets_are_used_for_note_pdf_generation(client, 
     assert rendered_patient["doctor_signature_content_type"] == "image/png"
     assert rendered_patient["doctor_signature_data_base64"] == "ZmFrZQ=="
     assert captured["assets"] == []
+    assert re.fullmatch(r"\d{2}/\d{2}/\d{4}", str(captured["generated_on"]))
 
 
 def test_clinic_email_sender_settings_are_saved_without_returning_app_password(client):

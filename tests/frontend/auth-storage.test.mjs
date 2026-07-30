@@ -36,13 +36,13 @@ test("authStorage does not persist raw session tokens", async () => {
   );
 
   assert.equal(localStorage.getItem("clinic_auth_token"), null);
-  assert.equal(sessionStorage.getItem("clinic_auth_token"), "secret-token");
-  assert.equal(authStorage.getToken(), "secret-token");
+  assert.equal(sessionStorage.getItem("clinic_auth_token"), null);
+  assert.equal(authStorage.getToken(), "");
   assert.equal(localStorage.getItem("clinic_auth_user"), null);
   assert.equal(JSON.parse(sessionStorage.getItem("clinic_auth_user")).identifier, "owner@clinic.com");
 });
 
-test("api browser requests attach sessionStorage bearer fallback", async () => {
+test("api browser requests remove stale bearer tokens and rely on the HttpOnly cookie", async () => {
   const localStorage = createStorage();
   const sessionStorage = createStorage();
   sessionStorage.setItem("clinic_auth_token", "fallback-token");
@@ -73,5 +73,6 @@ test("api browser requests attach sessionStorage bearer fallback", async () => {
   await api.getCurrentUser();
 
   assert.ok(capturedHeaders);
-  assert.equal(capturedHeaders.Authorization, "Bearer fallback-token");
+  assert.equal(capturedHeaders.Authorization, undefined);
+  assert.equal(sessionStorage.getItem("clinic_auth_token"), null);
 });

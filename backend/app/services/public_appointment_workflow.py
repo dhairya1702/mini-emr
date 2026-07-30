@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from app.db import AppRepository
 from app.schema_domains.patients import AppointmentCreate, AppointmentUpdate
@@ -42,34 +43,37 @@ async def create_public_appointment(
     if not _is_within_booking_window(scheduled_for, clinic_settings):
         raise ValueError("Appointment time must be within clinic booking hours.")
     normalized_payload = payload.model_copy(update={"scheduled_for": scheduled_for})
-    appointment = await repo.create_appointment(
-        org_id,
-        normalized_payload,
-        appointments_per_hour=_appointments_per_hour(clinic_settings),
-        timezone=str(clinic_settings.get("timezone") or "UTC"),
-    )
     actor_name = str(
         clinic_settings.get("doctor_name")
         or clinic_settings.get("clinic_name")
         or "Clinic Team"
     ).strip() or "Clinic Team"
-    await repo.create_audit_event(
-        org_id=org_id,
-        actor_user_id=None,
-        actor_name=actor_name,
-        entity_type="appointment",
-        entity_id=str(appointment["id"]),
-        action="appointment_created",
-        summary=f"Booked public appointment for {appointment['name']} on {appointment['scheduled_for']}.",
-        metadata={
-            "patient_name": appointment.get("name"),
-            "status": appointment.get("status"),
-            "source": "public_qr_booking",
-        },
-    )
+    appointment_id = str(uuid4())
     token = create_public_appointment_booking_token(
         org_id=org_id,
-        appointment_id=str(appointment["id"]),
+        appointment_id=appointment_id,
+    )
+    appointment = await repo.create_appointment(
+        org_id,
+        normalized_payload,
+        appointment_id=appointment_id,
+        reject_duplicate_phone=True,
+        audit_event_factory=lambda saved: [{
+            "org_id": org_id,
+            "actor_user_id": None,
+            "actor_name": actor_name,
+            "entity_type": "appointment",
+            "entity_id": str(saved["id"]),
+            "action": "appointment_created",
+            "summary": f"Booked public appointment for {saved['name']} on {saved['scheduled_for']}.",
+            "metadata": {
+                "patient_name": saved.get("name"),
+                "status": saved.get("status"),
+                "source": "public_qr_booking",
+            },
+        }],
+        appointments_per_hour=_appointments_per_hour(clinic_settings),
+        timezone=str(clinic_settings.get("timezone") or "UTC"),
     )
     slots = await _suggest_follow_up_slots(repo, org_id, clinic_settings)
     return appointment, clinic_settings, token, slots
@@ -108,23 +112,23 @@ async def reschedule_public_appointment(
         raise ValueError("Appointment time must be in the future.")
     if not _is_within_booking_window(normalized, clinic_settings):
         raise ValueError("Appointment time must be within clinic booking hours.")
+    actor_name = str(clinic_settings.get("clinic_name") or "Clinic Team").strip() or "Clinic Team"
     updated = await repo.update_appointment(
         org_id,
         appointment_id,
         AppointmentUpdate(scheduled_for=normalized),
+        audit_event_factory=lambda saved: [{
+            "org_id": org_id,
+            "actor_user_id": None,
+            "actor_name": actor_name,
+            "entity_type": "appointment",
+            "entity_id": appointment_id,
+            "action": "appointment_rescheduled",
+            "summary": f"Rescheduled public appointment for {saved['name']} to {saved['scheduled_for']}.",
+            "metadata": {"source": "public_qr_booking"},
+        }],
         appointments_per_hour=_appointments_per_hour(clinic_settings),
         timezone=str(clinic_settings.get("timezone") or "UTC"),
-    )
-    actor_name = str(clinic_settings.get("clinic_name") or "Clinic Team").strip() or "Clinic Team"
-    await repo.create_audit_event(
-        org_id=org_id,
-        actor_user_id=None,
-        actor_name=actor_name,
-        entity_type="appointment",
-        entity_id=appointment_id,
-        action="appointment_rescheduled",
-        summary=f"Rescheduled public appointment for {updated['name']} to {updated['scheduled_for']}.",
-        metadata={"source": "public_qr_booking"},
     )
     slots = await _suggest_follow_up_slots(repo, org_id, clinic_settings)
     return updated, clinic_settings, slots
@@ -138,22 +142,22 @@ async def cancel_public_appointment(
     org_id = str(token_payload["org_id"])
     appointment_id = str(token_payload["appointment_id"])
     clinic_settings = await repo.get_clinic_settings(org_id)
+    actor_name = str(clinic_settings.get("clinic_name") or "Clinic Team").strip() or "Clinic Team"
     cancelled = await repo.update_appointment(
         org_id,
         appointment_id,
         AppointmentUpdate(status="cancelled"),
+        audit_event_factory=lambda saved: [{
+            "org_id": org_id,
+            "actor_user_id": None,
+            "actor_name": actor_name,
+            "entity_type": "appointment",
+            "entity_id": appointment_id,
+            "action": "appointment_cancelled",
+            "summary": f"Cancelled public appointment for {saved['name']}.",
+            "metadata": {"source": "public_qr_booking"},
+        }],
         appointments_per_hour=_appointments_per_hour(clinic_settings),
         timezone=str(clinic_settings.get("timezone") or "UTC"),
-    )
-    actor_name = str(clinic_settings.get("clinic_name") or "Clinic Team").strip() or "Clinic Team"
-    await repo.create_audit_event(
-        org_id=org_id,
-        actor_user_id=None,
-        actor_name=actor_name,
-        entity_type="appointment",
-        entity_id=appointment_id,
-        action="appointment_cancelled",
-        summary=f"Cancelled public appointment for {cancelled['name']}.",
-        metadata={"source": "public_qr_booking"},
     )
     return cancelled, clinic_settings
