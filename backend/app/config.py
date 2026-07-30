@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     follow_up_reminder_interval_seconds: int = 300
     follow_up_reminder_lead_hours: int = 24
     session_ttl_hours: int = 12
+    superdashboard_session_ttl_hours: int = 4
     db_pool_min_size: int = 1
     db_pool_max_size: int = 10
     db_pool_timeout_seconds: float = 10.0

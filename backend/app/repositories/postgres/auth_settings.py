@@ -1027,7 +1027,8 @@ class PostgresAuthSettingsRepository:
                         """
                         select id, org_id, identifier, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
-                          doctor_signature_data_base64, password_hash, created_at, session_version
+                          doctor_signature_data_base64, password_hash, created_at, session_version,
+                          superdashboard_session_version
                         from public.clinic_users
                         where identifier = %s
                         limit 1
@@ -1073,7 +1074,7 @@ class PostgresAuthSettingsRepository:
                         """
                         select id, org_id, identifier, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type, created_at,
-                          session_version
+                          session_version, superdashboard_session_version
                         from public.clinic_users
                         where id = %s
                         limit 1
@@ -1217,11 +1218,13 @@ class PostgresAuthSettingsRepository:
                         update public.clinic_users
                         set password_hash = %s,
                           session_version = session_version + 1,
+                          superdashboard_session_version = superdashboard_session_version + 1,
                           updated_at = %s
                         where id = %s
                         returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
-                          doctor_signature_data_base64, password_hash, created_at, session_version
+                          doctor_signature_data_base64, password_hash, created_at, session_version,
+                          superdashboard_session_version
                         """,
                         (password_hash, timestamp, user_id),
                     )
@@ -1242,6 +1245,24 @@ class PostgresAuthSettingsRepository:
                         """
                         update public.clinic_users
                         set session_version = session_version + 1,
+                          updated_at = now()
+                        where id = %s
+                        """,
+                        (user_id,),
+                    )
+                    if cursor.rowcount != 1:
+                        raise IndexError(user_id)
+
+        await asyncio.to_thread(_revoke)
+
+    async def revoke_superdashboard_sessions(self, user_id: str) -> None:
+        def _revoke() -> None:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        update public.clinic_users
+                        set superdashboard_session_version = superdashboard_session_version + 1,
                           updated_at = now()
                         where id = %s
                         """,

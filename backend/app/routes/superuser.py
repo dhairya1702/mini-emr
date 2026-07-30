@@ -5,9 +5,17 @@ from datetime import UTC, datetime, timedelta
 import secrets
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
-from app.auth import require_super_admin
+from app.auth import (
+    clear_superdashboard_session,
+    hash_password,
+    is_super_admin_identifier,
+    issue_superdashboard_session_headers,
+    password_hash_needs_upgrade,
+    require_super_admin,
+    verify_password,
+)
 from app.db import AppRepository, get_repository
 from app.repositories.base import normalize_phone_number
 from app.schema_domains.admin import (
@@ -35,13 +43,78 @@ from app.schema_domains.admin import (
     SuperuserOrgUserOut,
     SuperuserUsageSummaryOut,
 )
-from app.schema_domains.auth_settings import ClinicSettingsOut, ClinicSettingsUpdate, UserOut, UserRoleUpdate
+from app.schema_domains.auth_settings import (
+    AuthResponse,
+    ClinicSettingsOut,
+    ClinicSettingsUpdate,
+    LoginRequest,
+    UserOut,
+    UserRoleUpdate,
+)
 from app.schema_domains.patients import AuditEventOut
 from app.email_validation import normalize_single_email
 from app.services.email_service import EmailDeliveryError, test_email_credentials
+from app.services.auth_flow import enforce_repository_rate_limit, normalize_identifier
+from app.services.user_workflow import build_user_out
 
 
 router = APIRouter()
+
+
+def _superdashboard_session_identity(row: dict) -> dict[str, str | int]:
+    return {
+        "id": str(row["id"]),
+        "org_id": str(row["org_id"]),
+        "role": str(row["role"]),
+        "identifier": str(row["identifier"]),
+        "superdashboard_session_version": int(row.get("superdashboard_session_version") or 1),
+    }
+
+
+@router.post("/superdashboard/auth/login", response_model=AuthResponse)
+async def login_superdashboard(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    repo: AppRepository = Depends(get_repository),
+) -> AuthResponse:
+    identifier = normalize_identifier(payload.identifier)
+    existing = await repo.get_user_by_identifier(identifier)
+    is_authorized = bool(
+        existing
+        and verify_password(payload.password, str(existing["password_hash"]))
+        and existing.get("role") == "admin"
+        and is_super_admin_identifier(str(existing.get("identifier") or ""))
+    )
+    if not is_authorized or existing is None:
+        await enforce_repository_rate_limit(repo, "auth_login", identifier)
+        await enforce_repository_rate_limit(repo, "auth_login_ip", request.client.host if request.client else "unknown")
+        raise HTTPException(status_code=401, detail="Invalid email/phone or password.")
+    if password_hash_needs_upgrade(str(existing["password_hash"])):
+        existing = await repo.update_user_password_hash(str(existing["id"]), hash_password(payload.password))
+    return AuthResponse(
+        token=issue_superdashboard_session_headers(response, _superdashboard_session_identity(existing)),
+        user=build_user_out(existing),
+    )
+
+
+@router.get("/superdashboard/auth/session", response_model=UserOut)
+async def get_superdashboard_session(
+    current_user: UserOut = Depends(require_super_admin),
+) -> UserOut:
+    return current_user
+
+
+@router.post("/superdashboard/auth/logout", status_code=204, response_class=Response)
+async def logout_superdashboard(
+    response: Response,
+    current_user: UserOut = Depends(require_super_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> Response:
+    await repo.revoke_superdashboard_sessions(str(current_user.id))
+    clear_superdashboard_session(response)
+    response.status_code = 204
+    return response
 
 
 def _serialize_platform_email(settings: dict) -> PlatformEmailSettingsOut:

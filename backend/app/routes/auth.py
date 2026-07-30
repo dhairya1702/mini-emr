@@ -97,6 +97,7 @@ async def update_me(
 @router.post("/auth/me/password", status_code=204)
 async def update_my_password(
     payload: UserPasswordUpdate,
+    request: Request,
     response: Response,
     current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
@@ -116,6 +117,7 @@ async def update_my_password(
         "identifier": current_user.identifier,
         "session_version": int(updated.get("session_version") or current_user.session_version),
     })
+    request.state.suppress_session_refresh = True
 
 
 @router.post("/auth/me/signature", response_model=UserOut)

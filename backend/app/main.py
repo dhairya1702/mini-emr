@@ -14,6 +14,7 @@ from starlette.background import BackgroundTasks
 
 from app import config as config_module
 from app.auth import (
+    CLINIC_SESSION_REALM,
     SESSION_EXPIRES_AT_HEADER,
     SESSION_TOKEN_HEADER,
     issue_session_headers,
@@ -176,7 +177,12 @@ async def refresh_authenticated_session(request: Request, call_next):
         response.background = tasks
     response.headers["X-Request-ID"] = request_id
     current_user = getattr(request.state, "current_user", None)
-    if current_user is not None and not getattr(request.state, "suppress_session_refresh", False):
+    auth_realm = getattr(request.state, "auth_realm", CLINIC_SESSION_REALM)
+    if (
+        current_user is not None
+        and auth_realm == CLINIC_SESSION_REALM
+        and not getattr(request.state, "suppress_session_refresh", False)
+    ):
         issue_session_headers(
             response,
             {

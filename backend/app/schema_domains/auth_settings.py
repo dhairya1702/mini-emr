@@ -230,6 +230,7 @@ class UserOut(UserBase):
     doctor_signature_content_type: str | None = None
     created_at: datetime
     session_version: int = Field(default=1, exclude=True)
+    superdashboard_session_version: int = Field(default=1, exclude=True)
 
 
 class AuthResponse(BaseModel):

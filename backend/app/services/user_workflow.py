@@ -49,6 +49,7 @@ def build_user_out(row: dict) -> UserOut:
             "doctor_signature_content_type",
             "created_at",
             "session_version",
+            "superdashboard_session_version",
         )
     }
     values["session_version"] = int(row.get("session_version") or 1)

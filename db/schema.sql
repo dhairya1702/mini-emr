@@ -60,6 +60,7 @@ create table if not exists public.clinic_users (
   updated_at timestamptz not null default now(),
   password_hash text not null,
   session_version integer not null default 1,
+  superdashboard_session_version integer not null default 1,
   role text not null check (role in ('admin', 'staff')),
   created_at timestamptz not null default now()
 );

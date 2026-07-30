@@ -1298,6 +1298,7 @@ class FakeRepo:
             "doctor_signature_content_type": None,
             "doctor_signature_data_base64": None,
             "session_version": 1,
+            "superdashboard_session_version": 1,
             "created_at": _now(),
         }
         self.users[user_id] = user
@@ -1326,6 +1327,7 @@ class FakeRepo:
                 f"/users/{user_id}/signature/file" if user.get("doctor_signature_name") else None
             ),
             "session_version": user.get("session_version", 1),
+            "superdashboard_session_version": user.get("superdashboard_session_version", 1),
             "created_at": user["created_at"],
         }
 
@@ -1345,6 +1347,7 @@ class FakeRepo:
                 f"/users/{user_id}/signature/file" if user.get("doctor_signature_name") else None
             ),
             "session_version": user.get("session_version", 1),
+            "superdashboard_session_version": user.get("superdashboard_session_version", 1),
             "created_at": user["created_at"],
         }
 
@@ -1391,11 +1394,16 @@ class FakeRepo:
         user = self.users[user_id]
         user["password_hash"] = password_hash
         user["session_version"] = int(user.get("session_version", 1)) + 1
+        user["superdashboard_session_version"] = int(user.get("superdashboard_session_version", 1)) + 1
         return dict(user)
 
     async def revoke_user_sessions(self, user_id: str) -> None:
         user = self.users[user_id]
         user["session_version"] = int(user.get("session_version", 1)) + 1
+
+    async def revoke_superdashboard_sessions(self, user_id: str) -> None:
+        user = self.users[user_id]
+        user["superdashboard_session_version"] = int(user.get("superdashboard_session_version", 1)) + 1
 
     async def delete_user(self, user_id: str) -> None:
         self.users.pop(user_id, None)

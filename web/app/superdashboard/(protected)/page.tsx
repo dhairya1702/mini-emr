@@ -1,11 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, Copy, ExternalLink, LogOut, Mail, RefreshCw, Settings2, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Copy, ExternalLink, LogOut, Mail, RefreshCw, Settings2, Zap } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
-import { authStorage } from "@/lib/auth";
 import { CLINIC_SPECIALTY_OPTIONS } from "@/lib/clinic-specialty";
 import {
   CustomerOnboarding,
@@ -154,7 +154,17 @@ function StatCard({
   );
 }
 
-function Header({ tab, setTab, onRefresh }: { tab: Tab; setTab: (tab: Tab) => void; onRefresh: () => void }) {
+function Header({
+  tab,
+  setTab,
+  onRefresh,
+  onLogout,
+}: {
+  tab: Tab;
+  setTab: (tab: Tab) => void;
+  onRefresh: () => void;
+  onLogout: () => void;
+}) {
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50/95 backdrop-blur">
       <div className="flex h-24 items-center justify-between px-8">
@@ -178,6 +188,13 @@ function Header({ tab, setTab, onRefresh }: { tab: Tab; setTab: (tab: Tab) => vo
           ))}
         </div>
         <div className="flex items-center gap-4">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to ClinicOS
+          </Link>
           <button
             onClick={onRefresh}
             className="rounded-2xl border border-slate-200 bg-white p-3 text-slate-500 transition hover:text-slate-950"
@@ -186,14 +203,11 @@ function Header({ tab, setTab, onRefresh }: { tab: Tab; setTab: (tab: Tab) => vo
             <RefreshCw className="h-5 w-5" />
           </button>
           <button
-            onClick={() => {
-              authStorage.clear();
-              window.location.href = "/login";
-            }}
+            onClick={onLogout}
             className="inline-flex items-center gap-2 text-lg font-black text-slate-500 transition hover:text-slate-950"
           >
             <LogOut className="h-5 w-5" />
-            Logout
+            Sign out of Ops
           </button>
         </div>
       </div>
@@ -260,6 +274,14 @@ export default function SuperdashboardPage() {
       setMessage(error instanceof Error ? error.message : "Failed to load Superdashboard.");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function logoutSuperdashboard() {
+    try {
+      await api.logoutSuperdashboard();
+    } finally {
+      window.location.href = "/superdashboard/login";
     }
   }
 
@@ -429,7 +451,7 @@ export default function SuperdashboardPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-20 text-slate-950">
-      <Header tab={tab} setTab={setTab} onRefresh={load} />
+      <Header tab={tab} setTab={setTab} onRefresh={load} onLogout={() => void logoutSuperdashboard()} />
       <section className="px-8 py-12">
         {message ? (
           <div className="mb-8 rounded-2xl border border-blue-100 bg-white px-5 py-4 text-sm font-bold text-slate-600 shadow-sm">

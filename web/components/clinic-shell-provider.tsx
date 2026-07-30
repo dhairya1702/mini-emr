@@ -98,7 +98,12 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   }, [trainingScope]);
 
   const loadShell = useCallback(async (force = false) => {
-    const isPublicPath = PUBLIC_PATHS.has(pathname) || pathname.startsWith("/login/");
+    const isPublicPath =
+      PUBLIC_PATHS.has(pathname) ||
+      pathname.startsWith("/login/") ||
+      pathname === "/superdashboard" ||
+      pathname.startsWith("/superdashboard/") ||
+      pathname === "/superuser";
     if (isPublicPath) {
       hasBootstrappedRef.current = false;
       setError("");

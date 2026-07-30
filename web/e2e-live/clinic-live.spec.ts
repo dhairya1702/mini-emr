@@ -494,13 +494,35 @@ test("live superdashboard shows ops metrics and manages onboarding CIDs", async 
   const managed = await registerClinic(request, unique("super-managed"));
   await completeOnboarding(request, managed.token);
 
-  await signIn(page, ops.identifier, ops.password);
+  await signIn(page, managed.identifier, managed.password);
   await page.goto("/superdashboard");
 
+  await expect(page).toHaveURL(/\/superdashboard\/login/);
+  await expect(page.getByText("Requests (7d)")).toHaveCount(0);
+  await page.context().addCookies([
+    {
+      name: "superdashboard_session",
+      value: "forged-session",
+      url: "http://127.0.0.1:3117",
+    },
+  ]);
+  await page.goto("/superdashboard");
+  await expect(page).toHaveURL(/\/superdashboard\/login/);
+  await expect(page.getByText("Requests (7d)")).toHaveCount(0);
+  await page.getByLabel("Email or phone number").fill(ops.identifier);
+  await page.getByLabel("Password", { exact: true }).fill(ops.password);
+  await page.getByRole("button", { name: "Sign in to Ops" }).click();
+
+  await expect(page).toHaveURL(/\/superdashboard$/);
   await expect(page.getByText("ClinicOS Ops")).toBeVisible();
   await expect(page.getByText("Requests (7d)")).toBeVisible();
   await expect(page.getByText("Organizations")).toBeVisible();
   await expect(page.getByText("Live E2E Clinic").first()).toBeVisible();
+  await page.getByRole("link", { name: "Back to ClinicOS" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto("/superdashboard");
+  await expect(page).toHaveURL(/\/superdashboard$/);
+  await expect(page.getByText("ClinicOS Ops")).toBeVisible();
 
   await page.getByRole("button", { name: "Onboard" }).click();
   await expect(page.getByText("Pending", { exact: true })).toBeVisible();
@@ -510,7 +532,7 @@ test("live superdashboard shows ops metrics and manages onboarding CIDs", async 
   await page.getByRole("button", { name: "Team workflow" }).click();
   await page.getByRole("button", { name: /Create CID/ }).click();
 
-  await expect(page.getByText(/CID-/)).toBeVisible();
+  await expect(page.getByText(/CID-/).first()).toBeVisible();
   await expect(page.getByText("Browser CID Clinic")).toBeVisible();
   await expect(page.getByText("+919876543210")).toBeVisible();
   await page.getByRole("button", { name: "Disable" }).click();

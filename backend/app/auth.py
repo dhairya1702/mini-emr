@@ -18,6 +18,9 @@ PASSWORD_ITERATIONS = 600_000
 SESSION_TOKEN_HEADER = "X-Session-Token"
 SESSION_EXPIRES_AT_HEADER = "X-Session-Expires-At"
 SESSION_COOKIE_NAME = "clinic_session"
+SUPERDASHBOARD_SESSION_COOKIE_NAME = "superdashboard_session"
+CLINIC_SESSION_REALM = "clinic"
+SUPERDASHBOARD_SESSION_REALM = "superdashboard"
 SAFE_HTTP_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
@@ -78,16 +81,27 @@ def _get_token_secret() -> bytes:
     return settings.auth_secret.encode("utf-8")
 
 
-def _build_access_token_payload(user: dict[str, str | int]) -> dict[str, str | int]:
+def _build_access_token_payload(
+    user: dict[str, str | int],
+    *,
+    realm: str = CLINIC_SESSION_REALM,
+    ttl_hours: int | None = None,
+) -> dict[str, str | int]:
     issued_at = datetime.now(UTC)
-    ttl_hours = max(1, min(int(getattr(get_settings(), "session_ttl_hours", 12)), 168))
-    expires_at = issued_at + timedelta(hours=ttl_hours)
+    configured_ttl = (
+        int(ttl_hours)
+        if ttl_hours is not None
+        else int(getattr(get_settings(), "session_ttl_hours", 12))
+    )
+    bounded_ttl_hours = max(1, min(configured_ttl, 168))
+    expires_at = issued_at + timedelta(hours=bounded_ttl_hours)
     payload: dict[str, str | int] = {
         "sub": user["id"],
         "org_id": user["org_id"],
         "role": user["role"],
         "identifier": user["identifier"],
         "session_version": int(user.get("session_version") or 1),
+        "realm": realm,
         "iat": int(issued_at.timestamp()),
         "exp": int(expires_at.timestamp()),
         "jti": secrets.token_hex(8),
@@ -106,15 +120,23 @@ def create_access_token(user: dict[str, str | int]) -> str:
     return _encode_access_token(_build_access_token_payload(user))
 
 
-def issue_session_headers(response: Response, user: dict[str, str | int], *, secure: bool | None = None) -> str:
-    payload = _build_access_token_payload(user)
+def _issue_session_headers(
+    response: Response,
+    user: dict[str, str | int],
+    *,
+    cookie_name: str,
+    realm: str,
+    ttl_hours: int,
+    secure: bool | None = None,
+) -> str:
+    payload = _build_access_token_payload(user, realm=realm, ttl_hours=ttl_hours)
     token = _encode_access_token(payload)
     settings = get_settings()
     app_origin = getattr(settings, "app_origin", "")
     response.headers[SESSION_TOKEN_HEADER] = token
     response.headers[SESSION_EXPIRES_AT_HEADER] = str(payload["exp"])
     response.set_cookie(
-        key=SESSION_COOKIE_NAME,
+        key=cookie_name,
         value=token,
         httponly=True,
         max_age=int(payload["exp"]) - int(payload["iat"]),
@@ -126,9 +148,48 @@ def issue_session_headers(response: Response, user: dict[str, str | int], *, sec
     return token
 
 
+def issue_session_headers(response: Response, user: dict[str, str | int], *, secure: bool | None = None) -> str:
+    return _issue_session_headers(
+        response,
+        user,
+        cookie_name=SESSION_COOKIE_NAME,
+        realm=CLINIC_SESSION_REALM,
+        ttl_hours=int(getattr(get_settings(), "session_ttl_hours", 12)),
+        secure=secure,
+    )
+
+
+def issue_superdashboard_session_headers(
+    response: Response,
+    user: dict[str, str | int],
+    *,
+    secure: bool | None = None,
+) -> str:
+    return _issue_session_headers(
+        response,
+        {
+            **user,
+            "session_version": int(user.get("superdashboard_session_version") or 1),
+        },
+        cookie_name=SUPERDASHBOARD_SESSION_COOKIE_NAME,
+        realm=SUPERDASHBOARD_SESSION_REALM,
+        ttl_hours=int(getattr(get_settings(), "superdashboard_session_ttl_hours", 4)),
+        secure=secure,
+    )
+
+
 def clear_session(response: Response) -> None:
     response.delete_cookie(
         key=SESSION_COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+
+
+def clear_superdashboard_session(response: Response) -> None:
+    response.delete_cookie(
+        key=SUPERDASHBOARD_SESSION_COOKIE_NAME,
         httponly=True,
         samesite="lax",
         path="/",
@@ -171,10 +232,13 @@ def _allowed_request_origins() -> set[str]:
     }
 
 
-async def get_current_user(
+async def _get_authenticated_user(
     request: Request,
-    authorization: str | None = Header(default=None),
-    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    *,
+    authorization: str | None,
+    session_token: str | None,
+    expected_realm: str,
+    session_version_field: str,
 ) -> UserOut:
     bearer_token = ""
     cookie_token = session_token.strip() if session_token else ""
@@ -215,6 +279,13 @@ async def get_current_user(
                     detail="Invalid request origin.",
                 )
 
+    token_realm = payload.get("realm")
+    if expected_realm == CLINIC_SESSION_REALM:
+        if token_realm not in {None, CLINIC_SESSION_REALM}:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
+    elif token_realm != expected_realm:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
+
     user_id = payload.get("sub")
     if not isinstance(user_id, str):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
@@ -226,14 +297,43 @@ async def get_current_user(
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.") from exc
     token_session_version = payload.get("session_version")
-    current_session_version = int(user.get("session_version") or 1)
+    current_session_version = int(user.get(session_version_field) or 1)
     if not isinstance(token_session_version, int) or token_session_version != current_session_version:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired.")
     current_user = UserOut(
         **user,
     )
     request.state.current_user = current_user
+    request.state.auth_realm = expected_realm
     return current_user
+
+
+async def get_current_user(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+) -> UserOut:
+    return await _get_authenticated_user(
+        request,
+        authorization=authorization,
+        session_token=session_token,
+        expected_realm=CLINIC_SESSION_REALM,
+        session_version_field="session_version",
+    )
+
+
+async def get_current_superdashboard_user(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    session_token: str | None = Cookie(default=None, alias=SUPERDASHBOARD_SESSION_COOKIE_NAME),
+) -> UserOut:
+    return await _get_authenticated_user(
+        request,
+        authorization=authorization,
+        session_token=session_token,
+        expected_realm=SUPERDASHBOARD_SESSION_REALM,
+        session_version_field="superdashboard_session_version",
+    )
 
 
 async def require_admin(current_user: UserOut = Depends(get_current_user)) -> UserOut:
@@ -270,7 +370,7 @@ def is_control_room_identifier(identifier: str) -> bool:
 
 
 async def require_super_admin(
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(get_current_superdashboard_user),
 ) -> UserOut:
     if (
         current_user.role != "admin"

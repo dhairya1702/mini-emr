@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse, userAgent } from "next/server";
 
+const SUPERDASHBOARD_SESSION_COOKIE_NAME = "superdashboard_session";
+
 const mobileRouteMap = new Map<string, string>([
   ["/", "/m"],
   ["/appointments", "/m/appointments"],
@@ -46,6 +48,22 @@ function isMobileRequest(request: NextRequest) {
 
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+
+  const isSuperdashboardRoute =
+    pathname === "/superdashboard" || pathname.startsWith("/superdashboard/");
+  const isSuperdashboardLogin =
+    pathname === "/superdashboard/login" || pathname.startsWith("/superdashboard/login/");
+  if (
+    isSuperdashboardRoute &&
+    !isSuperdashboardLogin &&
+    !request.cookies.get(SUPERDASHBOARD_SESSION_COOKIE_NAME)?.value
+  ) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/superdashboard/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set("next", `${pathname}${search}`);
+    return NextResponse.redirect(loginUrl);
+  }
 
   if (
     excludedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))

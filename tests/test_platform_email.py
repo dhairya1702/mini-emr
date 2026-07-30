@@ -32,7 +32,7 @@ def test_superdashboard_email_settings_hide_password_and_require_valid_credentia
     )
     _enable_superadmin(monkeypatch, session["user"]["identifier"])
     login = test_client.post(
-        "/auth/login",
+        "/superdashboard/auth/login",
         json={"identifier": session["user"]["identifier"], "password": "password123!"},
     )
     headers = auth_headers_for_token(login.json()["token"])

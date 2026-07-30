@@ -25,6 +25,13 @@ function authHeaders(token: string) {
   };
 }
 
+function superdashboardAuthHeaders(token: string) {
+  return {
+    Authorization: `Bearer ${token}`,
+    Cookie: `superdashboard_session=${token}`,
+  };
+}
+
 async function registerClinic(request: APIRequestContext, label = unique("clinic")) {
   const identifier = `${label}@clinic.test`;
   const response = await request.post("/auth/register", {
@@ -868,12 +875,16 @@ test("superdashboard routes manage onboarding, organizations, users, and access 
   const ops = await registerClinic(request, "ops-super");
   const managed = await registerClinic(request, unique("managed-org"));
   const aliasManaged = await registerClinic(request, unique("alias-managed-org"));
-  const opsHeaders = authHeaders(ops.token);
+  const opsLogin = await request.post("/superdashboard/auth/login", {
+    data: { identifier: ops.identifier, password: ops.password },
+  });
+  expect(opsLogin.status()).toBe(200);
+  const opsHeaders = superdashboardAuthHeaders((await opsLogin.json()).token);
   const managedHeaders = authHeaders(managed.token);
   const aliasManagedHeaders = authHeaders(aliasManaged.token);
 
   const forbidden = await request.get("/superdashboard/orgs", { headers: managedHeaders });
-  expect(forbidden.status()).toBe(403);
+  expect(forbidden.status()).toBe(401);
 
   const dashboard = await request.get("/superdashboard/dashboard", { headers: opsHeaders });
   expect(dashboard.status()).toBe(200);

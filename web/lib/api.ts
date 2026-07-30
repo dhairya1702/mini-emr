@@ -188,7 +188,14 @@ function getActiveToken(path: string) {
   return "";
 }
 
-function syncSessionFromResponse(response: Response) {
+function isSuperdashboardPath(path: string) {
+  return path === "/superdashboard" || path.startsWith("/superdashboard/");
+}
+
+function syncSessionFromResponse(response: Response, path: string) {
+  if (isSuperdashboardPath(path)) {
+    return;
+  }
   const refreshedToken = response.headers.get(SESSION_TOKEN_HEADER);
   const refreshedExpiry = response.headers.get(SESSION_EXPIRES_AT_HEADER);
   // The browser relies on the HttpOnly cookie. The exposed token header is
@@ -300,7 +307,7 @@ function buildRequestHeaders(
 async function request<T>(path: string, init?: RequestInit, options?: { timeoutMs?: number }): Promise<T> {
   const { token, headers } = buildRequestHeaders(path, init);
   const response = await performFetch(path, init, headers, options);
-  syncSessionFromResponse(response);
+  syncSessionFromResponse(response, path);
 
   if (!response.ok) {
     const raw = await response.text();
@@ -335,12 +342,19 @@ async function request<T>(path: string, init?: RequestInit, options?: { timeoutM
     }
 
     if (isSessionErrorMessage(message)) {
-      const currentToken = authStorage.getToken();
-      if (shouldClearSessionOnError(message) && (!currentToken || currentToken === token)) {
-        authStorage.clear();
-      }
-      if (message === "Token expired." || message === "Session expired.") {
-        throw new Error(SESSION_EXPIRED_MESSAGE);
+      if (isSuperdashboardPath(path)) {
+        if (typeof window !== "undefined" && path !== "/superdashboard/auth/login") {
+          const next = `${window.location.pathname}${window.location.search}`;
+          window.location.replace(`/superdashboard/login?next=${encodeURIComponent(next)}`);
+        }
+      } else {
+        const currentToken = authStorage.getToken();
+        if (shouldClearSessionOnError(message) && (!currentToken || currentToken === token)) {
+          authStorage.clear();
+        }
+        if (message === "Token expired." || message === "Session expired.") {
+          throw new Error(SESSION_EXPIRED_MESSAGE);
+        }
       }
     }
 
@@ -361,12 +375,12 @@ async function request<T>(path: string, init?: RequestInit, options?: { timeoutM
 async function requestBlob(path: string, init?: RequestInit, options?: { timeoutMs?: number }): Promise<Blob> {
   const { token, headers } = buildRequestHeaders(path, init);
   const response = await performFetch(path, init, headers, options);
-  syncSessionFromResponse(response);
+  syncSessionFromResponse(response, path);
 
   if (!response.ok) {
     const raw = await response.text();
     const message = raw || "Request failed.";
-    if (isSessionErrorMessage(message)) {
+    if (isSessionErrorMessage(message) && !isSuperdashboardPath(path)) {
       const currentToken = authStorage.getToken();
       if (shouldClearSessionOnError(message) && (!currentToken || currentToken === token)) {
         authStorage.clear();
@@ -384,12 +398,12 @@ async function requestBlob(path: string, init?: RequestInit, options?: { timeout
 async function requestForm<T>(path: string, formData: FormData, init?: RequestInit, options?: { timeoutMs?: number }): Promise<T> {
   const { token, headers } = buildRequestHeaders(path, init, { includeJsonContentType: false });
   const response = await performFetch(path, { ...init, body: formData }, headers, options);
-  syncSessionFromResponse(response);
+  syncSessionFromResponse(response, path);
 
   if (!response.ok) {
     const raw = await response.text();
     const message = raw || "Request failed.";
-    if (isSessionErrorMessage(message)) {
+    if (isSessionErrorMessage(message) && !isSuperdashboardPath(path)) {
       const currentToken = authStorage.getToken();
       if (shouldClearSessionOnError(message) && (!currentToken || currentToken === token)) {
         authStorage.clear();
@@ -475,6 +489,16 @@ export const api = {
       method: "POST",
     }),
   getCurrentUser: () => request<AuthUser>("/auth/me"),
+  loginSuperdashboard: (payload: { identifier: string; password: string }) =>
+    request<AuthResponse>("/superdashboard/auth/login", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  getSuperdashboardSession: () => request<AuthUser>("/superdashboard/auth/session"),
+  logoutSuperdashboard: () =>
+    request<void>("/superdashboard/auth/logout", {
+      method: "POST",
+    }),
   updateMyAccount: (payload: AccountUpdatePayload) =>
     request<AuthUser>("/auth/me", {
       method: "PATCH",

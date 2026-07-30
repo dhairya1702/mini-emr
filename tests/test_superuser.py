@@ -14,7 +14,7 @@ def _restore_settings_cache():
 
 def _superadmin_headers(test_client, session: dict) -> dict[str, str]:
     login = test_client.post(
-        "/auth/login",
+        "/superdashboard/auth/login",
         json={
             "identifier": session["user"]["identifier"],
             "password": "password123!",
@@ -23,6 +23,131 @@ def _superadmin_headers(test_client, session: dict) -> dict[str, str]:
     assert login.status_code == 200, login.json()
     token = login.json()["token"]
     return auth_headers_for_token(token)
+
+
+def _configure_superadmin(monkeypatch: pytest.MonkeyPatch, identifier: str):
+    monkeypatch.setattr(
+        auth_module,
+        "get_settings",
+        lambda: type(
+            "Settings",
+            (),
+            {
+                "auth_secret": "test-secret",
+                "app_origin": "http://testserver",
+                "super_admin_identifiers": identifier,
+                "session_ttl_hours": 12,
+                "superdashboard_session_ttl_hours": 4,
+            },
+        )(),
+    )
+
+
+def test_superdashboard_and_clinic_sessions_can_use_different_accounts(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    ops = register_test_clinic(test_client, identifier="separate-ops@clinic.com", clinic_name="Ops Account")
+    clinic = register_test_clinic(test_client, identifier="clinic-user@clinic.com", clinic_name="Clinic Account")
+    _configure_superadmin(monkeypatch, ops["user"]["identifier"])
+
+    clinic_login = test_client.post(
+        "/auth/login",
+        json={"identifier": clinic["user"]["identifier"], "password": "password123!"},
+    )
+    ops_login = test_client.post(
+        "/superdashboard/auth/login",
+        json={"identifier": ops["user"]["identifier"], "password": "password123!"},
+    )
+
+    assert clinic_login.status_code == 200
+    assert ops_login.status_code == 200
+    assert test_client.cookies.get("clinic_session")
+    assert test_client.cookies.get("superdashboard_session")
+    assert test_client.get("/auth/me").json()["identifier"] == clinic["user"]["identifier"]
+    ops_session = test_client.get("/superdashboard/auth/session")
+    assert ops_session.status_code == 200
+    assert ops_session.json()["identifier"] == ops["user"]["identifier"]
+    assert ops_session.headers.get("x-session-token") is None
+
+    logout = test_client.post(
+        "/superdashboard/auth/logout",
+        headers={"Origin": "http://testserver"},
+    )
+    assert logout.status_code == 204
+    assert test_client.get("/auth/me").json()["identifier"] == clinic["user"]["identifier"]
+    assert test_client.get("/superdashboard/auth/session").status_code == 401
+
+
+def test_clinic_logout_does_not_revoke_same_users_superdashboard_session(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="dual-realm@clinic.com", clinic_name="Dual Realm")
+    _configure_superadmin(monkeypatch, session["user"]["identifier"])
+    assert test_client.post(
+        "/auth/login",
+        json={"identifier": session["user"]["identifier"], "password": "password123!"},
+    ).status_code == 200
+    ops_login = test_client.post(
+        "/superdashboard/auth/login",
+        json={"identifier": session["user"]["identifier"], "password": "password123!"},
+    )
+    assert ops_login.status_code == 200
+    payload = auth_module.decode_access_token(ops_login.json()["token"])
+    assert payload["realm"] == "superdashboard"
+    assert int(payload["exp"]) - int(payload["iat"]) == 4 * 60 * 60
+
+    logout = test_client.post("/auth/logout", headers={"Origin": "http://testserver"})
+
+    assert logout.status_code == 204
+    assert test_client.get("/auth/me").status_code == 401
+    assert test_client.get("/superdashboard/auth/session").status_code == 200
+
+
+def test_superdashboard_rejects_clinic_tokens_and_unapproved_logins(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    approved = register_test_clinic(test_client, identifier="approved-ops@clinic.com", clinic_name="Approved Ops")
+    unapproved = register_test_clinic(test_client, identifier="unapproved@clinic.com", clinic_name="Unapproved")
+    _configure_superadmin(monkeypatch, approved["user"]["identifier"])
+
+    clinic_token_response = test_client.get(
+        "/superdashboard/orgs",
+        headers=auth_headers_for_token(approved["token"]),
+    )
+    unapproved_login = test_client.post(
+        "/superdashboard/auth/login",
+        json={"identifier": unapproved["user"]["identifier"], "password": "password123!"},
+    )
+    wrong_password = test_client.post(
+        "/superdashboard/auth/login",
+        json={"identifier": approved["user"]["identifier"], "password": "wrong-password"},
+    )
+
+    assert clinic_token_response.status_code == 401
+    assert unapproved_login.status_code == 401
+    assert wrong_password.status_code == 401
+    assert unapproved_login.json() == wrong_password.json() == {"detail": "Invalid email/phone or password."}
+
+
+def test_password_change_revokes_the_users_superdashboard_session(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="password-ops@clinic.com", clinic_name="Password Ops")
+    _configure_superadmin(monkeypatch, session["user"]["identifier"])
+    assert test_client.post(
+        "/auth/login",
+        json={"identifier": session["user"]["identifier"], "password": "password123!"},
+    ).status_code == 200
+    assert test_client.post(
+        "/superdashboard/auth/login",
+        json={"identifier": session["user"]["identifier"], "password": "password123!"},
+    ).status_code == 200
+
+    changed = test_client.post(
+        "/auth/me/password",
+        headers={"Origin": "http://testserver"},
+        json={"current_password": "password123!", "new_password": "new-password123!"},
+    )
+
+    assert changed.status_code == 204
+    assert test_client.get("/auth/me").status_code == 200
+    assert test_client.get("/superdashboard/auth/session").status_code == 401
 
 
 def test_superuser_orgs_requires_allowlisted_identifier(client, monkeypatch: pytest.MonkeyPatch):
@@ -43,7 +168,7 @@ def test_superuser_orgs_requires_allowlisted_identifier(client, monkeypatch: pyt
 
     response = test_client.get("/superuser/orgs", headers=_superadmin_headers(test_client, session))
     refreshed = response.headers.get("x-session-token")
-    assert refreshed
+    assert refreshed is None
 
     assert response.status_code == 200, response.json()
     rows = response.json()
@@ -118,7 +243,7 @@ def test_superdashboard_can_switch_organization_workspace_mode(client, monkeypat
 
     assert updated.status_code == 200, updated.json()
     assert updated.json()["workspace_mode"] == "team"
-    settings = test_client.get("/settings/clinic", headers=headers)
+    settings = test_client.get("/settings/clinic", headers=auth_headers_for_token(session["token"]))
     assert settings.json()["workspace_mode"] == "team"
     orgs = test_client.get("/superdashboard/orgs", headers=headers)
     assert orgs.json()[0]["workspace_mode"] == "team"
@@ -395,7 +520,7 @@ def test_superuser_orgs_include_media_storage_usage(client, monkeypatch: pytest.
             "height": 170,
             "temperature": 98.6,
         },
-        headers=headers,
+        headers=auth_headers_for_token(session["token"]),
     ).json()
     upload = test_client.post(
         f"/patients/{patient['id']}/attachments",
@@ -406,7 +531,7 @@ def test_superuser_orgs_include_media_storage_usage(client, monkeypatch: pytest.
                 "video/mp4",
             )
         },
-        headers=headers,
+        headers=auth_headers_for_token(session["token"]),
     )
     assert upload.status_code == 201
 
@@ -436,4 +561,4 @@ def test_superuser_orgs_denies_non_allowlisted_identifier(client, monkeypatch: p
 
     response = test_client.get("/superuser/orgs", headers=auth_headers_for_token(session["token"]))
 
-    assert response.status_code == 403
+    assert response.status_code == 401

@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, RefreshCw, Save, Trash2, UserCog, XCircle } from "lucide-react";
+import { ArrowLeft, LogOut, RefreshCw, Save, Trash2, UserCog, XCircle } from "lucide-react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
@@ -249,6 +250,14 @@ export default function SuperdashboardOrgDetailPage() {
     }
   }
 
+  async function logoutSuperdashboard() {
+    try {
+      await api.logoutSuperdashboard();
+    } finally {
+      window.location.href = "/superdashboard/login";
+    }
+  }
+
   if (isLoading && !detail) {
     return (
       <main className="min-h-screen bg-slate-50 p-8 text-slate-950">
@@ -283,9 +292,25 @@ export default function SuperdashboardOrgDetailPage() {
               {detail.summary.user_count} users · {detail.summary.workspace_mode} workspace · last activity {formatDateTime(detail.summary.last_activity_at)}
             </p>
           </div>
-          <button onClick={load} className="rounded-2xl border border-slate-200 bg-white p-3 text-slate-500 transition hover:text-slate-950" title="Refresh">
-            <RefreshCw className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to ClinicOS
+            </Link>
+            <button onClick={load} className="rounded-2xl border border-slate-200 bg-white p-3 text-slate-500 transition hover:text-slate-950" title="Refresh">
+              <RefreshCw className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => void logoutSuperdashboard()}
+              className="inline-flex items-center gap-2 text-sm font-black text-slate-500 transition hover:text-slate-950"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out of Ops
+            </button>
+          </div>
         </div>
         <div className="mt-6 flex flex-wrap gap-2">
           {(["overview", "users", "settings", "activity", "errors", "danger"] as Tab[]).map((item) => (
