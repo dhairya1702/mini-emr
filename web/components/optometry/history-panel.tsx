@@ -146,6 +146,13 @@ export function OptometryHistoryPanel({
     }));
   }
 
+  function startEditing() {
+    setDraft(record?.payload ?? createEmptyOptometryHistory());
+    setIsEditing(true);
+    setIsExpanded(true);
+    setError("");
+  }
+
   async function save() {
     setIsSaving(true);
     setError("");
@@ -184,19 +191,14 @@ export function OptometryHistoryPanel({
         >
           <span className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-700">History</span>
         </button>
-        {!isLoading && !isEditing ? (
+        {!isLoading && !isEditing && hasDetails ? (
           <button
             type="button"
-            onClick={() => {
-              setDraft(record?.payload ?? createEmptyOptometryHistory());
-              setIsEditing(true);
-              setIsExpanded(true);
-              setError("");
-            }}
+            onClick={startEditing}
             className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-[#2a6fa8] transition hover:bg-[#f3f8fb]"
           >
             <Edit3 className="h-3.5 w-3.5" />
-            {hasDetails ? "Edit" : "Add details"}
+            Edit
           </button>
         ) : null}
       </div>
@@ -400,7 +402,14 @@ export function OptometryHistoryPanel({
             </div>
           ) : (
             <div className="py-8 text-center">
-              <p className="text-sm text-slate-500">No details recorded.</p>
+              <button
+                type="button"
+                onClick={startEditing}
+                className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-[#2a6fa8] transition hover:bg-[#f3f8fb]"
+              >
+                <Edit3 className="h-4 w-4" />
+                Add details
+              </button>
               {error ? <p className="mt-2 text-sm text-rose-700">{error}</p> : null}
             </div>
           )}
