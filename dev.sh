@@ -38,8 +38,15 @@ WHATSAPP_SKIP_SIGNATURE_CHECK="${WHATSAPP_SKIP_SIGNATURE_CHECK:-1}"
 
 detect_lan_host() {
   if command -v ipconfig >/dev/null 2>&1; then
-    ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true
-    return
+    local mac_host
+    mac_host="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+    if [[ -z "$mac_host" ]] && command -v ifconfig >/dev/null 2>&1; then
+      mac_host="$(ifconfig en0 2>/dev/null | awk '/inet / {print $2; exit}')"
+    fi
+    if [[ -n "$mac_host" ]]; then
+      printf '%s\n' "$mac_host"
+      return
+    fi
   fi
   hostname -I 2>/dev/null | awk '{print $1}' || true
 }
@@ -47,6 +54,7 @@ detect_lan_host() {
 DEV_LAN_HOST="${DEV_LAN_HOST:-$(detect_lan_host)}"
 if [[ -n "$DEV_LAN_HOST" ]]; then
   LAN_WEB_ORIGIN="http://$DEV_LAN_HOST:3000"
+  export APP_ORIGIN="$LAN_WEB_ORIGIN"
   if [[ -n "${APP_ORIGINS:-}" ]]; then
     export APP_ORIGINS="$APP_ORIGINS,$LAN_WEB_ORIGIN"
   else

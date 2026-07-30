@@ -19,7 +19,7 @@ import { createTrainingScope, readTrainingMode, resetTrainingData, writeTraining
 import { AuthUser, ClinicSettings } from "@/lib/types";
 
 const SESSION_EXPIRED_REDIRECT = "/login?reason=session-expired";
-const PUBLIC_PATHS = new Set(["/login", "/follow-up"]);
+const PUBLIC_PATHS = new Set(["/login", "/follow-up", "/check-in"]);
 const SETUP_ONBOARDING_PATH = "/onboarding/setup";
 const MOBILE_SETUP_ONBOARDING_PATH = "/m/onboarding/setup";
 const SHELL_LOAD_MAX_ATTEMPTS = 2;

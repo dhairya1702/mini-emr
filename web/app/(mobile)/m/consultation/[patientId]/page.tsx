@@ -1160,8 +1160,7 @@ export default function MobileConsultationPage() {
                 <div className="sticky top-0 z-10 border-b border-[#dbe7ef] bg-white px-4 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Structured Module</p>
-                      <h3 className="mt-1 text-xl font-semibold text-slate-900">Refraction</h3>
+                      <h3 className="text-xl font-semibold text-slate-900">Refraction</h3>
                       <p className="mt-1 text-xs text-slate-500">{patient.name} · {patient.phone || "No phone"}</p>
                     </div>
                     <button type="button" onClick={() => setIsEyeExamOpen(false)} className="clinic-icon-button h-10 w-10">
@@ -1201,7 +1200,7 @@ export default function MobileConsultationPage() {
                     }}
                     className="h-11 rounded-xl bg-slate-900 text-sm font-semibold text-white"
                   >
-                    Save Refraction
+                    Save
                   </button>
                 </div>
               </div>

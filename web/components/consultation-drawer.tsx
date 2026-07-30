@@ -3491,11 +3491,7 @@ export function ConsultationDrawer({
           <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-[20px] border border-[#bfd7e8] bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Structured Module</p>
-                <h3 className="mt-2 text-2xl font-semibold text-slate-900">Eye Exam</h3>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                  Capture refraction and vision entries for the right and left eye.
-                </p>
+                <h3 className="text-2xl font-semibold text-slate-900">Refraction</h3>
               </div>
               <button type="button" onClick={() => setIsEyeExamOpen(false)} className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-[#f3f8fb]">
                 <X className="h-4 w-4" />
@@ -3531,7 +3527,7 @@ export function ConsultationDrawer({
                     }}
                     className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
                   >
-                    Save Eye Exam
+                    Save
                   </button>
                 </div>
               </div>

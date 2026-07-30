@@ -755,7 +755,6 @@ function PatientStructuredModuleShell({
       <div className="flex max-h-[95vh] w-full max-w-7xl flex-col overflow-hidden rounded-[18px] border border-slate-300 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
         <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Optometry Module</p>
             <h3 className="text-xl font-semibold text-slate-900">{moduleLabel(moduleKey)}</h3>
             <p className="text-sm text-slate-500">{patient.name} · {patient.phone}</p>
           </div>
@@ -825,11 +824,7 @@ function EyeExamFields({
   return (
     <div>
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Structured Module</p>
-        <h3 className="mt-2 text-2xl font-semibold text-slate-900">Eye Exam</h3>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Capture refraction and vision entries for the right and left eye.
-        </p>
+        <h3 className="text-2xl font-semibold text-slate-900">Refraction</h3>
       </div>
         <div className="mt-6 grid gap-3 md:grid-cols-[110px_repeat(4,minmax(0,1fr))]">
           <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Eye</div>
@@ -849,7 +844,7 @@ function EyeExamFields({
         </div>
         <div className="mt-6 flex justify-end">
           <button type="button" onClick={onSave} className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
-            Save Eye Exam
+            Save
           </button>
         </div>
     </div>
@@ -2466,7 +2461,7 @@ export function PatientDetailsDrawer({
                         <option value="">Not recorded</option>
                         <option value="female">Female</option>
                         <option value="male">Male</option>
-                        <option value="unknown">Other</option>
+                        <option value="other">Other</option>
                       </select>
                     </label>
                   </div>
@@ -2640,7 +2635,7 @@ export function PatientDetailsDrawer({
                     <option value="">Not recorded</option>
                     <option value="female">Female</option>
                     <option value="male">Male</option>
-                    <option value="unknown">Other</option>
+                    <option value="other">Other</option>
                   </select>
                 </label>
               </div>

@@ -168,6 +168,8 @@ class ClinicSettingsOut(BaseModel):
     onboarding_completed_at: datetime | None = None
     users_allowed: int = 2
     workspace_mode: WorkspaceMode = "solo"
+    public_check_in_enabled: bool = False
+    public_check_in_token: UUID = UUID("00000000-0000-0000-0000-000000000000")
     id: UUID
     org_id: UUID
     updated_at: datetime | None = None

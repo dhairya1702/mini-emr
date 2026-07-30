@@ -360,7 +360,6 @@ export function TbiEvaluationModal({
       <div className="flex h-[100dvh] w-full max-w-7xl flex-col overflow-hidden border-0 border-slate-300 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.35)] sm:max-h-[95vh] sm:rounded-[18px] sm:border">
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-3 py-2.5 sm:gap-4 sm:px-5 sm:py-3">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 sm:text-xs sm:tracking-[0.18em]">Optometry Module</p>
             <h3 className="truncate text-lg font-semibold text-slate-900 sm:text-xl">Neurovision / TBI Evaluation</h3>
             {patient ? <p className="truncate text-xs text-slate-500 sm:text-sm">{patient.name} · {patient.phone}</p> : null}
           </div>

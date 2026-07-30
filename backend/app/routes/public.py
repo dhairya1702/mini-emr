@@ -3,9 +3,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.api_errors import bad_request_error
 from app.db import AppRepository, get_repository
 from app.schema_domains.patients import (
+    AppointmentCreate,
     FollowUpBookingCancelRequest,
     FollowUpBookingContextOut,
     FollowUpBookingRequest,
+)
+from app.schema_domains.checkins import (
+    PublicAppointmentCreate,
+    PublicAppointmentManageRequest,
+    PublicAppointmentOut,
+    PublicAppointmentSlotsOut,
+    PublicCheckInContextOut,
+    PublicCheckInCreate,
+    PublicCheckInSubmittedOut,
 )
 from app.services.auth_flow import enforce_repository_rate_limit
 from app.services.followup_workflow import (
@@ -13,9 +23,196 @@ from app.services.followup_workflow import (
     get_follow_up_booking_context_workflow,
     self_book_follow_up_workflow,
 )
+from app.services.public_appointment_workflow import (
+    cancel_public_appointment,
+    create_public_appointment,
+    get_public_appointment_context,
+    get_public_appointment_slots,
+    reschedule_public_appointment,
+)
 
 
 router = APIRouter()
+
+
+def _public_appointment_view(
+    appointment: dict,
+    clinic_settings: dict,
+    booking_token: str,
+    suggested_slots: list,
+) -> PublicAppointmentOut:
+    return PublicAppointmentOut(
+        appointment_id=appointment["id"],
+        patient_name=appointment["name"],
+        clinic_name=str(clinic_settings.get("clinic_name") or "ClinicOS"),
+        timezone=str(clinic_settings.get("timezone") or "UTC"),
+        scheduled_for=appointment["scheduled_for"],
+        status=appointment["status"],
+        booking_token=booking_token,
+        suggested_slots=suggested_slots,
+    )
+
+
+@router.get("/public/check-in", response_model=PublicCheckInContextOut)
+async def get_public_check_in(
+    token: str = Query(..., min_length=36, max_length=36),
+    repo: AppRepository = Depends(get_repository),
+) -> PublicCheckInContextOut:
+    try:
+        await enforce_repository_rate_limit(repo, "public_check_in_get", token)
+        config = await repo.get_public_check_in_config_by_token(token)
+        return PublicCheckInContextOut(
+            clinic_name=config["clinic_name"],
+            clinic_address=config["clinic_address"],
+            clinic_phone=config["clinic_phone"],
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+
+
+@router.post("/public/check-in", response_model=PublicCheckInSubmittedOut, status_code=201)
+async def create_public_check_in(
+    payload: PublicCheckInCreate,
+    repo: AppRepository = Depends(get_repository),
+) -> PublicCheckInSubmittedOut:
+    try:
+        config = await repo.get_public_check_in_config_by_token(str(payload.token))
+        await enforce_repository_rate_limit(
+            repo,
+            "public_check_in_post",
+            f"{payload.token}:{payload.phone}",
+        )
+        created = await repo.create_public_check_in_request(
+            org_id=config["org_id"],
+            name=payload.name,
+            phone=payload.phone,
+            email=payload.email,
+            date_of_birth=payload.date_of_birth,
+            sex_at_birth=payload.sex_at_birth,
+            reason=payload.reason,
+        )
+        return PublicCheckInSubmittedOut(
+            id=created["id"],
+            status=created["status"],
+            clinic_name=config["clinic_name"],
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+
+
+@router.get("/public/check-in/appointment-slots", response_model=PublicAppointmentSlotsOut)
+async def list_public_appointment_slots(
+    token: str = Query(..., min_length=36, max_length=36),
+    repo: AppRepository = Depends(get_repository),
+) -> PublicAppointmentSlotsOut:
+    try:
+        await enforce_repository_rate_limit(repo, "public_appointment_get", token)
+        config, clinic_settings, slots = await get_public_appointment_slots(repo, token)
+        return PublicAppointmentSlotsOut(
+            clinic_name=config["clinic_name"],
+            timezone=str(clinic_settings.get("timezone") or "UTC"),
+            suggested_slots=slots,
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+
+
+@router.post("/public/check-in/appointment", response_model=PublicAppointmentOut, status_code=201)
+async def book_public_appointment(
+    payload: PublicAppointmentCreate,
+    repo: AppRepository = Depends(get_repository),
+) -> PublicAppointmentOut:
+    try:
+        await enforce_repository_rate_limit(
+            repo,
+            "public_appointment_post",
+            f"{payload.token}:{payload.phone}",
+        )
+        appointment, clinic_settings, booking_token, slots = await create_public_appointment(
+            repo,
+            clinic_token=str(payload.token),
+            payload=AppointmentCreate(
+                name=payload.name,
+                phone=payload.phone,
+                email=payload.email,
+                reason=payload.reason,
+                date_of_birth=payload.date_of_birth,
+                sex_at_birth=payload.sex_at_birth,
+                scheduled_for=payload.scheduled_for,
+            ),
+        )
+        return _public_appointment_view(appointment, clinic_settings, booking_token, slots)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+
+
+@router.get("/public/check-in/appointment", response_model=PublicAppointmentOut)
+async def get_public_appointment(
+    booking_token: str = Query(..., min_length=20),
+    repo: AppRepository = Depends(get_repository),
+) -> PublicAppointmentOut:
+    try:
+        await enforce_repository_rate_limit(repo, "public_appointment_get", booking_token)
+        appointment, clinic_settings, slots = await get_public_appointment_context(repo, booking_token)
+        return _public_appointment_view(appointment, clinic_settings, booking_token, slots)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+
+
+@router.post("/public/check-in/appointment/reschedule", response_model=PublicAppointmentOut)
+async def reschedule_public_appointment_route(
+    payload: PublicAppointmentManageRequest,
+    repo: AppRepository = Depends(get_repository),
+) -> PublicAppointmentOut:
+    if payload.scheduled_for is None:
+        raise bad_request_error(ValueError("Choose an appointment time."))
+    try:
+        await enforce_repository_rate_limit(repo, "public_appointment_post", payload.booking_token)
+        appointment, clinic_settings, slots = await reschedule_public_appointment(
+            repo,
+            booking_token=payload.booking_token,
+            scheduled_for=payload.scheduled_for,
+        )
+        return _public_appointment_view(
+            appointment,
+            clinic_settings,
+            payload.booking_token,
+            slots,
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+
+
+@router.post("/public/check-in/appointment/cancel", response_model=PublicAppointmentOut)
+async def cancel_public_appointment_route(
+    payload: PublicAppointmentManageRequest,
+    repo: AppRepository = Depends(get_repository),
+) -> PublicAppointmentOut:
+    try:
+        await enforce_repository_rate_limit(repo, "public_appointment_post", payload.booking_token)
+        appointment, clinic_settings = await cancel_public_appointment(repo, payload.booking_token)
+        return _public_appointment_view(
+            appointment,
+            clinic_settings,
+            payload.booking_token,
+            [],
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
 
 
 @router.get("/public/follow-up-booking", response_model=FollowUpBookingContextOut)

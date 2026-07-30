@@ -65,7 +65,7 @@ export type MockPatient = {
   email: string;
   address: string;
   reason: string;
-  sex_at_birth: "female" | "male" | "intersex" | "prefer_not_to_say" | "unknown" | null;
+  sex_at_birth: "female" | "male" | "other" | null;
   gender_identity: string;
   age: number | null;
   weight: number | null;

@@ -50,8 +50,7 @@ export function OptometryModalShell({
       <div className="flex h-[100dvh] w-full max-w-6xl flex-col overflow-hidden border-0 border-[#bfd7e8] bg-white shadow-[0_28px_90px_rgba(15,23,42,0.35)] sm:max-h-[92vh] sm:rounded-[20px] sm:border">
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#dbe7ef] px-3 py-3 sm:gap-4 sm:border-b-0 sm:px-6 sm:pt-6">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 sm:text-xs sm:tracking-[0.22em]">Optometry Module</p>
-            <h3 className="mt-1 truncate text-xl font-semibold text-slate-900 sm:mt-2 sm:text-2xl">{title}</h3>
+            <h3 className="truncate text-xl font-semibold text-slate-900 sm:text-2xl">{title}</h3>
             <p className="mt-1 line-clamp-2 max-w-3xl text-xs leading-5 text-slate-600 sm:mt-2 sm:text-sm sm:leading-6">{description}</p>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-[#f3f8fb]">

@@ -57,3 +57,22 @@ def decode_follow_up_booking_token(token: str) -> dict[str, str | int]:
     if not isinstance(exp, int) or exp < int(datetime.now(UTC).timestamp()):
         raise HTTPException(status_code=400, detail="Booking link has expired.")
     return payload
+
+
+def create_public_appointment_booking_token(*, org_id: str, appointment_id: str) -> str:
+    payload = {
+        "purpose": "public_appointment",
+        "org_id": org_id,
+        "appointment_id": appointment_id,
+        "exp": int((datetime.now(UTC) + timedelta(days=BOOKING_TOKEN_TTL_DAYS)).timestamp()),
+    }
+    payload_segment = _b64encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    signature = hmac.new(_secret(), payload_segment.encode("utf-8"), hashlib.sha256).digest()
+    return f"{payload_segment}.{_b64encode(signature)}"
+
+
+def decode_public_appointment_booking_token(token: str) -> dict[str, str | int]:
+    payload = decode_follow_up_booking_token(token)
+    if payload.get("purpose") != "public_appointment" or not payload.get("appointment_id"):
+        raise HTTPException(status_code=400, detail="Invalid appointment link.")
+    return payload

@@ -5,6 +5,7 @@ from app.routes.auth import router as auth_router
 from app.routes.billing import router as billing_router
 from app.routes.case_studies import router as case_studies_router
 from app.routes.care_programs import router as care_programs_router
+from app.routes.checkins import router as checkins_router
 from app.routes.catalog import router as catalog_router
 from app.routes.clinical_assistant import router as clinical_assistant_router
 from app.routes.controlroom import router as controlroom_router
@@ -28,6 +29,7 @@ __all__ = [
     "billing_router",
     "case_studies_router",
     "care_programs_router",
+    "checkins_router",
     "catalog_router",
     "clinical_assistant_router",
     "controlroom_router",

@@ -23,7 +23,7 @@ create table if not exists public.patients (
   address text not null default '',
   reason text not null,
   date_of_birth date,
-  sex_at_birth text check (sex_at_birth in ('female', 'male', 'intersex', 'prefer_not_to_say', 'unknown')),
+  sex_at_birth text check (sex_at_birth in ('female', 'male', 'other')),
   gender_identity text not null default '',
   age integer,
   weight double precision,
@@ -141,8 +141,13 @@ create table if not exists public.clinic_settings (
   onboarding_completed_at timestamptz,
   users_allowed integer not null default 2 check (users_allowed > 0),
   workspace_mode text not null default 'solo' check (workspace_mode in ('solo', 'team')),
+  public_check_in_enabled boolean not null default false,
+  public_check_in_token uuid not null default gen_random_uuid(),
   updated_at timestamptz not null default now()
 );
+
+create unique index if not exists clinic_settings_public_check_in_token_uidx
+  on public.clinic_settings (public_check_in_token);
 
 create table if not exists public.platform_email_settings (
   id text primary key check (id = 'default'),
@@ -273,6 +278,37 @@ create table if not exists public.api_rate_limits (
   primary key (scope, key_hash)
 );
 
+create table if not exists public.public_check_in_requests (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  submitted_name text not null,
+  submitted_phone text not null,
+  submitted_phone_normalized text not null,
+  submitted_email text not null default '',
+  submitted_date_of_birth date not null,
+  submitted_sex_at_birth text not null
+    check (submitted_sex_at_birth in ('female', 'male', 'other')),
+  submitted_reason text not null,
+  status text not null default 'pending'
+    check (status in ('pending', 'approved', 'rejected', 'expired')),
+  approved_patient_id uuid references public.patients(id) on delete set null,
+  reviewed_by uuid references public.clinic_users(id) on delete set null,
+  reviewed_at timestamptz,
+  rejection_reason text not null default '',
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '12 hours')
+);
+
+create index if not exists public_check_in_requests_org_status_created_idx
+  on public.public_check_in_requests (org_id, status, created_at desc);
+
+create index if not exists public_check_in_requests_org_phone_idx
+  on public.public_check_in_requests (org_id, submitted_phone_normalized);
+
+create index if not exists public_check_in_requests_org_email_idx
+  on public.public_check_in_requests (org_id, lower(submitted_email))
+  where submitted_email <> '';
+
 create index if not exists api_rate_limits_updated_at_idx
   on public.api_rate_limits(updated_at);
 
@@ -391,7 +427,7 @@ create table if not exists public.appointments (
   address text not null default '',
   reason text not null,
   date_of_birth date,
-  sex_at_birth text check (sex_at_birth in ('female', 'male', 'intersex', 'prefer_not_to_say', 'unknown')),
+  sex_at_birth text check (sex_at_birth in ('female', 'male', 'other')),
   gender_identity text not null default '',
   age integer,
   weight double precision,
@@ -415,7 +451,7 @@ create table if not exists public.patient_visits (
   address text not null default '',
   reason text not null,
   date_of_birth date,
-  sex_at_birth text check (sex_at_birth in ('female', 'male', 'intersex', 'prefer_not_to_say', 'unknown')),
+  sex_at_birth text check (sex_at_birth in ('female', 'male', 'other')),
   gender_identity text not null default '',
   age integer,
   weight double precision,

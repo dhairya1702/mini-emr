@@ -543,7 +543,7 @@ export function AddPatientModal({
                 <option value="">Not recorded</option>
                 <option value="female">Female</option>
                 <option value="male">Male</option>
-                <option value="unknown">Other</option>
+                <option value="other">Other</option>
               </select>
             </label>
           </div>

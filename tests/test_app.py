@@ -144,6 +144,7 @@ class FakeRepo:
         self.platform_errors: dict[str, dict] = {}
         self.whatsapp_owner_bindings: dict[str, dict] = {}
         self.whatsapp_message_events: dict[str, dict] = {}
+        self.public_check_in_requests: dict[str, dict] = {}
         self.api_request_metrics: list[dict] = []
         self.customer_onboarding: dict[str, dict] = {}
         self.rate_limits: dict[tuple[str, str], tuple[float, int]] = {}
@@ -973,6 +974,8 @@ class FakeRepo:
             "onboarding_required": False,
             "onboarding_completed_at": None,
             "workspace_mode": "solo",
+            "public_check_in_enabled": False,
+            "public_check_in_token": str(uuid4()),
             **values,
             "updated_at": _now(),
         }
@@ -981,6 +984,204 @@ class FakeRepo:
 
     async def get_clinic_settings(self, org_id: str) -> dict:
         return self.clinic_settings.get(org_id, {})
+
+    async def get_public_check_in_config(self, org_id: str) -> dict:
+        settings = self.clinic_settings[org_id]
+        return {
+            "org_id": org_id,
+            "clinic_name": settings["clinic_name"],
+            "clinic_address": settings.get("clinic_address", ""),
+            "clinic_phone": settings.get("clinic_phone", ""),
+            "enabled": settings.get("public_check_in_enabled", False),
+            "token": settings["public_check_in_token"],
+        }
+
+    async def get_public_check_in_config_by_token(self, token: str) -> dict:
+        for org_id, settings in self.clinic_settings.items():
+            if settings.get("public_check_in_token") != token:
+                continue
+            if not settings.get("public_check_in_enabled"):
+                raise ValueError("Online check-in is currently closed for this clinic.")
+            return {
+                "org_id": org_id,
+                "clinic_name": settings["clinic_name"],
+                "clinic_address": settings.get("clinic_address", ""),
+                "clinic_phone": settings.get("clinic_phone", ""),
+                "enabled": True,
+                "token": token,
+            }
+        raise ValueError("This clinic check-in link is invalid.")
+
+    async def update_public_check_in_enabled(self, org_id: str, enabled: bool) -> dict:
+        self.clinic_settings[org_id]["public_check_in_enabled"] = enabled
+        return await self.get_public_check_in_config(org_id)
+
+    async def regenerate_public_check_in_token(self, org_id: str) -> dict:
+        self.clinic_settings[org_id]["public_check_in_token"] = str(uuid4())
+        return await self.get_public_check_in_config(org_id)
+
+    async def create_public_check_in_request(
+        self,
+        *,
+        org_id: str,
+        name: str,
+        phone: str,
+        email: str,
+        date_of_birth,
+        sex_at_birth: str,
+        reason: str,
+    ) -> dict:
+        normalized_phone = _normalize_phone(phone)
+        if any(
+            row["org_id"] == org_id
+            and row["submitted_phone_normalized"] == normalized_phone
+            and row["submitted_date_of_birth"] == date_of_birth
+            and row["status"] == "pending"
+            for row in self.public_check_in_requests.values()
+        ):
+            raise ValueError("A check-in request with these details is already waiting for review.")
+        request_id = str(uuid4())
+        row = {
+            "id": request_id,
+            "org_id": org_id,
+            "submitted_name": name.strip(),
+            "submitted_phone": phone.strip(),
+            "submitted_phone_normalized": normalized_phone,
+            "submitted_email": email.strip().lower(),
+            "submitted_date_of_birth": date_of_birth,
+            "submitted_sex_at_birth": sex_at_birth,
+            "submitted_reason": reason.strip(),
+            "status": "pending",
+            "approved_patient_id": None,
+            "reviewed_by": None,
+            "reviewed_at": None,
+            "rejection_reason": "",
+            "created_at": _now(),
+            "expires_at": _now() + timedelta(hours=12),
+        }
+        self.public_check_in_requests[request_id] = row
+        return row
+
+    async def list_public_check_in_requests(self, org_id: str) -> list[dict]:
+        rows = []
+        for request in self.public_check_in_requests.values():
+            if request["org_id"] != org_id or request["status"] != "pending":
+                continue
+            candidates = []
+            request_phone = _normalize_phone(request["submitted_phone"])
+            request_email = request["submitted_email"]
+            request_name = " ".join(request["submitted_name"].lower().split())
+            for patient in self.patients.values():
+                if patient["org_id"] != org_id:
+                    continue
+                reasons = []
+                score = 0
+                if (
+                    _normalize_phone(patient["phone"])
+                    and _normalize_phone(patient["phone"])[-10:] == request_phone[-10:]
+                ):
+                    reasons.append("Phone match")
+                    score += 70
+                if request_email and patient.get("email", "").strip().lower() == request_email:
+                    reasons.append("Email match")
+                    score += 70
+                if patient.get("date_of_birth") == request["submitted_date_of_birth"]:
+                    reasons.append("Date of birth match")
+                    score += 20
+                if " ".join(patient["name"].lower().split()) == request_name:
+                    reasons.append("Name match")
+                    score += 20
+                if score < 20:
+                    continue
+                candidates.append(
+                    {
+                        **patient,
+                        "match_reasons": reasons,
+                        "confidence": "strong" if score >= 90 else "likely" if score >= 70 else "possible",
+                    }
+                )
+            rows.append({**request, "candidates": candidates[:5]})
+        rows.sort(key=lambda row: row["created_at"])
+        return rows
+
+    async def approve_public_check_in_request(
+        self,
+        *,
+        org_id: str,
+        request_id: str,
+        reviewed_by: str,
+        existing_patient_id: str | None,
+    ) -> dict:
+        from app.schema_domains.patients import PatientCreate, PatientVisitCreate
+
+        request = self.public_check_in_requests[request_id]
+        if request["org_id"] != org_id or request["status"] != "pending":
+            raise ValueError("This check-in request is no longer pending.")
+        if existing_patient_id:
+            patient = self.patients[existing_patient_id]
+            if patient["org_id"] != org_id:
+                raise ValueError("Existing patient not found for this clinic.")
+            if patient["status"] in {"waiting", "consultation"} or (
+                patient["status"] == "done" and not patient["billed"]
+            ):
+                raise ValueError("This patient is already active in today's queue.")
+            payload = PatientVisitCreate(
+                name=patient["name"],
+                phone=patient["phone"],
+                email=patient.get("email", ""),
+                address=patient.get("address", ""),
+                reason=request["submitted_reason"],
+                date_of_birth=patient.get("date_of_birth"),
+                sex_at_birth=patient.get("sex_at_birth"),
+                gender_identity=patient.get("gender_identity", ""),
+                age=patient.get("age"),
+                weight=patient.get("weight"),
+                height=patient.get("height"),
+                temperature=patient.get("temperature"),
+            )
+            saved = await self.create_patient_visit(org_id, existing_patient_id, payload)
+        else:
+            saved = await self.create_patient(
+                org_id,
+                PatientCreate(
+                    name=request["submitted_name"],
+                    phone=request["submitted_phone"],
+                    email=request["submitted_email"],
+                    reason=request["submitted_reason"],
+                    date_of_birth=request["submitted_date_of_birth"],
+                    sex_at_birth=request["submitted_sex_at_birth"],
+                ),
+            )
+        request.update(
+            {
+                "status": "approved",
+                "approved_patient_id": saved["id"],
+                "reviewed_by": reviewed_by,
+                "reviewed_at": _now(),
+            }
+        )
+        return saved
+
+    async def reject_public_check_in_request(
+        self,
+        *,
+        org_id: str,
+        request_id: str,
+        reviewed_by: str,
+        reason: str,
+    ) -> dict:
+        request = self.public_check_in_requests[request_id]
+        if request["org_id"] != org_id or request["status"] != "pending":
+            raise ValueError("This check-in request is no longer pending.")
+        request.update(
+            {
+                "status": "rejected",
+                "reviewed_by": reviewed_by,
+                "reviewed_at": _now(),
+                "rejection_reason": reason,
+            }
+        )
+        return request
 
     async def get_platform_email_settings(self) -> dict:
         return dict(self.platform_email_settings)
@@ -1036,6 +1237,8 @@ class FakeRepo:
                     "onboarding_required": False,
                     "onboarding_completed_at": None,
                     "workspace_mode": "solo",
+                    "public_check_in_enabled": False,
+                    "public_check_in_token": str(uuid4()),
                 }
             ),
             **values,
@@ -1371,6 +1574,12 @@ class FakeRepo:
             ]
         rows.sort(key=lambda appointment: _as_utc_minute(appointment["scheduled_for"]))
         return rows[:limit]
+
+    async def get_appointment(self, org_id: str, appointment_id: str) -> dict:
+        appointment = self.appointments.get(appointment_id)
+        if not appointment or appointment["org_id"] != org_id:
+            raise ValueError("Appointment not found.")
+        return appointment
 
     async def cancel_expired_appointments(self, org_id: str, stale_before_iso: str) -> int:
         stale_before = datetime.fromisoformat(stale_before_iso.replace("Z", "+00:00"))
@@ -2655,6 +2864,175 @@ def auth_headers_for_token(token: str) -> dict[str, str]:
         "Authorization": f"Bearer {token}",
         "Cookie": f"{auth_module.SESSION_COOKIE_NAME}={token}",
     }
+
+
+def test_public_qr_check_in_requires_staff_approval_and_suggests_existing_patient(client):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="qr-check-in@example.com", clinic_name="Fika Eye Care")
+    headers = auth_headers_for_token(session["token"])
+
+    existing = test_client.post(
+        "/patients",
+        headers=headers,
+        json={
+            "name": "Trusted Patient Name",
+            "phone": "9876543210",
+            "email": "trusted@example.com",
+            "reason": "Previous visit",
+            "date_of_birth": "1994-03-12",
+        },
+    ).json()
+    repo.patients[existing["id"]]["status"] = "done"
+    repo.patients[existing["id"]]["billed"] = True
+
+    config = test_client.get("/check-in/config", headers=headers)
+    assert config.status_code == 200
+    assert config.json()["enabled"] is False
+
+    enabled = test_client.patch("/check-in/config", headers=headers, json={"enabled": True})
+    assert enabled.status_code == 200
+    public_url = enabled.json()["public_url"]
+    public_token = public_url.split("token=", 1)[1]
+
+    context = test_client.get(f"/public/check-in?token={public_token}")
+    assert context.status_code == 200
+    assert context.json()["clinic_name"] == "Fika Eye Care"
+
+    submitted = test_client.post(
+        "/public/check-in",
+        json={
+            "token": public_token,
+            "name": "Untrusted Different Name",
+            "phone": "9876543210",
+            "email": "trusted@example.com",
+            "date_of_birth": "1994-03-12",
+            "sex_at_birth": "female",
+            "reason": "Blurred vision",
+        },
+    )
+    assert submitted.status_code == 201
+    request_id = submitted.json()["id"]
+    assert not any(
+        patient["reason"] == "Blurred vision" and patient["status"] == "waiting"
+        for patient in repo.patients.values()
+    )
+
+    pending = test_client.get("/check-in/requests", headers=headers)
+    assert pending.status_code == 200
+    request = pending.json()[0]
+    assert request["id"] == request_id
+    assert request["candidates"][0]["id"] == existing["id"]
+    assert request["candidates"][0]["confidence"] == "strong"
+    assert request["candidates"][0]["match_reasons"] == [
+        "Phone match",
+        "Email match",
+        "Date of birth match",
+    ]
+
+    approved = test_client.post(
+        f"/check-in/requests/{request_id}/approve",
+        headers=headers,
+        json={"existing_patient_id": existing["id"], "force_new": False},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["id"] == existing["id"]
+    assert approved.json()["name"] == "Trusted Patient Name"
+    assert approved.json()["phone"] == "9876543210"
+    assert approved.json()["email"] == "trusted@example.com"
+    assert approved.json()["reason"] == "Blurred vision"
+    assert approved.json()["status"] == "waiting"
+    assert test_client.get("/check-in/requests", headers=headers).json() == []
+
+    new_submission = test_client.post(
+        "/public/check-in",
+        json={
+            "token": public_token,
+            "name": "New QR Patient",
+            "phone": "9123456780",
+            "email": "new.qr.patient@example.com",
+            "date_of_birth": "2001-08-09",
+            "sex_at_birth": "other",
+            "reason": "Eye strain",
+        },
+    )
+    assert new_submission.status_code == 201
+    new_patient = test_client.post(
+        f"/check-in/requests/{new_submission.json()['id']}/approve",
+        headers=headers,
+        json={"existing_patient_id": None, "force_new": True},
+    )
+    assert new_patient.status_code == 200
+    assert new_patient.json()["email"] == "new.qr.patient@example.com"
+    assert new_patient.json()["sex_at_birth"] == "other"
+
+
+def test_public_qr_appointment_books_only_after_capacity_check_and_can_be_managed(client):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="qr-appointment@example.com",
+        clinic_name="Fika Eye Care",
+    )
+    headers = auth_headers_for_token(session["token"])
+    enabled = test_client.patch("/check-in/config", headers=headers, json={"enabled": True})
+    public_token = enabled.json()["public_url"].split("token=", 1)[1]
+
+    slots_response = test_client.get(
+        f"/public/check-in/appointment-slots?token={public_token}"
+    )
+    assert slots_response.status_code == 200
+    slots = slots_response.json()["suggested_slots"]
+    assert len(slots) >= 2
+    patient_count_before = len(repo.patients)
+
+    payload = {
+        "token": public_token,
+        "name": "Appointment Patient",
+        "phone": "9000011111",
+        "email": "appointment@example.com",
+        "date_of_birth": "1990-06-15",
+        "sex_at_birth": "female",
+        "reason": "Routine eye exam",
+        "scheduled_for": slots[0],
+    }
+    booked = test_client.post("/public/check-in/appointment", json=payload)
+    assert booked.status_code == 201
+    booking = booked.json()
+    assert booking["status"] == "scheduled"
+    assert booking["scheduled_for"] == slots[0]
+    assert len(repo.patients) == patient_count_before
+    assert repo.public_check_in_requests == {}
+
+    collision = test_client.post(
+        "/public/check-in/appointment",
+        json={**payload, "phone": "9000022222", "email": "other@example.com"},
+    )
+    assert collision.status_code == 400
+    assert "already booked" in collision.json()["detail"].lower()
+
+    context = test_client.get(
+        "/public/check-in/appointment",
+        params={"booking_token": booking["booking_token"]},
+    )
+    assert context.status_code == 200
+    assert context.json()["appointment_id"] == booking["appointment_id"]
+
+    rescheduled = test_client.post(
+        "/public/check-in/appointment/reschedule",
+        json={
+            "booking_token": booking["booking_token"],
+            "scheduled_for": slots[1],
+        },
+    )
+    assert rescheduled.status_code == 200
+    assert rescheduled.json()["scheduled_for"] == slots[1]
+
+    cancelled = test_client.post(
+        "/public/check-in/appointment/cancel",
+        json={"booking_token": booking["booking_token"]},
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
 
 
 def test_public_follow_up_booking_reschedules_and_creates_appointment(client):

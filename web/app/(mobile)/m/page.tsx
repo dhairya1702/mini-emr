@@ -6,15 +6,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { MobileAddPatientModal, type MobileQueuePatientPayload } from "@/components/mobile/mobile-add-patient-modal";
 import { MobilePatientCard } from "@/components/mobile/mobile-patient-card";
 import { MobileShell } from "@/components/mobile/mobile-shell";
+import { PendingCheckIns } from "@/components/pending-check-ins";
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { api } from "@/lib/api";
 import { resolveMobileConsultationScope, readMobileConsultationDraft } from "@/lib/mobile/consultation";
 import { getMobileQueuePatients } from "@/lib/mobile/queue";
-import type { Patient } from "@/lib/types";
+import type { CheckInRequest, Patient } from "@/lib/types";
 
 export default function MobileQueuePage() {
   const { currentUser, error: shellError, isAuthReady, isRedirectingToLogin } = useClinicShell();
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [checkInRequests, setCheckInRequests] = useState<CheckInRequest[]>([]);
+  const [pendingCheckInRequestId, setPendingCheckInRequestId] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -26,7 +29,12 @@ export default function MobileQueuePage() {
     setError("");
     setIsLoading(true);
     try {
-      setPatients(await api.listQueuePatients());
+      const [patientRows, checkInRows] = await Promise.all([
+        api.listQueuePatients(),
+        api.listCheckInRequests(),
+      ]);
+      setPatients(patientRows);
+      setCheckInRequests(checkInRows);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load queue.");
     } finally {
@@ -104,6 +112,35 @@ export default function MobileQueuePage() {
     }
   }
 
+  async function approveCheckIn(requestId: string, existingPatientId?: string) {
+    setPendingCheckInRequestId(requestId);
+    setError("");
+    try {
+      const patient = await api.approveCheckInRequest(requestId, {
+        existing_patient_id: existingPatientId || null,
+        force_new: !existingPatientId,
+      });
+      setPatients((current) => [patient, ...current.filter((row) => row.id !== patient.id)]);
+      setCheckInRequests((current) => current.filter((row) => row.id !== requestId));
+    } catch (approvalError) {
+      setError(approvalError instanceof Error ? approvalError.message : "Failed to approve check-in.");
+    } finally {
+      setPendingCheckInRequestId("");
+    }
+  }
+
+  async function rejectCheckIn(requestId: string) {
+    setPendingCheckInRequestId(requestId);
+    try {
+      await api.rejectCheckInRequest(requestId);
+      setCheckInRequests((current) => current.filter((row) => row.id !== requestId));
+    } catch (rejectionError) {
+      setError(rejectionError instanceof Error ? rejectionError.message : "Failed to reject check-in.");
+    } finally {
+      setPendingCheckInRequestId("");
+    }
+  }
+
   if (!isAuthReady || isRedirectingToLogin) {
     return (
       <MobileShell title="Queue">
@@ -120,6 +157,14 @@ export default function MobileQueuePage() {
       {shellError || error ? (
         <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{shellError || error}</p>
       ) : null}
+
+      <PendingCheckIns
+        requests={checkInRequests}
+        pendingRequestId={pendingCheckInRequestId}
+        onUseExisting={(requestId, patientId) => void approveCheckIn(requestId, patientId)}
+        onCreateNew={(requestId) => void approveCheckIn(requestId)}
+        onReject={(requestId) => void rejectCheckIn(requestId)}
+      />
 
       <section className="-mx-1 flex min-h-[calc(100vh-132px)] flex-col">
         <div className="mb-3 flex shrink-0 items-center justify-between gap-3 px-1">

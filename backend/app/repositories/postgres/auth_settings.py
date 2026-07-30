@@ -56,6 +56,8 @@ CLINIC_SETTINGS_COLUMNS = [
     "onboarding_completed_at",
     "users_allowed",
     "workspace_mode",
+    "public_check_in_enabled",
+    "public_check_in_token",
     "updated_at",
 ]
 
@@ -141,6 +143,8 @@ def _clinic_settings_defaults() -> dict[str, Any]:
         "onboarding_completed_at",
         "users_allowed",
         "workspace_mode",
+        "public_check_in_enabled",
+        "public_check_in_token",
     }
     return ClinicSettingsOut.model_construct(id=nil_uuid, org_id=nil_uuid).model_dump(include=field_names)
 

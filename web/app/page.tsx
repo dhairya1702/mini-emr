@@ -21,6 +21,7 @@ import { AppHeader } from "@/components/app-header";
 import { ConsultationDrawer } from "@/components/consultation-drawer";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
+import { PendingCheckIns } from "@/components/pending-check-ins";
 import { PatientCard } from "@/components/patient-card";
 import { PatientColumn } from "@/components/patient-column";
 import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
@@ -43,7 +44,7 @@ import {
   writeTrainingPatients,
 } from "@/lib/training-mode";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientTimelineEvent, PatientVisitDetail, PaymentStatus, SexAtBirth } from "@/lib/types";
+import { BillingSuggestionsResponse, CatalogItem, CheckInRequest, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientTimelineEvent, PatientVisitDetail, PaymentStatus, SexAtBirth } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
 const QUEUE_REFRESH_INTERVAL_MS = 15000;
@@ -222,6 +223,8 @@ function buildAutoDraftInvoiceItems(
 
 export default function HomePage() {
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [checkInRequests, setCheckInRequests] = useState<CheckInRequest[]>([]);
+  const [pendingCheckInRequestId, setPendingCheckInRequestId] = useState("");
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [drawerMode, setDrawerMode] = useState<"details" | "consultation" | null>(null);
   const [billingPatientId, setBillingPatientId] = useState("");
@@ -332,6 +335,58 @@ export default function HomePage() {
     const intervalId = window.setInterval(() => setQueueClock(Date.now()), 60000);
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    if (!isAuthReady || isRedirectingToLogin || !currentUser || isTrainingMode) {
+      setCheckInRequests([]);
+      return;
+    }
+    let active = true;
+    async function refreshCheckIns() {
+      try {
+        const rows = await api.listCheckInRequests();
+        if (active) setCheckInRequests(rows);
+      } catch {
+        // The queue remains usable when the auxiliary request feed is unavailable.
+      }
+    }
+    void refreshCheckIns();
+    const intervalId = window.setInterval(() => void refreshCheckIns(), QUEUE_REFRESH_INTERVAL_MS);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [currentUser, isAuthReady, isRedirectingToLogin, isTrainingMode]);
+
+  async function approveCheckIn(requestId: string, existingPatientId?: string) {
+    setPendingCheckInRequestId(requestId);
+    setError("");
+    try {
+      const patient = await api.approveCheckInRequest(requestId, {
+        existing_patient_id: existingPatientId || null,
+        force_new: !existingPatientId,
+      });
+      setPatients((current) => [patient, ...current.filter((row) => row.id !== patient.id)]);
+      setCheckInRequests((current) => current.filter((row) => row.id !== requestId));
+    } catch (approvalError) {
+      setError(approvalError instanceof Error ? approvalError.message : "Failed to approve check-in.");
+    } finally {
+      setPendingCheckInRequestId("");
+    }
+  }
+
+  async function rejectCheckIn(requestId: string) {
+    setPendingCheckInRequestId(requestId);
+    setError("");
+    try {
+      await api.rejectCheckInRequest(requestId);
+      setCheckInRequests((current) => current.filter((row) => row.id !== requestId));
+    } catch (rejectionError) {
+      setError(rejectionError instanceof Error ? rejectionError.message : "Failed to reject check-in.");
+    } finally {
+      setPendingCheckInRequestId("");
+    }
+  }
 
   useEffect(() => {
     if (!isAuthReady || isRedirectingToLogin || isTrainingMode || isQueueMutationPending || draggedPatient) {
@@ -1462,6 +1517,16 @@ export default function HomePage() {
               </button>
             </div>
           </div>
+        ) : null}
+
+        {!isTrainingMode ? (
+          <PendingCheckIns
+            requests={checkInRequests}
+            pendingRequestId={pendingCheckInRequestId}
+            onUseExisting={(requestId, patientId) => void approveCheckIn(requestId, patientId)}
+            onCreateNew={(requestId) => void approveCheckIn(requestId)}
+            onReject={(requestId) => void rejectCheckIn(requestId)}
+          />
         ) : null}
 
         {isSoloWorkspace ? (

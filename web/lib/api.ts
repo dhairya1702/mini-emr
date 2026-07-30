@@ -18,6 +18,11 @@ import {
   CatalogStockUpdatePayload,
   ClinicSettings,
   ClinicSettingsUpdatePayload,
+  CheckInConfig,
+  CheckInRequest,
+  PublicAppointmentBooking,
+  PublicAppointmentSlots,
+  PublicCheckInContext,
   ClinicalAnalysisPayload,
   ClinicalAnalysisResponse,
   ClinicalQuestionsPayload,
@@ -404,6 +409,56 @@ async function requestForm<T>(path: string, formData: FormData, init?: RequestIn
 }
 
 export const api = {
+  getPublicCheckInContext: (token: string) =>
+    request<PublicCheckInContext>(withQuery("/public/check-in", { token })),
+  submitPublicCheckIn: (payload: {
+    token: string;
+    name: string;
+    phone: string;
+    email: string;
+    date_of_birth: string;
+    sex_at_birth: "female" | "male" | "other";
+    reason: string;
+  }) =>
+    request<{ id: string; status: string; clinic_name: string }>("/public/check-in", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  getPublicAppointmentSlots: (token: string) =>
+    request<PublicAppointmentSlots>(
+      withQuery("/public/check-in/appointment-slots", { token }),
+    ),
+  bookPublicAppointment: (payload: {
+    token: string;
+    name: string;
+    phone: string;
+    email: string;
+    date_of_birth: string;
+    sex_at_birth: "female" | "male" | "other";
+    reason: string;
+    scheduled_for: string;
+  }) =>
+    request<PublicAppointmentBooking>("/public/check-in/appointment", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  getPublicAppointment: (bookingToken: string) =>
+    request<PublicAppointmentBooking>(
+      withQuery("/public/check-in/appointment", { booking_token: bookingToken }),
+    ),
+  reschedulePublicAppointment: (bookingToken: string, scheduledFor: string) =>
+    request<PublicAppointmentBooking>("/public/check-in/appointment/reschedule", {
+      method: "POST",
+      body: JSON.stringify({
+        booking_token: bookingToken,
+        scheduled_for: scheduledFor,
+      }),
+    }),
+  cancelPublicAppointment: (bookingToken: string) =>
+    request<PublicAppointmentBooking>("/public/check-in/appointment/cancel", {
+      method: "POST",
+      body: JSON.stringify({ booking_token: bookingToken }),
+    }),
   getRegistrationConfig: () => request<RegistrationConfig>("/auth/registration-config"),
   login: (payload: { identifier: string; password: string }) =>
     request<AuthResponse>("/auth/login", {
@@ -918,6 +973,28 @@ export const api = {
       body: JSON.stringify(withIdempotencyKey(payload)),
     }),
   getClinicSettings: () => request<ClinicSettings>("/settings/clinic"),
+  getCheckInConfig: () => request<CheckInConfig>("/check-in/config"),
+  updateCheckInConfig: (enabled: boolean) =>
+    request<CheckInConfig>("/check-in/config", {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    }),
+  regenerateCheckInConfig: () =>
+    request<CheckInConfig>("/check-in/config/regenerate", { method: "POST" }),
+  listCheckInRequests: () => request<CheckInRequest[]>("/check-in/requests"),
+  approveCheckInRequest: (
+    requestId: string,
+    payload: { existing_patient_id?: string | null; force_new: boolean },
+  ) =>
+    request<Patient>(`/check-in/requests/${requestId}/approve`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  rejectCheckInRequest: (requestId: string, reason = "") =>
+    request<CheckInRequest>(`/check-in/requests/${requestId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
   updateClinicSettings: (payload: ClinicSettingsUpdatePayload) =>
     request<ClinicSettings>("/settings/clinic", {
       method: "PUT",

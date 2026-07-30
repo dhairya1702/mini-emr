@@ -866,6 +866,26 @@ class PostgresPatientFlowRepository:
 
         return await asyncio.to_thread(_list)
 
+    async def get_appointment(self, org_id: str, appointment_id: str) -> dict[str, Any]:
+        def _get() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        select {_columns_sql(APPOINTMENT_COLUMNS)}
+                        from public.appointments
+                        where org_id = %s and id = %s
+                        limit 1
+                        """,
+                        (org_id, appointment_id),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("Appointment not found.")
+                    return _row_to_dict(row, cursor)
+
+        return await asyncio.to_thread(_get)
+
     async def list_scheduled_appointment_times(
         self,
         org_id: str,

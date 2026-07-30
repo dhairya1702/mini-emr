@@ -89,10 +89,11 @@ function patientChips(patient: Patient) {
 const sexLabels = {
   female: "Female",
   male: "Male",
-  intersex: "Intersex",
-  prefer_not_to_say: "Prefer not to say",
+  other: "Other",
+  intersex: "Other",
+  prefer_not_to_say: "Other",
   unknown: "Other",
-} as const;
+} as const satisfies Record<string, string>;
 
 function patientMetadata(patient: Patient) {
   let resolvedAge = patient.age;

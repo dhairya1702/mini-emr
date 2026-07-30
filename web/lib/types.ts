@@ -2,7 +2,7 @@ import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 
 export type PatientStatus = "waiting" | "consultation" | "done";
 export type QueuePriority = "normal" | "urgent";
-export type SexAtBirth = "female" | "male" | "intersex" | "prefer_not_to_say" | "unknown";
+export type SexAtBirth = "female" | "male" | "other";
 export type VisitKind = "new" | "follow_up";
 export type WorkspaceMode = "solo" | "team";
 export type EmailSenderMode = "clinicos" | "clinic";
@@ -870,7 +870,66 @@ export interface ClinicSettings {
   onboarding_completed_at: string | null;
   users_allowed: number;
   workspace_mode: WorkspaceMode;
+  public_check_in_enabled: boolean;
+  public_check_in_token: string;
   updated_at: string | null;
+}
+
+export interface CheckInConfig {
+  enabled: boolean;
+  public_url: string;
+  token: string;
+}
+
+export interface PublicCheckInContext {
+  clinic_name: string;
+  clinic_address: string;
+  clinic_phone: string;
+}
+
+export interface PublicAppointmentSlots {
+  clinic_name: string;
+  timezone: string;
+  suggested_slots: string[];
+}
+
+export interface PublicAppointmentBooking {
+  appointment_id: string;
+  patient_name: string;
+  clinic_name: string;
+  timezone: string;
+  scheduled_for: string;
+  status: "scheduled" | "checked_in" | "cancelled";
+  booking_token: string;
+  suggested_slots: string[];
+}
+
+export interface CheckInCandidate {
+  id: string;
+  name: string;
+  phone: string;
+  date_of_birth: string | null;
+  last_visit_at: string;
+  status: PatientStatus;
+  match_reasons: string[];
+  confidence: "strong" | "likely" | "possible";
+}
+
+export interface CheckInRequest {
+  id: string;
+  submitted_name: string;
+  submitted_phone: string;
+  submitted_email: string;
+  submitted_date_of_birth: string;
+  submitted_sex_at_birth: SexAtBirth | null;
+  submitted_reason: string;
+  status: "pending" | "approved" | "rejected" | "expired";
+  approved_patient_id: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  expires_at: string;
+  candidates: CheckInCandidate[];
 }
 
 export type UserRole = "admin" | "staff";

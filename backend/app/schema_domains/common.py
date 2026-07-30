@@ -3,7 +3,7 @@ from typing import Literal
 
 PatientStatus = Literal["waiting", "consultation", "done"]
 QueuePriority = Literal["normal", "urgent"]
-SexAtBirth = Literal["female", "male", "intersex", "prefer_not_to_say", "unknown"]
+SexAtBirth = Literal["female", "male", "other"]
 VisitKind = Literal["new", "follow_up"]
 UserRole = Literal["admin", "staff"]
 ClinicSpecialty = Literal["optometry", "general_physician", "pediatrics", "dentistry"]
