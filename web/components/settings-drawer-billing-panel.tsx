@@ -22,6 +22,10 @@ interface SettingsDrawerBillingPanelProps {
   medicineItems: CatalogItem[];
   invoiceItems: DraftInvoiceItem[];
   invoiceSubtotal: number;
+  invoiceTaxTotal: number;
+  invoiceCgstTotal: number;
+  invoiceSgstTotal: number;
+  invoiceTotal: number;
   amountPaid: number;
   amountPaidInput: string;
   balanceDue: number;
@@ -68,6 +72,10 @@ export function SettingsDrawerBillingPanel({
   medicineItems,
   invoiceItems,
   invoiceSubtotal,
+  invoiceTaxTotal,
+  invoiceCgstTotal,
+  invoiceSgstTotal,
+  invoiceTotal,
   amountPaid,
   amountPaidInput,
   balanceDue,
@@ -122,6 +130,9 @@ export function SettingsDrawerBillingPanel({
     invoiceItems
       .map((item) => item.catalog_item_id)
       .filter((itemId): itemId is string => Boolean(itemId)),
+  );
+  const catalogById = new Map(
+    [...serviceItems, ...medicineItems].map((item) => [item.id, item]),
   );
   const recommendationItems = [...serviceItems, ...medicineItems].filter((item) => {
     const normalizedName = item.name.trim().toLowerCase();
@@ -205,7 +216,15 @@ export function SettingsDrawerBillingPanel({
             <div>
               {invoiceItems.length ? invoiceItems.map((item) => (
                 <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_88px_120px_36px] items-center gap-3 border-b border-[#edf3f7] px-3 py-2">
-                  <p className="min-w-0 truncate text-sm font-medium text-slate-900">{item.label}</p>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-900">{item.label}</p>
+                    {item.catalog_item_id && catalogById.get(item.catalog_item_id)?.hsn_sac_code ? (
+                      <p className="truncate text-[11px] text-[#2a6fa8]">
+                        {item.item_type === "service" ? "SAC" : "HSN"} {catalogById.get(item.catalog_item_id)?.hsn_sac_code}
+                        {" · "}GST {catalogById.get(item.catalog_item_id)?.gst_rate}%
+                      </p>
+                    ) : null}
+                  </div>
                   <input
                     value={item.quantity}
                     disabled={item.item_type === "program"}
@@ -343,6 +362,22 @@ export function SettingsDrawerBillingPanel({
                 <span>Subtotal</span>
                 <span>{invoiceSubtotal.toFixed(2)}</span>
               </div>
+              {invoiceTaxTotal > 0 ? (
+                <>
+                  <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
+                    <span>CGST</span>
+                    <span>{invoiceCgstTotal.toFixed(2)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
+                    <span>SGST</span>
+                    <span>{invoiceSgstTotal.toFixed(2)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
+                    <span>Total GST</span>
+                    <span>{invoiceTaxTotal.toFixed(2)}</span>
+                  </div>
+                </>
+              ) : null}
               <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
                 <span>Amount Paid</span>
                 <span>{amountPaid.toFixed(2)}</span>
@@ -353,7 +388,7 @@ export function SettingsDrawerBillingPanel({
               </div>
               <div className="mt-2 flex items-center justify-between text-base font-semibold text-slate-900">
                 <span>Total</span>
-                <span>{invoiceSubtotal.toFixed(2)}</span>
+                <span>{invoiceTotal.toFixed(2)}</span>
               </div>
             </div>
           </div>

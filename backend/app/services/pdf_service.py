@@ -1947,6 +1947,7 @@ def build_invoice_pdf(
     details = [
         ("Patient", patient.get("name", "Not recorded")),
         ("Phone", patient.get("phone", "Not recorded")),
+        ("GSTIN", invoice.get("supplier_gstin") or clinic.get("gstin") or "Not configured"),
         ("Visit Reason", patient.get("reason", "Not recorded")),
         ("Payment Status", str(invoice.get("payment_status", "unpaid")).replace("_", " ").title()),
         ("Amount Paid", f"{float(invoice.get('amount_paid', 0)):.2f}"),
@@ -1984,13 +1985,38 @@ def build_invoice_pdf(
         pdf.drawRightString(margin_x + max_width - 145, y, str(item.get("quantity", "")))
         pdf.drawRightString(margin_x + max_width - 80, y, f"{float(item.get('unit_price', 0)):.2f}")
         pdf.drawRightString(margin_x + max_width - 10, y, f"{float(item.get('line_total', 0)):.2f}")
-        y -= 22
+        if item.get("hsn_sac_code") and item.get("gst_rate") is not None:
+            pdf.setFont("Helvetica", 8)
+            pdf.setFillColor(HexColor("#64748b"))
+            code_label = "SAC" if item.get("item_type") == "service" else "HSN"
+            pdf.drawString(
+                margin_x + 10,
+                y - 12,
+                f"{code_label} {item.get('hsn_sac_code')} | GST {float(item.get('gst_rate', 0)):g}%",
+            )
+            pdf.setFont("Helvetica", 10)
+            pdf.setFillColor(HexColor("#1e293b"))
+            y -= 32
+        else:
+            y -= 22
 
     y -= 14
     pdf.setFont("Helvetica-Bold", 11)
     pdf.drawRightString(margin_x + max_width - 80, y, "Subtotal")
     pdf.drawRightString(margin_x + max_width - 10, y, f"{float(invoice.get('subtotal', 0)):.2f}")
+    if float(invoice.get("tax_total", 0) or 0) > 0:
+        y -= 18
+        pdf.setFont("Helvetica", 10)
+        pdf.drawRightString(margin_x + max_width - 80, y, "CGST")
+        pdf.drawRightString(margin_x + max_width - 10, y, f"{float(invoice.get('cgst_total', 0)):.2f}")
+        y -= 18
+        pdf.drawRightString(margin_x + max_width - 80, y, "SGST")
+        pdf.drawRightString(margin_x + max_width - 10, y, f"{float(invoice.get('sgst_total', 0)):.2f}")
+        y -= 18
+        pdf.drawRightString(margin_x + max_width - 80, y, "Total GST")
+        pdf.drawRightString(margin_x + max_width - 10, y, f"{float(invoice.get('tax_total', 0)):.2f}")
     y -= 22
+    pdf.setFont("Helvetica-Bold", 11)
     pdf.drawRightString(margin_x + max_width - 80, y, "Total")
     pdf.drawRightString(margin_x + max_width - 10, y, f"{float(invoice.get('total', 0)):.2f}")
 

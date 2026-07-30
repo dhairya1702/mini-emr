@@ -17,6 +17,8 @@ export type ClinicCatalogItemPayload = {
   stock_quantity: number;
   low_stock_threshold: number;
   unit: string;
+  hsn_sac_code?: string;
+  gst_rate?: number | null;
   aliases?: string[];
 };
 

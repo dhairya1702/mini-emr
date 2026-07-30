@@ -40,6 +40,7 @@ psql "$DATABASE_URL" -f db/migrations/<file>.sql
 | 2026-07-29 | `2026-07-29_platform_email_sender.sql` | Adds the encrypted ClinicOS Gmail sender and per-clinic sender selection. |
 | 2026-07-29 | `2026-07-29_persistent_follow_up_booking.sql` | Makes a follow-up booking link reusable for booking, rescheduling, cancellation, and rebooking against one appointment. |
 | 2026-07-30 | `2026-07-30_optometry_history.sql` | Adds persistent, revisioned optometry patient details and immutable consultation-note snapshots. |
+| 2026-07-30 | `2026-07-30_item_level_gst.sql` | Adds optional HSN/SAC and GST configuration with immutable invoice-line tax snapshots. |
 | 2026-07-29 | `2026-07-29_public_queue_check_in.sql` | Adds clinic QR check-in configuration and staff-reviewed public queue requests. |
 | 2026-07-30 | `2026-07-30_public_queue_check_in_email.sql` | Adds optional patient email capture to public QR check-in requests. |
 | 2026-07-30 | `2026-07-30_sex_values_and_check_in.sql` | Standardizes new sex values to female, male, or other and adds QR check-in capture without backfilling existing rows. |

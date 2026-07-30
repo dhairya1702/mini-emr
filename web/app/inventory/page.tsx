@@ -31,6 +31,8 @@ function emptyCatalogForm(itemType: CatalogFormState["item_type"] = "service"): 
     stock_quantity: "",
     low_stock_threshold: "",
     unit: "",
+    hsn_sac_code: "",
+    gst_rate: "",
     aliases: "",
   };
 }
@@ -159,6 +161,7 @@ export default function InventoryPage() {
     const price = Number(catalogForm.default_price);
     const stockQuantity = Number(catalogForm.stock_quantity || "0");
     const lowStockThreshold = Number(catalogForm.low_stock_threshold || "0");
+    const gstRate = catalogForm.gst_rate ? Number(catalogForm.gst_rate) : null;
     if (!catalogForm.name.trim()) {
       setCatalogError("Name is required.");
       return;
@@ -175,6 +178,10 @@ export default function InventoryPage() {
       setCatalogError("Enter a valid low-stock threshold.");
       return;
     }
+    if (Boolean(catalogForm.hsn_sac_code.trim()) !== (gstRate !== null)) {
+      setCatalogError("Enter both HSN/SAC code and GST rate, or leave both blank.");
+      return;
+    }
     setIsSavingCatalog(true);
     try {
       await handleCreateCatalogItem({
@@ -185,6 +192,8 @@ export default function InventoryPage() {
         stock_quantity: catalogForm.track_inventory ? stockQuantity : 0,
         low_stock_threshold: catalogForm.track_inventory ? lowStockThreshold : 0,
         unit: catalogForm.unit.trim(),
+        hsn_sac_code: catalogForm.hsn_sac_code.trim(),
+        gst_rate: gstRate,
         aliases: catalogForm.aliases.split(",").map((alias) => alias.trim()).filter(Boolean),
       });
       setCatalogStatus(catalogForm.item_type === "service" ? "Service saved." : "Medicine saved.");
@@ -500,6 +509,39 @@ export default function InventoryPage() {
                     className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
                   />
                 </label>
+
+                <div className="rounded-xl border border-[#dbe7ef] bg-[#f8fbfd] p-4">
+                  <p className="text-sm font-semibold text-slate-800">GST details (optional)</p>
+                  <p className="mt-1 text-xs text-slate-500">Leave both blank to keep this item untaxed.</p>
+                  <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-medium text-slate-700">
+                        {catalogForm.item_type === "service" ? "SAC code" : "HSN code"}
+                      </span>
+                      <input
+                        value={catalogForm.hsn_sac_code}
+                        inputMode="numeric"
+                        onChange={(event) => setCatalogForm((current) => ({ ...current, hsn_sac_code: event.target.value.replace(/\D/g, "").slice(0, 8) }))}
+                        placeholder="4, 6, or 8 digits"
+                        className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-white px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-medium text-slate-700">GST rate</span>
+                      <select
+                        value={catalogForm.gst_rate}
+                        onChange={(event) => setCatalogForm((current) => ({ ...current, gst_rate: event.target.value }))}
+                        className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-white px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                      >
+                        <option value="">No GST</option>
+                        <option value="5">5%</option>
+                        <option value="12">12%</option>
+                        <option value="18">18%</option>
+                        <option value="28">28%</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
 
                 <label className="flex items-center gap-3 rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-700">
                   <input

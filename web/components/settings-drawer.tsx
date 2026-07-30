@@ -33,6 +33,7 @@ import { SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-p
 import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/settings-drawer-inventory-panel";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
 import { api, resolveApiAssetUrl } from "@/lib/api";
+import { calculateDraftInvoiceTaxTotals } from "@/lib/billing-tax";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { printBlob } from "@/lib/print";
@@ -79,6 +80,8 @@ interface SettingsDrawerProps {
     stock_quantity: number;
     low_stock_threshold: number;
     unit: string;
+    hsn_sac_code?: string;
+    gst_rate?: number | null;
     aliases?: string[];
   }) => Promise<void>;
   onAdjustCatalogStock: (itemId: string, delta: number) => Promise<void>;
@@ -146,6 +149,7 @@ type ClinicFormState = {
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string;
+  gstin: string;
   clinic_specialty: ClinicSpecialty | "";
   timezone: string;
   appointment_start_time: string;
@@ -476,6 +480,7 @@ function createClinicFormState(settings?: ClinicSettings | null): ClinicFormStat
     clinic_name: settings?.clinic_name ?? "ClinicOS",
     clinic_address: settings?.clinic_address ?? "",
     clinic_phone: settings?.clinic_phone ?? "",
+    gstin: settings?.gstin ?? "",
     clinic_specialty: settings?.clinic_specialty ?? "",
     timezone: normalizeTimeZoneValue(settings?.timezone ?? DEFAULT_CLINIC_TIMEZONE),
     appointment_start_time: settings?.appointment_start_time ?? "09:00",
@@ -590,6 +595,8 @@ export function SettingsDrawer({
     stock_quantity: "",
     low_stock_threshold: "",
     unit: "",
+    hsn_sac_code: "",
+    gst_rate: "",
     aliases: "",
   });
   const [catalogError, setCatalogError] = useState("");
@@ -661,17 +668,16 @@ export function SettingsDrawer({
     }
     return warnings;
   }, [currentUser, form.document_template_name, form.document_template_url, form.email_configured]);
-  const invoiceSubtotal = invoiceItems.reduce(
-    (sum, item) => sum + item.quantity * item.unit_price,
-    0,
-  );
+  const invoiceTaxTotals = calculateDraftInvoiceTaxTotals(invoiceItems, catalogItems);
+  const invoiceSubtotal = invoiceTaxTotals.subtotal;
+  const invoiceTotal = invoiceTaxTotals.total;
   const normalizedAmountPaid =
     paymentStatus === "paid"
-      ? invoiceSubtotal
+      ? invoiceTotal
       : paymentStatus === "unpaid"
         ? 0
         : Number(amountPaidInput || "0");
-  const balanceDue = Math.max(invoiceSubtotal - normalizedAmountPaid, 0);
+  const balanceDue = Math.max(invoiceTotal - normalizedAmountPaid, 0);
   const menuItems: DrawerMenuItem[] = isTrainingMode ? [
     { href: "/", label: "Queue", icon: LayoutDashboard },
     { href: "/training", label: "Training Mode", icon: GraduationCap },
@@ -994,6 +1000,10 @@ export function SettingsDrawer({
       setError("Sender email must be a valid email address.");
       return;
     }
+    if (form.gstin.trim() && form.gstin.trim().length !== 15) {
+      setError("GSTIN must contain 15 characters.");
+      return;
+    }
     if (!form.appointment_start_time || !form.appointment_end_time) {
       setError("Set both clinic opening and closing times.");
       return;
@@ -1049,6 +1059,7 @@ export function SettingsDrawer({
         clinic_name: form.clinic_name.trim(),
         clinic_address: form.clinic_address.trim(),
         clinic_phone: form.clinic_phone.trim(),
+        gstin: form.gstin.trim().toUpperCase(),
         clinic_specialty: form.clinic_specialty || null,
         timezone: form.timezone,
         appointment_start_time: form.appointment_start_time,
@@ -1193,6 +1204,7 @@ export function SettingsDrawer({
     const price = Number(catalogForm.default_price);
     const stockQuantity = Number(catalogForm.stock_quantity || "0");
     const lowStockThreshold = Number(catalogForm.low_stock_threshold || "0");
+    const gstRate = catalogForm.gst_rate ? Number(catalogForm.gst_rate) : null;
     if (!catalogForm.name.trim()) {
       setCatalogError("Name is required.");
       return;
@@ -1209,6 +1221,10 @@ export function SettingsDrawer({
       setCatalogError("Enter a valid low-stock threshold.");
       return;
     }
+    if (Boolean(catalogForm.hsn_sac_code.trim()) !== (gstRate !== null)) {
+      setCatalogError("Enter both HSN/SAC code and GST rate, or leave both blank.");
+      return;
+    }
 
     setIsSavingCatalog(true);
     try {
@@ -1220,6 +1236,8 @@ export function SettingsDrawer({
         stock_quantity: catalogForm.track_inventory ? stockQuantity : 0,
         low_stock_threshold: catalogForm.track_inventory ? lowStockThreshold : 0,
         unit: catalogForm.unit.trim(),
+        hsn_sac_code: catalogForm.hsn_sac_code.trim(),
+        gst_rate: gstRate,
         aliases: catalogForm.aliases.split(",").map((alias) => alias.trim()).filter(Boolean),
       });
       setCatalogStatus(
@@ -1233,6 +1251,8 @@ export function SettingsDrawer({
         stock_quantity: "",
         low_stock_threshold: "",
         unit: "",
+        hsn_sac_code: "",
+        gst_rate: "",
         aliases: "",
       });
     } catch (saveError) {
@@ -1739,6 +1759,24 @@ export function SettingsDrawer({
                 </div>
               </div>
 
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900">GST details (optional)</h4>
+                <p className="mt-1 text-xs text-slate-500">Printed on invoices when configured inventory items carry GST.</p>
+                <div className="mt-3">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">GSTIN</span>
+                    <input
+                      value={form.gstin}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, gstin: event.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 15) }))
+                      }
+                      placeholder="15-character GSTIN"
+                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                    />
+                  </label>
+                </div>
+              </div>
+
               {!form.clinic_specialty && canEditClinic ? (
                 <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                   Select a clinic specialty to enable specialty-specific features as they are added.
@@ -2168,6 +2206,10 @@ export function SettingsDrawer({
         medicineItems={medicineItems}
         invoiceItems={invoiceItems}
         invoiceSubtotal={invoiceSubtotal}
+        invoiceTaxTotal={invoiceTaxTotals.taxTotal}
+        invoiceCgstTotal={invoiceTaxTotals.cgstTotal}
+        invoiceSgstTotal={invoiceTaxTotals.sgstTotal}
+        invoiceTotal={invoiceTotal}
         amountPaid={normalizedAmountPaid}
         amountPaidInput={amountPaidInput}
         balanceDue={balanceDue}
@@ -2207,7 +2249,7 @@ export function SettingsDrawer({
         onCreateBill={handleCreateBill}
         onPaymentStatusChange={(status) => {
           setPaymentStatus(status);
-          setAmountPaidInput(status === "partial" ? invoiceSubtotal.toFixed(2) : "");
+          setAmountPaidInput(status === "partial" ? invoiceTotal.toFixed(2) : "");
           setIsInvoiceDirty(true);
           setBillingStatus("");
           setBillingError("");

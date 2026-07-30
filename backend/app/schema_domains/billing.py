@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.email_validation import normalize_single_email
 from app.schema_domains.care_programs import ProgramEnrollmentSummaryOut
@@ -18,6 +18,8 @@ class CatalogItemBase(BaseModel):
     stock_quantity: float = Field(default=0, ge=0, le=1000000)
     low_stock_threshold: float = Field(default=0, ge=0, le=1000000)
     unit: str = Field(default="", max_length=40)
+    hsn_sac_code: str = Field(default="", max_length=8, pattern=r"^\d{0,8}$")
+    gst_rate: float | None = Field(default=None, gt=0, le=100)
     aliases: list[str] = Field(default_factory=list, max_length=30)
     description: str = Field(default="", max_length=1000)
     program_key: str | None = Field(default=None, max_length=80)
@@ -33,6 +35,16 @@ class CatalogItemBase(BaseModel):
             if cleaned and cleaned.casefold() not in {entry.casefold() for entry in normalized}:
                 normalized.append(cleaned[:120])
         return normalized
+
+    @model_validator(mode="after")
+    def validate_gst_pair(self) -> "CatalogItemBase":
+        code = self.hsn_sac_code.strip()
+        if code and len(code) not in {4, 6, 8}:
+            raise ValueError("HSN/SAC code must contain 4, 6, or 8 digits.")
+        if bool(code) != (self.gst_rate is not None):
+            raise ValueError("Enter both HSN/SAC code and GST rate, or leave both blank.")
+        self.hsn_sac_code = code
+        return self
 
 
 class CatalogItemCreate(CatalogItemBase):
@@ -60,6 +72,12 @@ class InvoiceItemInput(BaseModel):
 class InvoiceItemOut(InvoiceItemInput):
     id: UUID
     line_total: float
+    hsn_sac_code: str = ""
+    gst_rate: float | None = None
+    taxable_value: float = 0
+    tax_amount: float = 0
+    cgst_amount: float = 0
+    sgst_amount: float = 0
 
 
 class InvoiceCreate(BaseModel):
@@ -77,7 +95,11 @@ class InvoiceOut(BaseModel):
     visit_id: UUID | None = None
     patient_name: str | None = None
     subtotal: float
+    tax_total: float = 0
+    cgst_total: float = 0
+    sgst_total: float = 0
     total: float
+    supplier_gstin: str = ""
     payment_status: PaymentStatus
     amount_paid: float = 0
     balance_due: float = 0

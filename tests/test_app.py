@@ -993,6 +993,7 @@ class FakeRepo:
             "onboarding_required": False,
             "onboarding_completed_at": None,
             "workspace_mode": "solo",
+            "gstin": "",
             "public_check_in_enabled": False,
             "public_check_in_token": str(uuid4()),
             **values,
@@ -2448,13 +2449,42 @@ class FakeRepo:
             raise ValueError("Patient not found for this organization.")
 
         subtotal = round(sum(item.quantity * item.unit_price for item in payload.items), 2)
+        tax_total = 0.0
+        cgst_total = 0.0
+        sgst_total = 0.0
+        prepared_items: list[dict] = []
+        for raw_item in payload.items:
+            catalog_item = None
+            if raw_item.catalog_item_id:
+                catalog_item = self.catalog_items.get(str(raw_item.catalog_item_id))
+                if not catalog_item or catalog_item["org_id"] != org_id:
+                    raise ValueError("Inventory item not found for this organization.")
+            line_total = round(raw_item.quantity * raw_item.unit_price, 2)
+            hsn_sac_code = str((catalog_item or {}).get("hsn_sac_code") or "")
+            gst_rate = (catalog_item or {}).get("gst_rate")
+            tax_amount = round(line_total * float(gst_rate) / 100, 2) if hsn_sac_code and gst_rate is not None else 0.0
+            cgst_amount = round(tax_amount / 2, 2)
+            sgst_amount = round(tax_amount - cgst_amount, 2)
+            tax_total = round(tax_total + tax_amount, 2)
+            cgst_total = round(cgst_total + cgst_amount, 2)
+            sgst_total = round(sgst_total + sgst_amount, 2)
+            prepared_items.append({
+                "raw_item": raw_item,
+                "line_total": line_total,
+                "hsn_sac_code": hsn_sac_code,
+                "gst_rate": gst_rate,
+                "tax_amount": tax_amount,
+                "cgst_amount": cgst_amount,
+                "sgst_amount": sgst_amount,
+            })
+        total = round(subtotal + tax_total, 2)
         if payload.payment_status == "paid":
-            amount_paid = subtotal
+            amount_paid = total
         elif payload.payment_status == "unpaid":
             amount_paid = 0
         else:
             amount_paid = round(float(payload.amount_paid or 0), 2)
-            if amount_paid <= 0 or amount_paid >= subtotal:
+            if amount_paid <= 0 or amount_paid >= total:
                 raise ValueError("Partial invoice amount must be less than the invoice total.")
         existing_invoice_id = str(payload.invoice_id) if getattr(payload, "invoice_id", None) else None
         if existing_invoice_id:
@@ -2476,11 +2506,8 @@ class FakeRepo:
                 "created_at": _now(),
             }
         items = []
-        for raw_item in payload.items:
-            if raw_item.catalog_item_id:
-                catalog_item = self.catalog_items.get(str(raw_item.catalog_item_id))
-                if not catalog_item or catalog_item["org_id"] != org_id:
-                    raise ValueError("Inventory item not found for this organization.")
+        for prepared_item in prepared_items:
+            raw_item = prepared_item["raw_item"]
             invoice_item = {
                 "id": str(uuid4()),
                 "catalog_item_id": str(raw_item.catalog_item_id) if raw_item.catalog_item_id else None,
@@ -2488,17 +2515,27 @@ class FakeRepo:
                 "label": raw_item.label,
                 "quantity": raw_item.quantity,
                 "unit_price": raw_item.unit_price,
-                "line_total": round(raw_item.quantity * raw_item.unit_price, 2),
+                "line_total": prepared_item["line_total"],
+                "hsn_sac_code": prepared_item["hsn_sac_code"],
+                "gst_rate": prepared_item["gst_rate"],
+                "taxable_value": prepared_item["line_total"] if prepared_item["tax_amount"] else 0,
+                "tax_amount": prepared_item["tax_amount"],
+                "cgst_amount": prepared_item["cgst_amount"],
+                "sgst_amount": prepared_item["sgst_amount"],
             }
             self.invoice_items[invoice_item["id"]] = invoice_item | {"invoice_id": invoice_id}
             items.append(invoice_item)
 
         invoice.update({
             "subtotal": subtotal,
-            "total": subtotal,
+            "tax_total": tax_total,
+            "cgst_total": cgst_total,
+            "sgst_total": sgst_total,
+            "total": total,
+            "supplier_gstin": str(self.clinic_settings.get(org_id, {}).get("gstin") or ""),
             "payment_status": payload.payment_status,
             "amount_paid": amount_paid,
-            "balance_due": round(max(subtotal - amount_paid, 0), 2),
+            "balance_due": round(max(total - amount_paid, 0), 2),
             "paid_at": _now() if payload.payment_status == "paid" else None,
             "completed_at": None,
             "completed_by": None,

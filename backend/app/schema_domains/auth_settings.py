@@ -27,6 +27,7 @@ class ClinicSettingsUpdate(BaseModel):
     clinic_name: str | None = Field(default=None, min_length=1, max_length=120)
     clinic_address: str | None = Field(default=None, max_length=300)
     clinic_phone: str | None = Field(default=None, max_length=40)
+    gstin: str | None = Field(default=None, max_length=15, pattern=r"^[0-9A-Za-z]{0,15}$")
     clinic_specialty: ClinicSpecialty | None = None
     timezone: str | None = Field(default=None, min_length=1, max_length=64)
     appointment_start_time: str | None = Field(default=None, min_length=5, max_length=5)
@@ -87,6 +88,16 @@ class ClinicSettingsUpdate(BaseModel):
             raise ValueError("Appointments per hour must divide evenly into 60 minutes.")
         return value
 
+    @field_validator("gstin")
+    @classmethod
+    def normalize_gstin(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip().upper()
+        if normalized and len(normalized) != 15:
+            raise ValueError("GSTIN must contain 15 characters.")
+        return normalized
+
     @field_validator("document_template_note_layout")
     @classmethod
     def validate_document_template_note_layout(
@@ -130,6 +141,7 @@ class ClinicSettingsOut(BaseModel):
     clinic_name: str = "ClinicOS"
     clinic_address: str = ""
     clinic_phone: str = ""
+    gstin: str = ""
     clinic_specialty: ClinicSpecialty | None = None
     timezone: str = DEFAULT_TIMEZONE
     appointment_start_time: str = "09:00"

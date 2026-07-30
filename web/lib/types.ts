@@ -850,6 +850,8 @@ export interface CatalogItem {
   stock_quantity: number;
   low_stock_threshold: number;
   unit: string;
+  hsn_sac_code: string;
+  gst_rate: number | null;
   aliases: string[];
   description?: string;
   program_key?: string | null;
@@ -866,6 +868,12 @@ export interface InvoiceItem {
   quantity: number;
   unit_price: number;
   line_total: number;
+  hsn_sac_code: string;
+  gst_rate: number | null;
+  taxable_value: number;
+  tax_amount: number;
+  cgst_amount: number;
+  sgst_amount: number;
 }
 
 export interface Invoice {
@@ -875,7 +883,11 @@ export interface Invoice {
   visit_id?: string | null;
   patient_name?: string | null;
   subtotal: number;
+  tax_total: number;
+  cgst_total: number;
+  sgst_total: number;
   total: number;
+  supplier_gstin: string;
   payment_status: PaymentStatus;
   amount_paid: number;
   balance_due: number;
@@ -894,6 +906,7 @@ export interface ClinicSettings {
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string;
+  gstin: string;
   clinic_specialty: ClinicSpecialty | null;
   timezone: string;
   appointment_start_time: string;
@@ -1335,6 +1348,8 @@ export interface CatalogItemCreatePayload {
   stock_quantity: number;
   low_stock_threshold: number;
   unit: string;
+  hsn_sac_code?: string;
+  gst_rate?: number | null;
   aliases?: string[];
   description?: string;
   program_key?: string | null;
@@ -1619,6 +1634,7 @@ export interface ClinicSettingsUpdatePayload {
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string;
+  gstin?: string;
   clinic_specialty: ClinicSpecialty | null;
   timezone: string;
   appointment_start_time: string;

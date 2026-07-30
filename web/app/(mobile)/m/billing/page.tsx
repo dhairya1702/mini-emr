@@ -7,6 +7,7 @@ import { MobileAdminGate } from "@/components/mobile/mobile-admin-gate";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
 import { api } from "@/lib/api";
+import { calculateDraftInvoiceTaxTotals } from "@/lib/billing-tax";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { printBlob } from "@/lib/print";
 import type { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
@@ -147,12 +148,17 @@ function MobileBillingContent({
   );
   const serviceItems = useMemo(() => catalogItems.filter((item) => item.item_type === "service"), [catalogItems]);
   const medicineItems = useMemo(() => catalogItems.filter((item) => item.item_type === "medicine"), [catalogItems]);
-  const invoiceSubtotal = useMemo(() => invoiceItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0), [invoiceItems]);
-  const amountPaid = useMemo(
-    () => (paymentStatus === "paid" ? invoiceSubtotal : paymentStatus === "unpaid" ? 0 : Number(amountPaidInput || "0")),
-    [amountPaidInput, invoiceSubtotal, paymentStatus],
+  const invoiceTaxTotals = useMemo(
+    () => calculateDraftInvoiceTaxTotals(invoiceItems, catalogItems),
+    [catalogItems, invoiceItems],
   );
-  const balanceDue = useMemo(() => Math.max(invoiceSubtotal - amountPaid, 0), [amountPaid, invoiceSubtotal]);
+  const invoiceSubtotal = invoiceTaxTotals.subtotal;
+  const invoiceTotal = invoiceTaxTotals.total;
+  const amountPaid = useMemo(
+    () => (paymentStatus === "paid" ? invoiceTotal : paymentStatus === "unpaid" ? 0 : Number(amountPaidInput || "0")),
+    [amountPaidInput, invoiceTotal, paymentStatus],
+  );
+  const balanceDue = useMemo(() => Math.max(invoiceTotal - amountPaid, 0), [amountPaid, invoiceTotal]);
   const latestConsultationNote = selectedPatientNotes[0] ?? null;
   const autoDraftInvoiceItems = useMemo(
     () => buildAutoDraftInvoiceItems(selectedBillingPatient, latestConsultationNote, serviceItems, medicineItems, billingSuggestions),
@@ -471,6 +477,10 @@ function MobileBillingContent({
           medicineItems={medicineItems}
           invoiceItems={invoiceItems}
           invoiceSubtotal={invoiceSubtotal}
+          invoiceTaxTotal={invoiceTaxTotals.taxTotal}
+          invoiceCgstTotal={invoiceTaxTotals.cgstTotal}
+          invoiceSgstTotal={invoiceTaxTotals.sgstTotal}
+          invoiceTotal={invoiceTotal}
           amountPaid={amountPaid}
           amountPaidInput={amountPaidInput}
           balanceDue={balanceDue}
@@ -499,7 +509,7 @@ function MobileBillingContent({
           onCreateBill={handleCreateBill}
           onPaymentStatusChange={(status) => {
             setPaymentStatus(status);
-            setAmountPaidInput(status === "partial" ? invoiceSubtotal.toFixed(2) : "");
+            setAmountPaidInput(status === "partial" ? invoiceTotal.toFixed(2) : "");
             setBillingStatus("");
             setBillingError("");
             setIsInvoiceDirty(true);

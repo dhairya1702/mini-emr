@@ -19,6 +19,117 @@ class FakeWhatsAppDocumentClient:
         return WhatsAppSendResult(message_id="wamid.invoice", raw={"messages": [{"id": "wamid.invoice"}]})
 
 
+def test_catalog_gst_requires_hsn_sac_and_rate_together(client):
+    test_client, _repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="gst-validation@clinic.com",
+        clinic_name="GST Validation Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    base_payload = {
+        "name": "Frames",
+        "item_type": "medicine",
+        "default_price": 1000,
+        "track_inventory": False,
+        "stock_quantity": 0,
+        "low_stock_threshold": 0,
+        "unit": "piece",
+    }
+
+    code_only = test_client.post(
+        "/catalog",
+        headers=headers,
+        json={**base_payload, "hsn_sac_code": "9003"},
+    )
+    rate_only = test_client.post(
+        "/catalog",
+        headers=headers,
+        json={**base_payload, "gst_rate": 12},
+    )
+
+    assert code_only.status_code == 422
+    assert rate_only.status_code == 422
+
+
+def test_invoice_adds_catalog_gst_and_snapshots_the_tax_details(client):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="item-gst@clinic.com",
+        clinic_name="Item GST Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = test_client.post(
+        "/patients",
+        headers=headers,
+        json={
+            "name": "Tax Patient",
+            "phone": "5550102030",
+            "reason": "Frames",
+            "age": 35,
+            "temperature": 98.4,
+        },
+    ).json()
+    frames = test_client.post(
+        "/catalog",
+        headers=headers,
+        json={
+            "name": "Frames",
+            "item_type": "medicine",
+            "default_price": 1000,
+            "track_inventory": False,
+            "stock_quantity": 0,
+            "low_stock_threshold": 0,
+            "unit": "piece",
+            "hsn_sac_code": "9003",
+            "gst_rate": 12,
+        },
+    ).json()
+
+    response = test_client.post(
+        "/invoices",
+        headers=headers,
+        json={
+            "patient_id": patient["id"],
+            "payment_status": "paid",
+            "items": [
+                {
+                    "catalog_item_id": frames["id"],
+                    "item_type": "medicine",
+                    "label": "Frames",
+                    "quantity": 1,
+                    "unit_price": 1000,
+                },
+                {
+                    "item_type": "service",
+                    "label": "Consultation",
+                    "quantity": 1,
+                    "unit_price": 500,
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 201
+    invoice = response.json()
+    assert invoice["subtotal"] == 1500
+    assert invoice["tax_total"] == 120
+    assert invoice["cgst_total"] == 60
+    assert invoice["sgst_total"] == 60
+    assert invoice["total"] == 1620
+    assert invoice["amount_paid"] == 1620
+    assert invoice["items"][0]["hsn_sac_code"] == "9003"
+    assert invoice["items"][0]["gst_rate"] == 12
+    assert invoice["items"][0]["tax_amount"] == 120
+    assert invoice["items"][1]["tax_amount"] == 0
+
+    repo.catalog_items[frames["id"]]["gst_rate"] = 18
+    stored_invoice = test_client.get("/invoices", headers=headers).json()[0]
+    assert stored_invoice["items"][0]["gst_rate"] == 12
+    assert stored_invoice["total"] == 1620
+
+
 def test_invoice_payment_update_writes_its_audit_event_through_atomic_repository_contract(client):
     test_client, repo = client
     session = register_test_clinic(

@@ -36,6 +36,8 @@ CATALOG_ITEM_COLUMNS = [
     "stock_quantity",
     "low_stock_threshold",
     "unit",
+    "hsn_sac_code",
+    "gst_rate",
     "aliases",
     "created_at",
 ]
@@ -46,7 +48,11 @@ INVOICE_COLUMNS = [
     "patient_id",
     "visit_id",
     "subtotal",
+    "tax_total",
+    "cgst_total",
+    "sgst_total",
     "total",
+    "supplier_gstin",
     "payment_status",
     "amount_paid",
     "paid_at",
@@ -66,6 +72,12 @@ INVOICE_ITEM_COLUMNS = [
     "quantity",
     "unit_price",
     "line_total",
+    "hsn_sac_code",
+    "gst_rate",
+    "taxable_value",
+    "tax_amount",
+    "cgst_amount",
+    "sgst_amount",
     "created_at",
 ]
 
@@ -91,6 +103,12 @@ def _invoice_item_payload(payload: InvoiceCreate) -> list[dict[str, Any]]:
             "line_total": decimal_money(
                 decimal_quantity(item.quantity) * decimal_money(item.unit_price)
             ),
+            "hsn_sac_code": "",
+            "gst_rate": None,
+            "taxable_value": decimal_money(0),
+            "tax_amount": decimal_money(0),
+            "cgst_amount": decimal_money(0),
+            "sgst_amount": decimal_money(0),
         }
         for item in payload.items
     ]
@@ -128,10 +146,10 @@ class PostgresBillingRepository:
                         insert into public.catalog_items (
                           org_id, name, item_type, description, program_key, program_definition, is_active,
                           default_price, track_inventory,
-                          stock_quantity, low_stock_threshold, unit
+                          stock_quantity, low_stock_threshold, unit, hsn_sac_code, gst_rate
                           , aliases
                         )
-                        values (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                        values (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                         returning {_columns_sql(CATALOG_ITEM_COLUMNS)}
                         """,
                         (
@@ -147,6 +165,8 @@ class PostgresBillingRepository:
                             values["stock_quantity"],
                             values["low_stock_threshold"],
                             values["unit"],
+                            values["hsn_sac_code"],
+                            values["gst_rate"],
                             json.dumps(values["aliases"]),
                         ),
                     )
@@ -240,20 +260,6 @@ class PostgresBillingRepository:
         *,
         audit_event_factory: AuditEventFactory | None = None,
     ) -> dict[str, Any]:
-        invoice_total = decimal_money(
-            sum(
-                (
-                    decimal_quantity(item.quantity) * decimal_money(item.unit_price)
-                    for item in payload.items
-                ),
-                start=decimal_money(0),
-            )
-        )
-        normalized_amount_paid = normalize_invoice_amount_paid(
-            payload.payment_status,
-            payload.amount_paid,
-            invoice_total,
-        )
         item_payload = _invoice_item_payload(payload)
         should_mark_paid = payload.payment_status == "paid"
 
@@ -277,8 +283,8 @@ class PostgresBillingRepository:
                     catalog_item_ids = [item["catalog_item_id"] for item in item_payload if item["catalog_item_id"]]
                     if catalog_item_ids:
                         cursor.execute(
-                            """
-                            select id, item_type, is_active, program_key
+                            f"""
+                            select id, item_type, is_active, program_key, hsn_sac_code, gst_rate
                             from public.catalog_items
                             where org_id = %s and id = any(%s::uuid[])
                             """,
@@ -321,6 +327,60 @@ class PostgresBillingRepository:
                                 if cursor.fetchone():
                                     raise ValueError("Patient already has a current enrollment in this care program.")
 
+                            hsn_sac_code = str(catalog_row[4] or "").strip()
+                            gst_rate = (
+                                Decimal(str(catalog_row[5]))
+                                if catalog_row[5] is not None
+                                else None
+                            )
+                            if hsn_sac_code and gst_rate is not None:
+                                tax_amount = decimal_money(
+                                    item["line_total"] * gst_rate / Decimal("100")
+                                )
+                                cgst_amount = decimal_money(tax_amount / Decimal("2"))
+                                item.update(
+                                    {
+                                        "hsn_sac_code": hsn_sac_code,
+                                        "gst_rate": gst_rate,
+                                        "taxable_value": item["line_total"],
+                                        "tax_amount": tax_amount,
+                                        "cgst_amount": cgst_amount,
+                                        "sgst_amount": decimal_money(tax_amount - cgst_amount),
+                                    }
+                                )
+
+                    invoice_subtotal = decimal_money(
+                        sum(
+                            (item["line_total"] for item in item_payload),
+                            start=decimal_money(0),
+                        )
+                    )
+                    tax_total = decimal_money(
+                        sum(
+                            (item["tax_amount"] for item in item_payload),
+                            start=decimal_money(0),
+                        )
+                    )
+                    cgst_total = decimal_money(
+                        sum(
+                            (item["cgst_amount"] for item in item_payload),
+                            start=decimal_money(0),
+                        )
+                    )
+                    sgst_total = decimal_money(tax_total - cgst_total)
+                    invoice_total = decimal_money(invoice_subtotal + tax_total)
+                    normalized_amount_paid = normalize_invoice_amount_paid(
+                        payload.payment_status,
+                        payload.amount_paid,
+                        invoice_total,
+                    )
+                    cursor.execute(
+                        "select gstin from public.clinic_settings where org_id = %s limit 1",
+                        (org_id,),
+                    )
+                    clinic_tax_row = cursor.fetchone()
+                    supplier_gstin = str(clinic_tax_row[0] or "").strip() if clinic_tax_row else ""
+
                     invoice_id = str(payload.invoice_id) if payload.invoice_id else None
                     if invoice_id:
                         cursor.execute(
@@ -337,23 +397,30 @@ class PostgresBillingRepository:
                         if not existing_row:
                             raise ValueError("Draft invoice not found for this patient.")
                         cursor.execute(
-                            """
+                            f"""
                             update public.invoices
                             set
                               visit_id = coalesce(visit_id, %s),
                               subtotal = %s,
+                              tax_total = %s,
+                              cgst_total = %s,
+                              sgst_total = %s,
                               total = %s,
+                              supplier_gstin = %s,
                               payment_status = %s,
                               amount_paid = %s,
                               paid_at = %s
                             where org_id = %s and id = %s
-                            returning id, org_id, patient_id, visit_id, subtotal, total, payment_status, amount_paid,
-                              paid_at, completed_at, completed_by, sent_at, created_at
+                            returning {_columns_sql(INVOICE_COLUMNS)}
                             """,
                             (
                                 current_visit_id,
+                                invoice_subtotal,
+                                tax_total,
+                                cgst_total,
+                                sgst_total,
                                 invoice_total,
-                                invoice_total,
+                                supplier_gstin,
                                 payload.payment_status,
                                 normalized_amount_paid,
                                 None,
@@ -363,20 +430,24 @@ class PostgresBillingRepository:
                         )
                     else:
                         cursor.execute(
-                            """
+                            f"""
                             insert into public.invoices (
-                              org_id, patient_id, visit_id, subtotal, total, payment_status, amount_paid, paid_at
+                              org_id, patient_id, visit_id, subtotal, tax_total, cgst_total, sgst_total,
+                              total, supplier_gstin, payment_status, amount_paid, paid_at
                             )
-                            values (%s, %s, %s, %s, %s, %s, %s, %s)
-                            returning id, org_id, patient_id, visit_id, subtotal, total, payment_status, amount_paid,
-                              paid_at, completed_at, completed_by, sent_at, created_at
+                            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            returning {_columns_sql(INVOICE_COLUMNS)}
                             """,
                             (
                                 org_id,
                                 str(payload.patient_id),
                                 current_visit_id,
+                                invoice_subtotal,
+                                tax_total,
+                                cgst_total,
+                                sgst_total,
                                 invoice_total,
-                                invoice_total,
+                                supplier_gstin,
                                 payload.payment_status,
                                 normalized_amount_paid,
                                 None,
@@ -389,12 +460,11 @@ class PostgresBillingRepository:
                     invoice_id = str(invoice["id"])
                     if should_mark_paid and invoice.get("paid_at") is None:
                         cursor.execute(
-                            """
+                            f"""
                             update public.invoices
                             set paid_at = now()
                             where id = %s
-                            returning id, org_id, patient_id, visit_id, subtotal, total, payment_status, amount_paid,
-                              paid_at, completed_at, completed_by, sent_at, created_at
+                            returning {_columns_sql(INVOICE_COLUMNS)}
                             """,
                             (invoice_id,),
                         )
@@ -406,12 +476,13 @@ class PostgresBillingRepository:
                     )
                     for item in item_payload:
                         cursor.execute(
-                            """
+                            f"""
                             insert into public.invoice_items (
-                              org_id, invoice_id, catalog_item_id, item_type, label, quantity, unit_price, line_total
+                              org_id, invoice_id, catalog_item_id, item_type, label, quantity, unit_price,
+                              line_total, hsn_sac_code, gst_rate, taxable_value, tax_amount, cgst_amount, sgst_amount
                             )
-                            values (%s, %s, %s, %s, %s, %s, %s, %s)
-                            returning id, org_id, invoice_id, catalog_item_id, item_type, label, quantity, unit_price, line_total, created_at
+                            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            returning {_columns_sql(INVOICE_ITEM_COLUMNS)}
                             """,
                             (
                                 org_id,
@@ -422,6 +493,12 @@ class PostgresBillingRepository:
                                 item["quantity"],
                                 item["unit_price"],
                                 item["line_total"],
+                                item["hsn_sac_code"],
+                                item["gst_rate"],
+                                item["taxable_value"],
+                                item["tax_amount"],
+                                item["cgst_amount"],
+                                item["sgst_amount"],
                             ),
                         )
                     cursor.execute(
@@ -557,19 +634,17 @@ class PostgresBillingRepository:
                                   else sent_at
                                 end
                             where org_id = %s and id = %s
-                            returning id, org_id, patient_id, visit_id, subtotal, total, payment_status, amount_paid,
-                              paid_at, completed_at, completed_by, sent_at, created_at
+                            returning {_columns_sql(INVOICE_COLUMNS)}
                             """,
                             (completed_by, mark_sent, org_id, invoice_id),
                         )
                     elif mark_sent and not already_sent:
                         cursor.execute(
-                            """
+                            f"""
                             update public.invoices
                             set sent_at = now()
                             where org_id = %s and id = %s
-                            returning id, org_id, patient_id, visit_id, subtotal, total, payment_status, amount_paid,
-                              paid_at, completed_at, completed_by, sent_at, created_at
+                            returning {_columns_sql(INVOICE_COLUMNS)}
                             """,
                             (org_id, invoice_id),
                         )

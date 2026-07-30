@@ -890,6 +890,7 @@ def test_postgres_auth_settings_repository_upserts_clinic_settings_with_defaults
         "Fika Clinic",
         "12 Main",
         "123",
+        "",
         None,
         "UTC",
         "09:00",
@@ -955,6 +956,7 @@ def test_postgres_auth_settings_repository_sets_and_clears_template():
         "Fika Clinic",
         "",
         "",
+        "",
         None,
         "UTC",
         "09:00",
@@ -997,6 +999,7 @@ def test_postgres_auth_settings_repository_sets_and_clears_template():
         "settings-1",
         "org-1",
         "Fika Clinic",
+        "",
         "",
         "",
         None,
@@ -1727,6 +1730,8 @@ def _catalog_item_row(*, stock_quantity: float = 10) -> tuple:
         stock_quantity,
         2,
         "unit",
+        "",
+        None,
         [],
         "2026-06-11T20:00:00+00:00",
     )
@@ -1739,7 +1744,11 @@ def _invoice_row(*, amount_paid: float = 500) -> tuple:
         "patient-1",
         "visit-1",
         500,
+        0,
+        0,
+        0,
         500,
+        "",
         "paid",
         amount_paid,
         "2026-06-11T20:01:00+00:00",
@@ -1761,6 +1770,12 @@ def _invoice_item_row() -> tuple:
         1,
         500,
         500,
+        "",
+        None,
+        0,
+        0,
+        0,
+        0,
         "2026-06-11T20:00:00+00:00",
     )
 
@@ -1865,6 +1880,8 @@ def test_postgres_billing_repository_catalog_and_stock_flow():
         10.0,
         2.0,
         "unit",
+        "",
+        None,
         "[]",
     )
     assert cursor.executed[2][1] == (12.0, "org-1", "catalog-1")
@@ -1875,8 +1892,9 @@ def test_postgres_billing_repository_catalog_and_stock_flow():
 def test_postgres_billing_repository_invoice_rpc_and_invoice_items():
     cursor = ScriptedCursor(
         descriptions=[
-                ["id", "current_visit_id"],
+            ["id", "current_visit_id"],
             ["id"],
+            ["gstin"],
             INVOICE_COLUMNS,
             INVOICE_COLUMNS,
             [],
@@ -1886,27 +1904,14 @@ def test_postgres_billing_repository_invoice_rpc_and_invoice_items():
             INVOICE_ITEM_COLUMNS,
         ],
         fetchone_rows=[
-                ("patient-1", "visit-1"),
-            (
-                "invoice-1",
-                    "org-1",
-                    "patient-1",
-                    "visit-1",
-                500,
-                500,
-                "paid",
-                500,
-                None,
-                None,
-                None,
-                None,
-                "2026-06-11T20:00:00+00:00",
-            ),
+            ("patient-1", "visit-1"),
+            ("",),
+            _invoice_row(),
             _invoice_row(),
             _invoice_row(),
         ],
         fetchall_rows=[
-            [("00000000-0000-0000-0000-000000000002", "service", True, None)],
+            [("00000000-0000-0000-0000-000000000002", "service", True, None, "", None)],
             [_invoice_item_row()],
             [_invoice_item_row()],
         ],
@@ -1933,12 +1938,12 @@ def test_postgres_billing_repository_invoice_rpc_and_invoice_items():
     )
     loaded = asyncio.run(repo.get_invoice("org-1", "invoice-1"))
 
-    assert cursor.executed[2][1][0:5] == (
+    assert cursor.executed[3][1][0:5] == (
         "org-1",
         "00000000-0000-0000-0000-000000000001",
         "visit-1",
         500.0,
-        500.0,
+        0.0,
     )
     assert invoice["balance_due"] == 0
     assert loaded["items"][0]["id"] == "invoice-item-1"

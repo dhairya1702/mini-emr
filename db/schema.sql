@@ -153,6 +153,7 @@ create table if not exists public.clinic_settings (
   clinic_name text not null default 'ClinicOS',
   clinic_address text not null default '',
   clinic_phone text not null default '',
+  gstin text not null default '',
   clinic_specialty text check (clinic_specialty in ('optometry', 'general_physician', 'pediatrics', 'dentistry')),
   timezone text not null default 'Asia/Kolkata',
   appointment_start_time text not null default '09:00',
@@ -248,7 +249,13 @@ create table if not exists public.catalog_items (
   stock_quantity numeric(14,3) not null default 0,
   low_stock_threshold numeric(14,3) not null default 0,
   unit text not null default '',
+  hsn_sac_code text not null default '',
+  gst_rate numeric(5,2),
   aliases jsonb not null default '[]'::jsonb check (jsonb_typeof(aliases) = 'array'),
+  constraint catalog_items_gst_pair_check check (
+    (btrim(hsn_sac_code) = '' and gst_rate is null)
+    or (btrim(hsn_sac_code) <> '' and gst_rate > 0 and gst_rate <= 100)
+  ),
   constraint catalog_items_program_shape_check check (
     (item_type = 'program' and program_key is not null and program_definition is not null and track_inventory = false)
     or (item_type <> 'program' and program_key is null and program_definition is null)
@@ -266,7 +273,11 @@ create table if not exists public.invoices (
   patient_id uuid not null references public.patients(id) on delete cascade,
   visit_id uuid,
   subtotal numeric(14,2) not null default 0,
+  tax_total numeric(14,2) not null default 0,
+  cgst_total numeric(14,2) not null default 0,
+  sgst_total numeric(14,2) not null default 0,
   total numeric(14,2) not null default 0,
+  supplier_gstin text not null default '',
   payment_status text not null default 'unpaid' check (payment_status in ('unpaid', 'paid', 'partial')),
   amount_paid numeric(14,2) not null default 0,
   paid_at timestamptz,
@@ -286,6 +297,12 @@ create table if not exists public.invoice_items (
   quantity numeric(14,3) not null,
   unit_price numeric(14,2) not null,
   line_total numeric(14,2) not null,
+  hsn_sac_code text not null default '',
+  gst_rate numeric(5,2),
+  taxable_value numeric(14,2) not null default 0,
+  tax_amount numeric(14,2) not null default 0,
+  cgst_amount numeric(14,2) not null default 0,
+  sgst_amount numeric(14,2) not null default 0,
   created_at timestamptz not null default now()
 );
 

@@ -7,6 +7,7 @@ import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
 import { api } from "@/lib/api";
+import { calculateDraftInvoiceTaxTotals } from "@/lib/billing-tax";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { printBlob } from "@/lib/print";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
@@ -254,12 +255,17 @@ export default function BillingPage() {
   const isSoloWorkspace = workspaceMode === "solo";
   const billablePatients = useMemo(() => patients.filter((patient) => patient.status === "done" && !patient.billed), [patients]);
   const selectedBillingPatient = useMemo(() => billablePatients.find((patient) => patient.id === selectedBillingPatientId) ?? null, [billablePatients, selectedBillingPatientId]);
-  const invoiceSubtotal = useMemo(() => invoiceItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0), [invoiceItems]);
-  const normalizedAmountPaid = useMemo(
-    () => (paymentStatus === "paid" ? invoiceSubtotal : paymentStatus === "unpaid" ? 0 : Number(amountPaidInput || "0")),
-    [amountPaidInput, invoiceSubtotal, paymentStatus],
+  const invoiceTaxTotals = useMemo(
+    () => calculateDraftInvoiceTaxTotals(invoiceItems, catalogItems),
+    [catalogItems, invoiceItems],
   );
-  const balanceDue = useMemo(() => Math.max(invoiceSubtotal - normalizedAmountPaid, 0), [invoiceSubtotal, normalizedAmountPaid]);
+  const invoiceSubtotal = invoiceTaxTotals.subtotal;
+  const invoiceTotal = invoiceTaxTotals.total;
+  const normalizedAmountPaid = useMemo(
+    () => (paymentStatus === "paid" ? invoiceTotal : paymentStatus === "unpaid" ? 0 : Number(amountPaidInput || "0")),
+    [amountPaidInput, invoiceTotal, paymentStatus],
+  );
+  const balanceDue = useMemo(() => Math.max(invoiceTotal - normalizedAmountPaid, 0), [invoiceTotal, normalizedAmountPaid]);
   useEffect(() => {
     if (isAuthReady && currentUser?.role === "staff") {
       router.replace("/");
@@ -653,6 +659,10 @@ export default function BillingPage() {
           medicineItems={medicineItems}
           invoiceItems={invoiceItems}
           invoiceSubtotal={invoiceSubtotal}
+          invoiceTaxTotal={invoiceTaxTotals.taxTotal}
+          invoiceCgstTotal={invoiceTaxTotals.cgstTotal}
+          invoiceSgstTotal={invoiceTaxTotals.sgstTotal}
+          invoiceTotal={invoiceTotal}
           amountPaid={normalizedAmountPaid}
           amountPaidInput={amountPaidInput}
           balanceDue={balanceDue}
@@ -690,7 +700,7 @@ export default function BillingPage() {
           onCreateBill={handleCreateBill}
           onPaymentStatusChange={(status) => {
             setPaymentStatus(status);
-            setAmountPaidInput(status === "partial" ? invoiceSubtotal.toFixed(2) : "");
+            setAmountPaidInput(status === "partial" ? invoiceTotal.toFixed(2) : "");
             setIsInvoiceDirty(true);
             setBillingStatus("");
             setBillingError("");
