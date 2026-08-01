@@ -30,6 +30,9 @@ class OptometryHistoryPayload(BaseModel):
     ocular: str = Field(default="", max_length=4000)
     systemic: str = Field(default="", max_length=4000)
     no_known_allergies: bool = False
+    drug_allergies: str = Field(default="", max_length=2000)
+    contact_allergies: str = Field(default="", max_length=2000)
+    food_allergies: str = Field(default="", max_length=2000)
     allergies: str = Field(default="", max_length=2000)
     current_medications: str = Field(default="", max_length=4000)
     family: str = Field(default="", max_length=4000)
@@ -45,6 +48,8 @@ class OptometryHistoryPayload(BaseModel):
     wears_contact_lenses: bool | None = None
     contacts_since: str = Field(default="", max_length=120)
     contact_lens_type: str = Field(default="", max_length=120)
+    right_contact_power: OptometryHistoryPowerInput = Field(default_factory=OptometryHistoryPowerInput)
+    left_contact_power: OptometryHistoryPowerInput = Field(default_factory=OptometryHistoryPowerInput)
     contact_lens_notes: str = Field(default="", max_length=1000)
 
 

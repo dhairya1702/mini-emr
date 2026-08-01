@@ -447,7 +447,10 @@ def test_optometry_history_persists_and_is_snapshotted_without_entering_note_gen
     history_payload = {
         "ocular": "Previous allergic conjunctivitis.",
         "systemic": "Type 2 diabetes.",
-        "no_known_allergies": True,
+        "no_known_allergies": False,
+        "drug_allergies": "Penicillin - rash.",
+        "contact_allergies": "Latex - itching.",
+        "food_allergies": "Peanuts - swelling.",
         "allergies": "",
         "current_medications": "Metformin 500 mg twice daily.",
         "family": "Mother has glaucoma.",
@@ -463,6 +466,8 @@ def test_optometry_history_persists_and_is_snapshotted_without_entering_note_gen
         "wears_contact_lenses": False,
         "contacts_since": "",
         "contact_lens_type": "",
+        "right_contact_power": {"sphere": "", "cylinder": "", "axis": "", "add": ""},
+        "left_contact_power": {"sphere": "", "cylinder": "", "axis": "", "add": ""},
         "contact_lens_notes": "",
     }
     saved = test_client.put(
@@ -473,6 +478,7 @@ def test_optometry_history_persists_and_is_snapshotted_without_entering_note_gen
     assert saved.status_code == 200, saved.json()
     assert saved.json()["revision"] == 1
     assert saved.json()["payload"]["right_power"]["sphere"] == "-2.00"
+    assert saved.json()["payload"]["drug_allergies"] == "Penicillin - rash."
 
     stale = test_client.put(
         f"/patients/{patient['id']}/optometry-history",

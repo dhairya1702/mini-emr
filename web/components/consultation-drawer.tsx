@@ -48,7 +48,11 @@ import { LowVisionModal } from "@/components/optometry/low-vision-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia-management-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
 import { EyeExamFields } from "@/components/optometry/eye-exam-fields";
-import { OptometryHistoryPanel } from "@/components/optometry/history-panel";
+import {
+  OptometryHistoryEditor,
+  OptometryHistorySummary,
+  useOptometryHistory,
+} from "@/components/optometry/history-panel";
 import {
   buildEyeExamSummary,
   createEmptyEyeExam,
@@ -334,6 +338,7 @@ type ConsultationWorkspaceSnapshot = {
   isDraftDirty?: boolean;
   clinicalExtractions?: ClinicalExtractions;
   currentConsultationModules?: Array<{ module_type: string; payload: Record<string, unknown> }>;
+  activeOptometryStep?: "history" | "examination";
 };
 
 type InlineModuleKey = "vitals" | "medicines";
@@ -556,6 +561,7 @@ export function ConsultationDrawer({
   const isPediatricsClinic = specialtyHasModule(clinicSpecialty, "pediatric_growth_measurement");
   const specialtyModules = getSpecialtyModules(clinicSpecialty);
   const [form, setForm] = useState(createEmptyForm);
+  const [activeOptometryStep, setActiveOptometryStep] = useState<"history" | "examination">("history");
   const [openSections, setOpenSections] = useState(createClosedConsultationSections);
   const [activeInlineModule, setActiveInlineModule] = useState<InlineModuleKey | null>(null);
   const [activePediatricModule, setActivePediatricModule] = useState<PediatricModuleKey | null>(null);
@@ -630,6 +636,10 @@ export function ConsultationDrawer({
     },
     [currentOrgId, currentUserId, patientId],
   );
+  const optometryHistory = useOptometryHistory(
+    patientId,
+    Boolean(patientId && isOptometryClinic && !isTrainingMode),
+  );
 
   useEffect(() => {
     if (!patient) {
@@ -644,6 +654,9 @@ export function ConsultationDrawer({
       : null;
     const baseForm = createEmptyForm();
     const cachedForm = cachedWorkspace?.form;
+    setActiveOptometryStep(
+      cachedWorkspace?.activeOptometryStep ?? (cachedWorkspace ? "examination" : "history"),
+    );
     setStatusMessage("");
     setIsGenerating(false);
     setIsGeneratingPdf(false);
@@ -808,8 +821,10 @@ export function ConsultationDrawer({
       isDraftDirty,
       clinicalExtractions,
       currentConsultationModules,
+      activeOptometryStep,
     });
   }, [
+    activeOptometryStep,
     currentNoteId,
     clinicalExtractions,
     currentConsultationModules,
@@ -2094,12 +2109,18 @@ export function ConsultationDrawer({
         : noteStatus === "draft"
         ? "Draft"
           : null;
-  const patientInfoChips = [
+  const patientInfoDetails = [
     { label: "Age", value: currentPatient.age !== null ? String(currentPatient.age) : "-" },
     { label: "Temp", value: currentPatient.temperature !== null ? `${currentPatient.temperature} F` : "-" },
-    { label: "Weight", value: currentPatient.weight !== null ? `${currentPatient.weight} kg` : "-" },
     { label: "Height", value: currentPatient.height !== null ? `${currentPatient.height} cm` : "-" },
+    { label: "Weight", value: currentPatient.weight !== null ? `${currentPatient.weight} kg` : "-" },
   ];
+
+  async function openExamination() {
+    if (await optometryHistory.save()) {
+      setActiveOptometryStep("examination");
+    }
+  }
 
   function renderAssistantQuestionControl(question: ClinicalAssistantQuestion) {
     const value = String(assistantAnswers[question.id] || "");
@@ -2512,19 +2533,17 @@ export function ConsultationDrawer({
           <div>
             <p className="text-sm uppercase tracking-[0.24em] text-slate-600">Consultation</p>
             <h2 className="mt-2 text-3xl font-semibold text-slate-900">{currentPatient.name}</h2>
-            <p className="mt-2 text-sm text-slate-700">
-              {currentPatient.phone} · {currentPatient.reason}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {patientInfoChips.map((entry) => (
-                <span
-                  key={entry.label}
-                  className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-3 py-1 text-xs font-medium text-slate-700"
-                >
-                  {entry.label} {entry.value}
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-700">
+              <span>{currentPatient.phone}</span>
+              <span aria-hidden="true">·</span>
+              <span>{currentPatient.reason}</span>
+              {patientInfoDetails.map((entry) => (
+                <span key={entry.label} className="contents">
+                  <span aria-hidden="true">·</span>
+                  <span>{entry.label} {entry.value}</span>
                 </span>
               ))}
-            </div>
+            </p>
           </div>
           <button
             type="button"
@@ -2535,7 +2554,64 @@ export function ConsultationDrawer({
           </button>
         </div>
 
+        {isOptometryClinic ? (
+          <nav aria-label="Consultation steps" className="mb-7 flex w-full max-w-[620px]">
+            {([
+              ["history", "Step 1", "History"],
+              ["examination", "Step 2", "Examination"],
+            ] as const).map(([step, eyebrow, label], index) => {
+              const active = activeOptometryStep === step;
+              const complete = step === "history" && activeOptometryStep === "examination";
+              return (
+                <button
+                  key={step}
+                  type="button"
+                  aria-current={active ? "step" : undefined}
+                  onClick={() => {
+                    if (step === "history") {
+                      setActiveOptometryStep("history");
+                    } else {
+                      void openExamination();
+                    }
+                  }}
+                  style={{
+                    clipPath: index === 0
+                      ? "polygon(0 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 0 100%)"
+                      : "polygon(0 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 0 100%, 18px 50%)",
+                  }}
+                  className={`flex h-12 flex-1 items-center justify-center gap-2 border border-[#bfd7e8] px-5 text-sm transition ${
+                    index === 1 ? "-ml-2 pl-8" : "relative z-10 pr-7"
+                  } ${
+                    active
+                      ? "bg-[#e2f0fa] font-semibold text-[#174f78]"
+                      : "bg-white text-slate-600 hover:bg-[#f3f8fb] hover:text-slate-900"
+                  }`}
+                >
+                  <span className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-white ${
+                    complete ? "bg-emerald-600" : active ? "bg-[#174f78]" : "bg-slate-700"
+                  }`}>
+                    {complete ? "Done" : eyebrow}
+                  </span>
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        ) : null}
+
+        {isOptometryClinic && activeOptometryStep === "history" ? (
+          <OptometryHistoryEditor controller={optometryHistory} onContinue={openExamination} />
+        ) : (
         <form className="grid gap-5 pr-1 xl:grid-cols-[minmax(0,1fr)_410px]" onSubmit={handleGenerate}>
+          {isOptometryClinic ? (
+            <div className="xl:hidden">
+              <OptometryHistorySummary
+                controller={optometryHistory}
+                onEdit={() => setActiveOptometryStep("history")}
+                compact
+              />
+            </div>
+          ) : null}
           <div className="space-y-4">
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Symptoms</span>
@@ -3260,11 +3336,15 @@ export function ConsultationDrawer({
             </div>
           </div>
           {isOptometryClinic ? (
-            <div className="xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:self-start xl:sticky xl:top-4">
-              <OptometryHistoryPanel patientId={patient.id} />
+            <div className="hidden xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:block xl:self-start xl:sticky xl:top-4">
+              <OptometryHistorySummary
+                controller={optometryHistory}
+                onEdit={() => setActiveOptometryStep("history")}
+              />
             </div>
           ) : null}
         </form>
+        )}
       </div>
       <SpecialtyModuleModal
         open={isPediatricsClinic && activePediatricModule === "growth"}

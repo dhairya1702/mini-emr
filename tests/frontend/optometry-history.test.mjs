@@ -10,7 +10,16 @@ test("optometry history starts empty with unrecorded wearing status", () => {
 
   assert.equal(payload.wears_glasses, null);
   assert.equal(payload.wears_contact_lenses, null);
+  assert.equal(payload.drug_allergies, "");
+  assert.equal(payload.contact_allergies, "");
+  assert.equal(payload.food_allergies, "");
   assert.deepEqual(payload.right_power, {
+    sphere: "",
+    cylinder: "",
+    axis: "",
+    add: "",
+  });
+  assert.deepEqual(payload.right_contact_power, {
     sphere: "",
     cylinder: "",
     axis: "",
@@ -28,4 +37,12 @@ test("optometry history detects clinical text and current glasses power", () => 
   powerPayload.wears_glasses = true;
   powerPayload.right_power.sphere = "-2.00";
   assert.equal(history.hasOptometryHistoryDetails(powerPayload), true);
+
+  const allergyPayload = history.createEmptyOptometryHistory();
+  allergyPayload.food_allergies = "Peanuts";
+  assert.equal(history.hasOptometryHistoryDetails(allergyPayload), true);
+
+  const contactPowerPayload = history.createEmptyOptometryHistory();
+  contactPowerPayload.right_contact_power.sphere = "-3.00";
+  assert.equal(history.hasOptometryHistoryDetails(contactPowerPayload), true);
 });

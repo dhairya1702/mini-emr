@@ -363,6 +363,9 @@ export interface OptometryHistoryPayload {
   ocular: string;
   systemic: string;
   no_known_allergies: boolean;
+  drug_allergies: string;
+  contact_allergies: string;
+  food_allergies: string;
   allergies: string;
   current_medications: string;
   family: string;
@@ -378,6 +381,8 @@ export interface OptometryHistoryPayload {
   wears_contact_lenses: boolean | null;
   contacts_since: string;
   contact_lens_type: string;
+  right_contact_power: OptometryHistoryPower;
+  left_contact_power: OptometryHistoryPower;
   contact_lens_notes: string;
 }
 

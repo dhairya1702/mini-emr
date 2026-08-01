@@ -5,6 +5,9 @@ export function createEmptyOptometryHistory(): OptometryHistoryPayload {
     ocular: "",
     systemic: "",
     no_known_allergies: false,
+    drug_allergies: "",
+    contact_allergies: "",
+    food_allergies: "",
     allergies: "",
     current_medications: "",
     family: "",
@@ -20,6 +23,8 @@ export function createEmptyOptometryHistory(): OptometryHistoryPayload {
     wears_contact_lenses: null,
     contacts_since: "",
     contact_lens_type: "",
+    right_contact_power: { sphere: "", cylinder: "", axis: "", add: "" },
+    left_contact_power: { sphere: "", cylinder: "", axis: "", add: "" },
     contact_lens_notes: "",
   };
 }
@@ -29,6 +34,9 @@ export function hasOptometryHistoryDetails(payload: OptometryHistoryPayload): bo
     payload.ocular.trim()
     || payload.systemic.trim()
     || payload.no_known_allergies
+    || payload.drug_allergies.trim()
+    || payload.contact_allergies.trim()
+    || payload.food_allergies.trim()
     || payload.allergies.trim()
     || payload.current_medications.trim()
     || payload.family.trim()
@@ -44,6 +52,8 @@ export function hasOptometryHistoryDetails(payload: OptometryHistoryPayload): bo
     || payload.wears_contact_lenses !== null
     || payload.contacts_since.trim()
     || payload.contact_lens_type.trim()
+    || Object.values(payload.right_contact_power).some((value) => value.trim())
+    || Object.values(payload.left_contact_power).some((value) => value.trim())
     || payload.contact_lens_notes.trim()
   );
 }
