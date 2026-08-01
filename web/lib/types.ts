@@ -359,13 +359,23 @@ export interface OptometryHistoryPower {
   add: string;
 }
 
+export interface OptometryHistoryCondition {
+  condition: string;
+  comment: string;
+}
+
 export interface OptometryHistoryPayload {
   ocular: string;
+  ocular_conditions: OptometryHistoryCondition[];
   systemic: string;
+  systemic_conditions: OptometryHistoryCondition[];
   no_known_allergies: boolean;
   drug_allergies: string;
   contact_allergies: string;
   food_allergies: string;
+  drug_allergy_entries: OptometryHistoryCondition[];
+  contact_allergy_entries: OptometryHistoryCondition[];
+  food_allergy_entries: OptometryHistoryCondition[];
   allergies: string;
   current_medications: string;
   family: string;

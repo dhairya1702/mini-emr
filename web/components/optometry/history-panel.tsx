@@ -10,6 +10,7 @@ import {
 } from "@/lib/optometry/history";
 import {
   OptometryHistory,
+  OptometryHistoryCondition,
   OptometryHistoryPayload,
   OptometryHistoryPower,
 } from "@/lib/types";
@@ -26,6 +27,72 @@ const TEXTAREA_FIELDS: Array<{
   { key: "family", label: "Family", placeholder: "Glaucoma, high myopia, retinal disease, keratoconus, squint or other details" },
 ];
 
+const SYSTEMIC_CONDITIONS = [
+  "Diabetes",
+  "Hypertension",
+  "Cardiac disorder",
+  "Asthma",
+  "Tuberculosis",
+  "HIV/AIDS",
+  "Cancer or tumour",
+  "Thyroid disorder",
+  "Stroke/CVA or CNS disorder",
+  "Chronic kidney disease",
+  "Rheumatoid arthritis",
+  "Benign prostatic hyperplasia (BPH)",
+  "Steroid use",
+  "Anticoagulant or antiplatelet use",
+  "Alcohol use",
+  "Tobacco use",
+  "Drug abuse",
+  "Consanguinity",
+  "Other",
+] as const;
+
+const OCULAR_CONDITIONS = [
+  "Glaucoma",
+  "Retinal detachment",
+  "Glasses",
+  "Eye disease",
+  "Eye surgery",
+  "Uveitis",
+  "Retinal laser",
+  "Contact lenses",
+  "Other",
+] as const;
+
+const DRUG_ALLERGIES = [
+  "Antimicrobial agents",
+  "Antifungal agents",
+  "Antiviral agents",
+  "NSAIDs",
+  "Eye drops",
+  "Other",
+] as const;
+
+const CONTACT_ALLERGIES = [
+  "Alcohol",
+  "Latex",
+  "Betadine",
+  "Adhesive tape",
+  "Tegaderm",
+  "Transpore",
+  "Other",
+] as const;
+
+const FOOD_ALLERGIES = [
+  "All seafood",
+  "Corn",
+  "Egg",
+  "Milk proteins",
+  "Peanuts",
+  "Shellfish only",
+  "Soy protein",
+  "Lactose",
+  "Mushroom",
+  "Other",
+] as const;
+
 function formatPower(power: OptometryHistoryPower): string {
   return [
     power.sphere.trim() ? `SPH ${power.sphere.trim()}` : "",
@@ -40,11 +107,36 @@ function booleanLabel(value: boolean | null): string {
   return value ? "Yes" : "No";
 }
 
+function normalizeConditionEntries(
+  entries: OptometryHistoryCondition[] | undefined,
+  legacyText = "",
+): OptometryHistoryCondition[] {
+  const normalized = Array.isArray(entries)
+    ? entries.filter((entry) => entry && typeof entry.condition === "string")
+    : [];
+  if (normalized.length || !legacyText.trim()) return normalized;
+  return [{ condition: "Other", comment: legacyText.trim() }];
+}
+
 function normalizeHistoryPayload(payload: OptometryHistoryPayload): OptometryHistoryPayload {
   const empty = createEmptyOptometryHistory();
   return {
     ...empty,
     ...payload,
+    ocular: "",
+    ocular_conditions: normalizeConditionEntries(payload.ocular_conditions, payload.ocular),
+    systemic: "",
+    systemic_conditions: normalizeConditionEntries(payload.systemic_conditions, payload.systemic),
+    drug_allergies: "",
+    contact_allergies: "",
+    food_allergies: "",
+    allergies: "",
+    drug_allergy_entries: normalizeConditionEntries(
+      payload.drug_allergy_entries,
+      [payload.drug_allergies, payload.allergies].filter(Boolean).join("; "),
+    ),
+    contact_allergy_entries: normalizeConditionEntries(payload.contact_allergy_entries, payload.contact_allergies),
+    food_allergy_entries: normalizeConditionEntries(payload.food_allergy_entries, payload.food_allergies),
     right_power: { ...empty.right_power, ...(payload.right_power || {}) },
     left_power: { ...empty.left_power, ...(payload.left_power || {}) },
     right_contact_power: { ...empty.right_contact_power, ...(payload.right_contact_power || {}) },
@@ -157,10 +249,33 @@ export function useOptometryHistory(patientId: string, enabled = true) {
         expected_revision: record?.revision ?? 0,
         payload: {
           ...draft,
-          drug_allergies: draft.no_known_allergies ? "" : draft.drug_allergies.trim(),
-          contact_allergies: draft.no_known_allergies ? "" : draft.contact_allergies.trim(),
-          food_allergies: draft.no_known_allergies ? "" : draft.food_allergies.trim(),
-          allergies: draft.no_known_allergies ? "" : draft.allergies.trim(),
+          ocular: "",
+          ocular_conditions: draft.ocular_conditions
+            .map((entry) => ({ condition: entry.condition.trim(), comment: entry.comment.trim() }))
+            .filter((entry) => entry.condition),
+          systemic: "",
+          systemic_conditions: draft.systemic_conditions
+            .map((entry) => ({ condition: entry.condition.trim(), comment: entry.comment.trim() }))
+            .filter((entry) => entry.condition),
+          drug_allergies: "",
+          contact_allergies: "",
+          food_allergies: "",
+          allergies: "",
+          drug_allergy_entries: draft.no_known_allergies
+            ? []
+            : draft.drug_allergy_entries
+                .map((entry) => ({ condition: entry.condition.trim(), comment: entry.comment.trim() }))
+                .filter((entry) => entry.condition),
+          contact_allergy_entries: draft.no_known_allergies
+            ? []
+            : draft.contact_allergy_entries
+                .map((entry) => ({ condition: entry.condition.trim(), comment: entry.comment.trim() }))
+                .filter((entry) => entry.condition),
+          food_allergy_entries: draft.no_known_allergies
+            ? []
+            : draft.food_allergy_entries
+                .map((entry) => ({ condition: entry.condition.trim(), comment: entry.comment.trim() }))
+                .filter((entry) => entry.condition),
         },
       });
       const payload = normalizeHistoryPayload(saved.payload);
@@ -249,50 +364,228 @@ function HistoryError({ controller }: { controller: OptometryHistoryController }
 
 function HistoryForm({ controller }: { controller: OptometryHistoryController }) {
   const { draft, update, updatePower } = controller;
+
+  function toggleOcularCondition(condition: string) {
+    const exists = draft.ocular_conditions.some((entry) => entry.condition === condition);
+    update(
+      "ocular_conditions",
+      exists
+        ? draft.ocular_conditions.filter((entry) => entry.condition !== condition)
+        : [...draft.ocular_conditions, { condition, comment: "" }],
+    );
+  }
+
+  function updateOcularComment(condition: string, comment: string) {
+    update(
+      "ocular_conditions",
+      draft.ocular_conditions.map((entry) => (
+        entry.condition === condition ? { ...entry, comment } : entry
+      )),
+    );
+  }
+
+  function toggleSystemicCondition(condition: string) {
+    const exists = draft.systemic_conditions.some((entry) => entry.condition === condition);
+    update(
+      "systemic_conditions",
+      exists
+        ? draft.systemic_conditions.filter((entry) => entry.condition !== condition)
+        : [...draft.systemic_conditions, { condition, comment: "" }],
+    );
+  }
+
+  function updateSystemicComment(condition: string, comment: string) {
+    update(
+      "systemic_conditions",
+      draft.systemic_conditions.map((entry) => (
+        entry.condition === condition ? { ...entry, comment } : entry
+      )),
+    );
+  }
+
+  type AllergyEntryKey = "drug_allergy_entries" | "contact_allergy_entries" | "food_allergy_entries";
+
+  function toggleAllergyEntry(key: AllergyEntryKey, condition: string) {
+    const entries = draft[key];
+    const exists = entries.some((entry) => entry.condition === condition);
+    update(
+      key,
+      exists
+        ? entries.filter((entry) => entry.condition !== condition)
+        : [...entries, { condition, comment: "" }],
+    );
+  }
+
+  function updateAllergyComment(key: AllergyEntryKey, condition: string, comment: string) {
+    update(
+      key,
+      draft[key].map((entry) => (
+        entry.condition === condition ? { ...entry, comment } : entry
+      )),
+    );
+  }
+
   return (
     <div className="space-y-5">
       <div className="grid gap-5 lg:grid-cols-2">
         {TEXTAREA_FIELDS.map((field) => (
-          <div key={field.key} className={field.key === "family" || field.key === "allergies" ? "lg:col-span-2" : ""}>
+          <div
+            key={field.key}
+            className={`${
+              field.key === "ocular" || field.key === "systemic" || field.key === "family" || field.key === "allergies"
+                ? "lg:col-span-2"
+                : ""
+            } pb-6`}
+          >
             <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-900">
               {field.label}
             </span>
-            {field.key === "allergies" ? (
-              <div className="space-y-3">
+            {field.key === "ocular" ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  {OCULAR_CONDITIONS.map((condition) => {
+                    const selected = draft.ocular_conditions.some((entry) => entry.condition === condition);
+                    return (
+                      <button
+                        key={condition}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => toggleOcularCondition(condition)}
+                        className={`border px-3 py-2 text-xs font-medium transition ${
+                          selected
+                            ? "border-[#2f8fd3] bg-[#e2f0fa] text-[#174f78]"
+                            : "border-[#dbe7ef] bg-white text-slate-700 hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
+                        }`}
+                      >
+                        {condition}
+                      </button>
+                    );
+                  })}
+                </div>
+                {draft.ocular_conditions.length ? (
+                  <div className="space-y-3 border-l-2 border-[#9fc7e1] pl-4">
+                    {draft.ocular_conditions.map((entry) => (
+                      <label key={entry.condition} className="grid gap-2 md:grid-cols-[250px_minmax(0,1fr)] md:items-center">
+                        <span className="text-xs font-semibold text-slate-900">{entry.condition}</span>
+                        <input
+                          aria-label={`${entry.condition} details`}
+                          value={entry.comment}
+                          onChange={(event) => updateOcularComment(entry.condition, event.target.value)}
+                          placeholder="Diagnosis, date, treatment or relevant details"
+                          className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#6daed8]"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : field.key === "systemic" ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  {SYSTEMIC_CONDITIONS.map((condition) => {
+                    const selected = draft.systemic_conditions.some((entry) => entry.condition === condition);
+                    return (
+                      <button
+                        key={condition}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => toggleSystemicCondition(condition)}
+                        className={`border px-3 py-2 text-xs font-medium transition ${
+                          selected
+                            ? "border-[#2f8fd3] bg-[#e2f0fa] text-[#174f78]"
+                            : "border-[#dbe7ef] bg-white text-slate-700 hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
+                        }`}
+                      >
+                        {condition}
+                      </button>
+                    );
+                  })}
+                </div>
+                {draft.systemic_conditions.length ? (
+                  <div className="space-y-3 border-l-2 border-[#9fc7e1] pl-4">
+                    {draft.systemic_conditions.map((entry) => (
+                      <label key={entry.condition} className="grid gap-2 md:grid-cols-[250px_minmax(0,1fr)] md:items-center">
+                        <span className="text-xs font-semibold text-slate-900">{entry.condition}</span>
+                        <input
+                          aria-label={`${entry.condition} details`}
+                          value={entry.comment}
+                          onChange={(event) => updateSystemicComment(entry.condition, event.target.value)}
+                          placeholder="Duration, control, medication or relevant details"
+                          className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#6daed8]"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : field.key === "allergies" ? (
+              <div className="space-y-5">
                 <label className="flex items-center gap-2 text-xs text-slate-900">
                   <input
                     type="checkbox"
                     checked={draft.no_known_allergies}
-                    onChange={(event) => update("no_known_allergies", event.target.checked)}
+                    onChange={(event) => {
+                      update("no_known_allergies", event.target.checked);
+                      if (event.target.checked) {
+                        update("drug_allergy_entries", []);
+                        update("contact_allergy_entries", []);
+                        update("food_allergy_entries", []);
+                      }
+                    }}
                   />
                   No known allergies
                 </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {([
-                    ["drug_allergies", "Drug allergies", "Medicine and reaction"],
-                    ["contact_allergies", "Contact allergies", "Latex, cosmetics, metals or other contact allergens"],
-                    ["food_allergies", "Food allergies", "Food and reaction"],
-                    ["allergies", "Other allergies", field.placeholder],
-                  ] as const).map(([key, label, placeholder]) => (
-                    <label key={key} className="block">
-                      <span className="mb-1 block text-[11px] font-medium text-slate-900">{label}</span>
-                      <textarea
-                        aria-label={label}
-                        rows={2}
-                        disabled={draft.no_known_allergies}
-                        value={draft[key]}
-                        onChange={(event) => update(key, event.target.value)}
-                        placeholder={placeholder}
-                        className="w-full resize-y rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8] disabled:opacity-50"
-                      />
-                    </label>
-                  ))}
-                </div>
+                {([
+                  ["drug_allergy_entries", "Drug allergies", DRUG_ALLERGIES],
+                  ["contact_allergy_entries", "Contact allergies", CONTACT_ALLERGIES],
+                  ["food_allergy_entries", "Food allergies", FOOD_ALLERGIES],
+                ] as const).map(([key, label, options]) => (
+                  <div key={key} className="space-y-3">
+                    <p className="text-xs font-semibold text-slate-900">{label}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {options.map((condition) => {
+                        const selected = draft[key].some((entry) => entry.condition === condition);
+                        return (
+                          <button
+                            key={condition}
+                            type="button"
+                            disabled={draft.no_known_allergies}
+                            aria-pressed={selected}
+                            onClick={() => toggleAllergyEntry(key, condition)}
+                            className={`border px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                              selected
+                                ? "border-[#2f8fd3] bg-[#e2f0fa] text-[#174f78]"
+                                : "border-[#dbe7ef] bg-white text-slate-700 hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
+                            }`}
+                          >
+                            {condition}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {draft[key].length ? (
+                      <div className="space-y-3 border-l-2 border-[#9fc7e1] pl-4">
+                        {draft[key].map((entry) => (
+                          <label key={entry.condition} className="grid gap-2 md:grid-cols-[250px_minmax(0,1fr)] md:items-center">
+                            <span className="text-xs font-semibold text-slate-900">{entry.condition}</span>
+                            <input
+                              aria-label={`${label} ${entry.condition} details`}
+                              value={entry.comment}
+                              onChange={(event) => updateAllergyComment(key, entry.condition, event.target.value)}
+                              placeholder="Allergen, reaction and relevant details"
+                              className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#6daed8]"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
               </div>
             ) : (
               <textarea
                 aria-label={field.label}
-                rows={field.key === "ocular" || field.key === "systemic" ? 3 : 2}
+                rows={2}
                 value={draft[field.key]}
                 onChange={(event) => update(field.key, event.target.value)}
                 placeholder={field.placeholder}
@@ -461,14 +754,38 @@ function HistorySummaryRows({ controller }: { controller: OptometryHistoryContro
   if (!controller.hasDetails) return <p className="py-6 text-center text-sm text-slate-500">No history recorded.</p>;
   return (
     <div>
-      <HistoryRow label="Ocular" value={saved.ocular} />
-      <HistoryRow label="Systemic" value={saved.systemic} />
+      <HistoryRow
+        label="Ocular conditions"
+        value={saved.ocular_conditions.map((entry) => (
+          entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition
+        )).join("\n")}
+      />
+      <HistoryRow
+        label="Systemic conditions"
+        value={saved.systemic_conditions.map((entry) => (
+          entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition
+        )).join("\n")}
+      />
       {saved.no_known_allergies ? <HistoryRow label="Allergies" value="No known allergies" /> : (
         <>
-          <HistoryRow label="Drug allergies" value={saved.drug_allergies} />
-          <HistoryRow label="Contact allergies" value={saved.contact_allergies} />
-          <HistoryRow label="Food allergies" value={saved.food_allergies} />
-          <HistoryRow label="Other allergies" value={saved.allergies} />
+          <HistoryRow
+            label="Drug allergies"
+            value={saved.drug_allergy_entries.map((entry) => (
+              entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition
+            )).join("\n")}
+          />
+          <HistoryRow
+            label="Contact allergies"
+            value={saved.contact_allergy_entries.map((entry) => (
+              entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition
+            )).join("\n")}
+          />
+          <HistoryRow
+            label="Food allergies"
+            value={saved.food_allergy_entries.map((entry) => (
+              entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition
+            )).join("\n")}
+          />
         </>
       )}
       <HistoryRow label="Current medications" value={saved.current_medications} />

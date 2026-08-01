@@ -446,11 +446,26 @@ def test_optometry_history_persists_and_is_snapshotted_without_entering_note_gen
 
     history_payload = {
         "ocular": "Previous allergic conjunctivitis.",
+        "ocular_conditions": [
+            {"condition": "Glaucoma", "comment": "Using nightly drops."},
+        ],
         "systemic": "Type 2 diabetes.",
+        "systemic_conditions": [
+            {"condition": "Diabetes", "comment": "Controlled with oral medication."},
+        ],
         "no_known_allergies": False,
         "drug_allergies": "Penicillin - rash.",
         "contact_allergies": "Latex - itching.",
         "food_allergies": "Peanuts - swelling.",
+        "drug_allergy_entries": [
+            {"condition": "NSAIDs", "comment": "Ibuprofen causes rash."},
+        ],
+        "contact_allergy_entries": [
+            {"condition": "Latex", "comment": "Itching."},
+        ],
+        "food_allergy_entries": [
+            {"condition": "Peanuts", "comment": "Swelling."},
+        ],
         "allergies": "",
         "current_medications": "Metformin 500 mg twice daily.",
         "family": "Mother has glaucoma.",
@@ -479,6 +494,9 @@ def test_optometry_history_persists_and_is_snapshotted_without_entering_note_gen
     assert saved.json()["revision"] == 1
     assert saved.json()["payload"]["right_power"]["sphere"] == "-2.00"
     assert saved.json()["payload"]["drug_allergies"] == "Penicillin - rash."
+    assert saved.json()["payload"]["drug_allergy_entries"][0]["condition"] == "NSAIDs"
+    assert saved.json()["payload"]["ocular_conditions"][0]["condition"] == "Glaucoma"
+    assert saved.json()["payload"]["systemic_conditions"][0]["condition"] == "Diabetes"
 
     stale = test_client.put(
         f"/patients/{patient['id']}/optometry-history",

@@ -26,13 +26,23 @@ class OptometryHistoryPowerInput(BaseModel):
     add: str = Field(default="", max_length=20)
 
 
+class OptometryHistoryConditionInput(BaseModel):
+    condition: str = Field(min_length=1, max_length=120)
+    comment: str = Field(default="", max_length=1000)
+
+
 class OptometryHistoryPayload(BaseModel):
     ocular: str = Field(default="", max_length=4000)
+    ocular_conditions: list[OptometryHistoryConditionInput] = Field(default_factory=list, max_length=40)
     systemic: str = Field(default="", max_length=4000)
+    systemic_conditions: list[OptometryHistoryConditionInput] = Field(default_factory=list, max_length=40)
     no_known_allergies: bool = False
     drug_allergies: str = Field(default="", max_length=2000)
     contact_allergies: str = Field(default="", max_length=2000)
     food_allergies: str = Field(default="", max_length=2000)
+    drug_allergy_entries: list[OptometryHistoryConditionInput] = Field(default_factory=list, max_length=40)
+    contact_allergy_entries: list[OptometryHistoryConditionInput] = Field(default_factory=list, max_length=40)
+    food_allergy_entries: list[OptometryHistoryConditionInput] = Field(default_factory=list, max_length=40)
     allergies: str = Field(default="", max_length=2000)
     current_medications: str = Field(default="", max_length=4000)
     family: str = Field(default="", max_length=4000)
