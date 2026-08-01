@@ -100,9 +100,17 @@ class ContactLensEyeInput(BaseModel):
     visual_acuity: str = Field(default="", max_length=40)
     over_refraction: str = Field(default="", max_length=80)
     fit_notes: str = Field(default="", max_length=200)
+    material: str = Field(default="", max_length=120)
+    design: str = Field(default="", max_length=120)
+    sagittal_depth: str = Field(default="", max_length=40)
+    landing_zone: str = Field(default="", max_length=120)
 
 
 class ContactLensInput(BaseModel):
+    workup: dict[str, object] = Field(default_factory=dict)
+    trials: list[dict[str, object]] = Field(default_factory=list, max_length=20)
+    dispensing: dict[str, object] = Field(default_factory=dict)
+    follow_ups: list[dict[str, object]] = Field(default_factory=list, max_length=100)
     wearing_goal: str = Field(default="", max_length=200)
     current_lens_brand: str = Field(default="", max_length=120)
     current_wear_schedule: str = Field(default="", max_length=120)

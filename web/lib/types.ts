@@ -431,9 +431,98 @@ export interface ContactLensEyeEntry {
   visual_acuity: string;
   over_refraction: string;
   fit_notes: string;
+  material: string;
+  design: string;
+  sagittal_depth: string;
+  landing_zone: string;
+}
+
+export interface ContactLensWorkup {
+  reason_for_wear: string;
+  previous_lens_experience: string;
+  wearing_requirements: string;
+  occupation_environment: string;
+  preferred_modality: string;
+  preferred_brand: string;
+  lids_lashes: string;
+  conjunctiva: string;
+  cornea: string;
+  anterior_chamber: string;
+  tear_film: string;
+  keratometry_right: string;
+  keratometry_left: string;
+  hvid_right: string;
+  hvid_left: string;
+  tbut_right: string;
+  tbut_left: string;
+  schirmer_right: string;
+  schirmer_left: string;
+  tear_prism_right: string;
+  tear_prism_left: string;
+  topography_notes: string;
+  pachymetry_right: string;
+  pachymetry_left: string;
+}
+
+export interface ContactLensTrialEyeEntry extends ContactLensEyeEntry {
+  centration: string;
+  coverage: string;
+  movement: string;
+  push_up: string;
+  rotation: string;
+  comfort: string;
+  fluorescein_pattern: string;
+  vault: string;
+  limbal_clearance: string;
+  blanching: string;
+  impingement: string;
+}
+
+export interface ContactLensTrial {
+  id: string;
+  label: string;
+  lens_type: string;
+  brand: string;
+  assessed_after: string;
+  eyes: ContactLensTrialEyeEntry[];
+  notes: string;
+}
+
+export interface ContactLensDispensing {
+  dispensed_on: string;
+  pre_insertion_findings: string;
+  hygiene_explained: boolean;
+  insertion_removal_taught: boolean;
+  patient_confidence: string;
+  care_solution: string;
+  care_kit_given: boolean;
+  instruction_booklet_given: boolean;
+  wearing_schedule: string;
+  replacement_schedule: string;
+  advice: string;
+}
+
+export interface ContactLensFollowUp {
+  id: string;
+  followed_up_on: string;
+  wearing_hours: string;
+  vision: string;
+  comfort: string;
+  handling: string;
+  solution_irritation: string;
+  lens_fit_right: string;
+  lens_fit_left: string;
+  slit_lamp_findings: string;
+  care_compliance: string;
+  changes_made: string;
+  next_appointment: string;
 }
 
 export interface ContactLensPayload {
+  workup: ContactLensWorkup;
+  trials: ContactLensTrial[];
+  dispensing: ContactLensDispensing;
+  follow_ups: ContactLensFollowUp[];
   wearing_goal: string;
   current_lens_brand: string;
   current_wear_schedule: string;

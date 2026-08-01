@@ -24,6 +24,7 @@ import {
 } from "@/lib/mobile/attachments";
 import {
   buildBinocularVisionSummary,
+  buildContactLensSummary,
   buildLowVisionSummary,
   buildMyopiaManagementSummary,
   createEmptyBinocularVision,
@@ -33,6 +34,7 @@ import {
   formatLocalDateTimeInput,
   hasContactLensData,
   hasContactLensEyeData,
+  normalizeContactLensPayload,
   hasLowVisionData,
   type MyopiaMeasurementDraft,
 } from "@/lib/optometry/consultation";
@@ -618,16 +620,7 @@ export default function MobileConsultationPage() {
   }
 
   function selectContactLensEntry(entry: LongitudinalTrackRecord) {
-    const savedPayload = entry.raw_payload as Partial<ContactLensPayload>;
-    const savedEyes = Array.isArray(savedPayload.eyes) ? savedPayload.eyes : [];
-    const nextContactLens = {
-      ...createEmptyContactLens(),
-      ...savedPayload,
-      eyes: createEmptyContactLens().eyes.map((emptyEntry) => {
-        const saved = savedEyes.find((candidate) => candidate.eye === emptyEntry.eye);
-        return saved ? { ...emptyEntry, ...saved } : emptyEntry;
-      }),
-    };
+    const nextContactLens = normalizeContactLensPayload(entry.raw_payload as Partial<ContactLensPayload>);
     setForm((current) => ({ ...current, contactLens: nextContactLens }));
   }
 
@@ -723,7 +716,7 @@ export default function MobileConsultationPage() {
         ...form.contactLens,
         eyes: form.contactLens.eyes.filter((entry) => hasContactLensEyeData(entry)),
       },
-      "Contact lens details saved.",
+      buildContactLensSummary(form.contactLens),
     );
   }
 

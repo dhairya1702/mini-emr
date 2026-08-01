@@ -18,6 +18,20 @@ export function formatLocalDateTimeInput(value?: Date) {
 
 export function createEmptyContactLens(): ContactLensPayload {
   return {
+    workup: {
+      reason_for_wear: "", previous_lens_experience: "", wearing_requirements: "", occupation_environment: "",
+      preferred_modality: "", preferred_brand: "", lids_lashes: "", conjunctiva: "", cornea: "",
+      anterior_chamber: "", tear_film: "", keratometry_right: "", keratometry_left: "", hvid_right: "",
+      hvid_left: "", tbut_right: "", tbut_left: "", schirmer_right: "", schirmer_left: "",
+      tear_prism_right: "", tear_prism_left: "", topography_notes: "", pachymetry_right: "", pachymetry_left: "",
+    },
+    trials: [],
+    dispensing: {
+      dispensed_on: "", pre_insertion_findings: "", hygiene_explained: false, insertion_removal_taught: false,
+      patient_confidence: "", care_solution: "", care_kit_given: false, instruction_booklet_given: false,
+      wearing_schedule: "", replacement_schedule: "", advice: "",
+    },
+    follow_ups: [],
     wearing_goal: "",
     current_lens_brand: "",
     current_wear_schedule: "",
@@ -48,6 +62,10 @@ export function createEmptyContactLens(): ContactLensPayload {
         visual_acuity: "",
         over_refraction: "",
         fit_notes: "",
+        material: "",
+        design: "",
+        sagittal_depth: "",
+        landing_zone: "",
       },
       {
         eye: "left",
@@ -60,8 +78,27 @@ export function createEmptyContactLens(): ContactLensPayload {
         visual_acuity: "",
         over_refraction: "",
         fit_notes: "",
+        material: "",
+        design: "",
+        sagittal_depth: "",
+        landing_zone: "",
       },
     ] as ContactLensEyeEntry[],
+  };
+}
+
+export function normalizeContactLensPayload(payload?: Partial<ContactLensPayload> | null): ContactLensPayload {
+  const empty = createEmptyContactLens();
+  if (!payload) return empty;
+  const savedEyes = Array.isArray(payload.eyes) ? payload.eyes : [];
+  return {
+    ...empty,
+    ...payload,
+    workup: { ...empty.workup, ...(payload.workup ?? {}) },
+    dispensing: { ...empty.dispensing, ...(payload.dispensing ?? {}) },
+    trials: Array.isArray(payload.trials) ? payload.trials : [],
+    follow_ups: Array.isArray(payload.follow_ups) ? payload.follow_ups : [],
+    eyes: empty.eyes.map((eye) => ({ ...eye, ...(savedEyes.find((saved) => saved.eye === eye.eye) ?? {}) })),
   };
 }
 
@@ -78,7 +115,11 @@ export function hasContactLensEyeData(entry?: ContactLensEyeEntry | null) {
     entry.add_power.trim() ||
     entry.visual_acuity.trim() ||
     entry.over_refraction.trim() ||
-    entry.fit_notes.trim(),
+    entry.fit_notes.trim() ||
+    entry.material.trim() ||
+    entry.design.trim() ||
+    entry.sagittal_depth.trim() ||
+    entry.landing_zone.trim(),
   );
 }
 
@@ -87,6 +128,10 @@ export function hasContactLensData(contactLens?: ContactLensPayload | null) {
     return false;
   }
   return Boolean(
+    flattenValues(contactLens.workup).some((value) => value.trim()) ||
+    contactLens.trials.some((trial) => flattenValues(trial).some((value) => value.trim())) ||
+    flattenValues(contactLens.dispensing).some((value) => value.trim()) ||
+    contactLens.follow_ups.some((followUp) => flattenValues(followUp).some((value) => value.trim())) ||
     contactLens.wearing_goal.trim() ||
     contactLens.current_lens_brand.trim() ||
     contactLens.current_wear_schedule.trim() ||
@@ -107,6 +152,16 @@ export function hasContactLensData(contactLens?: ContactLensPayload | null) {
     contactLens.special_instructions.trim() ||
     contactLens.eyes.some(hasContactLensEyeData),
   );
+}
+
+export function buildContactLensSummary(contactLens: ContactLensPayload) {
+  const parts = [
+    contactLens.lens_type.trim(),
+    contactLens.brand.trim(),
+    contactLens.trials.length ? `${contactLens.trials.length} trial${contactLens.trials.length === 1 ? "" : "s"}` : "",
+    contactLens.follow_ups.length ? `${contactLens.follow_ups.length} follow-up${contactLens.follow_ups.length === 1 ? "" : "s"}` : "",
+  ].filter(Boolean);
+  return parts.join(" · ") || "Contact lens case sheet saved.";
 }
 
 export function createEmptyBinocularVision(): BinocularVisionPayload {

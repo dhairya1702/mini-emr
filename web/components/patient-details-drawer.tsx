@@ -15,10 +15,12 @@ import { EyeExamFields } from "@/components/optometry/eye-exam-fields";
 import { api } from "@/lib/api";
 import {
   buildBinocularVisionSummary,
+  buildContactLensSummary,
   buildLowVisionSummary,
   createEmptyContactLens,
   createEmptyLowVision,
   hasContactLensEyeData,
+  normalizeContactLensPayload,
 } from "@/lib/optometry/consultation";
 import { getSpecialtyModules, specialtyHasModule, type SpecialtyModuleKey } from "@/lib/specialty";
 import { createTrainingId } from "@/lib/training-mode";
@@ -1871,16 +1873,7 @@ export function PatientDetailsDrawer({
   }
 
   function selectContactLensEntry(entry: LongitudinalTrackRecord) {
-    const savedPayload = entry.raw_payload as Partial<ContactLensPayload>;
-    const savedEyes = Array.isArray(savedPayload.eyes) ? savedPayload.eyes : [];
-    const nextContactLens = {
-      ...createEmptyContactLens(),
-      ...savedPayload,
-      eyes: createEmptyContactLens().eyes.map((emptyEntry) => {
-        const saved = savedEyes.find((candidate) => candidate.eye === emptyEntry.eye);
-        return saved ? { ...emptyEntry, ...saved } : emptyEntry;
-      }),
-    };
+    const nextContactLens = normalizeContactLensPayload(entry.raw_payload as Partial<ContactLensPayload>);
     setContactLens(nextContactLens);
     setSelectedContactLensEntryId(entry.id);
   }
@@ -1960,7 +1953,7 @@ export function PatientDetailsDrawer({
         ...contactLens,
         eyes: contactLens.eyes.filter((entry) => hasContactLensEyeData(entry)),
       },
-      "Contact lens details saved.",
+      buildContactLensSummary(contactLens),
     );
     if (saved) {
       setSelectedContactLensEntryId(saved.id);

@@ -14,6 +14,23 @@ test("contact lens helpers treat empty payload as no data and eye values as data
   assert.equal(consultation.hasContactLensEyeData(payload.eyes[0]), true);
 });
 
+test("contact lens helpers preserve case-sheet sections and detect work-up data", () => {
+  const payload = consultation.createEmptyContactLens();
+  payload.workup.keratometry_right = "43.00 / 44.00";
+  assert.equal(consultation.hasContactLensData(payload), true);
+
+  const normalized = consultation.normalizeContactLensPayload({
+    lens_type: "RGP",
+    workup: { reason_for_wear: "Sports" },
+  });
+  assert.equal(normalized.lens_type, "RGP");
+  assert.equal(normalized.workup.reason_for_wear, "Sports");
+  assert.equal(normalized.workup.tbut_right, "");
+  assert.equal(normalized.eyes.length, 2);
+  normalized.trials = [{ id: "trial-1" }];
+  assert.equal(consultation.buildContactLensSummary(normalized), "RGP · 1 trial");
+});
+
 test("binocular vision helpers surface saved data and compact summary", () => {
   const payload = consultation.createEmptyBinocularVision();
   assert.equal(consultation.hasBinocularVisionData(payload), false);

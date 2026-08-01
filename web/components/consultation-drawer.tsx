@@ -64,6 +64,7 @@ import {
 } from "@/lib/structured-modules";
 import {
   buildBinocularVisionSummary,
+  buildContactLensSummary,
   buildLowVisionSummary,
   buildMyopiaManagementSummary,
   createEmptyBinocularVision,
@@ -73,6 +74,7 @@ import {
   formatLocalDateTimeInput,
   hasContactLensData,
   hasContactLensEyeData,
+  normalizeContactLensPayload,
   type MyopiaMeasurementDraft,
 } from "@/lib/optometry/consultation";
 
@@ -709,16 +711,7 @@ export function ConsultationDrawer({
               : baseForm.testScores,
             assets: Array.isArray(cachedForm.assets) ? cachedForm.assets : baseForm.assets,
             prescriptions: Array.isArray(cachedForm.prescriptions) ? cachedForm.prescriptions : baseForm.prescriptions,
-            contactLens: {
-              ...baseForm.contactLens,
-              ...(cachedForm.contactLens || {}),
-              eyes: Array.isArray(cachedForm.contactLens?.eyes) && cachedForm.contactLens.eyes.length
-                ? cachedForm.contactLens.eyes.map((entry, index) => ({
-                    ...baseForm.contactLens.eyes[index]!,
-                    ...entry,
-                  }))
-                : baseForm.contactLens.eyes,
-            },
+            contactLens: normalizeContactLensPayload(cachedForm.contactLens),
             binocularVision: {
               ...baseForm.binocularVision,
               ...(cachedForm.binocularVision || {}),
@@ -1480,16 +1473,7 @@ export function ConsultationDrawer({
   }
 
   function selectContactLensEntry(entry: LongitudinalTrackRecord) {
-    const savedPayload = entry.raw_payload as Partial<ContactLensPayload>;
-    const savedEyes = Array.isArray(savedPayload.eyes) ? savedPayload.eyes : [];
-    const nextContactLens = {
-      ...createEmptyContactLens(),
-      ...savedPayload,
-      eyes: createEmptyContactLens().eyes.map((emptyEntry) => {
-        const saved = savedEyes.find((candidate) => candidate.eye === emptyEntry.eye);
-        return saved ? { ...emptyEntry, ...saved } : emptyEntry;
-      }),
-    };
+    const nextContactLens = normalizeContactLensPayload(entry.raw_payload as Partial<ContactLensPayload>);
     setForm((current) => ({ ...current, contactLens: nextContactLens }));
   }
 
@@ -1619,7 +1603,7 @@ export function ConsultationDrawer({
         ...form.contactLens,
         eyes: form.contactLens.eyes.filter((entry) => hasContactLensEyeData(entry)),
       },
-      "Contact lens details saved.",
+      buildContactLensSummary(form.contactLens),
     );
   }
 
