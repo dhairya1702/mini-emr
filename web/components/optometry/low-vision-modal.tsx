@@ -3,177 +3,55 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import type { LowVisionPayload } from "@/lib/types";
-
 import { OptometryModalShell } from "@/components/optometry/optometry-modal-shell";
 
-type LowVisionModalProps = {
-  open: boolean;
-  value: LowVisionPayload;
-  onClose: () => void;
-  onSave: (next: LowVisionPayload) => void | Promise<void>;
-  inline?: boolean;
-  sidebar?: ReactNode;
-};
+type Data = Record<string, unknown>;
+type Path = string[];
+type Setter = (path: Path, value: unknown) => void;
 
-export function LowVisionModal({
-  open,
-  value,
-  onClose,
-  onSave,
-  inline = false,
-  sidebar,
-}: LowVisionModalProps) {
-  const [draft, setDraft] = useState<LowVisionPayload>(value);
+type LowVisionModalProps = { open: boolean; value: LowVisionPayload; onClose: () => void; onSave: (next: LowVisionPayload) => void | Promise<void>; inline?: boolean; sidebar?: ReactNode };
 
-  useEffect(() => {
-    if (open) {
-      setDraft(value);
-    }
-  }, [open, value]);
+const PAGES = ["Initial assessment", "Devices & distance tasks", "Near tasks & mobility", "Daily living & behaviour", "Visual acuity & refraction", "Fields & visual function", "Low vision device trials", "Rehabilitation plan"];
 
-  function updateLowVisionDraft<K extends keyof LowVisionPayload>(key: K, nextValue: LowVisionPayload[K]) {
-    setDraft((current) => ({ ...current, [key]: nextValue }));
-  }
+function get(data: Data, path: Path): unknown { let current: unknown = data; for (const part of path) { if (!current || typeof current !== "object") return ""; current = (current as Data)[part]; } return current ?? ""; }
+function set(data: Data, path: Path, value: unknown): Data { const next = { ...data }; let current = next; path.slice(0, -1).forEach((part) => { const child = current[part]; current[part] = child && typeof child === "object" && !Array.isArray(child) ? { ...(child as Data) } : {}; current = current[part] as Data; }); current[path.at(-1)!] = value; return next; }
 
-  return (
-    <OptometryModalShell
-      open={open}
-      title="Low Vision"
-      description="Capture needs, core measures, functional vision, aids trial, and support planning for low vision assessment."
-      saveLabel="Save Low Vision"
-      onClose={onClose}
-      onSave={async () => {
-        await onSave(draft);
-        onClose();
-      }}
-      inline={inline}
-      sidebar={sidebar}
-    >
-      <section className="rounded-[18px] border border-[#bfd7e8] bg-[#f3f8fb]/30 p-4">
-        <p className="text-sm font-medium text-slate-900">Patient Needs</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            ["reading_difficulty", "Reading Difficulty"],
-            ["distance_difficulty", "Distance Difficulty"],
-            ["mobility_difficulty", "Mobility Difficulty"],
-            ["face_recognition_difficulty", "Face Recognition Difficulty"],
-            ["glare_complaints", "Glare Complaints"],
-            ["lighting_difficulty", "Lighting Difficulty"],
-          ].map(([key, label]) => (
-            <label key={key} className="flex items-center gap-3 rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-sm text-slate-700">
-              <input type="checkbox" checked={!!draft[key as keyof LowVisionPayload]} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.checked as never)} className="h-4 w-4 rounded border-[#9fc7e1] text-[#2f8fd3] focus:ring-[#6daed8]" />
-              {label}
-            </label>
-          ))}
-        </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Primary Complaint</span>
-            <input value={draft.primary_complaint} onChange={(event) => updateLowVisionDraft("primary_complaint", event.target.value)} className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Goals</span>
-            <input value={draft.goals} onChange={(event) => updateLowVisionDraft("goals", event.target.value)} className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-          </label>
-        </div>
-      </section>
+function Title({ children }: { children: ReactNode }) { return <h4 className="border border-black bg-slate-100 px-3 py-2 text-center text-sm font-bold uppercase tracking-[0.08em] text-black">{children}</h4>; }
+function Page({ title, children }: { title: string; children: ReactNode }) { return <div className="mx-auto max-w-5xl bg-white text-slate-950"><h3 className="mb-5 text-center text-lg font-bold uppercase underline decoration-1 underline-offset-4">{title}</h3><div className="space-y-5">{children}</div></div>; }
 
-      <section className="rounded-[18px] border border-[#bfd7e8] bg-white p-4">
-        <p className="text-sm font-medium text-slate-900">Core Measures</p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[
-            ["distance_visual_acuity", "Distance VA"],
-            ["near_visual_acuity", "Near VA"],
-            ["habitual_correction", "Habitual Correction"],
-            ["best_correction", "Best Correction"],
-            ["contrast_sensitivity", "Contrast Sensitivity"],
-            ["glare_function", "Glare Function"],
-            ["central_vision", "Central Vision"],
-            ["visual_field", "Visual Field"],
-          ].map(([key, label]) => (
-            <label key={key} className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
-              <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-            </label>
-          ))}
-        </div>
-      </section>
+function Field({ label, path, data, change, multiline = false }: { label: string; path: Path; data: Data; change: Setter; multiline?: boolean }) { const value = String(get(data, path)); return <label className="grid border border-black sm:grid-cols-[260px_minmax(0,1fr)]"><span className="border-b border-black bg-slate-50 px-3 py-2 text-sm font-semibold sm:border-b-0 sm:border-r">{label}</span>{multiline ? <textarea rows={3} value={value} onChange={(event) => change(path, event.target.value)} className="resize-y px-3 py-2 text-sm outline-none" /> : <input value={value} onChange={(event) => change(path, event.target.value)} className="min-w-0 px-3 py-2 text-sm outline-none" />}</label>; }
+function Choice({ label, path, options, data, change }: { label: string; path: Path; options: string[]; data: Data; change: Setter }) { const value = String(get(data, path)); return <div className="grid border border-black sm:grid-cols-[260px_minmax(0,1fr)]"><span className="border-b border-black bg-slate-50 px-3 py-2 text-sm font-semibold sm:border-b-0 sm:border-r">{label}</span><div className="flex flex-wrap gap-2 p-2">{options.map((option) => <button key={option} type="button" onClick={() => change(path, option)} className={`border px-3 py-1.5 text-sm font-medium ${value === option ? "border-slate-900 bg-slate-900 text-white" : "border-slate-400 bg-white text-slate-700"}`}>{option}</button>)}</div></div>; }
+function Multi({ label, path, options, data, change }: { label: string; path: Path; options: string[]; data: Data; change: Setter }) { const selected = Array.isArray(get(data, path)) ? get(data, path) as string[] : []; const toggle = (option: string) => change(path, selected.includes(option) ? selected.filter((item) => item !== option) : [...selected, option]); return <div className="border border-black"><p className="border-b border-black bg-slate-50 px-3 py-2 text-sm font-semibold">{label}</p><div className="flex flex-wrap gap-2 p-2">{options.map((option) => <button key={option} type="button" onClick={() => toggle(option)} className={`border px-3 py-1.5 text-sm font-medium ${selected.includes(option) ? "border-slate-900 bg-slate-900 text-white" : "border-slate-400 bg-white text-slate-700"}`}>{option}</button>)}</div></div>; }
 
-      <section className="rounded-[18px] border border-[#bfd7e8] bg-white p-4">
-        <p className="text-sm font-medium text-slate-900">Functional Vision</p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          {[
-            ["functional_reading", "Functional Reading"],
-            ["sustained_near_task", "Sustained Near Task"],
-            ["illumination_response", "Illumination Response"],
-            ["posture_working_distance", "Posture / Working Distance"],
-          ].map(([key, label]) => (
-            <label key={key} className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
-              <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-            </label>
-          ))}
-          <label className="md:col-span-2 block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">TV / Phone / Mobility Notes</span>
-            <textarea rows={3} value={draft.tv_phone_mobility_notes} onChange={(event) => updateLowVisionDraft("tv_phone_mobility_notes", event.target.value)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-          </label>
-        </div>
-      </section>
+function Pair({ title, rows, base, data, change }: { title: string; rows: Array<[string, string]>; base: Path; data: Data; change: Setter }) { return <div className="overflow-x-auto"><table className="w-full min-w-[620px] border-collapse text-sm"><thead><tr><th colSpan={3} className="border border-black bg-slate-100 px-3 py-2 uppercase">{title}</th></tr><tr><th className="border border-black bg-slate-50 px-3 py-2 text-left">Parameter</th><th className="border border-black px-3 py-2">Right</th><th className="border border-black px-3 py-2">Left</th></tr></thead><tbody>{rows.map(([label, key]) => <tr key={key}><th className="border border-black bg-slate-50 px-3 py-2 text-left">{label}</th>{["right", "left"].map((eye) => <td key={eye} className="border border-black p-0"><input value={String(get(data, [...base, key, eye]))} onChange={(event) => change([...base, key, eye], event.target.value)} className="w-full min-w-24 px-3 py-2 outline-none" /></td>)}</tr>)}</tbody></table></div>; }
+function Eyes({ title, eyes, columns, base, data, change }: { title: string; eyes?: Array<[string, string]>; columns: Array<[string, string]>; base: Path; data: Data; change: Setter }) { const eyeRows = eyes ?? [["right", "Right eye"], ["left", "Left eye"]]; return <div className="overflow-x-auto"><table className="w-full min-w-[760px] border-collapse text-sm"><thead><tr><th colSpan={columns.length + 1} className="border border-black bg-slate-100 px-3 py-2 uppercase">{title}</th></tr><tr><th className="border border-black bg-slate-50 px-3 py-2 text-left">Eye</th>{columns.map(([label]) => <th key={label} className="border border-black bg-slate-50 px-3 py-2">{label}</th>)}</tr></thead><tbody>{eyeRows.map(([eye, eyeLabel]) => <tr key={eye}><th className="border border-black bg-slate-50 px-3 py-2 text-left">{eyeLabel}</th>{columns.map(([label, key]) => <td key={key} className="border border-black p-0"><input aria-label={`${eyeLabel} ${label}`} value={String(get(data, [...base, eye, key]))} onChange={(event) => change([...base, eye, key], event.target.value)} className="w-full min-w-24 px-3 py-2 outline-none" /></td>)}</tr>)}</tbody></table></div>; }
 
-      <section className="rounded-[18px] border border-[#bfd7e8] bg-white p-4">
-        <p className="text-sm font-medium text-slate-900">Aids Trial</p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[
-            ["magnifier_type", "Magnifier Type"],
-            ["magnification", "Magnification"],
-            ["near_add", "Near Add"],
-            ["electronic_aid", "Electronic Aid"],
-            ["tint_filter", "Tint / Filter"],
-            ["device_recommended", "Device Recommended"],
-          ].map(([key, label]) => (
-            <label key={key} className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
-              <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-            </label>
-          ))}
-        </div>
-        <label className="mt-4 block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">Task Performance With Device</span>
-          <textarea rows={3} value={draft.task_performance_with_device} onChange={(event) => updateLowVisionDraft("task_performance_with_device", event.target.value)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-        </label>
-      </section>
+function Initial({ data, change }: { data: Data; change: Setter }) { return <Page title="Low Vision Initial Assessment"><div className="grid gap-3 md:grid-cols-2"><Field label="Referred by" path={["initial", "referred_by"]} data={data} change={change} /><Field label="Accompanied by" path={["initial", "accompanied_by"]} data={data} change={change} /></div><Field label="Ocular diagnosis" path={["initial", "ocular_diagnosis"]} data={data} change={change} multiline /><div className="grid gap-3 md:grid-cols-2"><Field label="Date of first diagnosis" path={["initial", "first_diagnosis_date"]} data={data} change={change} /><Field label="Diagnosis made at" path={["initial", "diagnosis_place"]} data={data} change={change} /><Field label="Duration of vision loss" path={["initial", "vision_loss_duration"]} data={data} change={change} /><Choice label="Stability of vision" path={["initial", "stability"]} options={["Worse", "Stable", "Improved"]} data={data} change={change} /><Choice label="Vision changed in last 6 months" path={["initial", "changed_six_months"]} options={["Yes", "No"]} data={data} change={change} /><Field label="If yes, specify" path={["initial", "change_details"]} data={data} change={change} /></div><Title>Personal History</Title><div className="grid gap-3 md:grid-cols-2"><Field label="Education" path={["personal", "education"]} data={data} change={change} /><Field label="Occupation" path={["personal", "occupation"]} data={data} change={change} /><Field label="Marital status" path={["personal", "marital_status"]} data={data} change={change} /><Field label="Co-operation from workplace" path={["personal", "workplace_cooperation"]} data={data} change={change} /><Choice label="Breadwinner of family" path={["personal", "breadwinner"]} options={["Yes", "No"]} data={data} change={change} /><Choice label="Living support" path={["personal", "living_support"]} options={["Independent", "Partially dependent", "Totally dependent"]} data={data} change={change} /><Field label="Dependents" path={["personal", "dependents"]} data={data} change={change} /><Field label="Parents/guardian literacy status" path={["personal", "guardian_literacy"]} data={data} change={change} /><Field label="Family economic status" path={["personal", "economic_status"]} data={data} change={change} /><Field label="Parents/guardian occupational status" path={["personal", "guardian_occupation"]} data={data} change={change} /><Field label="Financial support provided by" path={["personal", "financial_support"]} data={data} change={change} /></div><Title>Family History</Title><div className="grid gap-3 md:grid-cols-2"><Choice label="Consanguinity" path={["family", "consanguinity"]} options={["Yes", "No"]} data={data} change={change} /><Field label="Family history of visual problems" path={["family", "visual_problems"]} data={data} change={change} /><Field label="Family history of other problems" path={["family", "other_problems"]} data={data} change={change} /><Field label="Details of family history" path={["family", "details"]} data={data} change={change} multiline /></div><Title>Additional Disabilities</Title><div className="grid gap-3 md:grid-cols-2"><Field label="Physical disability" path={["disabilities", "physical"]} data={data} change={change} /><Field label="Hearing disability" path={["disabilities", "hearing"]} data={data} change={change} /><Field label="Speech disability" path={["disabilities", "speech"]} data={data} change={change} /><Field label="Intellectual disability" path={["disabilities", "intellectual"]} data={data} change={change} /><Field label="Other disability" path={["disabilities", "other"]} data={data} change={change} /></div></Page>; }
 
-      <section className="rounded-[18px] border border-[#bfd7e8] bg-white p-4">
-        <p className="text-sm font-medium text-slate-900">Plan & Support</p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[
-            ["lighting_advice", "Lighting Advice"],
-            ["non_optical_aids", "Non-optical Aids"],
-            ["rehab_referral", "Rehab Referral"],
-            ["support_referral", "Support Referral"],
-            ["training_required", "Training Required"],
-            ["follow_up_plan", "Follow-up Plan"],
-            ["cause_of_low_vision", "Cause of Low Vision"],
-            ["prognosis", "Prognosis"],
-            ["charles_bonnet_screening", "Charles Bonnet Screening"],
-          ].map(([key, label]) => (
-            <label key={key} className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
-              <input value={draft[key as keyof LowVisionPayload] as string} onChange={(event) => updateLowVisionDraft(key as keyof LowVisionPayload, event.target.value as never)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-            </label>
-          ))}
-        </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Emotional Support Notes</span>
-            <textarea rows={3} value={draft.emotional_support_notes} onChange={(event) => updateLowVisionDraft("emotional_support_notes", event.target.value)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Final Plan</span>
-            <textarea rows={3} value={draft.final_plan} onChange={(event) => updateLowVisionDraft("final_plan", event.target.value)} className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]" />
-          </label>
-        </div>
-      </section>
-    </OptometryModalShell>
-  );
+const deviceColumns: Array<[string, string]> = [["Duration (hours/day)", "duration"], ["Time since purchase (months)", "purchase_age"], ["Present condition", "condition"], ["Satisfaction", "satisfaction"], ["Brought today", "brought_today"], ["Comments", "comments"]];
+function Devices({ data, change }: { data: Data; change: Setter }) { return <Page title="Previous Devices and Vision Tasks"><Choice label="Previous low vision care" path={["devices", "previous_care"]} options={["Yes", "No"]} data={data} change={change} /><Field label="If yes, where and when" path={["devices", "care_details"]} data={data} change={change} /><Eyes title="Current and Last Used Devices" eyes={[["spectacles", "Spectacles"], ["contact_lenses", "Contact lenses"], ["lvd_1", "Low vision device 1"], ["lvd_2", "Low vision device 2"], ["lvd_3", "Low vision device 3"]]} columns={deviceColumns} base={["devices", "rows"]} data={data} change={change} /><Multi label="Difficulty with distance vision tasks" path={["tasks", "distance"]} options={["Recognizing faces", "Watching television", "Reading bus numbers", "Copying chalkboard", "Watching movies in theatre", "Driving/riding a motor vehicle", "Following computer presentations", "Sightseeing", "Other"]} data={data} change={change} /><Field label="Other distance task" path={["tasks", "distance_other"]} data={data} change={change} /><Choice label="Uses a computer" path={["tasks", "computer_use"]} options={["Yes", "No"]} data={data} change={change} /><Field label="Preferred font size" path={["tasks", "font_size"]} data={data} change={change} /><Multi label="Purpose of computer use" path={["tasks", "computer_purpose"]} options={["Communication", "Profession", "Education", "Recreation"]} data={data} change={change} /></Page>; }
+
+function NearMobility({ data, change }: { data: Data; change: Setter }) { return <Page title="Near Tasks, Illumination and Mobility"><Multi label="Difficulty while using computers" path={["near", "computer_difficulty"]} options={["Reading monitor print", "Glare from monitor", "Recognizing keyboard letters/symbols", "Other"]} data={data} change={change} /><Field label="Other computer difficulty" path={["near", "computer_other"]} data={data} change={change} /><div className="grid gap-3 md:grid-cols-2"><Choice label="Reading is a priority" path={["near", "reading_priority"]} options={["Yes", "No"]} data={data} change={change} /><Choice label="Reading is difficult" path={["near", "reading_difficult"]} options={["Yes", "No"]} data={data} change={change} /></div><Multi label="Purpose of reading" path={["near", "reading_purpose"]} options={["Education", "Occupation", "Religious", "Recreation", "Other"]} data={data} change={change} /><Multi label="Reading difficulty" path={["near", "reading_material"]} options={["Textbooks", "Newspaper", "Religious books", "Dictionary", "Price bills", "Medicine labels", "Other"]} data={data} change={change} /><Choice label="Can read at a closer distance" path={["near", "closer_distance"]} options={["Yes", "No"]} data={data} change={change} /><Choice label="Writing is a priority" path={["near", "writing_priority"]} options={["Yes", "No"]} data={data} change={change} /><Multi label="Purpose of writing" path={["near", "writing_purpose"]} options={["Education", "Occupation", "Religious", "Recreation", "Other"]} data={data} change={change} /><Choice label="Difficulty writing along a straight line" path={["near", "straight_line"]} options={["Yes", "No"]} data={data} change={change} /><Title>Preference of Illumination</Title><Choice label="Illumination source" path={["illumination", "source"]} options={["Fluorescent", "Incandescent", "Natural", "Other"]} data={data} change={change} /><Choice label="Illumination quality" path={["illumination", "quality"]} options={["Bright", "Indirect", "Reduced", "Other"]} data={data} change={change} /><Title>Light Sensitivity</Title><Choice label="Outdoor glare problem" path={["glare", "outdoor_problem"]} options={["Yes", "No"]} data={data} change={change} /><Multi label="Source of glare" path={["glare", "sources"]} options={["Sunlight", "Bright artificial light", "Opposing vehicle light", "Other"]} data={data} change={change} /><Choice label="Uses glare prevention" path={["glare", "prevention"]} options={["Yes", "No"]} data={data} change={change} /><Multi label="Preventive measures" path={["glare", "measures"]} options={["Peaked cap", "Dark glasses", "Tinted lenses", "Photochromic lenses", "Filters", "Other"]} data={data} change={change} /><Choice label="Delayed adaptation" path={["glare", "adaptation"]} options={["Bright to dark", "Dark to bright", "Both", "None"]} data={data} change={change} /><Title>Mobility History</Title><Choice label="Difficulty in mobility" path={["mobility", "difficulty"]} options={["Yes", "No"]} data={data} change={change} /><Choice label="Takes help for mobility" path={["mobility", "takes_help"]} options={["Yes", "No"]} data={data} change={change} /><Field label="Help from" path={["mobility", "help_from"]} data={data} change={change} /></Page>; }
+
+function DailyLiving({ data, change }: { data: Data; change: Setter }) { return <Page title="Mobility, Daily Living and Gross Visual Behaviour"><Eyes title="Mobility Problem Description" eyes={[["ascending_stairs", "Ascending stairs"], ["descending_stairs", "Descending stairs"], ["bumping_objects", "Bumping into objects"], ["crossing_roads", "Crossing roads"], ["other_1", "Other 1"], ["other_2", "Other 2"]]} columns={[["Familiar", "familiar"], ["Unfamiliar", "unfamiliar"], ["Day", "day"], ["Night", "night"]]} base={["mobility", "problems"]} data={data} change={change} /><Choice label="Difficulty with activities of daily living" path={["adl", "difficulty"]} options={["Yes", "No"]} data={data} change={change} /><Multi label="Grooming" path={["adl", "grooming"]} options={["Bathing", "Using toilet", "Dressing", "Matching clothes", "Identifying correct side", "Other"]} data={data} change={change} /><Multi label="Kitchen and eating skills" path={["adl", "kitchen"]} options={["Identifying groceries", "Measuring quantity", "Separating stones from grain", "Cutting vegetables", "Pouring liquids", "Food identification", "Other"]} data={data} change={change} /><Multi label="Housekeeping" path={["adl", "housekeeping"]} options={["Cleaning house", "Arranging cupboards", "Making bed", "Other"]} data={data} change={change} /><Multi label="Miscellaneous" path={["adl", "miscellaneous"]} options={["Threading needle", "Identifying shelf items", "Currency note identification", "Coin identification", "Colour differentiation", "Telling time", "Other"]} data={data} change={change} /><Title>Brief Current Medical History</Title><Field label="Chief complaints" path={["medical", "chief_complaints"]} data={data} change={change} multiline /><Title>Gross Visual Behaviour</Title><Field label="Visual fixation" path={["behaviour", "fixation"]} data={data} change={change} /><Choice label="Ocular preference" path={["behaviour", "ocular_preference"]} options={["Right", "Left", "Both", "Unknown"]} data={data} change={change} /></Page>; }
+
+const refractionColumns: Array<[string, string]> = [["Dry retinoscopy - Sph", "ret_sph"], ["Dry retinoscopy - Cyl", "ret_cyl"], ["Dry retinoscopy - Axis", "ret_axis"], ["Dry acceptance - Sph", "acc_sph"], ["Dry acceptance - Cyl", "acc_cyl"], ["Dry acceptance - Axis", "acc_axis"], ["Distance vision", "distance_vision"], ["Near add", "near_add"], ["Near vision", "near_vision"]];
+function Acuity({ data, change }: { data: Data; change: Setter }) { return <Page title="Distance Visual Acuity and Refraction"><div className="grid gap-3 md:grid-cols-3"><Field label="Distance vision chart" path={["acuity", "chart"]} data={data} change={change} /><Field label="Distance of chart" path={["acuity", "chart_distance"]} data={data} change={change} /><Field label="Chart illumination" path={["acuity", "illumination"]} data={data} change={change} /></div><Eyes title="Unaided Vision" eyes={[["right", "Right eye"], ["left", "Left eye"], ["both", "Both eyes"]]} columns={[["LCVA", "lcva"], ["HCVA", "hcva"]]} base={["acuity", "unaided"]} data={data} change={change} /><Eyes title="Aided Vision" eyes={[["right", "Right eye"], ["left", "Left eye"], ["both", "Both eyes"]]} columns={[["LCVA", "lcva"], ["HCVA", "hcva"]]} base={["acuity", "aided"]} data={data} change={change} /><Eyes title="Current Distance Prescription" columns={[["Sphere", "sphere"], ["Cylinder", "cylinder"], ["Axis", "axis"]]} base={["prescription", "current"]} data={data} change={change} /><Field label="Near add" path={["prescription", "near_add"]} data={data} change={change} /><div className="grid gap-3 md:grid-cols-3"><Field label="Near vision - both eyes" path={["prescription", "near_vision"]} data={data} change={change} /><Field label="Test distance (cm)" path={["prescription", "near_distance"]} data={data} change={change} /><Field label="Chart and illumination" path={["prescription", "near_chart_illumination"]} data={data} change={change} /></div><Choice label="Type of spectacle" path={["spectacle", "type"]} options={["Single vision", "Bifocal", "Progressive"]} data={data} change={change} /><div className="grid gap-3 md:grid-cols-3"><Field label="Frame shape" path={["spectacle", "frame_shape"]} data={data} change={change} /><Field label="Type of bifocal" path={["spectacle", "bifocal_type"]} data={data} change={change} /><Field label="Frame material" path={["spectacle", "frame_material"]} data={data} change={change} /></div><Eyes title="Dry Refraction" columns={refractionColumns} base={["refraction", "dry"]} data={data} change={change} /></Page>; }
+
+function Fields({ data, change }: { data: Data; change: Setter }) { return <Page title="Cycloplegic Refraction and Visual Function"><Choice label="Cycloplegic used" path={["cycloplegic", "agent"]} options={["Atropine", "Homatropine", "Tropicamide", "Other"]} data={data} change={change} /><Eyes title="Cycloplegic Refraction and Acceptance" columns={[["Refraction Sph", "ref_sph"], ["Refraction Cyl", "ref_cyl"], ["Refraction Axis", "ref_axis"], ["Acceptance Sph", "acc_sph"], ["Acceptance Cyl", "acc_cyl"], ["Acceptance Axis", "acc_axis"], ["Distance vision", "distance_vision"]]} base={["cycloplegic", "eyes"]} data={data} change={change} /><Pair title="Visual Field Testing" base={["visual_fields"]} rows={[["Confrontation test", "confrontation"], ["Humphrey visual field 30-2", "hvf_30_2"], ["Amsler chart", "amsler"], ["Humphrey visual field 10-2", "hvf_10_2"], ["Other", "other"]]} data={data} change={change} /><Pair title="Colour and Contrast" base={["visual_function"]} rows={[["Colour vision - D15", "colour_d15"], ["Contrast sensitivity", "contrast_sensitivity"]]} data={data} change={change} /></Page>; }
+
+function Trials({ data, change }: { data: Data; change: Setter }) { return <Page title="Trial of Low Vision Devices"><div className="grid gap-3 md:grid-cols-2"><Field label="Worth 4-dot test" path={["binocular", "worth_four_dot"]} data={data} change={change} /><Field label="Stereopsis" path={["binocular", "stereopsis"]} data={data} change={change} /></div><Title>Distant Vision Devices</Title><div className="grid gap-3 md:grid-cols-2"><Field label="Magnification required" path={["distance_devices", "magnification"]} data={data} change={change} /><Choice label="Eye preference" path={["distance_devices", "preference"]} options={["Right", "Left", "Both"]} data={data} change={change} /></div>{[1, 2, 3, 4].map((number) => <Field key={number} label={`Distance device trial ${number}`} path={["distance_devices", "trials", String(number)]} data={data} change={change} multiline />)}<Field label="Preferred distance device" path={["distance_devices", "preferred"]} data={data} change={change} /><div className="grid gap-3 md:grid-cols-2"><Choice label="Fixation" path={["distance_devices", "fixation"]} options={["Good", "Average", "Poor"]} data={data} change={change} /><Choice label="Focusing" path={["distance_devices", "focusing"]} options={["Good", "Average", "Poor"]} data={data} change={change} /><Choice label="Scanning" path={["distance_devices", "scanning"]} options={["Good", "Average", "Poor"]} data={data} change={change} /><Choice label="Tracking" path={["distance_devices", "tracking"]} options={["Good", "Average", "Poor"]} data={data} change={change} /></div><Title>Near Vision Devices</Title><div className="grid gap-3 md:grid-cols-2"><Field label="EVP" path={["near_devices", "evp"]} data={data} change={change} /><Choice label="Eye preference" path={["near_devices", "preference"]} options={["Right", "Left", "Both"]} data={data} change={change} /></div>{[1, 2, 3, 4].map((number) => <Field key={number} label={`Near device trial ${number}`} path={["near_devices", "trials", String(number)]} data={data} change={change} multiline />)}<Field label="Preferred near device" path={["near_devices", "preferred"]} data={data} change={change} /><Choice label="Near visual skills" path={["near_devices", "visual_skills"]} options={["Good", "Average", "Poor"]} data={data} change={change} /><Choice label="Visual objective fulfilled" path={["near_devices", "objective_fulfilled"]} options={["Yes", "No"]} data={data} change={change} /><Multi label="Reason visual objective was not fulfilled" path={["near_devices", "non_fulfilment"]} options={["Severe visual impairment", "Poor literacy skills", "Peripheral field loss", "Task/device mismatch", "Poor cooperation", "Multiple disabilities", "Not motivated", "Other"]} data={data} change={change} /></Page>; }
+
+function Plan({ data, change }: { data: Data; change: Setter }) { return <Page title="Low Vision Rehabilitation Plan and Management"><Choice label="Preference of absorptive lenses" path={["plan", "absorptive_lens"]} options={["Dark grey", "Light grey", "Dark yellow", "Light yellow", "Dark brown", "Light brown", "Other"]} data={data} change={change} /><Field label="Problem summary" path={["plan", "problem_summary"]} data={data} change={change} multiline /><Field label="Management plan" path={["plan", "management_plan"]} data={data} change={change} multiline /><Title>Prescription</Title><Field label="Optical devices suggested" path={["plan", "optical_devices"]} data={data} change={change} multiline /><Field label="Distance task" path={["plan", "distance_task"]} data={data} change={change} /><Field label="Near task" path={["plan", "near_task"]} data={data} change={change} /><Field label="Non-optical devices suggested" path={["plan", "non_optical_devices"]} data={data} change={change} multiline /><Field label="Other devices suggested" path={["plan", "other_devices"]} data={data} change={change} multiline /><Choice label="Motivated to use LVDs" path={["plan", "motivated"]} options={["Not applicable", "Yes", "No"]} data={data} change={change} /><Multi label="If no, reason" path={["plan", "not_motivated_reason"]} options={["Cost", "Cosmetic blemish", "Handling problem", "Does not match task", "Wants to decide later", "Manages with own LVDs", "Other"]} data={data} change={change} /><Choice label="LVDs purchased" path={["plan", "purchased"]} options={["Yes", "No"]} data={data} change={change} /><Field label="Source suggested" path={["plan", "source"]} data={data} change={change} /><Field label="Cross-consult to department" path={["plan", "cross_consult"]} data={data} change={change} /><Field label="Next appointment" path={["plan", "next_appointment"]} data={data} change={change} /></Page>; }
+
+export function LowVisionModal({ open, value, onClose, onSave, inline = false, sidebar }: LowVisionModalProps) {
+  const [draft, setDraft] = useState(value);
+  const [page, setPage] = useState(0);
+  useEffect(() => { if (open) { setDraft(value); setPage(0); } }, [open, value]);
+  const change: Setter = (path, nextValue) => setDraft((current) => ({ ...current, case_sheet: set(current.case_sheet, path, nextValue) }));
+  const data = draft.case_sheet;
+  return <OptometryModalShell open={open} title="Low Vision Initial Assessment" description="Digital low vision assessment and rehabilitation case sheet." saveLabel="Save Low Vision Assessment" onClose={onClose} onSave={async () => { await onSave(draft); onClose(); }} inline={inline} sidebar={sidebar}>
+    <nav className="flex max-w-5xl overflow-x-auto border-y border-slate-300" aria-label="Low vision case-sheet pages">{PAGES.map((label, index) => <button key={label} type="button" onClick={() => setPage(index)} className={`relative min-w-[164px] flex-1 px-5 py-3 text-sm font-semibold ${page === index ? "z-10 bg-[#376f9f] text-white" : "bg-slate-50 text-slate-600"}`} style={{ clipPath: index === PAGES.length - 1 ? undefined : "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)", marginLeft: index ? -8 : 0 }}><span className="mr-1 text-[10px] opacity-70">PAGE {index + 1}</span> {label}</button>)}</nav>
+    {page === 0 ? <Initial data={data} change={change} /> : null}{page === 1 ? <Devices data={data} change={change} /> : null}{page === 2 ? <NearMobility data={data} change={change} /> : null}{page === 3 ? <DailyLiving data={data} change={change} /> : null}{page === 4 ? <Acuity data={data} change={change} /> : null}{page === 5 ? <Fields data={data} change={change} /> : null}{page === 6 ? <Trials data={data} change={change} /> : null}{page === 7 ? <Plan data={data} change={change} /> : null}
+  </OptometryModalShell>;
 }

@@ -1,19 +1,13 @@
 "use client";
 
-import { Fragment, useEffect, useState, type ReactNode } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 
-import type {
-  ContactLensEyeEntry,
-  ContactLensFollowUp,
-  ContactLensPayload,
-  ContactLensTrial,
-  ContactLensTrialEyeEntry,
-  ContactLensWorkup,
-} from "@/lib/types";
+import type { ContactLensEyeEntry, ContactLensPayload } from "@/lib/types";
 import { OptometryModalShell } from "@/components/optometry/optometry-modal-shell";
 
-type PageKey = "workup" | "trial" | "final" | "dispensing" | "followup";
+type SheetType = ContactLensPayload["case_sheet_type"];
+type SheetData = Record<string, unknown>;
+type Path = string[];
 
 type ContactLensModalProps = {
   open: boolean;
@@ -26,125 +20,140 @@ type ContactLensModalProps = {
   sidebar?: ReactNode;
 };
 
-const PAGES: Array<{ key: PageKey; label: string }> = [
-  { key: "workup", label: "Work-up" },
-  { key: "trial", label: "Trial & Fit" },
-  { key: "final", label: "Final Lens" },
-  { key: "dispensing", label: "Dispensing" },
-  { key: "followup", label: "Follow-up" },
+const SHEETS: Array<{ key: SheetType; label: string; pages: string[] }> = [
+  { key: "general", label: "General CL", pages: ["Initial work-up", "Clinical assessment", "Tolerance trials", "Dispensing", "Follow-up"] },
+  { key: "soft", label: "Soft CL", pages: ["History & evaluation", "Measurements & fitting", "Final assessment"] },
+  { key: "rgp", label: "RGP", pages: ["Work-up", "Fitting & final lens"] },
+  { key: "scleral", label: "Scleral / Mini-scleral", pages: ["Trial parameters", "Fitting & final lens"] },
 ];
 
-const inputClass = "w-full border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#4f94cf]";
-
-function Input({ label, value, onChange, placeholder = "", type = "text" }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string }) {
-  return <label className="block"><span className="mb-1.5 block text-sm font-semibold text-slate-900">{label}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className={inputClass} /></label>;
-}
-
-function Textarea({ label, value, onChange, placeholder = "", rows = 3 }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; rows?: number }) {
-  return <label className="block"><span className="mb-1.5 block text-sm font-semibold text-slate-900">{label}</span><textarea rows={rows} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className={`${inputClass} resize-y`} /></label>;
-}
-
-function Heading({ children }: { children: ReactNode }) {
-  return <h4 className="mb-4 border-b border-slate-300 pb-2 text-sm font-bold uppercase tracking-[0.16em] text-slate-900">{children}</h4>;
-}
-
-function emptyTrialEye(eye: "right" | "left"): ContactLensTrialEyeEntry {
-  return {
-    eye, sphere: "", cylinder: "", axis: "", base_curve: "", diameter: "", add_power: "",
-    visual_acuity: "", over_refraction: "", fit_notes: "", material: "", design: "",
-    sagittal_depth: "", landing_zone: "", centration: "", coverage: "", movement: "",
-    push_up: "", rotation: "", comfort: "", fluorescein_pattern: "", vault: "",
-    limbal_clearance: "", blanching: "", impingement: "",
-  };
-}
-
-function newTrial(index: number, lensType: string): ContactLensTrial {
-  return { id: `trial-${Date.now()}-${index}`, label: `Trial ${index}`, lens_type: lensType, brand: "", assessed_after: "", eyes: [emptyTrialEye("right"), emptyTrialEye("left")], notes: "" };
-}
-
-function newFollowUp(): ContactLensFollowUp {
-  return { id: `follow-up-${Date.now()}`, followed_up_on: "", wearing_hours: "", vision: "", comfort: "", handling: "", solution_irritation: "", lens_fit_right: "", lens_fit_left: "", slit_lamp_findings: "", care_compliance: "", changes_made: "", next_appointment: "" };
-}
-
-function LensTypeSelector({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  return <div><span className="mb-1.5 block text-sm font-semibold text-slate-900">Lens type</span><div className="flex flex-wrap gap-2">{["Soft", "RGP", "Scleral"].map((option) => <button key={option} type="button" onClick={() => onChange(option)} className={`border px-4 py-2 text-sm font-semibold transition ${value === option ? "border-[#376f9f] bg-[#376f9f] text-white" : "border-slate-300 bg-white text-slate-700 hover:border-[#4f94cf]"}`}>{option}</button>)}</div></div>;
-}
-
-export function ContactLensModal({ open, value, onClose, onSave, onChange, onEyeChange, inline = false, sidebar }: ContactLensModalProps) {
-  const [page, setPage] = useState<PageKey>("workup");
-  useEffect(() => {
-    if (open && !inline) setPage("workup");
-  }, [inline, open]);
-  const setWorkup = (patch: Partial<ContactLensWorkup>) => onChange({ workup: { ...value.workup, ...patch } });
-  const setDispensing = (patch: Partial<ContactLensPayload["dispensing"]>) => onChange({ dispensing: { ...value.dispensing, ...patch } });
-
-  function updateTrial(id: string, patch: Partial<ContactLensTrial>) {
-    onChange({ trials: value.trials.map((trial) => trial.id === id ? { ...trial, ...patch } : trial) });
+function getAtPath(data: SheetData, path: Path): unknown {
+  let current: unknown = data;
+  for (const part of path) {
+    if (!current || typeof current !== "object") return "";
+    current = (current as SheetData)[part];
   }
-  function updateTrialEye(trial: ContactLensTrial, eye: "right" | "left", patch: Partial<ContactLensTrialEyeEntry>) {
-    updateTrial(trial.id, { eyes: trial.eyes.map((entry) => entry.eye === eye ? { ...entry, ...patch } : entry) });
-  }
-  function updateFollowUp(id: string, patch: Partial<ContactLensFollowUp>) {
-    onChange({ follow_ups: value.follow_ups.map((entry) => entry.id === id ? { ...entry, ...patch } : entry) });
-  }
-
-  return (
-    <OptometryModalShell open={open} title="Contact Lens Case Sheet" description="Contact-lens work-up, fitting, dispensing and follow-up." saveLabel="Save Case Sheet" onClose={onClose} onSave={onSave} inline={inline} sidebar={sidebar}>
-      <nav aria-label="Contact lens case sheet pages" className="flex max-w-4xl overflow-x-auto border-y border-slate-300">
-        {PAGES.map((item, index) => {
-          const active = page === item.key;
-          return <button key={item.key} type="button" onClick={() => setPage(item.key)} className={`relative min-w-[132px] flex-1 px-5 py-3 text-sm font-semibold transition ${active ? "z-10 bg-[#376f9f] text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`} style={{ clipPath: index === PAGES.length - 1 ? undefined : "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)", marginLeft: index ? -8 : 0 }}>
-            <span className="mr-1 text-[10px] uppercase tracking-[0.14em] opacity-75">{index + 1}</span> {item.label}
-          </button>;
-        })}
-      </nav>
-
-      {page === "workup" ? <div className="space-y-8">
-        <section><Heading>Contact lens requirements</Heading><div className="grid gap-4 md:grid-cols-2">
-          <Textarea label="Reason for contact lens wear" value={value.workup.reason_for_wear} onChange={(reason_for_wear) => setWorkup({ reason_for_wear })} placeholder="Sports, occupational, cosmetic or general use" />
-          <Textarea label="Previous lens experience" value={value.workup.previous_lens_experience} onChange={(previous_lens_experience) => setWorkup({ previous_lens_experience })} placeholder="Lens type, brand, duration and problems" />
-          <Textarea label="Wearing requirements" value={value.workup.wearing_requirements} onChange={(wearing_requirements) => setWorkup({ wearing_requirements })} placeholder="Expected daily hours, near work, outdoor or occasional use" />
-          <Textarea label="Occupation and environment" value={value.workup.occupation_environment} onChange={(occupation_environment) => setWorkup({ occupation_environment })} placeholder="Screen use, dust, air conditioning, water exposure" />
-          <Input label="Preferred modality" value={value.workup.preferred_modality} onChange={(preferred_modality) => setWorkup({ preferred_modality })} placeholder="Daily, fortnightly, monthly" />
-          <Input label="Brand preference" value={value.workup.preferred_brand} onChange={(preferred_brand) => setWorkup({ preferred_brand })} placeholder="If any" />
-        </div></section>
-        <section><Heading>Anterior segment and tear film</Heading><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {([['Lids and lashes','lids_lashes'],['Conjunctiva','conjunctiva'],['Cornea','cornea'],['Anterior chamber','anterior_chamber'],['Tear film','tear_film']] as const).map(([label,key]) => <Input key={key} label={label} value={value.workup[key]} onChange={(next) => setWorkup({ [key]: next })} />)}
-        </div></section>
-        <section><Heading>Contact lens measurements</Heading><div className="overflow-x-auto"><table className="w-full min-w-[720px] border-collapse text-sm"><thead><tr className="bg-slate-100 text-left text-slate-900"><th className="border border-slate-300 p-2">Eye</th>{["Keratometry", "HVID", "TBUT", "Schirmer", "Tear prism", "Pachymetry"].map((label) => <th key={label} className="border border-slate-300 p-2">{label}</th>)}</tr></thead><tbody>{([['right','OD'],['left','OS']] as const).map(([eye,label]) => <tr key={eye}><th className="border border-slate-300 p-2 text-left">{label}</th>{(['keratometry','hvid','tbut','schirmer','tear_prism','pachymetry'] as const).map((field) => { const key = `${field}_${eye}` as keyof ContactLensWorkup; return <td key={field} className="border border-slate-300 p-1"><input value={value.workup[key]} onChange={(event) => setWorkup({ [key]: event.target.value })} className="w-full min-w-24 bg-transparent px-2 py-2 outline-none" /></td>; })}</tr>)}</tbody></table></div><div className="mt-4"><Textarea label="Topography and additional measurement notes" value={value.workup.topography_notes} onChange={(topography_notes) => setWorkup({ topography_notes })} /></div></section>
-      </div> : null}
-
-      {page === "trial" ? <div className="space-y-6">
-        <div className="flex flex-wrap items-end justify-between gap-4"><LensTypeSelector value={value.lens_type} onChange={(lens_type) => onChange({ lens_type })} /><button type="button" onClick={() => onChange({ trials: [...value.trials, newTrial(value.trials.length + 1, value.lens_type)] })} className="inline-flex items-center gap-2 border border-[#4f94cf] px-4 py-2.5 text-sm font-semibold text-[#376f9f]"><Plus className="h-4 w-4" /> Add trial</button></div>
-        {!value.trials.length ? <div className="border border-dashed border-slate-300 px-5 py-10 text-center text-sm text-slate-500">No trial lenses recorded yet.</div> : value.trials.map((trial, index) => <section key={trial.id} className="border-t border-slate-300 pt-5">
-          <div className="mb-4 flex items-center justify-between"><h4 className="font-bold text-slate-900">Trial {index + 1}</h4><button type="button" onClick={() => onChange({ trials: value.trials.filter((entry) => entry.id !== trial.id) })} className="inline-flex items-center gap-1 text-sm font-semibold text-rose-700"><Trash2 className="h-4 w-4" /> Remove</button></div>
-          <div className="mb-4 grid gap-4 md:grid-cols-3"><Input label="Lens type" value={trial.lens_type} onChange={(lens_type) => updateTrial(trial.id,{lens_type})} placeholder={value.lens_type || "Soft, RGP or scleral"}/><Input label="Brand / design" value={trial.brand} onChange={(brand) => updateTrial(trial.id,{brand})}/><Input label="Assessed after" value={trial.assessed_after} onChange={(assessed_after) => updateTrial(trial.id,{assessed_after})} placeholder="20 minutes"/></div>
-          <TrialTable trial={trial} onChange={(eye,patch) => updateTrialEye(trial,eye,patch)} />
-          <div className="mt-4"><Textarea label="Trial notes" value={trial.notes} onChange={(notes) => updateTrial(trial.id,{notes})}/></div>
-        </section>)}
-      </div> : null}
-
-      {page === "final" ? <div className="space-y-8"><section><Heading>Final lens selection</Heading><div className="mb-4"><LensTypeSelector value={value.lens_type} onChange={(lens_type) => onChange({ lens_type })} /></div><div className="grid gap-4 md:grid-cols-3">
-        <Input label="Manufacturer" value={value.manufacturer} onChange={(manufacturer) => onChange({ manufacturer })}/><Input label="Brand" value={value.brand} onChange={(brand) => onChange({ brand })}/><Input label="Wear modality" value={value.wear_modality} onChange={(wear_modality) => onChange({ wear_modality })}/>
-      </div></section><FinalLensTable lensType={value.lens_type} eyes={value.eyes} onEyeChange={onEyeChange}/><section><Heading>Order and instructions</Heading><div className="grid gap-4 md:grid-cols-2"><Input label="Vendor" value={value.vendor_name} onChange={(vendor_name) => onChange({vendor_name})}/><Input label="Quantity" value={value.quantity} onChange={(quantity) => onChange({quantity})}/><div className="md:col-span-2"><Textarea label="Special instructions" value={value.special_instructions} onChange={(special_instructions) => onChange({special_instructions})}/></div></div></section></div> : null}
-
-      {page === "dispensing" ? <div className="space-y-8"><section><Heading>Dispensing assessment</Heading><div className="grid gap-4 md:grid-cols-2"><Input type="date" label="Dispensed on" value={value.dispensing.dispensed_on} onChange={(dispensed_on) => setDispensing({dispensed_on})}/><Input label="Patient confidence" value={value.dispensing.patient_confidence} onChange={(patient_confidence) => setDispensing({patient_confidence})} placeholder="Independent, needs assistance"/><div className="md:col-span-2"><Textarea label="Slit-lamp findings before insertion" value={value.dispensing.pre_insertion_findings} onChange={(pre_insertion_findings) => setDispensing({pre_insertion_findings})}/></div></div></section><section><Heading>Training and care</Heading><div className="grid gap-3 md:grid-cols-2">{([['Hygiene explained','hygiene_explained'],['Insertion and removal taught','insertion_removal_taught'],['Care kit given','care_kit_given'],['Instruction booklet given','instruction_booklet_given']] as const).map(([label,key]) => <label key={key} className="flex items-center gap-3 border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-900"><input type="checkbox" checked={value.dispensing[key]} onChange={(event) => setDispensing({[key]:event.target.checked})} className="h-4 w-4"/>{label}</label>)}</div><div className="mt-4 grid gap-4 md:grid-cols-2"><Input label="Care solution" value={value.dispensing.care_solution} onChange={(care_solution) => setDispensing({care_solution})}/><Input label="Wearing schedule" value={value.dispensing.wearing_schedule} onChange={(wearing_schedule) => setDispensing({wearing_schedule})}/><Input label="Replacement schedule" value={value.dispensing.replacement_schedule} onChange={(replacement_schedule) => setDispensing({replacement_schedule})}/><Textarea label="Advice" value={value.dispensing.advice} onChange={(advice) => setDispensing({advice})}/></div></section></div> : null}
-
-      {page === "followup" ? <div className="space-y-6"><div className="flex justify-end"><button type="button" onClick={() => onChange({follow_ups:[...value.follow_ups,newFollowUp()]})} className="inline-flex items-center gap-2 border border-[#4f94cf] px-4 py-2.5 text-sm font-semibold text-[#376f9f]"><Plus className="h-4 w-4"/> Add follow-up</button></div>{!value.follow_ups.length ? <div className="border border-dashed border-slate-300 px-5 py-10 text-center text-sm text-slate-500">No follow-ups recorded yet.</div> : value.follow_ups.map((followUp,index) => <section key={followUp.id} className="border-t border-slate-300 pt-5"><div className="mb-4 flex items-center justify-between"><h4 className="font-bold text-slate-900">Follow-up {index+1}</h4><button type="button" onClick={() => onChange({follow_ups:value.follow_ups.filter((entry)=>entry.id!==followUp.id)})} className="inline-flex items-center gap-1 text-sm font-semibold text-rose-700"><Trash2 className="h-4 w-4"/> Remove</button></div><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"><Input type="date" label="Follow-up date" value={followUp.followed_up_on} onChange={(followed_up_on)=>updateFollowUp(followUp.id,{followed_up_on})}/><Input label="Average wearing hours" value={followUp.wearing_hours} onChange={(wearing_hours)=>updateFollowUp(followUp.id,{wearing_hours})}/><Input label="Vision" value={followUp.vision} onChange={(vision)=>updateFollowUp(followUp.id,{vision})}/><Input label="Comfort" value={followUp.comfort} onChange={(comfort)=>updateFollowUp(followUp.id,{comfort})}/><Input label="Handling" value={followUp.handling} onChange={(handling)=>updateFollowUp(followUp.id,{handling})}/><Input label="Solution irritation" value={followUp.solution_irritation} onChange={(solution_irritation)=>updateFollowUp(followUp.id,{solution_irritation})}/><Input label="Lens fit OD" value={followUp.lens_fit_right} onChange={(lens_fit_right)=>updateFollowUp(followUp.id,{lens_fit_right})}/><Input label="Lens fit OS" value={followUp.lens_fit_left} onChange={(lens_fit_left)=>updateFollowUp(followUp.id,{lens_fit_left})}/><Input label="Care compliance" value={followUp.care_compliance} onChange={(care_compliance)=>updateFollowUp(followUp.id,{care_compliance})}/><div className="lg:col-span-3"><Textarea label="Slit-lamp findings" value={followUp.slit_lamp_findings} onChange={(slit_lamp_findings)=>updateFollowUp(followUp.id,{slit_lamp_findings})}/></div><div className="md:col-span-2"><Textarea label="Changes made and advice" value={followUp.changes_made} onChange={(changes_made)=>updateFollowUp(followUp.id,{changes_made})}/></div><Input type="date" label="Next appointment" value={followUp.next_appointment} onChange={(next_appointment)=>updateFollowUp(followUp.id,{next_appointment})}/></div></section>)}</div> : null}
-    </OptometryModalShell>
-  );
+  return current ?? "";
 }
 
-function TrialTable({trial,onChange}:{trial:ContactLensTrial;onChange:(eye:"right"|"left",patch:Partial<ContactLensTrialEyeEntry>)=>void}) {
-  const isRgp = /rgp|rigid/i.test(trial.lens_type);
-  const isScleral = /scleral/i.test(trial.lens_type);
-  const fitFields: Array<[string,keyof ContactLensTrialEyeEntry]> = isScleral ? [["Vault","vault"],["Limbal clearance","limbal_clearance"],["Blanching","blanching"],["Impingement","impingement"]] : isRgp ? [["Centration","centration"],["Movement","movement"],["Fluorescein pattern","fluorescein_pattern"],["Comfort","comfort"]] : [["Centration","centration"],["Coverage","coverage"],["Movement","movement"],["Push-up","push_up"],["Rotation","rotation"],["Comfort","comfort"]];
-  const fields:Array<[string,keyof ContactLensTrialEyeEntry]> = [["Sphere","sphere"],["Cylinder","cylinder"],["Axis","axis"],["BC","base_curve"],["Diameter","diameter"],...(isScleral ? [["Sag","sagittal_depth"] as [string,keyof ContactLensTrialEyeEntry]]:[]),["Over-refraction","over_refraction"],["VA","visual_acuity"],...fitFields];
-  return <div className="overflow-x-auto"><table className="w-full min-w-[900px] border-collapse text-sm"><thead><tr className="bg-slate-100 text-left text-slate-900"><th className="border border-slate-300 p-2">Eye</th>{fields.map(([label])=><th key={label} className="border border-slate-300 p-2">{label}</th>)}</tr></thead><tbody>{trial.eyes.map((eye)=><tr key={eye.eye}><th className="border border-slate-300 p-2 text-left">{eye.eye==='right'?'OD':'OS'}</th>{fields.map(([label,key])=><td key={label} className="border border-slate-300 p-1"><input value={String(eye[key]??'')} onChange={(event)=>onChange(eye.eye,{[key]:event.target.value})} className="w-full min-w-24 bg-transparent px-2 py-2 outline-none"/></td>)}</tr>)}</tbody></table></div>;
+function setAtPath(data: SheetData, path: Path, nextValue: unknown): SheetData {
+  const next = { ...data };
+  let current = next;
+  path.slice(0, -1).forEach((part) => {
+    const child = current[part];
+    current[part] = child && typeof child === "object" && !Array.isArray(child) ? { ...(child as SheetData) } : {};
+    current = current[part] as SheetData;
+  });
+  current[path[path.length - 1]] = nextValue;
+  return next;
 }
 
-function FinalLensTable({lensType,eyes,onEyeChange}:{lensType:string;eyes:ContactLensEyeEntry[];onEyeChange:(eye:"right"|"left",patch:Partial<ContactLensEyeEntry>)=>void}) {
-  const isScleral = /scleral/i.test(lensType);
-  const fields:Array<[string,keyof ContactLensEyeEntry]> = [["Sphere","sphere"],["Cylinder","cylinder"],["Axis","axis"],["BC","base_curve"],["Diameter","diameter"],["Add","add_power"],["Material","material"],["Design","design"],...(isScleral ? [["Sag","sagittal_depth"] as [string,keyof ContactLensEyeEntry],["Landing zone","landing_zone"] as [string,keyof ContactLensEyeEntry]] : []),["VA","visual_acuity"]];
-  return <section><Heading>OD / OS parameters</Heading><div className="overflow-x-auto"><table className="w-full min-w-[920px] border-collapse text-sm"><thead><tr className="bg-slate-100 text-left text-slate-900"><th className="border border-slate-300 p-2">Eye</th>{fields.map(([label])=><th key={label} className="border border-slate-300 p-2">{label}</th>)}</tr></thead><tbody>{eyes.map((eye)=><Fragment key={eye.eye}><tr><th className="border border-slate-300 p-2 text-left">{eye.eye==='right'?'OD':'OS'}</th>{fields.map(([label,key])=><td key={label} className="border border-slate-300 p-1"><input value={eye[key]} onChange={(event)=>onEyeChange(eye.eye,{[key]:event.target.value})} className="w-full min-w-20 bg-transparent px-2 py-2 outline-none"/></td>)}</tr><tr><th className="border border-slate-300 p-2 text-left">Fit</th><td colSpan={fields.length} className="border border-slate-300 p-1"><input value={eye.fit_notes} onChange={(event)=>onEyeChange(eye.eye,{fit_notes:event.target.value})} className="w-full bg-transparent px-2 py-2 outline-none" placeholder="Final fit and vision notes"/></td></tr></Fragment>)}</tbody></table></div></section>;
+function SectionTitle({ children }: { children: ReactNode }) {
+  return <h4 className="border border-black bg-slate-100 px-3 py-2 text-center text-sm font-bold uppercase tracking-[0.08em] text-black">{children}</h4>;
+}
+
+function SheetPage({ title, children }: { title: string; children: ReactNode }) {
+  return <div className="mx-auto max-w-5xl bg-white text-slate-950"><h3 className="mb-5 text-center text-lg font-bold uppercase underline decoration-1 underline-offset-4">{title}</h3><div className="space-y-5">{children}</div></div>;
+}
+
+function LineField({ label, path, data, setValue, multiline = false, placeholder = "" }: { label: string; path: Path; data: SheetData; setValue: (path: Path, value: unknown) => void; multiline?: boolean; placeholder?: string }) {
+  const value = String(getAtPath(data, path));
+  return <label className="grid border border-black sm:grid-cols-[240px_minmax(0,1fr)]"><span className="border-b border-black bg-slate-50 px-3 py-2 text-sm font-semibold sm:border-b-0 sm:border-r">{label}</span>{multiline ? <textarea rows={3} value={value} onChange={(event) => setValue(path, event.target.value)} placeholder={placeholder} className="resize-y bg-white px-3 py-2 text-sm outline-none" /> : <input value={value} onChange={(event) => setValue(path, event.target.value)} placeholder={placeholder} className="min-w-0 bg-white px-3 py-2 text-sm outline-none" />}</label>;
+}
+
+function ChoiceField({ label, path, options, data, setValue }: { label: string; path: Path; options: string[]; data: SheetData; setValue: (path: Path, value: unknown) => void }) {
+  const value = String(getAtPath(data, path));
+  return <div className="grid border border-black sm:grid-cols-[240px_minmax(0,1fr)]"><span className="border-b border-black bg-slate-50 px-3 py-2 text-sm font-semibold sm:border-b-0 sm:border-r">{label}</span><div className="flex flex-wrap gap-2 p-2">{options.map((option) => <button key={option} type="button" onClick={() => setValue(path, option)} className={`border px-3 py-1.5 text-sm font-medium ${value === option ? "border-slate-900 bg-slate-900 text-white" : "border-slate-400 bg-white text-slate-700"}`}>{option}</button>)}</div></div>;
+}
+
+function CheckField({ label, path, data, setValue }: { label: string; path: Path; data: SheetData; setValue: (path: Path, value: unknown) => void }) {
+  return <label className="flex items-center gap-3 border border-black px-3 py-2 text-sm font-semibold"><input type="checkbox" checked={getAtPath(data, path) === true} onChange={(event) => setValue(path, event.target.checked)} className="h-4 w-4" />{label}</label>;
+}
+
+function PairTable({ title, rows, base, data, setValue }: { title: string; rows: Array<[string, string]>; base: Path; data: SheetData; setValue: (path: Path, value: unknown) => void }) {
+  return <div className="overflow-x-auto"><table className="w-full min-w-[620px] border-collapse text-sm"><thead><tr><th colSpan={3} className="border border-black bg-slate-100 px-3 py-2 text-center font-bold uppercase">{title}</th></tr><tr><th className="w-48 border border-black bg-slate-50 px-3 py-2 text-left">Parameter</th><th className="border border-black px-3 py-2">OD</th><th className="border border-black px-3 py-2">OS</th></tr></thead><tbody>{rows.map(([label, key]) => <tr key={key}><th className="border border-black bg-slate-50 px-3 py-2 text-left font-semibold">{label}</th>{["od", "os"].map((eye) => <td key={eye} className="border border-black p-0"><input value={String(getAtPath(data, [...base, key, eye]))} onChange={(event) => setValue([...base, key, eye], event.target.value)} className="w-full bg-white px-3 py-2 outline-none" /></td>)}</tr>)}</tbody></table></div>;
+}
+
+function EyeTable({ title, columns, base, data, setValue }: { title: string; columns: Array<[string, string]>; base: Path; data: SheetData; setValue: (path: Path, value: unknown) => void }) {
+  return <div className="overflow-x-auto"><table className="w-full min-w-[720px] border-collapse text-sm"><thead><tr><th colSpan={columns.length + 1} className="border border-black bg-slate-100 px-3 py-2 text-center font-bold uppercase">{title}</th></tr><tr><th className="border border-black bg-slate-50 px-3 py-2 text-left">Eye</th>{columns.map(([label]) => <th key={label} className="border border-black bg-slate-50 px-3 py-2">{label}</th>)}</tr></thead><tbody>{[["od", "OD"], ["os", "OS"]].map(([eye, eyeLabel]) => <tr key={eye}><th className="border border-black bg-slate-50 px-3 py-2 text-left">{eyeLabel}</th>{columns.map(([label, key]) => <td key={key} className="border border-black p-0"><input value={String(getAtPath(data, [...base, eye, key]))} onChange={(event) => setValue([...base, eye, key], event.target.value)} aria-label={`${eyeLabel} ${label}`} className="w-full min-w-24 bg-white px-3 py-2 outline-none" /></td>)}</tr>)}</tbody></table></div>;
+}
+
+function GeneralSheet({ page, data, setValue }: SheetProps) {
+  if (page === 0) return <SheetPage title="Contact Lens Initial Work-up">
+    <div className="grid gap-3 md:grid-cols-2"><LineField label="Skin" path={["initial", "skin"]} data={data} setValue={setValue} /><LineField label="Lids" path={["initial", "lids"]} data={data} setValue={setValue} /></div>
+    <div className="grid gap-5 xl:grid-cols-2"><PairTable title="Visual Acuity" base={["initial", "visual_acuity"]} rows={[["UCVA", "ucva"], ["VA with pinhole", "pinhole"], ["VA with current Rx", "current_rx"]]} data={data} setValue={setValue} /><PairTable title="Ocular Measurements" base={["initial", "measurements"]} rows={[["IPD (B/O)", "ipd"], ["HVID - ruler / AR", "hvid"], ["Pupil diameter", "pupil_diameter"], ["Normal illumination", "normal_illumination"], ["Low illumination", "low_illumination"]]} data={data} setValue={setValue} /></div>
+    <ChoiceField label="Objective refraction method" path={["initial", "objective_method"]} options={["Retinoscopy", "AR", "Both"]} data={data} setValue={setValue} />
+    <EyeTable title="Objective Refraction" base={["initial", "objective_refraction"]} columns={[["Spherical (DS)", "sphere"], ["Cylinder (DC)", "cylinder"], ["Axis", "axis"]]} data={data} setValue={setValue} />
+    <EyeTable title="Current Prescription" base={["initial", "current_prescription"]} columns={[["Spherical (DS)", "sphere"], ["Cylinder (DC)", "cylinder"], ["Axis", "axis"], ["V/A", "va"]]} data={data} setValue={setValue} />
+    <EyeTable title="Subjective Refraction" base={["initial", "subjective_refraction"]} columns={[["Spherical (DS)", "sphere"], ["Cylinder (DC)", "cylinder"], ["Axis", "axis"], ["V/A", "va"], ["Prisms", "prisms"]]} data={data} setValue={setValue} />
+  </SheetPage>;
+  if (page === 1) return <SheetPage title="Clinical Assessment">
+    <PairTable title="Slit Lamp Examination" base={["assessment", "slit_lamp"]} rows={[["Lids", "lids"], ["Conjunctiva", "conjunctiva"], ["Sclera", "sclera"], ["Cornea", "cornea"], ["Limbus", "limbus"]]} data={data} setValue={setValue} />
+    <LineField label="Slit-lamp comments" path={["assessment", "slit_lamp_comments"]} data={data} setValue={setValue} multiline />
+    <PairTable title="Tear Film Assessment" base={["assessment", "tear_film"]} rows={[["Qualitative", "qualitative"], ["Quantitative", "quantitative"]]} data={data} setValue={setValue} />
+    <div className="grid gap-3 md:grid-cols-2"><LineField label="Topographer name" path={["assessment", "topographer"]} data={data} setValue={setValue} /><LineField label="Date of examination" path={["assessment", "topography_date"]} data={data} setValue={setValue} /></div>
+    <PairTable title="Corneal Topography and Pachymetry" base={["assessment", "cornea"]} rows={[["K1 (mm)", "k1"], ["K2 (mm)", "k2"], ["Average K", "avg_k"], ["Pachymetry apex", "pachy_apex"], ["Thinnest location - X", "thinnest_x"], ["Thinnest location - Y", "thinnest_y"], ["Corneal shape", "shape"], ["Posterior ectasia - present/absent", "posterior_ectasia"], ["Highest point location", "highest_point"]]} data={data} setValue={setValue} />
+    <PairTable title="Current Contact Lens" base={["assessment", "current_cl"]} rows={[["Prescription and brand", "prescription_brand"], ["Contact lens examination", "examination"]]} data={data} setValue={setValue} />
+  </SheetPage>;
+  if (page === 2) return <SheetPage title="Tolerance Trials and Final Parameters">
+    {[1, 2, 3].map((trial) => <div key={trial} className="space-y-3"><SectionTitle>Tolerance Trial {trial}</SectionTitle><div className="grid gap-3 md:grid-cols-2"><LineField label="Lens design" path={["trials", String(trial), "lens_design"]} data={data} setValue={setValue} /><LineField label="Date" path={["trials", String(trial), "date"]} data={data} setValue={setValue} /></div><EyeTable title={`Trial ${trial} Lens Parameters`} base={["trials", String(trial), "eyes"]} columns={[["Trial lens parameters", "parameters"], ["C", "c"], ["E", "e"], ["D", "d"], ["Location", "location"], ["Movement", "movement"], ["Over-refraction", "over_refraction"], ["V/A", "va"]]} data={data} setValue={setValue} /></div>)}
+    <LineField label="Date ordered" path={["final", "date_ordered"]} data={data} setValue={setValue} />
+    <EyeTable title="Final Contact Lens Parameters" base={["final", "eyes"]} columns={[["Lens design", "design"], ["BC", "bc"], ["DIA", "diameter"], ["Power", "power"], ["EL", "edge_lift"], ["ACT", "act"], ["TP", "tp"], ["Tint", "tint"], ["Material", "material"]]} data={data} setValue={setValue} />
+  </SheetPage>;
+  if (page === 3) return <SheetPage title="Contact Lens Dispensing">
+    <PairTable title="Slit-lamp Examination Before Insertion" base={["dispensing", "slit_lamp"]} rows={[["Lids", "lids"], ["Conjunctiva", "conjunctiva"], ["Sclera", "sclera"], ["Cornea", "cornea"], ["Tears (BUT)", "tears_but"]]} data={data} setValue={setValue} />
+    <div className="grid gap-3 md:grid-cols-2"><CheckField label="Taught patient to wash hands" path={["dispensing", "hand_washing"]} data={data} setValue={setValue} /><CheckField label="Practitioner inserted lens after rinsing with MPS / saline" path={["dispensing", "practitioner_insertion"]} data={data} setValue={setValue} /></div>
+    <PairTable title="Vision with CL After 5 Minutes" base={["dispensing", "vision"]} rows={[["V/A", "va"]]} data={data} setValue={setValue} />
+    <EyeTable title="Fitting / Axis Orientation" base={["dispensing", "fitting"]} columns={[["Lens parameters / design", "parameters"], ["C", "c"], ["E", "e"], ["D", "d"], ["Location", "location"], ["Movement", "movement"], ["Over-refraction", "over_refraction"], ["V/A", "va"]]} data={data} setValue={setValue} />
+    <div className="grid gap-3 md:grid-cols-2"><CheckField label="Insertion and removal taught - right eye (3 times)" path={["dispensing", "training_od"]} data={data} setValue={setValue} /><CheckField label="Insertion and removal taught - left eye (3 times)" path={["dispensing", "training_os"]} data={data} setValue={setValue} /></div>
+    <ChoiceField label="Patient confidence" path={["dispensing", "confidence"]} options={["Satisfactory", "Unsatisfactory - recall"]} data={data} setValue={setValue} />
+    <CheckField label="Solution starter pack and instruction leaflet supplied" path={["dispensing", "starter_pack"]} data={data} setValue={setValue} /><CheckField label="Patient instructions booklet supplied" path={["dispensing", "booklet"]} data={data} setValue={setValue} /><LineField label="Follow-up visit date" path={["dispensing", "follow_up_date"]} data={data} setValue={setValue} />
+  </SheetPage>;
+  return <SheetPage title="Contact Lens Follow-up">
+    <div className="grid gap-3 md:grid-cols-2"><LineField label="Visual problem" path={["follow_up", "visual_problem"]} data={data} setValue={setValue} /><LineField label="Comfort problem" path={["follow_up", "comfort_problem"]} data={data} setValue={setValue} /><LineField label="Wearing hours" path={["follow_up", "wearing_hours"]} data={data} setValue={setValue} /><LineField label="Solution irritation" path={["follow_up", "solution_irritation"]} data={data} setValue={setValue} /><LineField label="Burning" path={["follow_up", "burning"]} data={data} setValue={setValue} /><LineField label="Stinging" path={["follow_up", "stinging"]} data={data} setValue={setValue} /><LineField label="Redness" path={["follow_up", "redness"]} data={data} setValue={setValue} /></div>
+    <PairTable title="V/A with Contact Lens" base={["follow_up", "vision"]} rows={[["V/A", "va"]]} data={data} setValue={setValue} />
+    <EyeTable title="Lens Fitting" base={["follow_up", "fitting"]} columns={[["Lens parameters", "parameters"], ["C", "c"], ["E", "e"], ["D", "d"], ["Location", "location"], ["Movement", "movement"], ["Over-refraction", "over_refraction"], ["V/A", "va"]]} data={data} setValue={setValue} />
+    <PairTable title="Slit-lamp Examination" base={["follow_up", "slit_lamp"]} rows={[["Lids", "lids"], ["Conjunctiva", "conjunctiva"], ["Sclera", "sclera"], ["Cornea", "cornea"], ["Tears (BUT)", "tears_but"]]} data={data} setValue={setValue} />
+    <LineField label="Review of lens care and insertion / removal" path={["follow_up", "care_review"]} data={data} setValue={setValue} multiline /><LineField label="Next appointment date" path={["follow_up", "next_appointment"]} data={data} setValue={setValue} />
+  </SheetPage>;
+}
+
+type SheetProps = { page: number; data: SheetData; setValue: (path: Path, value: unknown) => void };
+
+function SoftSheet({ page, data, setValue }: SheetProps) {
+  if (page === 0) return <SheetPage title="Soft Contact Lens Work-up"><SectionTitle>History</SectionTitle><ChoiceField label="Reason for wanting CL" path={["history", "reason"]} options={["Vision improvement", "Cosmetic", "Vision therapy", "Other"]} data={data} setValue={setValue} /><LineField label="Specify other reason" path={["history", "other_reason"]} data={data} setValue={setValue} /><ChoiceField label="Pros and cons explained" path={["history", "pros_cons"]} options={["Yes", "No"]} data={data} setValue={setValue} /><LineField label="Patient's profession" path={["history", "profession"]} data={data} setValue={setValue} /><LineField label="Patient's CL usage requirements" path={["history", "requirements"]} data={data} setValue={setValue} multiline /><ChoiceField label="Suitable CL type" path={["history", "suitable_type"]} options={["Soft spherical", "Toric"]} data={data} setValue={setValue} /><LineField label="CL brand options" path={["history", "brand_options"]} data={data} setValue={setValue} /><LineField label="Patient's brand preference" path={["history", "brand_preference"]} data={data} setValue={setValue} /><ChoiceField label="Previous CL usage" path={["history", "previous_usage"]} options={["Yes", "No"]} data={data} setValue={setValue} /><ChoiceField label="Previous CL type" path={["history", "previous_type"]} options={["Soft", "Toric", "RGP", "Rose K"]} data={data} setValue={setValue} /><LineField label="Previous brand / company" path={["history", "previous_brand"]} data={data} setValue={setValue} /><ChoiceField label="Replacement schedule" path={["history", "replacement"]} options={["Yearly", "Bi-weekly", "Monthly", "Daily"]} data={data} setValue={setValue} /><ChoiceField label="Continue same brand" path={["history", "continue_brand"]} options={["Yes", "No - wants a better or different brand"]} data={data} setValue={setValue} /><LineField label="Comments" path={["history", "comments"]} data={data} setValue={setValue} multiline /><PairTable title="Slit Lamp Evaluation" base={["evaluation", "slit_lamp"]} rows={[["Findings", "findings"]]} data={data} setValue={setValue} /></SheetPage>;
+  if (page === 1) return <SheetPage title="Soft CL Measurements and Fitting"><PairTable title="Keratometry / Topography" base={["measurements", "keratometry"]} rows={[["K1", "k1"], ["K2", "k2"], ["K (Avg)", "avg_k"]]} data={data} setValue={setValue} /><EyeTable title="Tear and Corneal Measurements" base={["measurements", "eyes"]} columns={[["Schirmer's test (mm / 5 minutes)", "schirmer"], ["TBUT (seconds)", "tbut"], ["Tear prism height (mm)", "tear_prism"], ["HVID (mm)", "hvid"]]} data={data} setValue={setValue} /><TrialRows kind="soft" data={data} setValue={setValue} /><PairTable title="Fitting Assessment" base={["fitting"]} rows={[["Centration - horizontal (x)", "centration_x"], ["Centration - vertical (y)", "centration_y"], ["Stability", "stability"], ["Coverage", "coverage"], ["Movement with blink", "movement_blink"], ["Movement type", "movement_type"], ["Push-up test", "push_up"], ["Speed of movement", "speed"]]} data={data} setValue={setValue} /></SheetPage>;
+  return <SheetPage title="Soft CL Final Assessment"><PairTable title="Axis Rotation" base={["final_assessment", "axis_rotation"]} rows={[["Rotation", "rotation"]]} data={data} setValue={setValue} /><ChoiceField label="Patient comfort rating" path={["final_assessment", "comfort_rating"]} options={["Tolerable", "Comfortable", "Not comfortable"]} data={data} setValue={setValue} /><LineField label="Impression" path={["final_assessment", "impression"]} data={data} setValue={setValue} multiline /><LineField label="Comments" path={["final_assessment", "comments"]} data={data} setValue={setValue} multiline /><EyeTable title="Over-refraction" base={["final_assessment", "over_refraction"]} columns={[["Over-refraction", "value"], ["BCVA", "bcva"], ["Remarks", "remarks"]]} data={data} setValue={setValue} /><EyeTable title="Final Lens Parameters" base={["final_assessment", "final_lens"]} columns={[["BC", "bc"], ["Power", "power"], ["Diameter", "diameter"], ["Lens name", "lens_name"], ["Company", "company"], ["Wearing modality", "wearing_modality"]]} data={data} setValue={setValue} /><LineField label="Advice and management" path={["final_assessment", "advice"]} data={data} setValue={setValue} multiline /></SheetPage>;
+}
+
+function TrialRows({ kind, data, setValue }: { kind: "soft" | "rgp"; data: SheetData; setValue: (path: Path, value: unknown) => void }) {
+  return <>{[1, 2].map((trial) => <EyeTable key={trial} title={`Trial ${trial} Contact Lens Parameters`} base={["trials", String(trial)]} columns={[["BC", "bc"], ["Power", "power"], ["Diameter", "diameter"], ...(kind === "soft" ? [["Brand", "brand"] as [string, string]] : [])]} data={data} setValue={setValue} />)}</>;
+}
+
+function RgpSheet({ page, data, setValue }: SheetProps) {
+  if (page === 0) return <SheetPage title="RGP Work-up"><SectionTitle>History</SectionTitle><ChoiceField label="Reason for wanting RGP" path={["history", "reason"]} options={["Vision improvement", "Cosmetic", "Vision therapy", "Other"]} data={data} setValue={setValue} /><LineField label="Specify other reason" path={["history", "other_reason"]} data={data} setValue={setValue} /><ChoiceField label="Pros and cons explained" path={["history", "pros_cons"]} options={["Yes", "No"]} data={data} setValue={setValue} /><LineField label="Patient's profession" path={["history", "profession"]} data={data} setValue={setValue} /><LineField label="Patient's usage requirements" path={["history", "requirements"]} data={data} setValue={setValue} /><LineField label="RGP brand options" path={["history", "brand_options"]} data={data} setValue={setValue} /><ChoiceField label="Previous CL usage" path={["history", "previous_usage"]} options={["Yes", "No"]} data={data} setValue={setValue} /><LineField label="Previous type" path={["history", "previous_type"]} data={data} setValue={setValue} /><LineField label="Previous brand" path={["history", "previous_brand"]} data={data} setValue={setValue} /><LineField label="Replacement schedule" path={["history", "replacement"]} data={data} setValue={setValue} /><ChoiceField label="Continue same brand" path={["history", "continue_brand"]} options={["Yes", "No - wants different brand"]} data={data} setValue={setValue} /><LineField label="Comments" path={["history", "comments"]} data={data} setValue={setValue} multiline /><PairTable title="Corneal Measurements" base={["measurements"]} rows={[["BGC", "bgc"], ["Average K", "avg_k"]]} data={data} setValue={setValue} /><PairTable title="Slit Lamp Evaluation" base={["slit_lamp"]} rows={[["Lids", "lids"], ["Conjunctiva", "conjunctiva"], ["Sclera", "sclera"], ["Cornea", "cornea"], ["Limbus", "limbus"]]} data={data} setValue={setValue} /><PairTable title="Tear Film Assessment" base={["tear_film"]} rows={[["Qualitative", "qualitative"], ["Quantitative", "quantitative"]]} data={data} setValue={setValue} /><TrialRows kind="rgp" data={data} setValue={setValue} /></SheetPage>;
+  return <SheetPage title="RGP Fitting and Final Lens"><PairTable title="Fitting Assessment" base={["fitting"]} rows={[["Centration - horizontal (x), mm", "centration_x"], ["Centration - vertical (y), mm", "centration_y"], ["Stability", "stability"], ["Coverage", "coverage"], ["Movement with blink, mm", "movement_blink"], ["Movement type - smooth / jerky / apical rotation", "movement_type"], ["Speed - fast / average / slow", "speed"]]} data={data} setValue={setValue} /><PairTable title="Fluorescein Pattern" base={["fitting", "fluorescein"]} rows={[["Pattern / drawing notes", "pattern"]]} data={data} setValue={setValue} /><PairTable title="Lens Assessment" base={["assessment"]} rows={[["Impression", "impression"], ["Comments", "comments"], ["Comfort", "comfort"]]} data={data} setValue={setValue} /><EyeTable title="Over-refraction" base={["over_refraction"]} columns={[["Over-refraction", "value"], ["Acceptance", "acceptance"], ["Vision", "vision"]]} data={data} setValue={setValue} /><EyeTable title="Final Lens Parameters" base={["final_lens"]} columns={[["BC", "bc"], ["Power", "power"], ["Diameter", "diameter"]]} data={data} setValue={setValue} /><LineField label="Recommended hours of CL usage" path={["management", "recommended_hours"]} data={data} setValue={setValue} /><LineField label="Solution to be used" path={["management", "solution"]} data={data} setValue={setValue} /><LineField label="Comments" path={["management", "comments"]} data={data} setValue={setValue} multiline /></SheetPage>;
+}
+
+function ScleralSheet({ page, data, setValue }: SheetProps) {
+  if (page === 0) return <SheetPage title="Scleral / Mini-scleral Trial"><LineField label="Ocular history" path={["workup", "ocular_history"]} data={data} setValue={setValue} multiline /><PairTable title="Refractive Power and Vision" base={["workup", "refraction"]} rows={[["Refraction / vision", "value"]]} data={data} setValue={setValue} /><PairTable title="Topography" base={["workup", "topography"]} rows={[["Average K", "avg_k"]]} data={data} setValue={setValue} /><PairTable title="Diagnosis" base={["workup", "diagnosis"]} rows={[["Diagnosis", "value"]]} data={data} setValue={setValue} /><LineField label="Brand name" path={["trial", "brand"]} data={data} setValue={setValue} /><PairTable title="CSL / Rose K XL / Mini-scleral / Scleral Trial Parameters" base={["trial", "parameters"]} rows={[["Landing zone", "landing_zone"], ["Base curve", "base_curve"], ["Power", "power"], ["Sagittal value", "sagittal_value"], ["Lens diameter", "diameter"], ["Over-refraction", "over_refraction"], ["Vision", "vision"]]} data={data} setValue={setValue} /></SheetPage>;
+  return <SheetPage title="Scleral Fitting and Final Parameters"><PairTable title="Fitting Assessment" base={["fitting"]} rows={[["Centration", "centration"], ["Movement", "movement"], ["Vault - central", "vault_central"], ["Vault - peripheral", "vault_peripheral"], ["360 degree landing", "landing_360"], ["Blanching", "blanching"], ["360 degree impingement", "impingement_360"], ["Impression", "impression"], ["Comments / changes required", "changes"]]} data={data} setValue={setValue} /><EyeTable title="Final Parameters" base={["final"]} columns={[["BC", "bc"], ["Diameter", "diameter"], ["Power", "power"], ["Sag value", "sag"], ["Edge lift / landing zone", "landing_zone"], ["Brand name", "brand"]]} data={data} setValue={setValue} /><LineField label="Advice and management" path={["advice"]} data={data} setValue={setValue} multiline /></SheetPage>;
+}
+
+export function ContactLensModal({ open, value, onClose, onSave, onChange, inline = false, sidebar }: ContactLensModalProps) {
+  const [page, setPage] = useState(0);
+  const activeConfig = SHEETS.find((sheet) => sheet.key === value.case_sheet_type) ?? SHEETS[0];
+  const data = value.case_sheets[value.case_sheet_type] ?? {};
+  useEffect(() => { setPage(0); }, [value.case_sheet_type]);
+  useEffect(() => { if (open && !inline) setPage(0); }, [inline, open]);
+  const setValue = (path: Path, nextValue: unknown) => onChange({ case_sheets: { ...value.case_sheets, [value.case_sheet_type]: setAtPath(data, path, nextValue) } });
+
+  return <OptometryModalShell open={open} title="Contact Lens Case Sheets" description="Digital versions of the General, Soft, RGP and Scleral contact lens case sheets." saveLabel="Save Case Sheet" onClose={onClose} onSave={onSave} inline={inline} sidebar={sidebar}>
+    <div className="flex flex-wrap gap-2 border-b border-slate-300 pb-4">{SHEETS.map((sheet) => <button key={sheet.key} type="button" onClick={() => onChange({ case_sheet_type: sheet.key })} className={`border px-4 py-2 text-sm font-semibold ${value.case_sheet_type === sheet.key ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700"}`}>{sheet.label}</button>)}</div>
+    <nav className="flex max-w-5xl overflow-x-auto border-y border-slate-300" aria-label={`${activeConfig.label} pages`}>{activeConfig.pages.map((label, index) => <button key={label} type="button" onClick={() => setPage(index)} className={`relative min-w-[150px] flex-1 px-5 py-3 text-sm font-semibold ${page === index ? "z-10 bg-[#376f9f] text-white" : "bg-slate-50 text-slate-600"}`} style={{ clipPath: index === activeConfig.pages.length - 1 ? undefined : "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)", marginLeft: index ? -8 : 0 }}><span className="mr-1 text-[10px] opacity-70">PAGE {index + 1}</span> {label}</button>)}</nav>
+    {value.case_sheet_type === "general" ? <GeneralSheet page={page} data={data} setValue={setValue} /> : null}
+    {value.case_sheet_type === "soft" ? <SoftSheet page={page} data={data} setValue={setValue} /> : null}
+    {value.case_sheet_type === "rgp" ? <RgpSheet page={page} data={data} setValue={setValue} /> : null}
+    {value.case_sheet_type === "scleral" ? <ScleralSheet page={page} data={data} setValue={setValue} /> : null}
+  </OptometryModalShell>;
 }

@@ -18,6 +18,8 @@ export function formatLocalDateTimeInput(value?: Date) {
 
 export function createEmptyContactLens(): ContactLensPayload {
   return {
+    case_sheet_type: "general",
+    case_sheets: { general: {}, soft: {}, rgp: {}, scleral: {} },
     workup: {
       reason_for_wear: "", previous_lens_experience: "", wearing_requirements: "", occupation_environment: "",
       preferred_modality: "", preferred_brand: "", lids_lashes: "", conjunctiva: "", cornea: "",
@@ -94,6 +96,13 @@ export function normalizeContactLensPayload(payload?: Partial<ContactLensPayload
   return {
     ...empty,
     ...payload,
+    case_sheet_type: payload.case_sheet_type ?? empty.case_sheet_type,
+    case_sheets: {
+      general: { ...empty.case_sheets.general, ...(payload.case_sheets?.general ?? {}) },
+      soft: { ...empty.case_sheets.soft, ...(payload.case_sheets?.soft ?? {}) },
+      rgp: { ...empty.case_sheets.rgp, ...(payload.case_sheets?.rgp ?? {}) },
+      scleral: { ...empty.case_sheets.scleral, ...(payload.case_sheets?.scleral ?? {}) },
+    },
     workup: { ...empty.workup, ...(payload.workup ?? {}) },
     dispensing: { ...empty.dispensing, ...(payload.dispensing ?? {}) },
     trials: Array.isArray(payload.trials) ? payload.trials : [],
@@ -128,6 +137,7 @@ export function hasContactLensData(contactLens?: ContactLensPayload | null) {
     return false;
   }
   return Boolean(
+    flattenValues(contactLens.case_sheets).some((value) => value.trim()) ||
     flattenValues(contactLens.workup).some((value) => value.trim()) ||
     contactLens.trials.some((trial) => flattenValues(trial).some((value) => value.trim())) ||
     flattenValues(contactLens.dispensing).some((value) => value.trim()) ||
@@ -155,8 +165,9 @@ export function hasContactLensData(contactLens?: ContactLensPayload | null) {
 }
 
 export function buildContactLensSummary(contactLens: ContactLensPayload) {
+  const sheetLabel = { general: "General CL", soft: "Soft CL", rgp: "RGP", scleral: "Scleral" }[contactLens.case_sheet_type];
   const parts = [
-    contactLens.lens_type.trim(),
+    sheetLabel,
     contactLens.brand.trim(),
     contactLens.trials.length ? `${contactLens.trials.length} trial${contactLens.trials.length === 1 ? "" : "s"}` : "",
     contactLens.follow_ups.length ? `${contactLens.follow_ups.length} follow-up${contactLens.follow_ups.length === 1 ? "" : "s"}` : "",
@@ -226,6 +237,7 @@ function flattenValues(value: unknown): string[] {
 
 export function createEmptyLowVision(): LowVisionPayload {
   return {
+    case_sheet: {},
     primary_complaint: "",
     goals: "",
     reading_difficulty: false,
@@ -268,11 +280,17 @@ export function createEmptyLowVision(): LowVisionPayload {
   };
 }
 
+export function normalizeLowVisionPayload(payload?: Partial<LowVisionPayload> | null): LowVisionPayload {
+  const empty = createEmptyLowVision();
+  return payload ? { ...empty, ...payload, case_sheet: { ...empty.case_sheet, ...(payload.case_sheet ?? {}) } } : empty;
+}
+
 export function hasLowVisionData(lowVision?: LowVisionPayload | null) {
   if (!lowVision) {
     return false;
   }
   return Boolean(
+    flattenValues(lowVision.case_sheet).some((value) => value.trim()) ||
     lowVision.primary_complaint.trim() ||
     lowVision.goals.trim() ||
     lowVision.reading_difficulty ||
@@ -316,13 +334,24 @@ export function hasLowVisionData(lowVision?: LowVisionPayload | null) {
 }
 
 export function buildLowVisionSummary(lowVision: LowVisionPayload) {
+  const at = (path: string[]) => {
+    let current: unknown = lowVision.case_sheet;
+    for (const part of path) {
+      if (!current || typeof current !== "object") return "";
+      current = (current as Record<string, unknown>)[part];
+    }
+    return typeof current === "string" ? current.trim() : "";
+  };
   const parts = [
+    at(["initial", "ocular_diagnosis"]),
+    at(["plan", "problem_summary"]),
+    at(["plan", "optical_devices"]),
     lowVision.primary_complaint.trim(),
     lowVision.distance_visual_acuity.trim() ? `DVA ${lowVision.distance_visual_acuity.trim()}` : "",
     lowVision.near_visual_acuity.trim() ? `NVA ${lowVision.near_visual_acuity.trim()}` : "",
     lowVision.device_recommended.trim(),
   ].filter(Boolean);
-  return parts.slice(0, 3).join(" · ") || "Low vision data saved.";
+  return parts.slice(0, 3).join(" · ") || "Low vision assessment saved.";
 }
 
 export function createEmptyMyopiaManagement(): MyopiaMeasurementDraft {

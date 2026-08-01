@@ -519,6 +519,13 @@ export interface ContactLensFollowUp {
 }
 
 export interface ContactLensPayload {
+  case_sheet_type: "general" | "soft" | "rgp" | "scleral";
+  case_sheets: {
+    general: Record<string, unknown>;
+    soft: Record<string, unknown>;
+    rgp: Record<string, unknown>;
+    scleral: Record<string, unknown>;
+  };
   workup: ContactLensWorkup;
   trials: ContactLensTrial[];
   dispensing: ContactLensDispensing;
@@ -545,6 +552,7 @@ export interface ContactLensPayload {
 }
 
 export interface LowVisionPayload {
+  case_sheet: Record<string, unknown>;
   primary_complaint: string;
   goals: string;
   reading_difficulty: boolean;

@@ -21,6 +21,7 @@ import {
   createEmptyLowVision,
   hasContactLensEyeData,
   normalizeContactLensPayload,
+  normalizeLowVisionPayload,
 } from "@/lib/optometry/consultation";
 import { getSpecialtyModules, specialtyHasModule, type SpecialtyModuleKey } from "@/lib/specialty";
 import { createTrainingId } from "@/lib/training-mode";
@@ -1879,7 +1880,7 @@ export function PatientDetailsDrawer({
   }
 
   function selectLowVisionEntry(entry: LongitudinalTrackRecord) {
-    setLowVision({ ...createEmptyLowVision(), ...(entry.raw_payload as Partial<LowVisionPayload>) });
+    setLowVision(normalizeLowVisionPayload(entry.raw_payload as Partial<LowVisionPayload>));
     setSelectedLowVisionEntryId(entry.id);
   }
 

@@ -28,7 +28,13 @@ test("contact lens helpers preserve case-sheet sections and detect work-up data"
   assert.equal(normalized.workup.tbut_right, "");
   assert.equal(normalized.eyes.length, 2);
   normalized.trials = [{ id: "trial-1" }];
-  assert.equal(consultation.buildContactLensSummary(normalized), "RGP · 1 trial");
+  assert.equal(consultation.buildContactLensSummary(normalized), "General CL · 1 trial");
+
+  const softSheet = consultation.createEmptyContactLens();
+  softSheet.case_sheet_type = "soft";
+  softSheet.case_sheets.soft = { history: { profession: "Pilot" } };
+  assert.equal(consultation.hasContactLensData(softSheet), true);
+  assert.equal(consultation.buildContactLensSummary(softSheet), "Soft CL");
 });
 
 test("binocular vision helpers surface saved data and compact summary", () => {
@@ -58,6 +64,15 @@ test("low vision helpers report boolean and textual data and build summary", () 
     consultation.buildLowVisionSummary(payload),
     "Difficulty reading · DVA 6/18 · NVA N10",
   );
+});
+
+test("low vision helpers preserve and summarize the source-faithful case sheet", () => {
+  const normalized = consultation.normalizeLowVisionPayload({
+    case_sheet: { initial: { ocular_diagnosis: "Retinitis pigmentosa" } },
+  });
+  assert.equal(consultation.hasLowVisionData(normalized), true);
+  assert.equal(normalized.primary_complaint, "");
+  assert.equal(consultation.buildLowVisionSummary(normalized), "Retinitis pigmentosa");
 });
 
 test("myopia management helpers detect entered measurements and summarize them", () => {

@@ -107,6 +107,8 @@ class ContactLensEyeInput(BaseModel):
 
 
 class ContactLensInput(BaseModel):
+    case_sheet_type: Literal["general", "soft", "rgp", "scleral"] = "general"
+    case_sheets: dict[str, dict[str, object]] = Field(default_factory=dict)
     workup: dict[str, object] = Field(default_factory=dict)
     trials: list[dict[str, object]] = Field(default_factory=list, max_length=20)
     dispensing: dict[str, object] = Field(default_factory=dict)
@@ -174,6 +176,7 @@ class BinocularVisionInput(BaseModel):
 
 
 class LowVisionInput(BaseModel):
+    case_sheet: dict[str, object] = Field(default_factory=dict)
     primary_complaint: str = Field(default="", max_length=300)
     goals: str = Field(default="", max_length=500)
     reading_difficulty: bool = False

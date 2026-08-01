@@ -35,6 +35,7 @@ import {
   hasContactLensData,
   hasContactLensEyeData,
   normalizeContactLensPayload,
+  normalizeLowVisionPayload,
   hasLowVisionData,
   type MyopiaMeasurementDraft,
 } from "@/lib/optometry/consultation";
@@ -627,7 +628,7 @@ export default function MobileConsultationPage() {
   function selectLowVisionEntry(entry: LongitudinalTrackRecord) {
     setForm((current) => ({
       ...current,
-      lowVision: { ...createEmptyLowVision(), ...(entry.raw_payload as Partial<LowVisionPayload>) },
+      lowVision: normalizeLowVisionPayload(entry.raw_payload as Partial<LowVisionPayload>),
     }));
   }
 
