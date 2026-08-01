@@ -356,8 +356,8 @@ export function TbiEvaluationModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-950/50 p-0 sm:items-center sm:px-2 sm:py-4">
-      <div className="flex h-[100dvh] w-full max-w-7xl flex-col overflow-hidden border-0 border-slate-300 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.35)] sm:max-h-[95vh] sm:rounded-[18px] sm:border">
+    <div className="fixed inset-0 z-50 bg-white">
+      <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white">
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-3 py-2.5 sm:gap-4 sm:px-5 sm:py-3">
           <div className="min-w-0">
             <h3 className="truncate text-lg font-semibold text-slate-900 sm:text-xl">Neurovision / TBI Evaluation</h3>

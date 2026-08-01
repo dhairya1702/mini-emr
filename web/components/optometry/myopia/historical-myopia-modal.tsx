@@ -78,8 +78,8 @@ export function HistoricalMyopiaModal({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
-      <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[20px] border border-[#bfd7e8] bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+    <div className="fixed inset-0 z-40 bg-white">
+      <div className="h-[100dvh] w-full overflow-y-auto bg-white p-4 sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Myopia Backfill</p>

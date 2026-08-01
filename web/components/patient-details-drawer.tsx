@@ -799,8 +799,8 @@ function PatientStructuredModuleShell({
     return null;
   }
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 py-6">
-      <div className="flex max-h-[95vh] w-full max-w-7xl flex-col overflow-hidden rounded-[18px] border border-slate-300 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+    <div className="fixed inset-0 z-[80] bg-white">
+      <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white">
         <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-3">
           <div>
             <h3 className="text-xl font-semibold text-slate-900">{moduleLabel(moduleKey)}</h3>
@@ -812,7 +812,7 @@ function PatientStructuredModuleShell({
         </div>
 
         <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="overflow-y-auto border-b border-slate-200 bg-slate-50 p-4 lg:border-b-0 lg:border-r">
+          <aside className="max-h-[180px] overflow-y-auto border-b border-slate-200 bg-slate-50 p-4 lg:max-h-none lg:border-b-0 lg:border-r">
             <div className="flex items-center justify-between gap-2">
               <h4 className="text-sm font-semibold text-slate-900">Previous Evaluations</h4>
               <button type="button" onClick={onNew} className="rounded-lg border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-[#f3f8fb]">
@@ -844,8 +844,8 @@ function PatientStructuredModuleShell({
             </div>
           </aside>
 
-          <div className="min-h-0 overflow-y-auto bg-[#f4f8fb] p-4 sm:p-6">
-            <div className="mx-auto w-full max-w-6xl rounded-[18px] border border-[#dbe7ef] bg-white p-5 shadow-sm">
+          <div className="min-h-0 overflow-y-auto bg-[#f4f8fb] p-3 sm:p-6">
+            <div className="w-full border border-[#dbe7ef] bg-white p-4 shadow-sm sm:p-6">
               {children}
             </div>
           </div>
@@ -2345,8 +2345,8 @@ export function PatientDetailsDrawer({
   }
 
   return (
-    <div className={fullScreen ? "flex h-[100dvh] flex-col" : "fixed inset-0 z-30 bg-slate-950/35 p-2 backdrop-blur-sm sm:p-4"}>
-      <div className={fullScreen ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-white" : "mx-auto flex h-full max-h-[97vh] w-full max-w-[1700px] flex-col overflow-hidden rounded-[20px] border border-[#dbe7ef] bg-white shadow-[0_35px_90px_rgba(15,23,42,0.18)]"}>
+    <div className={fullScreen ? "flex h-[100dvh] flex-col" : "fixed inset-0 z-30 flex h-[100dvh] flex-col bg-white"}>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
         {fullScreen ? (
           <>
             {/* app bar: back + breadcrumb */}

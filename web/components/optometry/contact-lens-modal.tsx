@@ -53,7 +53,7 @@ function SectionTitle({ children }: { children: ReactNode }) {
 }
 
 function SheetPage({ title, children }: { title: string; children: ReactNode }) {
-  return <div className="mx-auto max-w-5xl bg-white text-slate-950"><h3 className="mb-5 text-center text-lg font-bold uppercase underline decoration-1 underline-offset-4">{title}</h3><div className="space-y-5">{children}</div></div>;
+  return <div className="w-full bg-white text-slate-950"><h3 className="mb-5 text-center text-lg font-bold uppercase underline decoration-1 underline-offset-4">{title}</h3><div className="space-y-5">{children}</div></div>;
 }
 
 function LineField({ label, path, data, setValue, multiline = false, placeholder = "" }: { label: string; path: Path; data: SheetData; setValue: (path: Path, value: unknown) => void; multiline?: boolean; placeholder?: string }) {
@@ -150,7 +150,7 @@ export function ContactLensModal({ open, value, onClose, onSave, onChange, inlin
 
   return <OptometryModalShell open={open} title="Contact Lens Case Sheets" description="Digital versions of the General, Soft, RGP and Scleral contact lens case sheets." saveLabel="Save Case Sheet" onClose={onClose} onSave={onSave} inline={inline} sidebar={sidebar}>
     <div className="flex flex-wrap gap-2 border-b border-slate-300 pb-4">{SHEETS.map((sheet) => <button key={sheet.key} type="button" onClick={() => onChange({ case_sheet_type: sheet.key })} className={`border px-4 py-2 text-sm font-semibold ${value.case_sheet_type === sheet.key ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700"}`}>{sheet.label}</button>)}</div>
-    <nav className="flex max-w-5xl overflow-x-auto border-y border-slate-300" aria-label={`${activeConfig.label} pages`}>{activeConfig.pages.map((label, index) => <button key={label} type="button" onClick={() => setPage(index)} className={`relative min-w-[150px] flex-1 px-5 py-3 text-sm font-semibold ${page === index ? "z-10 bg-[#376f9f] text-white" : "bg-slate-50 text-slate-600"}`} style={{ clipPath: index === activeConfig.pages.length - 1 ? undefined : "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)", marginLeft: index ? -8 : 0 }}><span className="mr-1 text-[10px] opacity-70">PAGE {index + 1}</span> {label}</button>)}</nav>
+    <nav className="flex w-full overflow-x-auto border-y border-slate-300" aria-label={`${activeConfig.label} pages`}>{activeConfig.pages.map((label, index) => <button key={label} type="button" onClick={() => setPage(index)} className={`relative min-w-[150px] flex-1 px-5 py-3 text-sm font-semibold ${page === index ? "z-10 bg-[#376f9f] text-white" : "bg-slate-50 text-slate-600"}`} style={{ clipPath: index === activeConfig.pages.length - 1 ? undefined : "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)", marginLeft: index ? -8 : 0 }}><span className="mr-1 text-[10px] opacity-70">PAGE {index + 1}</span> {label}</button>)}</nav>
     {value.case_sheet_type === "general" ? <GeneralSheet page={page} data={data} setValue={setValue} /> : null}
     {value.case_sheet_type === "soft" ? <SoftSheet page={page} data={data} setValue={setValue} /> : null}
     {value.case_sheet_type === "rgp" ? <RgpSheet page={page} data={data} setValue={setValue} /> : null}

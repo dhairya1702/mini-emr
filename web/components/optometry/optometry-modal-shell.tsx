@@ -46,8 +46,8 @@ export function OptometryModalShell({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-stretch justify-center bg-slate-950/45 p-0 sm:items-center sm:px-4 sm:py-6">
-      <div className="flex h-[100dvh] w-full max-w-6xl flex-col overflow-hidden border-0 border-[#bfd7e8] bg-white shadow-[0_28px_90px_rgba(15,23,42,0.35)] sm:max-h-[92vh] sm:rounded-[20px] sm:border">
+    <div className="fixed inset-0 z-40 bg-white">
+      <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white">
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#dbe7ef] px-3 py-3 sm:gap-4 sm:border-b-0 sm:px-6 sm:pt-6">
           <div className="min-w-0">
             <h3 className="truncate text-xl font-semibold text-slate-900 sm:text-2xl">{title}</h3>
