@@ -63,3 +63,13 @@ test("optometry history detects clinical text and current glasses power", () => 
   allergyEntryPayload.drug_allergy_entries.push({ condition: "NSAIDs", comment: "Rash" });
   assert.equal(history.hasOptometryHistoryDetails(allergyEntryPayload), true);
 });
+
+test("chief complaints build editable examination symptoms text", () => {
+  assert.equal(
+    history.buildChiefComplaintText([
+      { complaint: "Redness", comment: "OD for three days" },
+      { complaint: "Pain", comment: "" },
+    ]),
+    "Redness — OD for three days\nPain",
+  );
+});

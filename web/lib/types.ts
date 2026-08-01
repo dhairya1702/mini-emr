@@ -364,6 +364,11 @@ export interface OptometryHistoryCondition {
   comment: string;
 }
 
+export interface OptometryChiefComplaintEntry {
+  complaint: string;
+  comment: string;
+}
+
 export interface OptometryHistoryPayload {
   ocular: string;
   ocular_conditions: OptometryHistoryCondition[];

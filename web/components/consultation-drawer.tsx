@@ -32,6 +32,7 @@ import {
   MyopiaMeasurementPayload,
   NoteAsset,
   OperationResult,
+  OptometryChiefComplaintEntry,
   Patient,
   PediatricGrowthMeasurementPayload,
   TbiEvaluationCreatePayload,
@@ -42,6 +43,7 @@ import {
 } from "@/lib/types";
 import { api } from "@/lib/api";
 import { printBlob } from "@/lib/print";
+import { buildChiefComplaintText } from "@/lib/optometry/history";
 import { BinocularVisionModal } from "@/components/optometry/binocular-vision-modal";
 import { ContactLensModal } from "@/components/optometry/contact-lens-modal";
 import { LowVisionModal } from "@/components/optometry/low-vision-modal";
@@ -244,6 +246,8 @@ function fileToBase64(file: File) {
 function createEmptyForm() {
   return {
     symptoms: "",
+    chiefComplaints: [] as OptometryChiefComplaintEntry[],
+    lastAppliedChiefComplaintText: "",
     diagnosis: "",
     medications: "",
     treatment: "",
@@ -2118,6 +2122,18 @@ export function ConsultationDrawer({
 
   async function openExamination() {
     if (await optometryHistory.save()) {
+      setForm((current) => {
+        const generatedSymptoms = buildChiefComplaintText(current.chiefComplaints);
+        const canReplaceSymptoms = !current.symptoms.trim()
+          || current.symptoms === current.lastAppliedChiefComplaintText;
+        return canReplaceSymptoms
+          ? {
+              ...current,
+              symptoms: generatedSymptoms,
+              lastAppliedChiefComplaintText: generatedSymptoms,
+            }
+          : current;
+      });
       setActiveOptometryStep("examination");
     }
   }
@@ -2600,7 +2616,14 @@ export function ConsultationDrawer({
         ) : null}
 
         {isOptometryClinic && activeOptometryStep === "history" ? (
-          <OptometryHistoryEditor controller={optometryHistory} onContinue={openExamination} />
+          <OptometryHistoryEditor
+            controller={optometryHistory}
+            chiefComplaints={form.chiefComplaints}
+            onChiefComplaintsChange={(chiefComplaints) => (
+              setForm((current) => ({ ...current, chiefComplaints }))
+            )}
+            onContinue={openExamination}
+          />
         ) : (
         <form className="grid gap-5 pr-1 xl:grid-cols-[minmax(0,1fr)_410px]" onSubmit={handleGenerate}>
           {isOptometryClinic ? (

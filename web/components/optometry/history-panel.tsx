@@ -7,8 +7,10 @@ import { api } from "@/lib/api";
 import {
   createEmptyOptometryHistory,
   hasOptometryHistoryDetails,
+  OPTOMETRY_CHIEF_COMPLAINTS,
 } from "@/lib/optometry/history";
 import {
+  OptometryChiefComplaintEntry,
   OptometryHistory,
   OptometryHistoryCondition,
   OptometryHistoryPayload,
@@ -362,8 +364,35 @@ function HistoryError({ controller }: { controller: OptometryHistoryController }
   );
 }
 
-function HistoryForm({ controller }: { controller: OptometryHistoryController }) {
+function HistoryForm({
+  controller,
+  chiefComplaints,
+  onChiefComplaintsChange,
+}: {
+  controller: OptometryHistoryController;
+  chiefComplaints?: OptometryChiefComplaintEntry[];
+  onChiefComplaintsChange?: (entries: OptometryChiefComplaintEntry[]) => void;
+}) {
   const { draft, update, updatePower } = controller;
+
+  function toggleChiefComplaint(complaint: string) {
+    if (!chiefComplaints || !onChiefComplaintsChange) return;
+    const exists = chiefComplaints.some((entry) => entry.complaint === complaint);
+    onChiefComplaintsChange(
+      exists
+        ? chiefComplaints.filter((entry) => entry.complaint !== complaint)
+        : [...chiefComplaints, { complaint, comment: "" }],
+    );
+  }
+
+  function updateChiefComplaintComment(complaint: string, comment: string) {
+    if (!chiefComplaints || !onChiefComplaintsChange) return;
+    onChiefComplaintsChange(
+      chiefComplaints.map((entry) => (
+        entry.complaint === complaint ? { ...entry, comment } : entry
+      )),
+    );
+  }
 
   function toggleOcularCondition(condition: string) {
     const exists = draft.ocular_conditions.some((entry) => entry.condition === condition);
@@ -427,6 +456,47 @@ function HistoryForm({ controller }: { controller: OptometryHistoryController })
 
   return (
     <div className="space-y-5">
+      {chiefComplaints && onChiefComplaintsChange ? (
+        <section className="pb-6">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-900">Chief complaints</h3>
+          <div className="flex flex-wrap gap-2">
+            {OPTOMETRY_CHIEF_COMPLAINTS.map((complaint) => {
+              const selected = chiefComplaints.some((entry) => entry.complaint === complaint);
+              return (
+                <button
+                  key={complaint}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => toggleChiefComplaint(complaint)}
+                  className={`border px-3 py-2 text-xs font-medium transition ${
+                    selected
+                      ? "border-[#2f8fd3] bg-[#e2f0fa] text-[#174f78]"
+                      : "border-[#dbe7ef] bg-white text-slate-700 hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
+                  }`}
+                >
+                  {complaint}
+                </button>
+              );
+            })}
+          </div>
+          {chiefComplaints.length ? (
+            <div className="mt-4 space-y-3 border-l-2 border-[#9fc7e1] pl-4">
+              {chiefComplaints.map((entry) => (
+                <label key={entry.complaint} className="grid gap-2 md:grid-cols-[250px_minmax(0,1fr)] md:items-center">
+                  <span className="text-xs font-semibold text-slate-900">{entry.complaint}</span>
+                  <input
+                    aria-label={`${entry.complaint} details`}
+                    value={entry.comment}
+                    onChange={(event) => updateChiefComplaintComment(entry.complaint, event.target.value)}
+                    placeholder="Eye, duration, severity and relevant details"
+                    className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#6daed8]"
+                  />
+                </label>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       <div className="grid gap-5 lg:grid-cols-2">
         {TEXTAREA_FIELDS.map((field) => (
           <div
@@ -818,9 +888,13 @@ function HistorySummaryRows({ controller }: { controller: OptometryHistoryContro
 
 export function OptometryHistoryEditor({
   controller,
+  chiefComplaints,
+  onChiefComplaintsChange,
   onContinue,
 }: {
   controller: OptometryHistoryController;
+  chiefComplaints: OptometryChiefComplaintEntry[];
+  onChiefComplaintsChange: (entries: OptometryChiefComplaintEntry[]) => void;
   onContinue: () => Promise<void>;
 }) {
   if (controller.isLoading) {
@@ -828,7 +902,11 @@ export function OptometryHistoryEditor({
   }
   return (
     <section aria-label="Optometry history">
-      <HistoryForm controller={controller} />
+      <HistoryForm
+        controller={controller}
+        chiefComplaints={chiefComplaints}
+        onChiefComplaintsChange={onChiefComplaintsChange}
+      />
       <div className="mt-6 space-y-3 border-t border-[#dbe7ef] pt-5">
         <HistoryError controller={controller} />
         <div className="flex justify-end">

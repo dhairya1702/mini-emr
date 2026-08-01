@@ -1,4 +1,33 @@
-import { OptometryHistoryPayload } from "@/lib/types";
+import { OptometryChiefComplaintEntry, OptometryHistoryPayload } from "@/lib/types";
+
+export const OPTOMETRY_CHIEF_COMPLAINTS = [
+  "Blurring or diminution of vision",
+  "Redness",
+  "Pain",
+  "Injury or trauma",
+  "Watering",
+  "Discharge",
+  "Dryness",
+  "Itching",
+  "Foreign-body sensation",
+  "Deviation or squint",
+  "Headache or strain",
+  "Change in size or shape",
+  "Shadow or visual-field defect",
+  "Other visual symptoms",
+] as const;
+
+export function buildChiefComplaintText(entries: OptometryChiefComplaintEntry[]): string {
+  return entries
+    .map((entry) => {
+      const complaint = entry.complaint.trim();
+      const comment = entry.comment.trim();
+      if (!complaint) return "";
+      return comment ? `${complaint} — ${comment}` : complaint;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
 
 export function createEmptyOptometryHistory(): OptometryHistoryPayload {
   return {
