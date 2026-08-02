@@ -1724,6 +1724,7 @@ export default function HomePage() {
           )
           : null}
         isTrainingMode={isTrainingMode}
+        canRefer={currentUser?.role === "admin"}
         onLoadVisits={handleLoadPatientVisits}
         onLoadVisitDetail={handleLoadPatientVisitDetail}
         onLoadTimeline={handleLoadPatientTimeline}

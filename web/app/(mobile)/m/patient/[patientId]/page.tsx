@@ -11,6 +11,7 @@ import {
   FileText,
   Image as ImageIcon,
   LineChart,
+  Mail,
   Menu,
   Sparkles,
   X,
@@ -20,6 +21,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { MobileShell } from "@/components/mobile/mobile-shell";
+import { ReferralPackageModal } from "@/components/referral-package-modal";
 import { BinocularVisionModal } from "@/components/optometry/binocular-vision-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
 import { api } from "@/lib/api";
@@ -534,6 +536,7 @@ export default function MobilePatientPage() {
   const [isBinocularVisionLoading, setIsBinocularVisionLoading] = useState(false);
   const [isTbiEvaluationOpen, setIsTbiEvaluationOpen] = useState(false);
   const [isBinocularVisionOpen, setIsBinocularVisionOpen] = useState(false);
+  const [isReferralPackageOpen, setIsReferralPackageOpen] = useState(false);
   const [activeModuleKey, setActiveModuleKey] = useState<SpecialtyModuleKey | null>(null);
   const [moduleEntryNotes, setModuleEntryNotes] = useState("");
   const [isSavingModuleEntry, setIsSavingModuleEntry] = useState(false);
@@ -1180,6 +1183,11 @@ export default function MobilePatientPage() {
                       {patient.phone || "No phone"} · {patient.address || "No address on file"}
                     </p>
                     <div className="mt-1.5 flex gap-2">
+                      {currentUser?.role === "admin" ? (
+                        <button type="button" onClick={() => setIsReferralPackageOpen(true)} className="inline-flex items-center gap-1 rounded-full border border-white/25 bg-white/15 px-2.5 py-1 text-[10.5px] font-bold text-white">
+                          <Mail className="h-3 w-3" /> Refer
+                        </button>
+                      ) : null}
                       <label className="rounded-full border border-white/25 bg-white/15 px-2.5 py-1 text-[10.5px] font-bold text-white">
                         Upload
                         <input
@@ -1502,6 +1510,9 @@ export default function MobilePatientPage() {
             isSaving={isSavingModuleEntry}
           />
           <PhotoPreviewModal preview={photoPreview} onClose={closePhotoPreview} />
+          {patient && currentUser?.role === "admin" ? (
+            <ReferralPackageModal open={isReferralPackageOpen} patient={patient} onClose={() => setIsReferralPackageOpen(false)} />
+          ) : null}
         </>
       )}
     </MobileShell>

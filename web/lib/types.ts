@@ -315,6 +315,87 @@ export interface PatientAttachment {
   created_at: string;
 }
 
+export type ReferralRecipientType = "patient" | "doctor" | "both";
+export type ReferralUrgency = "routine" | "urgent" | "emergency";
+export type ReferralDeliveryChannel = "email" | "whatsapp";
+
+export interface ReferralRecipient {
+  recipient_type: "patient" | "doctor";
+  name: string;
+  email: string;
+  phone: string;
+}
+
+export interface ReferralPackageCreatePayload {
+  recipient_type: ReferralRecipientType;
+  recipient_name: string;
+  recipient_specialty: string;
+  recipient_clinic: string;
+  recipient_email: string;
+  recipient_phone: string;
+  reason: string;
+  clinical_question: string;
+  urgency: ReferralUrgency;
+  referral_note: string;
+  consultation_note_ids: string[];
+  attachment_ids: string[];
+  longitudinal_track_ids: string[];
+}
+
+export interface ReferralDeliveryRecord {
+  id: string;
+  channel: ReferralDeliveryChannel;
+  recipient_type: "patient" | "doctor";
+  recipient: string;
+  status: string;
+  provider_message_id: string;
+  error: string;
+  created_at: string;
+}
+
+export interface ReferralInclusionManifestItem {
+  id?: string;
+  type: string;
+  label: string;
+  date?: string | null;
+}
+
+export interface ReferralPackage {
+  id: string;
+  patient_id: string;
+  created_at: string;
+  created_by: string;
+  status: string;
+  recipient_type: ReferralRecipientType;
+  recipient_name: string;
+  recipient_specialty: string;
+  recipient_clinic: string;
+  recipient_email: string;
+  recipient_phone: string;
+  reason: string;
+  clinical_question: string;
+  urgency: ReferralUrgency;
+  referral_note: string;
+  included_records: ReferralInclusionManifestItem[];
+  deliveries: ReferralDeliveryRecord[];
+  page_count: number;
+  file_name: string;
+  file_size: number;
+}
+
+export interface ReferralSendPayload {
+  channels: ReferralDeliveryChannel[];
+  recipients: ReferralRecipient[];
+  message: string;
+  idempotency_key: string;
+}
+
+export interface ReferralSendResponse {
+  success: boolean;
+  message: string;
+  deliveries: ReferralDeliveryRecord[];
+}
+
 export interface AuditEvent {
   id: string;
   org_id: string;

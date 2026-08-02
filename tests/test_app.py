@@ -135,6 +135,8 @@ class FakeRepo:
         self.patient_attachment_files: dict[str, bytes] = {}
         self.myopia_measurements: dict[str, dict] = {}
         self.longitudinal_tracks: dict[str, dict] = {}
+        self.referral_packages: dict[str, dict] = {}
+        self.referral_deliveries: dict[str, dict] = {}
         self.case_studies: dict[str, dict] = {}
         self.catalog_items: dict[str, dict] = {}
         self.invoices: dict[str, dict] = {}
@@ -2131,6 +2133,48 @@ class FakeRepo:
         if row["org_id"] != org_id:
             raise ValueError("Attachment not found for this organization.")
         return row
+
+    async def create_referral_package(self, org_id: str, row: dict) -> dict:
+        package_id = str(row.get("id") or uuid4())
+        saved = {**row, "id": package_id, "org_id": org_id, "created_at": _now()}
+        self.referral_packages[package_id] = saved
+        return saved
+
+    async def get_referral_package(self, org_id: str, package_id: str) -> dict:
+        row = self.referral_packages.get(package_id)
+        if row is None or row["org_id"] != org_id:
+            raise ValueError("Referral package not found for this organization.")
+        return row
+
+    async def list_referral_packages(self, org_id: str, patient_id: str) -> list[dict]:
+        rows = [
+            row for row in self.referral_packages.values()
+            if row["org_id"] == org_id and row["patient_id"] == patient_id
+        ]
+        return sorted(rows, key=lambda row: row["created_at"], reverse=True)
+
+    async def list_longitudinal_tracks_by_ids(
+        self, org_id: str, patient_id: str, record_ids: list[str]
+    ) -> list[dict]:
+        return [
+            self.longitudinal_tracks[record_id] for record_id in record_ids
+            if record_id in self.longitudinal_tracks
+            and self.longitudinal_tracks[record_id]["org_id"] == org_id
+            and self.longitudinal_tracks[record_id]["patient_id"] == patient_id
+        ]
+
+    async def create_referral_delivery(self, org_id: str, row: dict) -> dict:
+        delivery_id = str(row.get("id") or uuid4())
+        now = _now()
+        saved = {**row, "id": delivery_id, "org_id": org_id, "created_at": now, "updated_at": now}
+        self.referral_deliveries[delivery_id] = saved
+        return saved
+
+    async def list_referral_deliveries(self, org_id: str, package_id: str) -> list[dict]:
+        return [
+            row for row in self.referral_deliveries.values()
+            if row["org_id"] == org_id and row["referral_package_id"] == package_id
+        ]
 
     async def delete_patient_attachment_metadata(self, org_id: str, patient_id: str, attachment_id: str) -> dict:
         row = await self.get_patient_attachment(org_id, attachment_id)

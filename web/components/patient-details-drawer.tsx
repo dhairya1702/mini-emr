@@ -12,6 +12,7 @@ import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-
 import { MyopiaManagementModal } from "@/components/optometry/myopia/myopia-management-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
 import { EyeExamModal } from "@/components/optometry/eye-exam-modal";
+import { ReferralPackageModal } from "@/components/referral-package-modal";
 import { api } from "@/lib/api";
 import {
   buildBinocularVisionSummary,
@@ -79,6 +80,7 @@ interface PatientDetailsDrawerProps {
   onLoadGrowthHistory?: (patientId: string) => Promise<PediatricGrowthSummary>;
   isTrainingMode?: boolean;
   readOnly?: boolean;
+  canRefer?: boolean;
   /** Render as an edge-to-edge full-screen page (route) instead of a modal overlay. */
   fullScreen?: boolean;
   /** Breadcrumb label shown next to the back button in full-screen mode (e.g. "Patients"). */
@@ -1211,6 +1213,7 @@ export function PatientDetailsDrawer({
   onLoadGrowthHistory,
   isTrainingMode = false,
   readOnly = false,
+  canRefer = false,
   fullScreen = false,
   fullScreenBackLabel = "Patients",
   onPatientUpdated,
@@ -1294,6 +1297,7 @@ export function PatientDetailsDrawer({
   const [isContactLensOpen, setIsContactLensOpen] = useState(false);
   const [isBinocularVisionOpen, setIsBinocularVisionOpen] = useState(false);
   const [isLowVisionOpen, setIsLowVisionOpen] = useState(false);
+  const [isReferralPackageOpen, setIsReferralPackageOpen] = useState(false);
   const [selectedEyeExamEntryId, setSelectedEyeExamEntryId] = useState("");
   const [selectedContactLensEntryId, setSelectedContactLensEntryId] = useState("");
   const [selectedLowVisionEntryId, setSelectedLowVisionEntryId] = useState("");
@@ -2390,6 +2394,15 @@ export function PatientDetailsDrawer({
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2.5">
+                  {canRefer && !readOnly && !isTrainingMode ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsReferralPackageOpen(true)}
+                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#2f8fd3] bg-white px-4 text-sm font-semibold text-[#287fc0] transition hover:bg-[#edf5fa]"
+                    >
+                      <Mail className="h-4 w-4" /> Refer patient
+                    </button>
+                  ) : null}
                   {!readOnly ? (
                     <button
                       type="button"
@@ -2611,6 +2624,15 @@ export function PatientDetailsDrawer({
                 onClick={() => setActiveTab("timeline")}
               />
             </div>
+            {canRefer && !readOnly && !isTrainingMode ? (
+              <button
+                type="button"
+                onClick={() => setIsReferralPackageOpen(true)}
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#2f8fd3] bg-white px-4 text-sm font-semibold text-[#287fc0] transition hover:bg-[#edf5fa] sm:ml-auto sm:w-auto"
+              >
+                <Mail className="h-4 w-4" /> Refer patient
+              </button>
+            ) : null}
             {workflowActionLabel && onWorkflowAction ? (
               <button
                 type="button"
@@ -2867,6 +2889,13 @@ export function PatientDetailsDrawer({
         onClose={() => setIsProfilePhotoManagerOpen(false)}
       />
       <PhotoPreviewModal preview={photoPreview} onClose={closePhotoPreview} />
+      {canRefer && !readOnly && !isTrainingMode ? (
+        <ReferralPackageModal
+          open={isReferralPackageOpen}
+          patient={currentPatient}
+          onClose={() => setIsReferralPackageOpen(false)}
+        />
+      ) : null}
       {hasMyopiaManagement ? (
         <HistoricalMyopiaModal
           open={isHistoricalMyopiaOpen}

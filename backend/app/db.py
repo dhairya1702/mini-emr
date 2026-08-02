@@ -20,6 +20,7 @@ from app.repositories.postgres import (
     PostgresPlatformErrorsRepository,
     PostgresPlatformEmailRepository,
     PostgresRecordsRepository,
+    PostgresReferralsRepository,
     PostgresSpecialtyTracksRepository,
     PostgresWhatsAppRepository,
 )
@@ -41,6 +42,7 @@ class PostgresRepository(
     PostgresPlatformErrorsRepository,
     PostgresPlatformEmailRepository,
     PostgresRecordsRepository,
+    PostgresReferralsRepository,
     PostgresSpecialtyTracksRepository,
     PostgresWhatsAppRepository,
 ):

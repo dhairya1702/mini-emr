@@ -13,6 +13,7 @@ from app.repositories.postgres.patient_flow import PostgresPatientFlowRepository
 from app.repositories.postgres.platform_errors import PostgresPlatformErrorsRepository
 from app.repositories.postgres.platform_email import PostgresPlatformEmailRepository
 from app.repositories.postgres.records import PostgresRecordsRepository
+from app.repositories.postgres.referrals import PostgresReferralsRepository
 from app.repositories.postgres.specialty_tracks import PostgresSpecialtyTracksRepository
 from app.repositories.postgres.whatsapp import PostgresWhatsAppRepository
 
@@ -32,6 +33,7 @@ __all__ = [
     "PostgresPlatformErrorsRepository",
     "PostgresPlatformEmailRepository",
     "PostgresRecordsRepository",
+    "PostgresReferralsRepository",
     "PostgresSpecialtyTracksRepository",
     "PostgresWhatsAppRepository",
 ]

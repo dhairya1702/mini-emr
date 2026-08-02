@@ -16,6 +16,7 @@ from app.routes.mobile import router as mobile_router
 from app.routes.notes import router as notes_router
 from app.routes.patients import router as patients_router
 from app.routes.public import router as public_router
+from app.routes.referrals import router as referrals_router
 from app.routes.settings import router as settings_router
 from app.routes.superuser import router as superuser_router
 from app.routes.users import router as users_router
@@ -40,6 +41,7 @@ __all__ = [
     "notes_router",
     "patients_router",
     "public_router",
+    "referrals_router",
     "settings_router",
     "superuser_router",
     "users_router",

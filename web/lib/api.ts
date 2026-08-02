@@ -75,6 +75,10 @@ import {
   PatientSummary,
   PatientVisitDetail,
   PatientUpdatePayload,
+  ReferralPackage,
+  ReferralPackageCreatePayload,
+  ReferralSendPayload,
+  ReferralSendResponse,
   PatientVisit,
   PatientTimelineEvent,
   PatientStatus,
@@ -912,6 +916,20 @@ export const api = {
     request<ConsultationNote[]>(`/patients/${patientId}/notes`),
   listPatientAttachments: (patientId: string) =>
     request<PatientAttachment[]>(`/patients/${patientId}/attachments`),
+  listPatientReferrals: (patientId: string) =>
+    request<ReferralPackage[]>(`/patients/${patientId}/referral-packages`),
+  createPatientReferral: (patientId: string, payload: ReferralPackageCreatePayload) =>
+    request<ReferralPackage>(`/patients/${patientId}/referral-packages`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }, { timeoutMs: LONG_REQUEST_TIMEOUT_MS }),
+  downloadReferralPdf: (referralId: string) =>
+    requestBlob(`/referral-packages/${referralId}/file`, undefined, { timeoutMs: LONG_REQUEST_TIMEOUT_MS }),
+  sendReferralPackage: (referralId: string, payload: ReferralSendPayload) =>
+    request<ReferralSendResponse>(`/referral-packages/${referralId}/send`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }, { timeoutMs: LONG_REQUEST_TIMEOUT_MS }),
   uploadPatientAttachment: (patientId: string, file: File) => {
     const formData = new FormData();
     formData.append("file", file);

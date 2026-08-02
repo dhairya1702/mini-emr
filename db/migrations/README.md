@@ -47,3 +47,4 @@ psql "$DATABASE_URL" -f db/migrations/<file>.sql
 | 2026-07-30 | `2026-07-30_public_appointment_abuse_controls.sql` | Adds expiring rate-limit counters and an active appointment lookup index for public-booking abuse controls. |
 | 2026-07-30 | `2026-07-30_check_in_tenant_integrity.sql` | Makes pending QR check-ins unique, adds indexed normalized patient match keys, and enforces tenant-safe check-in, follow-up, and care-program relationships. |
 | 2026-07-30 | `2026-07-30_tenant_fk_delete_semantics.sql` | Preserves tenant IDs when composite nullable relationships apply their original `ON DELETE SET NULL` behavior. |
+| 2026-08-02 | `2026-08-02_referral_packages.sql` | Stores immutable referral-package snapshots, generated PDF metadata, and email/WhatsApp delivery attempts. |

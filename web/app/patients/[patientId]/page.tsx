@@ -95,6 +95,7 @@ export default function PatientChartPage() {
       fullScreen
       fullScreenBackLabel={backLabel}
       readOnly={fromHistory}
+      canRefer={currentUser?.role === "admin"}
       onLoadVisits={handleLoadPatientVisits}
       onLoadVisitDetail={handleLoadPatientVisitDetail}
       onLoadTimeline={handleLoadPatientTimeline}
