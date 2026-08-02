@@ -24,8 +24,6 @@ import {
   ContactLensEyeEntry,
   ContactLensPayload,
   EyeExamEntry,
-  EyeExamRow,
-  EyeExamSection,
   GenerateNotePayload,
   LowVisionPayload,
   LongitudinalTrackRecord,
@@ -49,7 +47,7 @@ import { ContactLensModal } from "@/components/optometry/contact-lens-modal";
 import { LowVisionModal } from "@/components/optometry/low-vision-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia-management-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
-import { EyeExamFields } from "@/components/optometry/eye-exam-fields";
+import { EyeExamModal } from "@/components/optometry/eye-exam-modal";
 import {
   OptometryHistoryEditor,
   OptometryHistorySummary,
@@ -59,7 +57,6 @@ import {
   buildEyeExamSummary,
   createEmptyEyeExam,
   flattenEyeExamForNote,
-  hasEyeExamData,
   normalizeEyeExamPayload,
 } from "@/lib/structured-modules";
 import {
@@ -1442,16 +1439,6 @@ export function ConsultationDrawer({
     setIsEyeExamOpen(true);
   }
 
-  function updateEyeExam(section: EyeExamSection, row: EyeExamRow, patch: Partial<EyeExamEntry>) {
-    setForm((current) => ({
-      ...current,
-      eyeExam: {
-        ...current.eyeExam,
-        [section]: current.eyeExam[section].map((entry) => (entry.eye === row ? { ...entry, ...patch } : entry)),
-      },
-    }));
-  }
-
   function updateContactLens(patch: Partial<ContactLensPayload>) {
     setForm((current) => ({
       ...current,
@@ -1582,15 +1569,6 @@ export function ConsultationDrawer({
       setModuleEntryError(message);
       throw saveError;
     }
-  }
-
-  async function saveEyeExam() {
-    if (!hasEyeExamData(form.eyeExam)) {
-      setModuleEntryError("Enter eye exam values before saving.");
-      return;
-    }
-    const payload = form.eyeExam as unknown as Record<string, unknown>;
-    await saveStructuredModuleEntry("eye_exam", payload, buildEyeExamSummary(form.eyeExam));
   }
 
   async function saveContactLens() {
@@ -3657,40 +3635,17 @@ export function ConsultationDrawer({
         onEyeChange={updateContactLensEye}
         sidebar={renderPreviousEvaluations("contact_lens", selectContactLensEntry)}
       />
-      {isOptometryClinic && isEyeExamOpen ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6">
-          <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-[20px] border border-[#bfd7e8] bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-2xl font-semibold text-slate-900">Eye Exam</h3>
-              </div>
-              <button type="button" onClick={() => setIsEyeExamOpen(false)} className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-[#f3f8fb]">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mt-6 grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
-              <aside className="max-h-[68vh] overflow-y-auto rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/50 p-4">
-                {renderPreviousEvaluations("eye_exam", selectEyeExamEntry)}
-              </aside>
-              <div>
-                <EyeExamFields value={form.eyeExam} onChange={updateEyeExam} />
-                <div className="mt-6 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await saveEyeExam();
-                      setIsEyeExamOpen(false);
-                    }}
-                    className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <EyeExamModal
+        open={isOptometryClinic && isEyeExamOpen}
+        value={form.eyeExam}
+        onClose={() => setIsEyeExamOpen(false)}
+        onSave={async (next) => {
+          setForm((current) => ({ ...current, eyeExam: next }));
+          const payload = next as unknown as Record<string, unknown>;
+          await saveStructuredModuleEntry("eye_exam", payload, buildEyeExamSummary(next));
+        }}
+        sidebar={renderPreviousEvaluations("eye_exam", selectEyeExamEntry)}
+      />
       <BinocularVisionModal
         open={isOptometryClinic && isBinocularVisionOpen}
         patient={currentPatient}

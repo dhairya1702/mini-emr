@@ -17,9 +17,11 @@ test("shared and case-sheet test shells are edge-to-edge", async () => {
   const modalShell = await source("components/optometry/optometry-modal-shell.tsx");
   const contactLens = await source("components/optometry/contact-lens-modal.tsx");
   const lowVision = await source("components/optometry/low-vision-modal.tsx");
+  const eyeExam = await source("components/optometry/eye-exam-modal.tsx");
   assert.ok(modalShell.includes('flex h-[100dvh] w-full flex-col overflow-hidden bg-white'));
   assert.ok(contactLens.includes('className="w-full bg-white text-slate-950"'));
   assert.ok(lowVision.includes('className="w-full bg-white text-slate-950"'));
+  assert.ok(eyeExam.includes('className="w-full bg-white text-slate-950"'));
 });
 
 test("binocular, neurovision and myopia workspaces are full screen", async () => {

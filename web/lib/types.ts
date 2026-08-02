@@ -347,6 +347,8 @@ export interface EyeExamEntry {
 }
 
 export interface EyeExamPayload {
+  version: 2;
+  case_sheet: Record<string, unknown>;
   objective: EyeExamEntry[];
   subjective: EyeExamEntry[];
   cycloplegic_dilated: EyeExamEntry[];

@@ -12,7 +12,7 @@ import { ContactLensModal } from "@/components/optometry/contact-lens-modal";
 import { LowVisionModal } from "@/components/optometry/low-vision-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia-management-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
-import { EyeExamFields } from "@/components/optometry/eye-exam-fields";
+import { EyeExamModal } from "@/components/optometry/eye-exam-modal";
 import { OptometryHistoryPanel } from "@/components/optometry/history-panel";
 import { api } from "@/lib/api";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
@@ -51,7 +51,6 @@ import {
   createEmptyEyeExam,
   flattenEyeExamForNote,
   formatModuleSummary,
-  hasEyeExamData,
   moduleEntriesFor,
   moduleLabel,
   normalizeEyeExamPayload,
@@ -62,9 +61,6 @@ import type {
   BinocularVisionEvaluationRecord,
   ContactLensEyeEntry,
   ContactLensPayload,
-  EyeExamEntry,
-  EyeExamRow,
-  EyeExamSection,
   LongitudinalTrackRecord,
   LowVisionPayload,
   MyopiaMeasurementPayload,
@@ -589,16 +585,6 @@ export default function MobileConsultationPage() {
     }));
   }
 
-  function updateEyeExam(section: EyeExamSection, row: EyeExamRow, patch: Partial<EyeExamEntry>) {
-    setForm((current) => ({
-      ...current,
-      eyeExam: {
-        ...current.eyeExam,
-        [section]: current.eyeExam[section].map((entry) => (entry.eye === row ? { ...entry, ...patch } : entry)),
-      },
-    }));
-  }
-
   function updateContactLens(patch: Partial<ContactLensPayload>) {
     setForm((current) => ({
       ...current,
@@ -695,15 +681,6 @@ export default function MobileConsultationPage() {
     setHasLoadedModuleEntries(true);
     rememberStructuredModule(moduleKey, { measured_at: saved.measured_at, ...payload });
     setStatusMessage(summary);
-  }
-
-  async function saveEyeExam() {
-    if (!hasEyeExamData(form.eyeExam)) {
-      setModuleEntryError("Enter eye exam values before saving.");
-      return;
-    }
-    const payload = form.eyeExam as unknown as Record<string, unknown>;
-    await saveStructuredModuleEntry("eye_exam", payload, buildEyeExamSummary(form.eyeExam));
   }
 
   async function saveContactLens() {
@@ -1131,41 +1108,16 @@ export default function MobileConsultationPage() {
               </div>
             </div>
           ) : null}
-          {isEyeExamOpen ? (
-            <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 p-0">
-              <div className="min-h-dvh w-full bg-white">
-                <div className="sticky top-0 z-10 border-b border-[#dbe7ef] bg-white px-4 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-xl font-semibold text-slate-900">Eye Exam</h3>
-                      <p className="mt-1 text-xs text-slate-500">{patient.name} · {patient.phone || "No phone"}</p>
-                    </div>
-                    <button type="button" onClick={() => setIsEyeExamOpen(false)} className="clinic-icon-button h-10 w-10">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                <div className="grid gap-4 px-4 py-4">
-                  <aside className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 p-3">
-                    {renderPreviousEvaluations("eye_exam", selectEyeExamEntry)}
-                  </aside>
-                  <EyeExamFields value={form.eyeExam} onChange={updateEyeExam} compact />
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await saveEyeExam();
-                      if (hasEyeExamData(form.eyeExam)) {
-                        setIsEyeExamOpen(false);
-                      }
-                    }}
-                    className="h-11 rounded-xl bg-slate-900 text-sm font-semibold text-white"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : null}
+          <EyeExamModal
+            open={isEyeExamOpen}
+            value={form.eyeExam}
+            onClose={() => setIsEyeExamOpen(false)}
+            onSave={async (next) => {
+              setForm((current) => ({ ...current, eyeExam: next }));
+              await saveStructuredModuleEntry("eye_exam", next as unknown as Record<string, unknown>, buildEyeExamSummary(next));
+            }}
+            sidebar={renderPreviousEvaluations("eye_exam", selectEyeExamEntry)}
+          />
           <ContactLensModal
             open={isContactLensOpen}
             value={form.contactLens}

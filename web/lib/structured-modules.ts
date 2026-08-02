@@ -40,6 +40,8 @@ function emptyEyeExamEntry(eye: EyeExamRow): EyeExamEntry {
 
 export function createEmptyEyeExam(): EyeExamPayload {
   return {
+    version: 2,
+    case_sheet: {},
     objective: (["right", "left"] as EyeExamRow[]).map(emptyEyeExamEntry),
     subjective: (["right", "left", "distance", "near"] as EyeExamRow[]).map(emptyEyeExamEntry),
     cycloplegic_dilated: (["right", "left", "distance", "near"] as EyeExamRow[]).map(emptyEyeExamEntry),
@@ -77,6 +79,10 @@ export function normalizeEyeExamPayload(raw: unknown): EyeExamPayload {
       ? payload.entries
       : [];
   return {
+    version: 2,
+    case_sheet: payload.case_sheet && typeof payload.case_sheet === "object" && !Array.isArray(payload.case_sheet)
+      ? { ...(payload.case_sheet as Record<string, unknown>) }
+      : {},
     objective: normalizeEyeExamSection(payload.objective ?? legacyEntries, ["right", "left"]),
     subjective: normalizeEyeExamSection(payload.subjective, ["right", "left", "distance", "near"]),
     cycloplegic_dilated: normalizeEyeExamSection(
@@ -96,10 +102,34 @@ export function hasEyeExamEntryData(entry: EyeExamEntry) {
 }
 
 export function hasEyeExamData(payload: EyeExamPayload) {
-  return EYE_EXAM_SECTIONS.some(({ key }) => payload[key].some(hasEyeExamEntryData));
+  return flattenValues(payload.case_sheet).some((value) => typeof value === "string" ? Boolean(value.trim()) : value === true) ||
+    EYE_EXAM_SECTIONS.some(({ key }) => payload[key].some(hasEyeExamEntryData));
 }
 
 export function flattenEyeExamForNote(payload: EyeExamPayload) {
+  const sheet = payload.case_sheet ?? {};
+  const at = (path: string[]) => {
+    let current: unknown = sheet;
+    for (const part of path) {
+      if (!current || typeof current !== "object") return "";
+      current = (current as Record<string, unknown>)[part];
+    }
+    return typeof current === "string" ? current : "";
+  };
+  const current = (["right", "left"] as const).flatMap((eye) => {
+    const entry: EyeExamEntry = {
+      eye,
+      section: "subjective",
+      sphere: at(["refraction", "dry", eye, "sphere"]),
+      cylinder: at(["refraction", "dry", eye, "cylinder"]),
+      axis: at(["refraction", "dry", eye, "axis"]),
+      vision: at(["refraction", "dry", eye, "distance_vision"]),
+    };
+    return hasEyeExamEntryData(entry) ? [entry] : [];
+  });
+  if (current.length) {
+    return current;
+  }
   return EYE_EXAM_SECTIONS.flatMap(({ key }) =>
     payload[key]
       .filter(hasEyeExamEntryData)
@@ -108,6 +138,24 @@ export function flattenEyeExamForNote(payload: EyeExamPayload) {
 }
 
 export function buildEyeExamSummary(payload: EyeExamPayload) {
+  const at = (path: string[]) => {
+    let current: unknown = payload.case_sheet;
+    for (const part of path) {
+      if (!current || typeof current !== "object") return "";
+      current = (current as Record<string, unknown>)[part];
+    }
+    return typeof current === "string" ? current.trim() : "";
+  };
+  const sheetParts = [
+    at(["visual_acuity", "right", "ucva_distance"]) ? `OD UCVA ${at(["visual_acuity", "right", "ucva_distance"])}` : "",
+    at(["visual_acuity", "left", "ucva_distance"]) ? `OS UCVA ${at(["visual_acuity", "left", "ucva_distance"])}` : "",
+    at(["refraction", "dry", "right", "distance_vision"]) ? `OD BCVA ${at(["refraction", "dry", "right", "distance_vision"])}` : "",
+    at(["refraction", "dry", "left", "distance_vision"]) ? `OS BCVA ${at(["refraction", "dry", "left", "distance_vision"])}` : "",
+    at(["examination", "comments"]),
+  ].filter(Boolean);
+  if (sheetParts.length) {
+    return sheetParts.slice(0, 4).join(" · ");
+  }
   const parts = EYE_EXAM_SECTIONS.flatMap(({ key, label }) =>
     payload[key].filter(hasEyeExamEntryData).map((entry) => {
       const row = entry.eye === "right" ? "OD" : entry.eye === "left" ? "OS" : entry.eye[0].toUpperCase() + entry.eye.slice(1);
@@ -119,6 +167,12 @@ export function buildEyeExamSummary(payload: EyeExamPayload) {
     }),
   );
   return parts.join(" · ") || "Eye Exam saved.";
+}
+
+function flattenValues(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value.flatMap(flattenValues);
+  if (value && typeof value === "object") return Object.values(value).flatMap(flattenValues);
+  return [value];
 }
 
 export function formatModuleSummary(entry: LongitudinalTrackRecord) {

@@ -11,7 +11,7 @@ import { LowVisionModal } from "@/components/optometry/low-vision-modal";
 import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-myopia-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia/myopia-management-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
-import { EyeExamFields } from "@/components/optometry/eye-exam-fields";
+import { EyeExamModal } from "@/components/optometry/eye-exam-modal";
 import { api } from "@/lib/api";
 import {
   buildBinocularVisionSummary,
@@ -31,10 +31,7 @@ import {
   ConsultationNote,
   ContactLensEyeEntry,
   ContactLensPayload,
-  EyeExamEntry,
   EyeExamPayload,
-  EyeExamRow,
-  EyeExamSection,
   LongitudinalTrackRecord,
   LowVisionPayload,
   MyopiaHistory,
@@ -55,7 +52,6 @@ import {
 import {
   buildEyeExamSummary,
   createEmptyEyeExam,
-  hasEyeExamData,
   normalizeEyeExamPayload,
 } from "@/lib/structured-modules";
 
@@ -1837,13 +1833,6 @@ export function PatientDetailsDrawer({
     }
   }
 
-  function updateEyeExam(section: EyeExamSection, row: EyeExamRow, patch: Partial<EyeExamEntry>) {
-    setEyeExam((current) => ({
-      ...current,
-      [section]: current[section].map((entry) => (entry.eye === row ? { ...entry, ...patch } : entry)),
-    }));
-  }
-
   function updateContactLens(patch: Partial<ContactLensPayload>) {
     setContactLens((current) => ({ ...current, ...patch }));
   }
@@ -1929,21 +1918,6 @@ export function PatientDetailsDrawer({
     } catch (saveError) {
       setGenericModuleEntryError(saveError instanceof Error ? saveError.message : "Failed to save entry.");
       throw saveError;
-    }
-  }
-
-  async function handleSaveEyeExam() {
-    if (!hasEyeExamData(eyeExam)) {
-      setGenericModuleEntryError("Enter eye exam values before saving.");
-      return;
-    }
-    const saved = await saveStructuredModuleEntry(
-      "eye_exam",
-      eyeExam as unknown as Record<string, unknown>,
-      buildEyeExamSummary(eyeExam),
-    );
-    if (saved) {
-      setSelectedEyeExamEntryId(saved.id);
     }
   }
 
@@ -2956,14 +2930,17 @@ export function PatientDetailsDrawer({
         onNew={() => startNewStructuredModule("eye_exam")}
         onSelectEntry={selectEyeExamEntry}
       >
-        <div>
-          <EyeExamFields value={eyeExam} onChange={updateEyeExam} />
-          <div className="mt-6 flex justify-end">
-            <button type="button" onClick={handleSaveEyeExam} className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
-              Save
-            </button>
-          </div>
-        </div>
+        <EyeExamModal
+          open
+          value={eyeExam}
+          inline
+          onClose={() => setIsEyeExamOpen(false)}
+          onSave={async (next) => {
+            setEyeExam(next);
+            const saved = await saveStructuredModuleEntry("eye_exam", next as unknown as Record<string, unknown>, buildEyeExamSummary(next));
+            if (saved) setSelectedEyeExamEntryId(saved.id);
+          }}
+        />
         {genericModuleEntryError ? <p className="mt-3 text-sm font-medium text-rose-600">{genericModuleEntryError}</p> : null}
       </PatientStructuredModuleShell>
       <PatientStructuredModuleShell
