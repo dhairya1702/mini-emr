@@ -2177,6 +2177,52 @@ export function ConsultationDrawer({
     );
   }
 
+  function renderTestsSection() {
+    return (
+      <section className="rounded-[18px] border border-[#bfd7e8] bg-white/90 p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-600">Tests</p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          {renderModuleButton(
+            "Vitals",
+            activeInlineModule === "vitals",
+            () => setActiveInlineModule((current) => (current === "vitals" ? null : "vitals")),
+          )}
+          {specialtyModules.map((moduleKey) => {
+            const copy = TEST_MODULE_COPY[moduleKey];
+            const openModule = () => {
+              if (moduleKey === "eye_exam") {
+                openEyeExamModule();
+              } else if (moduleKey === "contact_lens") {
+                openOptometryModule("contactLens");
+              } else if (moduleKey === "binocular_vision") {
+                openOptometryModule("binocularVision");
+              } else if (moduleKey === "low_vision") {
+                openOptometryModule("lowVision");
+              } else if (moduleKey === "myopia_management") {
+                openOptometryModule("myopiaManagement");
+              } else if (moduleKey === "tbi_evaluation") {
+                openOptometryModule("tbiEvaluation");
+              } else if (moduleKey === "pediatric_growth_measurement") {
+                setActivePediatricModule("growth");
+              } else if (moduleKey === "well_child_visit") {
+                setActivePediatricModule("wellChild");
+              } else if (moduleKey === "parent_handout_request") {
+                setActivePediatricModule("parentHandout");
+              } else if (moduleKey === "pediatric_follow_up_plan") {
+                setActivePediatricModule("pediatricFollowUp");
+              }
+            };
+            return renderModuleButton(copy.label, false, openModule);
+          })}
+        </div>
+        {moduleEntryError ? <p className="mt-3 text-sm font-medium text-rose-600">{moduleEntryError}</p> : null}
+        <div className="mt-4">{renderInlineModuleDetail()}</div>
+      </section>
+    );
+  }
+
   function renderInlineModuleDetail() {
     if (activeInlineModule === "vitals") {
       return (
@@ -2590,7 +2636,8 @@ export function ConsultationDrawer({
         ) : (
         <form className="grid gap-5 pr-1 xl:grid-cols-[minmax(0,1fr)_410px]" onSubmit={handleGenerate}>
           {isOptometryClinic ? (
-            <div className="xl:hidden">
+            <div className="space-y-5 xl:hidden">
+              {renderTestsSection()}
               <OptometryHistorySummary
                 controller={optometryHistory}
                 onEdit={() => setActiveOptometryStep("history")}
@@ -2663,47 +2710,7 @@ export function ConsultationDrawer({
               />
             </label>
 
-            <section className="rounded-[18px] border border-[#bfd7e8] bg-white/90 p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-600">Tests</p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {renderModuleButton(
-                  "Vitals",
-                  activeInlineModule === "vitals",
-                  () => setActiveInlineModule((current) => (current === "vitals" ? null : "vitals")),
-                )}
-                {specialtyModules.map((moduleKey) => {
-                  const copy = TEST_MODULE_COPY[moduleKey];
-                  const openModule = () => {
-                    if (moduleKey === "eye_exam") {
-                      openEyeExamModule();
-                    } else if (moduleKey === "contact_lens") {
-                      openOptometryModule("contactLens");
-                    } else if (moduleKey === "binocular_vision") {
-                      openOptometryModule("binocularVision");
-                    } else if (moduleKey === "low_vision") {
-                      openOptometryModule("lowVision");
-                    } else if (moduleKey === "myopia_management") {
-                      openOptometryModule("myopiaManagement");
-                    } else if (moduleKey === "tbi_evaluation") {
-                      openOptometryModule("tbiEvaluation");
-                    } else if (moduleKey === "pediatric_growth_measurement") {
-                      setActivePediatricModule("growth");
-                    } else if (moduleKey === "well_child_visit") {
-                      setActivePediatricModule("wellChild");
-                    } else if (moduleKey === "parent_handout_request") {
-                      setActivePediatricModule("parentHandout");
-                    } else if (moduleKey === "pediatric_follow_up_plan") {
-                      setActivePediatricModule("pediatricFollowUp");
-                    }
-                  };
-                  return renderModuleButton(copy.label, false, openModule);
-                })}
-              </div>
-              {moduleEntryError ? <p className="mt-3 text-sm font-medium text-rose-600">{moduleEntryError}</p> : null}
-              <div className="mt-4">{renderInlineModuleDetail()}</div>
-            </section>
+            {!isOptometryClinic ? renderTestsSection() : null}
 
               <div className="grid gap-4 xl:grid-cols-2">
                 <section className="rounded-[18px] border border-[#bfd7e8] bg-white/80 p-4">
@@ -3322,7 +3329,8 @@ export function ConsultationDrawer({
             </div>
           </div>
           {isOptometryClinic ? (
-            <div className="hidden xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:block xl:self-start xl:sticky xl:top-4">
+            <div className="hidden space-y-4 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:block xl:self-start xl:sticky xl:top-4">
+              {renderTestsSection()}
               <OptometryHistorySummary
                 controller={optometryHistory}
                 onEdit={() => setActiveOptometryStep("history")}

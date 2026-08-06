@@ -108,9 +108,10 @@ export function PatientColumn({
             onClick={onAddPatient}
             aria-label="Add patient"
             title="Add patient"
-            className={`inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] border transition active:scale-95 ${styles.add}`}
+            className={`inline-flex h-[30px] shrink-0 items-center justify-center gap-1.5 rounded-[9px] border px-2.5 text-xs font-semibold transition active:scale-95 ${styles.add}`}
           >
             <Plus className="h-4 w-4" />
+            <span>Add patient</span>
           </button>
         ) : null}
       </div>

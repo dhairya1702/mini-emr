@@ -1545,9 +1545,10 @@ export default function HomePage() {
                 onClick={() => setIsModalOpen(true)}
                 aria-label="Add patient"
                 title="Add patient"
-                className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] border border-[#bfe0f5] bg-[#ecf6fd] text-[#2a6fa8] transition hover:bg-[#d8ebf7] active:scale-95"
+                className="inline-flex h-[30px] shrink-0 items-center justify-center gap-1.5 rounded-[9px] border border-[#bfe0f5] bg-[#ecf6fd] px-2.5 text-xs font-semibold text-[#2a6fa8] transition hover:bg-[#d8ebf7] active:scale-95"
               >
                 <Plus className="h-4 w-4" />
+                <span>Add patient</span>
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-3.5">
