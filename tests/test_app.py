@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import ModuleType
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -3738,6 +3738,71 @@ def test_myopia_measurements_create_history_and_timeline(client):
     myopia_events = [event for event in timeline_response.json() if event["type"] == "myopia_measurement"]
     assert len(myopia_events) == 2
     assert any("OD 24.22 mm" in event["description"] for event in myopia_events)
+
+
+def test_module_entries_serialize_postgres_uuid_rows(client):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="module-uuid@example.com",
+        clinic_name="Module UUID Clinic",
+    )
+    token = session["token"]
+
+    patient_response = test_client.post(
+        "/patients",
+        headers=auth_headers_for_token(token),
+        json={
+            "name": "Dev Patel",
+            "phone": "5550104545",
+            "email": "dev@example.com",
+            "address": "14 Vision Road",
+            "reason": "Myopia review",
+            "age": 17,
+            "weight": 56,
+            "height": 169,
+            "temperature": 98.3,
+        },
+    )
+    assert patient_response.status_code == 201
+    patient_id = patient_response.json()["id"]
+    record_id = uuid4()
+
+    async def list_postgres_shaped_tracks(org_id: str, requested_patient_id: str, *, track_type: str | None = None) -> list[dict]:
+        assert org_id == session["user"]["org_id"]
+        assert requested_patient_id == patient_id
+        assert track_type is None
+        return [{
+            "id": record_id,
+            "org_id": UUID(org_id),
+            "patient_id": UUID(patient_id),
+            "track_type": "eye_exam",
+            "measured_at": datetime(2026, 8, 6, 10, 0, tzinfo=UTC),
+            "summary_fields": {"summary": "Complete eye examination"},
+            "raw_payload": {"version": 2, "case_sheet": {}},
+            "derived_metrics": {},
+            "created_at": datetime(2026, 8, 6, 10, 0, tzinfo=UTC),
+        }]
+
+    repo.list_longitudinal_tracks_for_patient = list_postgres_shaped_tracks
+
+    response = test_client.get(
+        f"/patients/{patient_id}/module-entries",
+        headers=auth_headers_for_token(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [{
+        "id": str(record_id),
+        "track_type": "eye_exam",
+        "patient_id": patient_id,
+        "org_id": session["user"]["org_id"],
+        "measured_at": "2026-08-06T10:00:00Z",
+        "summary_fields": {"summary": "Complete eye examination"},
+        "raw_payload": {"version": 2, "case_sheet": {}},
+        "derived_metrics": {},
+        "created_at": "2026-08-06T10:00:00Z",
+    }]
 
 
 def test_tbi_evaluation_is_optometry_only_and_appears_in_timeline(client):

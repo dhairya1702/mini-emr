@@ -1,6 +1,7 @@
 from datetime import datetime
 import json
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -20,10 +21,10 @@ class StructuredModuleInput(BaseModel):
 
 
 class LongitudinalTrackRecordOut(BaseModel):
-    id: str
+    id: UUID
     track_type: str
-    patient_id: str
-    org_id: str
+    patient_id: UUID
+    org_id: UUID
     measured_at: datetime
     summary_fields: dict[str, Any] = Field(default_factory=dict)
     raw_payload: dict[str, Any] = Field(default_factory=dict)
