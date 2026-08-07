@@ -1,7 +1,7 @@
 "use client";
 
-import { ChangeEvent, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarPlus2, Eye, Eraser, FileText, Mail, MessageCircle, Paperclip, PenLine, Plus, Printer, Sparkles, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CalendarPlus2, Eye, FileText, Mail, MessageCircle, Paperclip, PenLine, Plus, Printer, Sparkles, X } from "lucide-react";
 import NextImage from "next/image";
 import type { ReactNode } from "react";
 
@@ -48,6 +48,7 @@ import { LowVisionModal } from "@/components/optometry/low-vision-modal";
 import { MyopiaManagementModal } from "@/components/optometry/myopia-management-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
 import { EyeExamModal } from "@/components/optometry/eye-exam-modal";
+import { ClinicalDrawingModal } from "@/components/clinical-drawing-modal";
 import {
   OptometryHistoryEditor,
   OptometryHistorySummary,
@@ -89,15 +90,6 @@ const MAX_ATTACHMENT_COUNT = 6;
 const SUPPORTED_ATTACHMENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
 const MEDICATION_TABLE_HEADER = "Medicine | Strength | Dose | Route | Schedule | Duration | Quantity | Instructions";
 const MEDICATION_TABLE_SEPARATOR = "--- | --- | --- | --- | --- | --- | --- | ---";
-const DRAWING_COLOR_PRESETS = [
-  { label: "Black", value: "#0f172a" },
-  { label: "Red", value: "#dc2626" },
-  { label: "Blue", value: "#2563eb" },
-  { label: "Green", value: "#16a34a" },
-  { label: "Purple", value: "#9333ea" },
-  { label: "Yellow", value: "#ca8a04" },
-  { label: "Brown", value: "#92400e" },
-] as const;
 const PEDIATRIC_FOLLOW_UP_DEFAULTS: Record<string, { days: number; interval: string; notePrefix: string }> = {
   routine_review: { days: 90, interval: "3 months", notePrefix: "Routine pediatric review" },
   growth_recheck: { days: 60, interval: "2 months", notePrefix: "Growth recheck" },
@@ -611,11 +603,6 @@ export function ConsultationDrawer({
   const [recipientPhone, setRecipientPhone] = useState("");
   const [whatsappDeliveryStatus, setWhatsAppDeliveryStatus] = useState<WhatsAppDeliveryStatus | "">("");
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawingMode, setDrawingMode] = useState<"draw" | "erase">("draw");
-  const [drawingColor, setDrawingColor] = useState("#0f172a");
-  const [brushSize, setBrushSize] = useState(3);
-  const [drawingZoom, setDrawingZoom] = useState(1);
   const [isGeneratingHandout, setIsGeneratingHandout] = useState(false);
   const [isGeneratingHandoutPdf, setIsGeneratingHandoutPdf] = useState(false);
   const [assistantQuestions, setAssistantQuestions] = useState<ClinicalQuestionsResponse | null>(null);
@@ -626,8 +613,6 @@ export function ConsultationDrawer({
   const [isLoadingAssistantQuestions, setIsLoadingAssistantQuestions] = useState(false);
   const [isAnalyzingAssistant, setIsAnalyzingAssistant] = useState(false);
   const [assistantError, setAssistantError] = useState("");
-  const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const drawingHistoryRef = useRef<string[]>([]);
   const cancelWhatsAppDeliveryTrackingRef = useRef<(() => void) | null>(null);
   const patientId = patient?.id ?? "";
   const currentUserId = currentUser?.id ?? "";
@@ -689,7 +674,6 @@ export function ConsultationDrawer({
     setIsMyopiaManagementOpen(false);
     setIsTbiEvaluationOpen(false);
     setIsDrawingModalOpen(false);
-    setIsDrawing(false);
     setTbiEvaluations([]);
     setBinocularVisionEvaluations([]);
     setIsBinocularVisionLoading(false);
@@ -861,24 +845,6 @@ export function ConsultationDrawer({
   const medicationPlan = useMemo(() => {
     return buildMedicationTreatmentPayload(form.medications, form.treatment);
   }, [form.medications, form.treatment]);
-  useEffect(() => {
-    const canvas = drawingCanvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) {
-      return;
-    }
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    drawingHistoryRef.current = [];
-    if (!drawingAsset) {
-      return;
-    }
-    const image = new window.Image();
-    image.onload = () => {
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    };
-    image.src = `data:${drawingAsset.content_type};base64,${drawingAsset.data_base64}`;
-  }, [drawingAsset, isDrawingModalOpen]);
-
   useEffect(() => {
     if (!patientId || !isOptometryClinic || !isBinocularVisionOpen) {
       return;
@@ -1965,103 +1931,6 @@ export function ConsultationDrawer({
     setForm((current) => ({ ...current, assets: current.assets.filter((asset) => asset.id !== assetId) }));
   }
 
-  function beginDrawing(event: PointerEvent<HTMLCanvasElement>) {
-    const canvas = drawingCanvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) {
-      return;
-    }
-    drawingHistoryRef.current = [...drawingHistoryRef.current, canvas.toDataURL("image/png")].slice(-12);
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    context.globalCompositeOperation = drawingMode === "erase" ? "destination-out" : "source-over";
-    context.strokeStyle = drawingColor;
-    context.lineWidth = drawingMode === "erase" ? brushSize * 4 : brushSize;
-    context.lineCap = "round";
-    context.lineJoin = "round";
-    context.beginPath();
-    context.moveTo((event.clientX - rect.left) * scaleX, (event.clientY - rect.top) * scaleY);
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setIsDrawing(true);
-  }
-
-  function continueDrawing(event: PointerEvent<HTMLCanvasElement>) {
-    if (!isDrawing) {
-      return;
-    }
-    const canvas = drawingCanvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) {
-      return;
-    }
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    context.lineTo((event.clientX - rect.left) * scaleX, (event.clientY - rect.top) * scaleY);
-    context.stroke();
-  }
-
-  function finishDrawing() {
-    if (!isDrawing) {
-      return;
-    }
-    setIsDrawing(false);
-  }
-
-  function clearDrawing() {
-    const canvas = drawingCanvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (canvas && context) {
-      context.clearRect(0, 0, canvas.width, canvas.height);
-    }
-    drawingHistoryRef.current = [];
-  }
-
-  function undoDrawing() {
-    const canvas = drawingCanvasRef.current;
-    const context = canvas?.getContext("2d");
-    const previous = drawingHistoryRef.current.pop();
-    if (!canvas || !context || !previous) {
-      return;
-    }
-    const image = new window.Image();
-    image.onload = () => {
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    };
-    image.src = previous;
-  }
-
-  function saveDrawing() {
-    const canvas = drawingCanvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) {
-      return;
-    }
-    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-    const hasInk = pixels.some((channel, index) => index % 4 === 3 && channel > 0);
-    if (!hasInk) {
-      setForm((current) => ({ ...current, assets: current.assets.filter((asset) => asset.kind !== "drawing") }));
-      setIsDrawingModalOpen(false);
-      return;
-    }
-    const dataBase64 = canvas.toDataURL("image/png").split(",", 2)[1] || "";
-    setForm((current) => ({
-      ...current,
-      assets: [
-        ...current.assets.filter((asset) => asset.kind !== "drawing"),
-        {
-          id: current.assets.find((asset) => asset.kind === "drawing")?.id || createId(),
-          kind: "drawing",
-          name: "consultation-drawing.png",
-          content_type: "image/png",
-          data_base64: dataBase64,
-        },
-      ],
-    }));
-    setIsDrawingModalOpen(false);
-  }
 
   const lifecycleLabel =
     noteStatus === "sent"
@@ -2859,7 +2728,6 @@ export function ConsultationDrawer({
                 description="Open a large canvas to sketch findings, markings, or procedure notes."
                 open={false}
                 onToggle={() => {
-                  setDrawingZoom(1);
                   setIsDrawingModalOpen(true);
                 }}
                 badge={
@@ -3512,166 +3380,30 @@ export function ConsultationDrawer({
         </div>
       </SpecialtyModuleModal>
 
-      {isDrawingModalOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-2 sm:p-5"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Consultation drawing"
-        >
-          <div className="flex h-[calc(100dvh-1rem)] w-full max-w-[1500px] flex-col overflow-hidden rounded-[22px] border border-[#bfd7e8] bg-white shadow-[0_28px_90px_rgba(15,23,42,0.4)] sm:h-[calc(100dvh-2.5rem)]">
-            <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[#dbe7ef] bg-[#f8fbfd] px-4 py-3 sm:px-6">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDrawingMode("draw")}
-                  className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${drawingMode === "draw" ? "border-[#6daed8] bg-[#dbeaf4] text-[#235f8e]" : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"}`}
-                >
-                  <PenLine className="mr-1.5 inline h-4 w-4" />
-                  Draw
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDrawingMode("erase")}
-                  className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${drawingMode === "erase" ? "border-[#6daed8] bg-[#dbeaf4] text-[#235f8e]" : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"}`}
-                >
-                  <Eraser className="mr-1.5 inline h-4 w-4" />
-                  Erase
-                </button>
-              </div>
-
-              <div className="h-8 w-px bg-[#dbe7ef]" />
-
-              <div className="flex flex-wrap items-center gap-2" aria-label="Drawing colours">
-                {DRAWING_COLOR_PRESETS.map((preset) => (
-                  <button
-                    key={preset.value}
-                    type="button"
-                    title={preset.label}
-                    aria-label={`${preset.label} drawing colour`}
-                    aria-pressed={drawingColor === preset.value}
-                    onClick={() => {
-                      setDrawingColor(preset.value);
-                      setDrawingMode("draw");
-                    }}
-                    className={`h-8 w-8 rounded-full border-2 transition hover:scale-110 ${drawingColor === preset.value ? "border-slate-900 ring-2 ring-sky-200" : "border-white ring-1 ring-slate-300"}`}
-                    style={{ backgroundColor: preset.value }}
-                  />
-                ))}
-                <label className="relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-white bg-[conic-gradient(red,yellow,lime,aqua,blue,magenta,red)] ring-1 ring-slate-300" title="Custom colour">
-                  <span className="sr-only">Choose custom drawing colour</span>
-                  <input
-                    type="color"
-                    value={drawingColor}
-                    onChange={(event) => {
-                      setDrawingColor(event.target.value);
-                      setDrawingMode("draw");
-                    }}
-                    className="absolute inset-0 cursor-pointer opacity-0"
-                  />
-                </label>
-              </div>
-
-              <div className="h-8 w-px bg-[#dbe7ef]" />
-
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setDrawingZoom((current) => Math.max(0.5, Number((current - 0.25).toFixed(2))))}
-                  disabled={drawingZoom <= 0.5}
-                  className="rounded-lg border border-[#bfd7e8] bg-white p-2 text-slate-700 transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-45"
-                  aria-label="Zoom drawing out"
-                >
-                  <ZoomOut className="h-4 w-4" />
-                </button>
-                <span className="w-12 text-center text-xs font-medium text-slate-600">{Math.round(drawingZoom * 100)}%</span>
-                <button
-                  type="button"
-                  onClick={() => setDrawingZoom((current) => Math.min(2, Number((current + 0.25).toFixed(2))))}
-                  disabled={drawingZoom >= 2}
-                  className="rounded-lg border border-[#bfd7e8] bg-white p-2 text-slate-700 transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-45"
-                  aria-label="Zoom drawing in"
-                >
-                  <ZoomIn className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="h-8 w-px bg-[#dbe7ef]" />
-
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Brush</span>
-                <input
-                  type="range"
-                  min={1}
-                  max={20}
-                  value={brushSize}
-                  onChange={(event) => setBrushSize(Number(event.target.value))}
-                  className="w-28 accent-[#2f8fd3] sm:w-36"
-                />
-                <span className="w-9 text-xs text-slate-500">{brushSize}px</span>
-              </div>
-
-              <div className="ml-auto flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={undoDrawing}
-                  disabled={!drawingHistoryRef.current.length}
-                  className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <Undo2 className="mr-1.5 inline h-4 w-4" />
-                  Undo
-                </button>
-                <button
-                  type="button"
-                  onClick={clearDrawing}
-                  className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
-                >
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsDrawingModalOpen(false)}
-                  className="rounded-xl border border-[#bfd7e8] bg-white p-2 text-slate-600 transition hover:bg-[#f3f8fb]"
-                  aria-label="Close drawing"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto bg-[#eef5f9] p-3 sm:p-5">
-              <canvas
-                ref={drawingCanvasRef}
-                width={1680}
-                height={800}
-                onPointerDown={beginDrawing}
-                onPointerMove={continueDrawing}
-                onPointerUp={finishDrawing}
-                onPointerCancel={finishDrawing}
-                className="aspect-[21/10] h-auto max-w-none shrink-0 touch-none rounded-[18px] border border-[#bfd7e8] bg-white shadow-inner"
-                style={{ width: `${drawingZoom * 100}%` }}
-              />
-            </div>
-
-            <div className="flex shrink-0 items-center justify-end gap-3 border-t border-[#dbe7ef] px-4 py-3 sm:px-6">
-                <button
-                  type="button"
-                  onClick={() => setIsDrawingModalOpen(false)}
-                  className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-[#f3f8fb]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={saveDrawing}
-                  className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  Save
-                </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ClinicalDrawingModal
+        open={isDrawingModalOpen}
+        title="Consultation drawing"
+        value={drawingAsset?.data_base64 ? `data:${drawingAsset.content_type};base64,${drawingAsset.data_base64}` : null}
+        onClose={() => setIsDrawingModalOpen(false)}
+        onSave={(dataUrl) => {
+          setForm((current) => ({
+            ...current,
+            assets: dataUrl
+              ? [
+                  ...current.assets.filter((asset) => asset.kind !== "drawing"),
+                  {
+                    id: current.assets.find((asset) => asset.kind === "drawing")?.id || createId(),
+                    kind: "drawing",
+                    name: "consultation-drawing.png",
+                    content_type: "image/png",
+                    data_base64: dataUrl.split(",", 2)[1] || "",
+                  },
+                ]
+              : current.assets.filter((asset) => asset.kind !== "drawing"),
+          }));
+          setIsDrawingModalOpen(false);
+        }}
+      />
 
       <ContactLensModal
         open={isOptometryClinic && isContactLensOpen}

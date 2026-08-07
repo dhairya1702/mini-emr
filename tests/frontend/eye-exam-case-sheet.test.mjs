@@ -21,8 +21,7 @@ test("eye exam retains the source clinical assessments", () => {
     "UCVA",
     "Pinhole",
     "Intraocular Pressure",
-    "Autorefraction",
-    "Dry Refraction",
+    "Dry/Auto Refraction",
     "Dilated / Cycloplegic Refraction",
     "Distance/Near",
     "Distance VA",
@@ -35,7 +34,11 @@ test("eye exam retains the source clinical assessments", () => {
     "Colour vision",
     "Contrast",
     "Orthoptic screening",
+    "Anterior Segment Evaluation",
+    "Anterior Segment Drawings",
     "Anterior chamber (AC)",
+    "Posterior Segment Evaluation",
+    "Posterior Segment Drawings",
     "Fundus",
   ]) assert.ok(source.toLowerCase().includes(label.toLowerCase()), `Missing eye exam field: ${label}`);
 });
@@ -43,6 +46,8 @@ test("eye exam retains the source clinical assessments", () => {
 test("removed eye exam sections are no longer rendered", () => {
   for (const label of [
     'label="Refraction comments"',
+    "Dry autorefraction",
+    "Dilated autorefraction",
     "Present Glasses Prescription 1",
     "Present Glasses Prescription 2",
     "Horizontal meridian",
@@ -58,4 +63,11 @@ test("signed prescription powers remain free-text fields", () => {
 test("ocular structures are not silently defaulted normal", () => {
   assert.ok(source.includes('<option value="">Not examined</option>'));
   assert.ok(source.includes("Mark all structures normal"));
+});
+
+test("ocular page provides independent reusable drawing slots", () => {
+  assert.ok(source.includes("ClinicalDrawingModal"));
+  assert.ok(source.includes('["examination", "drawings", activeDrawing.segment, activeDrawing.eye]'));
+  assert.ok(source.includes('segment="anterior"'));
+  assert.ok(source.includes('segment="posterior"'));
 });
