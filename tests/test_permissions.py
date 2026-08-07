@@ -198,7 +198,8 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
     assert send_note.status_code == 403
 
     note_pdf = test_client.get(f"/notes/{note['note_id']}/pdf", headers=staff_headers)
-    assert note_pdf.status_code == 403
+    assert note_pdf.status_code == 200
+    assert note_pdf.headers["content-type"] == "application/pdf"
 
     start_consultation = test_client.patch(
         f"/patients/{patient['id']}",

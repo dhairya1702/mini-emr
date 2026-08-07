@@ -76,7 +76,7 @@ export function AppMenuDrawer({ open, currentUser, onClose }: AppMenuDrawerProps
                   type="button"
                   onClick={() => {
                     onClose();
-                    if (!active) router.push(item.href);
+                    if (!active) router.replace(item.href);
                   }}
                   className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-sm font-medium transition ${
                     active ? "bg-white text-[#2a6fa8] shadow-[0_8px_24px_rgba(64,131,181,0.08)]" : "text-slate-700 hover:bg-white/80"

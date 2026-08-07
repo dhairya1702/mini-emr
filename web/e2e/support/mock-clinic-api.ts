@@ -377,10 +377,10 @@ export async function mockClinicBootstrap(
     await fulfillJson(route, patients);
   });
   await page.route(new RegExp(`${API_ORIGIN}/patients/[^/]+$`), async (route) => {
+    const patientId = route.request().url().split("/").pop() || "";
+    const patient = patients.find((entry) => entry.id === patientId);
     if (route.request().method() === "PATCH") {
-      const patientId = route.request().url().split("/").pop() || "";
       const payload = JSON.parse(route.request().postData() || "{}");
-      const patient = patients.find((entry) => entry.id === patientId);
       if (!patient) {
         await route.fulfill({ status: 404, body: JSON.stringify({ detail: "Patient not found." }) });
         return;
@@ -389,7 +389,11 @@ export async function mockClinicBootstrap(
       await fulfillJson(route, patient);
       return;
     }
-    await route.fallback();
+    if (!patient) {
+      await route.fulfill({ status: 404, body: JSON.stringify({ detail: "Patient not found." }) });
+      return;
+    }
+    await fulfillJson(route, patient);
   });
   await page.route(new RegExp(`${API_ORIGIN}/patients/[^/]+/timeline$`), async (route) => {
     const patientId = route.request().url().split("/").slice(-2)[0] || "";
@@ -418,6 +422,7 @@ export async function mockClinicBootstrap(
     await fulfillJson(route, [{
       id: "visit-1",
       patient_id: patientId,
+      visit_number: 1,
       reason: patient.reason,
       created_at: nowIso(),
     }]);
@@ -432,6 +437,7 @@ export async function mockClinicBootstrap(
       reason: patient.reason,
       timestamp: nowIso(),
       consultation_note: null,
+      optometry_history: null,
       attachments: [],
       timeline: [{
         id: "visit-evt-1",
@@ -441,6 +447,42 @@ export async function mockClinicBootstrap(
         description: `${patient.reason} visit recorded.`,
       }],
     });
+  });
+  await page.route(new RegExp(`${API_ORIGIN}/patients/[^/]+/visits/[^/]+/optometry-history$`), async (route) => {
+    const segments = new URL(route.request().url()).pathname.split("/");
+    const patientId = segments[segments.indexOf("patients") + 1] || "";
+    const visitId = segments[segments.indexOf("visits") + 1] || "";
+    const submitted = route.request().method() === "PUT"
+      ? JSON.parse(route.request().postData() || "{}")
+      : null;
+    await fulfillJson(route, {
+      history_id: submitted ? "history-1" : null,
+      patient_id: patientId,
+      visit_id: visitId,
+      payload: submitted?.payload || {},
+      revision: submitted ? 1 : 0,
+      exists: Boolean(submitted),
+    });
+  });
+  await page.route(new RegExp(`${API_ORIGIN}/patients/[^/]+/module-entries$`), async (route) => {
+    if (route.request().method() === "POST") {
+      const segments = new URL(route.request().url()).pathname.split("/");
+      const patientId = segments[segments.indexOf("patients") + 1] || "";
+      const payload = JSON.parse(route.request().postData() || "{}");
+      await fulfillJson(route, {
+        id: "module-entry-1",
+        org_id: user.org_id,
+        patient_id: patientId,
+        track_type: payload.track_type,
+        measured_at: payload.measured_at,
+        summary_fields: payload.summary_fields || {},
+        raw_payload: payload.raw_payload || {},
+        derived_metrics: payload.derived_metrics || {},
+        created_at: nowIso(),
+      }, 201);
+      return;
+    }
+    await fulfillJson(route, []);
   });
   await page.route(new RegExp(`${API_ORIGIN}/patients/[^/]+/summary$`), async (route) => {
     await fulfillJson(route, {

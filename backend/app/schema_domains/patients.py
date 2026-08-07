@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.schema_domains.common import AppointmentStatus, FollowUpStatus, NoteStatus, PatientStatus, QueuePriority, SexAtBirth, TimelineEventType, VisitKind
+from app.schema_domains.optometry import OptometryHistoryPayload
 
 
 def calculate_age_from_dob(date_of_birth: date | None) -> int | None:
@@ -145,11 +146,13 @@ class PatientVisitOut(BaseModel):
 class PatientChartVisitOut(BaseModel):
     id: UUID
     patient_id: UUID
+    visit_number: int = Field(ge=1)
     reason: str = ""
     created_at: datetime
 
 
 class PatientVisitNoteDetailOut(BaseModel):
+    note_id: UUID
     status: str
     content: str
 
@@ -169,6 +172,7 @@ class PatientVisitDetailOut(BaseModel):
     reason: str = ""
     timestamp: datetime
     consultation_note: PatientVisitNoteDetailOut | None = None
+    optometry_history: OptometryHistoryPayload | None = None
     attachments: list[PatientVisitAttachmentRowOut] = Field(default_factory=list)
     timeline: list["PatientTimelineEvent"] = Field(default_factory=list)
 

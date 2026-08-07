@@ -169,8 +169,10 @@ async def generate_note_workflow(
     document_context = await build_document_context_for_user(repo, current_user)
     clinic_context = build_clinic_context(document_context)
     patient = None
+    resolved_visit_id: str | None = None
     if payload.patient_id:
         patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
+        resolved_visit_id = str(payload.visit_id or patient.get("current_visit_id") or "") or None
     patient_context = build_patient_context(patient)
     measurements_context = build_measurements_context(payload)
     optometry_history_snapshot: dict[str, Any] = {}
@@ -181,6 +183,7 @@ async def generate_note_workflow(
         history_row = await repo.get_optometry_history(
             str(current_user.org_id),
             str(payload.patient_id),
+            resolved_visit_id,
         )
         if history_row:
             validated_history = OptometryHistoryPayload.model_validate(
@@ -248,6 +251,9 @@ async def generate_note_workflow(
             existing_note = await repo.get_note(str(current_user.org_id), str(payload.note_id))
             if str(existing_note["patient_id"]) != str(payload.patient_id):
                 raise HTTPException(status_code=400, detail="Note does not belong to that patient.")
+            existing_visit_id = str(existing_note.get("visit_id") or "") or None
+            if resolved_visit_id and existing_visit_id and resolved_visit_id != existing_visit_id:
+                raise HTTPException(status_code=400, detail="Note does not belong to that visit.")
             if existing_note.get("status") == "draft":
                 note = await repo.update_note_draft(
                     str(current_user.org_id),
@@ -305,6 +311,7 @@ async def generate_note_workflow(
                 str(current_user.org_id),
                 NoteCreate(
                     patient_id=payload.patient_id,
+                    visit_id=resolved_visit_id,
                     content=content,
                     asset_payload=asset_payload,
                     structured_modules=structured_modules,

@@ -57,6 +57,7 @@ import {
   buildEyeExamSummary,
   createEmptyEyeExam,
   flattenEyeExamForNote,
+  hasEyeExamData,
   normalizeEyeExamPayload,
 } from "@/lib/structured-modules";
 import {
@@ -342,9 +343,10 @@ type ConsultationWorkspaceSnapshot = {
   isDraftDirty?: boolean;
   clinicalExtractions?: ClinicalExtractions;
   currentConsultationModules?: Array<{ module_type: string; payload: Record<string, unknown> }>;
-  activeOptometryStep?: "history" | "examination";
+  activeOptometryStep?: OptometryConsultationStep;
 };
 
+type OptometryConsultationStep = "history" | "examination" | "consultation";
 type InlineModuleKey = "vitals" | "medicines";
 type PediatricModuleKey = "growth" | "wellChild" | "parentHandout" | "pediatricFollowUp";
 type AssistantStage = "idle" | "questions" | "analysis";
@@ -565,7 +567,7 @@ export function ConsultationDrawer({
   const isPediatricsClinic = specialtyHasModule(clinicSpecialty, "pediatric_growth_measurement");
   const specialtyModules = getSpecialtyModules(clinicSpecialty);
   const [form, setForm] = useState(createEmptyForm);
-  const [activeOptometryStep, setActiveOptometryStep] = useState<"history" | "examination">("history");
+  const [activeOptometryStep, setActiveOptometryStep] = useState<OptometryConsultationStep>("history");
   const [openSections, setOpenSections] = useState(createClosedConsultationSections);
   const [activeInlineModule, setActiveInlineModule] = useState<InlineModuleKey | null>(null);
   const [activePediatricModule, setActivePediatricModule] = useState<PediatricModuleKey | null>(null);
@@ -582,7 +584,6 @@ export function ConsultationDrawer({
   const [isSending, setIsSending] = useState(false);
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
   const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
-  const [isEyeExamOpen, setIsEyeExamOpen] = useState(false);
   const [isContactLensOpen, setIsContactLensOpen] = useState(false);
   const [isBinocularVisionOpen, setIsBinocularVisionOpen] = useState(false);
   const [isLowVisionOpen, setIsLowVisionOpen] = useState(false);
@@ -633,15 +634,17 @@ export function ConsultationDrawer({
   const currentOrgId = currentUser?.org_id ?? "";
   const workspaceScope = useMemo(
     () => {
-      if (!patientId || !currentUserId || !currentOrgId) {
+      const visitId = patient?.current_visit?.id || "";
+      if (!patientId || !visitId || !currentUserId || !currentOrgId) {
         return null;
       }
-      return { orgId: currentOrgId, userId: currentUserId, patientId };
+      return { orgId: currentOrgId, userId: currentUserId, patientId, visitId };
     },
-    [currentOrgId, currentUserId, patientId],
+    [currentOrgId, currentUserId, patient?.current_visit?.id, patientId],
   );
   const optometryHistory = useOptometryHistory(
     patientId,
+    patient?.current_visit?.id,
     Boolean(patientId && isOptometryClinic && !isTrainingMode),
   );
 
@@ -659,7 +662,7 @@ export function ConsultationDrawer({
     const baseForm = createEmptyForm();
     const cachedForm = cachedWorkspace?.form;
     setActiveOptometryStep(
-      cachedWorkspace?.activeOptometryStep ?? (cachedWorkspace ? "examination" : "history"),
+      cachedWorkspace?.activeOptometryStep ?? (cachedWorkspace ? "consultation" : "history"),
     );
     setStatusMessage("");
     setIsGenerating(false);
@@ -680,7 +683,6 @@ export function ConsultationDrawer({
     setIsDraftDirty(cachedWorkspace?.isDraftDirty ?? false);
     setIsSending(false);
     setIsSendingWhatsApp(false);
-    setIsEyeExamOpen(false);
     setIsContactLensOpen(false);
     setIsBinocularVisionOpen(false);
     setIsLowVisionOpen(false);
@@ -1005,6 +1007,7 @@ export function ConsultationDrawer({
     return {
       note_id: refreshingDraft ? currentNoteId : undefined,
       patient_id: currentPatient.id,
+      visit_id: currentPatient.current_visit?.id ?? null,
       symptoms: form.symptoms,
       diagnosis: form.diagnosis,
       medications: medicationPlan,
@@ -1435,10 +1438,6 @@ export function ConsultationDrawer({
     setIsMyopiaManagementOpen(true);
   }
 
-  function openEyeExamModule() {
-    setIsEyeExamOpen(true);
-  }
-
   function updateContactLens(patch: Partial<ContactLensPayload>) {
     setForm((current) => ({
       ...current,
@@ -1454,10 +1453,6 @@ export function ConsultationDrawer({
         eyes: current.contactLens.eyes.map((entry) => (entry.eye === eye ? { ...entry, ...patch } : entry)),
       },
     }));
-  }
-
-  function selectEyeExamEntry(entry: LongitudinalTrackRecord) {
-    setForm((current) => ({ ...current, eyeExam: normalizeEyeExamPayload(entry.raw_payload) }));
   }
 
   function selectContactLensEntry(entry: LongitudinalTrackRecord) {
@@ -1957,7 +1952,7 @@ export function ConsultationDrawer({
       );
       setForm((current) => ({
         ...current,
-        assets: [...current.assets.filter((asset) => asset.kind !== "attachment"), ...nextAssets],
+        assets: [...current.assets, ...nextAssets],
       }));
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to attach file.");
@@ -2082,9 +2077,18 @@ export function ConsultationDrawer({
     { label: "Height", value: currentPatient.height !== null ? `${currentPatient.height} cm` : "-" },
     { label: "Weight", value: currentPatient.weight !== null ? `${currentPatient.weight} kg` : "-" },
   ];
+  const completedExaminations = [
+    hasEyeExamData(form.eyeExam) ? "Examination" : "",
+    currentConsultationModules.some((entry) => entry.module_type === "contact_lens") ? "Contact lens" : "",
+    currentConsultationModules.some((entry) => entry.module_type === "binocular_vision") ? "Binocular vision" : "",
+    currentConsultationModules.some((entry) => entry.module_type === "low_vision") ? "Low vision" : "",
+    currentConsultationModules.some((entry) => entry.module_type === "myopia_management") ? "Myopia" : "",
+    currentConsultationModules.some((entry) => entry.module_type === "tbi_evaluation") ? "Neurovision / TBI" : "",
+    [form.bloodPressureSystolic, form.bloodPressureDiastolic, form.pulse, form.spo2, form.bloodSugar].some((value) => value.trim()) ? "Vitals" : "",
+  ].filter(Boolean);
 
-  async function openExamination() {
-    if (await optometryHistory.save()) {
+  async function leaveHistory() {
+    if (activeOptometryStep !== "history" || await optometryHistory.save()) {
       setForm((current) => {
         const generatedSymptoms = buildChiefComplaintText(current.chiefComplaints);
         const canReplaceSymptoms = !current.symptoms.trim()
@@ -2097,8 +2101,19 @@ export function ConsultationDrawer({
             }
           : current;
       });
-      setActiveOptometryStep("examination");
+      return true;
     }
+    return false;
+  }
+
+  async function openExamination() {
+    if (!await leaveHistory()) return;
+    setActiveOptometryStep("examination");
+  }
+
+  async function openConsultation() {
+    if (!await leaveHistory()) return;
+    setActiveOptometryStep("consultation");
   }
 
   function renderAssistantQuestionControl(question: ClinicalAssistantQuestion) {
@@ -2177,7 +2192,76 @@ export function ConsultationDrawer({
     );
   }
 
-  function renderTestsSection() {
+  function renderAttachmentsSection() {
+    return (
+      <section className="rounded-[18px] border border-[#bfd7e8] bg-white/80 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm font-medium text-slate-900">Attachments</p>
+          <div className="flex shrink-0 items-center gap-3">
+            {attachmentAssets.length ? (
+              <span className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[#2a6fa8]">
+                {attachmentAssets.length} file{attachmentAssets.length === 1 ? "" : "s"}
+              </span>
+            ) : null}
+            <label
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] text-slate-900 transition hover:bg-[#dbeaf4]"
+              aria-label="Add attachment"
+              title="Add attachment"
+            >
+              <Plus className="h-6 w-6" />
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                multiple
+                onChange={handleAttachmentSelect}
+                className="hidden"
+              />
+            </label>
+          </div>
+        </div>
+        {attachmentAssets.length ? (
+          <div className="mt-4 space-y-2">
+            {attachmentAssets.map((asset) => (
+              <div
+                key={asset.id}
+                className="flex items-center justify-between gap-3 rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/40 px-3 py-2"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  {asset.content_type.startsWith("image/") && asset.data_base64 ? (
+                    <NextImage
+                      src={`data:${asset.content_type};base64,${asset.data_base64}`}
+                      alt={asset.name}
+                      width={48}
+                      height={48}
+                      className="h-12 w-12 rounded-xl border border-[#dbe7ef] object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#dbe7ef] bg-white text-slate-500">
+                      <Paperclip className="h-4 w-4" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-900">{asset.name}</p>
+                    <p className="text-xs text-slate-500">{asset.content_type}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeAsset(asset.id)}
+                  className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-white"
+                  aria-label={`Remove ${asset.name}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </section>
+    );
+  }
+
+  function renderTestsSection(examinationWorkspace = false) {
     return (
       <section className="rounded-[18px] border border-[#bfd7e8] bg-white/90 p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -2193,7 +2277,7 @@ export function ConsultationDrawer({
             const copy = TEST_MODULE_COPY[moduleKey];
             const openModule = () => {
               if (moduleKey === "eye_exam") {
-                openEyeExamModule();
+                setActiveOptometryStep("examination");
               } else if (moduleKey === "contact_lens") {
                 openOptometryModule("contactLens");
               } else if (moduleKey === "binocular_vision") {
@@ -2214,7 +2298,7 @@ export function ConsultationDrawer({
                 setActivePediatricModule("pediatricFollowUp");
               }
             };
-            return renderModuleButton(copy.label, false, openModule);
+            return renderModuleButton(copy.label, examinationWorkspace && moduleKey === "eye_exam", openModule);
           })}
         </div>
         {moduleEntryError ? <p className="mt-3 text-sm font-medium text-rose-600">{moduleEntryError}</p> : null}
@@ -2580,13 +2664,16 @@ export function ConsultationDrawer({
         </div>
 
         {isOptometryClinic ? (
-          <nav aria-label="Consultation steps" className="mb-7 flex w-full max-w-[620px]">
+          <nav aria-label="Consultation steps" className="mb-7 flex w-full max-w-[880px]">
             {([
               ["history", "Step 1", "History"],
               ["examination", "Step 2", "Examination"],
+              ["consultation", "Step 3", "Consultation"],
             ] as const).map(([step, eyebrow, label], index) => {
               const active = activeOptometryStep === step;
-              const complete = step === "history" && activeOptometryStep === "examination";
+              const complete = step === "history"
+                ? activeOptometryStep !== "history"
+                : step === "examination" && hasEyeExamData(form.eyeExam);
               return (
                 <button
                   key={step}
@@ -2595,17 +2682,21 @@ export function ConsultationDrawer({
                   onClick={() => {
                     if (step === "history") {
                       setActiveOptometryStep("history");
-                    } else {
+                    } else if (step === "examination") {
                       void openExamination();
+                    } else {
+                      void openConsultation();
                     }
                   }}
                   style={{
                     clipPath: index === 0
                       ? "polygon(0 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 0 100%)"
-                      : "polygon(0 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 0 100%, 18px 50%)",
+                      : index === 2
+                        ? "polygon(0 0, 100% 0, 100% 100%, 0 100%, 18px 50%)"
+                        : "polygon(0 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 0 100%, 18px 50%)",
                   }}
                   className={`flex h-12 flex-1 items-center justify-center gap-2 border border-[#bfd7e8] px-5 text-sm transition ${
-                    index === 1 ? "-ml-2 pl-8" : "relative z-10 pr-7"
+                    index > 0 ? "-ml-2 pl-8" : "relative z-10 pr-7"
                   } ${
                     active
                       ? "bg-[#e2f0fa] font-semibold text-[#174f78]"
@@ -2625,19 +2716,44 @@ export function ConsultationDrawer({
         ) : null}
 
         {isOptometryClinic && activeOptometryStep === "history" ? (
-          <OptometryHistoryEditor
-            controller={optometryHistory}
-            chiefComplaints={form.chiefComplaints}
-            onChiefComplaintsChange={(chiefComplaints) => (
-              setForm((current) => ({ ...current, chiefComplaints }))
-            )}
-            onContinue={openExamination}
-          />
+          <div className="space-y-6">
+            <OptometryHistoryEditor
+              controller={optometryHistory}
+              chiefComplaints={form.chiefComplaints}
+              onChiefComplaintsChange={(chiefComplaints) => (
+                setForm((current) => ({ ...current, chiefComplaints }))
+              )}
+              onContinue={openExamination}
+            />
+            {renderAttachmentsSection()}
+          </div>
+        ) : isOptometryClinic && activeOptometryStep === "examination" ? (
+          <div className="space-y-5">
+            {renderTestsSection(true)}
+            <section className="overflow-hidden rounded-[18px] border border-[#bfd7e8] bg-white">
+              <div className="border-b border-[#dbe7ef] px-5 py-4">
+                <h3 className="text-xl font-semibold text-slate-900">Examination</h3>
+                <p className="mt-1 text-sm text-slate-600">Complete the structured refraction and ocular examination for this visit.</p>
+              </div>
+              <div className="p-3 sm:p-5">
+                <EyeExamModal
+                  open
+                  inline
+                  value={form.eyeExam}
+                  onClose={() => undefined}
+                  onSave={async (next) => {
+                    setForm((current) => ({ ...current, eyeExam: next }));
+                    await saveStructuredModuleEntry("eye_exam", next as unknown as Record<string, unknown>, buildEyeExamSummary(next));
+                    setActiveOptometryStep("consultation");
+                  }}
+                />
+              </div>
+            </section>
+          </div>
         ) : (
         <form className="grid gap-5 pr-1 xl:grid-cols-[minmax(0,1fr)_410px]" onSubmit={handleGenerate}>
           {isOptometryClinic ? (
             <div className="space-y-5 xl:hidden">
-              {renderTestsSection()}
               <OptometryHistorySummary
                 controller={optometryHistory}
                 onEdit={() => setActiveOptometryStep("history")}
@@ -2646,6 +2762,29 @@ export function ConsultationDrawer({
             </div>
           ) : null}
           <div className="space-y-4">
+            {isOptometryClinic ? (
+              <section className="rounded-[18px] border border-[#bfd7e8] bg-[#f7fbfd] px-4 py-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Examinations completed</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {completedExaminations.length ? completedExaminations.map((label) => (
+                        <span key={label} className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                          {label}
+                        </span>
+                      )) : <span className="text-sm text-slate-500">No examination findings saved yet.</span>}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveOptometryStep("examination")}
+                    className="rounded-xl border border-[#2f8fd3] bg-white px-4 py-2 text-sm font-semibold text-[#287fc0] transition hover:bg-[#edf5fa]"
+                  >
+                    Review Examination
+                  </button>
+                </div>
+              </section>
+            ) : null}
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Symptoms</span>
               <textarea
@@ -2713,69 +2852,7 @@ export function ConsultationDrawer({
             {!isOptometryClinic ? renderTestsSection() : null}
 
               <div className="grid gap-4 xl:grid-cols-2">
-                <section className="rounded-[18px] border border-[#bfd7e8] bg-white/80 p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <p className="text-sm font-medium text-slate-900">Attachments</p>
-                    <div className="flex shrink-0 items-center gap-3">
-                      {attachmentAssets.length ? (
-                        <span className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[#2a6fa8]">
-                          {attachmentAssets.length} file{attachmentAssets.length === 1 ? "" : "s"}
-                        </span>
-                      ) : null}
-                      <label
-                        className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] text-slate-900 transition hover:bg-[#dbeaf4]"
-                        aria-label="Add attachment"
-                        title="Add attachment"
-                      >
-                        <Plus className="h-6 w-6" />
-                        <input
-                          type="file"
-                          accept="image/*,application/pdf"
-                          multiple
-                          onChange={handleAttachmentSelect}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
-                  </div>
-                  {attachmentAssets.length ? (
-                    <div className="mt-4 space-y-2">
-                      {attachmentAssets.map((asset) => (
-                        <div
-                          key={asset.id}
-                          className="flex items-center justify-between gap-3 rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]/40 px-3 py-2"
-                        >
-                          <div className="flex min-w-0 items-center gap-3">
-                            {asset.content_type.startsWith("image/") && asset.data_base64 ? (
-                              <NextImage
-                                src={`data:${asset.content_type};base64,${asset.data_base64}`}
-                                alt={asset.name}
-                                width={48}
-                                height={48}
-                                className="h-12 w-12 rounded-xl border border-[#dbe7ef] object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#dbe7ef] bg-white text-slate-500">
-                                <Paperclip className="h-4 w-4" />
-                              </div>
-                            )}
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium text-slate-900">{asset.name}</p>
-                              <p className="text-xs text-slate-500">{asset.content_type}</p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeAsset(asset.id)}
-                            className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-white"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </section>
+                {renderAttachmentsSection()}
 
               <ConsultationExpandableCard
                 title="Drawing"
@@ -3128,40 +3205,6 @@ export function ConsultationDrawer({
                   </div>
                 </ConsultationModuleDetail>
               </ConsultationModuleRailItem>
-              {isOptometryClinic ? (
-                <>
-                  <ConsultationModuleRailItem
-                    title="Eye Exam"
-                    description="Refraction and vision entries"
-                    onSelect={openEyeExamModule}
-                  />
-                  <ConsultationModuleRailItem
-                    title="Contact lens"
-                    description="Trial fit and order details"
-                    onSelect={() => openOptometryModule("contactLens")}
-                  />
-                  <ConsultationModuleRailItem
-                    title="Binocular vision"
-                    description="Symptoms, alignment, vergence"
-                    onSelect={() => openOptometryModule("binocularVision")}
-                  />
-                  <ConsultationModuleRailItem
-                    title="Low vision"
-                    description="Functional vision and aids"
-                    onSelect={() => openOptometryModule("lowVision")}
-                  />
-	                  <ConsultationModuleRailItem
-	                    title="Myopia management"
-	                    description="Axial length and treatment"
-	                    onSelect={() => openOptometryModule("myopiaManagement")}
-	                  />
-	                  <ConsultationModuleRailItem
-	                    title="TBI evaluation"
-	                    description="Neurovision worksheet"
-	                    onSelect={() => openOptometryModule("tbiEvaluation")}
-	                  />
-	                </>
-	              ) : null}
               {isPediatricsClinic ? (
                 <>
                   <ConsultationModuleRailItem
@@ -3330,7 +3373,6 @@ export function ConsultationDrawer({
           </div>
           {isOptometryClinic ? (
             <div className="hidden space-y-4 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:block xl:self-start xl:sticky xl:top-4">
-              {renderTestsSection()}
               <OptometryHistorySummary
                 controller={optometryHistory}
                 onEdit={() => setActiveOptometryStep("history")}
@@ -3642,17 +3684,6 @@ export function ConsultationDrawer({
         onChange={updateContactLens}
         onEyeChange={updateContactLensEye}
         sidebar={renderPreviousEvaluations("contact_lens", selectContactLensEntry)}
-      />
-      <EyeExamModal
-        open={isOptometryClinic && isEyeExamOpen}
-        value={form.eyeExam}
-        onClose={() => setIsEyeExamOpen(false)}
-        onSave={async (next) => {
-          setForm((current) => ({ ...current, eyeExam: next }));
-          const payload = next as unknown as Record<string, unknown>;
-          await saveStructuredModuleEntry("eye_exam", payload, buildEyeExamSummary(next));
-        }}
-        sidebar={renderPreviousEvaluations("eye_exam", selectEyeExamEntry)}
       />
       <BinocularVisionModal
         open={isOptometryClinic && isBinocularVisionOpen}

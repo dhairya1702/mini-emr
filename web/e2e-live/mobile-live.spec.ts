@@ -105,6 +105,9 @@ test("mobile live queue, consultation, and chart flow works end to end", async (
   await page.getByText(patientName).click();
   await expect(page.getByText("Patient chart")).toBeVisible();
   await expect(page.getByRole("button", { name: "Visit 1" })).toBeVisible();
+  const notePreviewPromise = page.waitForEvent("popup");
   await page.getByRole("button", { name: "Consultation note" }).click();
-  await expect(page.getByText(/Presenting Complaint:\s*Cough for three days/).nth(1)).toBeVisible();
+  const notePreview = await notePreviewPromise;
+  expect(notePreview.isClosed()).toBe(false);
+  await notePreview.close();
 });

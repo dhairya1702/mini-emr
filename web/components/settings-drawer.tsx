@@ -2486,7 +2486,7 @@ export function SettingsDrawer({
                       onClose();
                       if (pathname !== href) {
                         startTransition(() => {
-                          router.push(href);
+                          router.replace(href);
                         });
                       }
                       return;

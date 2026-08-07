@@ -164,6 +164,7 @@ export interface PatientTimelineEvent {
 export interface PatientChartVisit {
   id: string;
   patient_id: string;
+  visit_number: number;
   reason: string;
   created_at: string;
 }
@@ -219,6 +220,7 @@ export interface PatientVisitAttachmentRow {
 }
 
 export interface PatientVisitNoteDetail {
+  note_id: string;
   status: string;
   content: string;
 }
@@ -228,6 +230,7 @@ export interface PatientVisitDetail {
   reason: string;
   timestamp: string;
   consultation_note: PatientVisitNoteDetail | null;
+  optometry_history: OptometryHistoryPayload | null;
   attachments: PatientVisitAttachmentRow[];
   timeline: PatientTimelineEvent[];
 }
@@ -487,6 +490,7 @@ export interface OptometryHistoryPayload {
 export interface OptometryHistory {
   history_id: string | null;
   patient_id: string;
+  visit_id: string | null;
   payload: OptometryHistoryPayload;
   revision: number;
   exists: boolean;
@@ -863,6 +867,7 @@ export interface CaseStudySavePayload {
 export interface GenerateNotePayload {
   note_id?: string;
   patient_id: string;
+  visit_id?: string | null;
   symptoms: string;
   diagnosis: string;
   medications: string;

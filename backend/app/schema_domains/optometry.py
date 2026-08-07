@@ -71,6 +71,7 @@ class OptometryHistoryUpdate(BaseModel):
 class OptometryHistoryOut(BaseModel):
     history_id: UUID | None = None
     patient_id: UUID
+    visit_id: UUID | None = None
     payload: OptometryHistoryPayload = Field(default_factory=OptometryHistoryPayload)
     revision: int = 0
     exists: bool = False

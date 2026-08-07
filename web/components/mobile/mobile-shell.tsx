@@ -91,6 +91,7 @@ export function MobileShell({
             <div className="min-w-0 flex-1 text-center">
               <Link
                 href="/m"
+                replace
                 className="block truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
               >
                 {clinicSettings?.clinic_name || "Clinic EMR"}
@@ -148,6 +149,7 @@ export function MobileShell({
                   <Link
                     key={item.href}
                     href={item.href}
+                    replace
                     onClick={() => setIsMenuOpen(false)}
                     className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold ${
                       isActive

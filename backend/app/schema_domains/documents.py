@@ -21,6 +21,7 @@ from app.schema_domains.specialty import StructuredModuleInput, WellChildVisitIn
 class GenerateNoteRequest(BaseModel):
     note_id: UUID | None = None
     patient_id: UUID | None = None
+    visit_id: UUID | None = None
     symptoms: str = Field(default="", max_length=8000)
     diagnosis: str = Field(default="", max_length=8000)
     medications: str = Field(default="", max_length=12000)

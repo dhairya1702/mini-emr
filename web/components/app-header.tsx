@@ -66,7 +66,7 @@ export function AppHeader({
     const query = globalSearch.trim();
     if (!query) return;
     const destination = active === "history" ? "/history" : "/patients";
-    window.location.assign(`${destination}?q=${encodeURIComponent(query)}`);
+    window.location.replace(`${destination}?q=${encodeURIComponent(query)}`);
   }
 
   return (
@@ -84,7 +84,7 @@ export function AppHeader({
           </button>
         ) : null}
 
-        <Link href="/" className="min-w-0 rounded-xl focus:outline-none focus:ring-4 focus:ring-[#d8ebf7]">
+        <Link href="/" replace className="min-w-0 rounded-xl focus:outline-none focus:ring-4 focus:ring-[#d8ebf7]">
           <span className="block max-w-[280px] truncate text-xl font-bold tracking-[-0.02em] text-[#1f2b3d]">
             {clinicName}
           </span>
@@ -134,6 +134,7 @@ export function AppHeader({
             <Link
               key={item.key}
               href={item.href}
+              replace
               className={`shrink-0 rounded-xl px-3.5 py-2 text-sm font-semibold transition active:scale-[0.98] ${
                 isActive
                   ? "bg-[#2f8fd3] text-white shadow-[0_8px_18px_rgba(47,143,211,0.22)]"

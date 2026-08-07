@@ -1,6 +1,6 @@
 import type { AuthUser, NoteAsset } from "@/lib/types";
 
-const MOBILE_CONSULTATION_PREFIX = "mobile-consultation:v1";
+const MOBILE_CONSULTATION_PREFIX = "mobile-consultation:v2";
 
 export type MobileStructuredModuleDraft = {
   module_type: string;
@@ -30,6 +30,7 @@ type MobileConsultationScope = {
   orgId: string;
   userId: string;
   patientId: string;
+  visitId: string;
 };
 
 function isBrowser() {
@@ -39,18 +40,20 @@ function isBrowser() {
 export function resolveMobileConsultationScope(
   currentUser: AuthUser | null | undefined,
   patientId: string,
+  visitId: string,
 ): MobileConsultationScope | null {
   const orgId = currentUser?.org_id?.trim() || "";
   const userId = currentUser?.id?.trim() || "";
   const normalizedPatientId = patientId.trim();
-  if (!orgId || !userId || !normalizedPatientId) {
+  const normalizedVisitId = visitId.trim();
+  if (!orgId || !userId || !normalizedPatientId || !normalizedVisitId) {
     return null;
   }
-  return { orgId, userId, patientId: normalizedPatientId };
+  return { orgId, userId, patientId: normalizedPatientId, visitId: normalizedVisitId };
 }
 
 export function mobileConsultationKey(scope: MobileConsultationScope) {
-  return `${MOBILE_CONSULTATION_PREFIX}:${scope.orgId}:${scope.userId}:${scope.patientId}`;
+  return `${MOBILE_CONSULTATION_PREFIX}:${scope.orgId}:${scope.userId}:${scope.patientId}:${scope.visitId}`;
 }
 
 export function readMobileConsultationDraft(scope: MobileConsultationScope): MobileConsultationDraft | null {

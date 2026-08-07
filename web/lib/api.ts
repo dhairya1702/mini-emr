@@ -801,11 +801,22 @@ export const api = {
   getPatient: (patientId: string) => request<Patient>(`/patients/${patientId}`),
   getPatientOptometryHistory: (patientId: string) =>
     request<OptometryHistory>(`/patients/${patientId}/optometry-history`),
+  getPatientVisitOptometryHistory: (patientId: string, visitId: string) =>
+    request<OptometryHistory>(`/patients/${patientId}/visits/${visitId}/optometry-history`),
   savePatientOptometryHistory: (
     patientId: string,
     payload: { expected_revision: number; payload: OptometryHistoryPayload },
   ) =>
     request<OptometryHistory>(`/patients/${patientId}/optometry-history`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  savePatientVisitOptometryHistory: (
+    patientId: string,
+    visitId: string,
+    payload: { expected_revision: number; payload: OptometryHistoryPayload },
+  ) =>
+    request<OptometryHistory>(`/patients/${patientId}/visits/${visitId}/optometry-history`, {
       method: "PUT",
       body: JSON.stringify(payload),
     }),

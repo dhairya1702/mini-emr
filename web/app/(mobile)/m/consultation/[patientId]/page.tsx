@@ -171,9 +171,10 @@ export default function MobileConsultationPage() {
   const selectedTestValue = activeModule ?? "";
 
   const patient = useMemo(() => patients.find((row) => row.id === patientId) ?? null, [patientId, patients]);
+  const currentVisitId = patient?.current_visit?.id || "";
   const scope = useMemo(
-    () => resolveMobileConsultationScope(currentUser, patientId || ""),
-    [currentUser, patientId],
+    () => resolveMobileConsultationScope(currentUser, patientId || "", currentVisitId),
+    [currentUser, currentVisitId, patientId],
   );
 
   useEffect(() => {
@@ -326,6 +327,7 @@ export default function MobileConsultationPage() {
     try {
       const generated = await api.generateNote({
         patient_id: patient.id,
+        visit_id: patient.current_visit?.id ?? null,
         note_id: form.noteId || undefined,
         symptoms: form.symptoms,
         diagnosis: form.diagnosis,
@@ -361,6 +363,7 @@ export default function MobileConsultationPage() {
     }
     const synced = await api.generateNote({
       patient_id: patient.id,
+      visit_id: patient.current_visit?.id ?? null,
       note_id: form.noteId,
       symptoms: form.symptoms,
       diagnosis: form.diagnosis,
@@ -854,7 +857,7 @@ export default function MobileConsultationPage() {
             </p>
           </section>
 
-          {isOptometryClinic ? <OptometryHistoryPanel patientId={patient.id} collapsible /> : null}
+          {isOptometryClinic ? <OptometryHistoryPanel patientId={patient.id} visitId={patient.current_visit?.id} collapsible /> : null}
 
           <section className="grid gap-2 rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5">
             {soapFields.map(([key, label]) => (

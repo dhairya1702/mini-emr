@@ -1998,9 +1998,16 @@ class FakeRepo:
             raise ValueError("Patient not found for this organization.")
         return patient
 
-    async def get_optometry_history(self, org_id: str, patient_id: str) -> dict | None:
-        await self.get_patient(org_id, patient_id)
-        row = self.optometry_histories.get((org_id, patient_id))
+    async def get_optometry_history(self, org_id: str, patient_id: str, visit_id: str | None = None) -> dict | None:
+        patient = await self.get_patient(org_id, patient_id)
+        resolved_visit_id = visit_id or str(patient.get("current_visit_id") or "") or None
+        if resolved_visit_id:
+            row = self.optometry_histories.get((org_id, patient_id, resolved_visit_id))
+        else:
+            row = next(
+                (value for key, value in reversed(list(self.optometry_histories.items())) if key[:2] == (org_id, patient_id)),
+                None,
+            )
         return dict(row) if row else None
 
     async def save_optometry_history(
@@ -2011,9 +2018,16 @@ class FakeRepo:
         updated_by: str,
         expected_revision: int,
         payload: dict,
+        visit_id: str | None = None,
     ) -> dict:
-        await self.get_patient(org_id, patient_id)
-        current = self.optometry_histories.get((org_id, patient_id))
+        patient = await self.get_patient(org_id, patient_id)
+        resolved_visit_id = visit_id or str(patient.get("current_visit_id") or "")
+        if not resolved_visit_id or not any(
+            str(visit["id"]) == resolved_visit_id and visit["org_id"] == org_id and visit["patient_id"] == patient_id
+            for visit in self.patient_visits.values()
+        ):
+            raise ValueError("Visit not found for this patient.")
+        current = self.optometry_histories.get((org_id, patient_id, resolved_visit_id))
         current_revision = int(current.get("revision") or 0) if current else 0
         if current_revision != expected_revision:
             raise ValueError(f"OPTOMETRY_HISTORY_REVISION_CONFLICT:{current_revision}")
@@ -2023,6 +2037,7 @@ class FakeRepo:
             "history_id": current["history_id"] if current else str(uuid4()),
             "org_id": org_id,
             "patient_id": patient_id,
+            "visit_id": resolved_visit_id,
             "payload": dict(payload),
             "revision": current_revision + 1,
             "updated_by": updated_by,
@@ -2030,15 +2045,16 @@ class FakeRepo:
             "created_at": current["created_at"] if current else now,
             "updated_at": now,
         }
-        self.optometry_histories[(org_id, patient_id)] = row
+        self.optometry_histories[(org_id, patient_id, resolved_visit_id)] = row
         self.optometry_history_revisions.append(dict(row))
         return dict(row)
 
-    async def list_optometry_history_revisions(self, org_id: str, patient_id: str) -> list[dict]:
+    async def list_optometry_history_revisions(self, org_id: str, patient_id: str, visit_id: str | None = None) -> list[dict]:
         return [
             dict(row)
             for row in reversed(self.optometry_history_revisions)
             if row["org_id"] == org_id and row["patient_id"] == patient_id
+            and (visit_id is None or row["visit_id"] == visit_id)
         ]
 
     async def save_patient_summary(

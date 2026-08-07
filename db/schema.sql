@@ -104,12 +104,13 @@ create table if not exists public.patient_optometry_histories (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
   patient_id uuid not null,
+  visit_id uuid not null,
   payload jsonb not null default '{}'::jsonb,
   revision integer not null default 1 check (revision >= 1),
   updated_by uuid references public.clinic_users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (org_id, patient_id),
+  unique (org_id, patient_id, visit_id),
   constraint patient_optometry_histories_org_patient_fk
     foreign key (org_id, patient_id)
     references public.patients(org_id, id)
@@ -121,6 +122,7 @@ create table if not exists public.patient_optometry_history_revisions (
   history_id uuid not null references public.patient_optometry_histories(id) on delete cascade,
   org_id uuid not null references public.organizations(id) on delete cascade,
   patient_id uuid not null,
+  visit_id uuid not null,
   revision integer not null check (revision >= 1),
   payload jsonb not null,
   updated_by uuid references public.clinic_users(id) on delete set null,
@@ -134,6 +136,9 @@ create table if not exists public.patient_optometry_history_revisions (
 
 create index if not exists patient_optometry_history_revisions_patient_idx
   on public.patient_optometry_history_revisions (org_id, patient_id, revision desc);
+
+create index if not exists patient_optometry_history_revisions_visit_idx
+  on public.patient_optometry_history_revisions (org_id, patient_id, visit_id, revision desc);
 
 create table if not exists public.patient_attachments (
   id uuid primary key default gen_random_uuid(),
@@ -626,6 +631,18 @@ alter table public.invoices
 alter table public.invoices
   add constraint invoices_visit_id_fkey
   foreign key (visit_id) references public.patient_visits(id) on delete set null;
+
+alter table public.patient_optometry_histories
+  drop constraint if exists patient_optometry_histories_visit_id_fkey;
+alter table public.patient_optometry_histories
+  add constraint patient_optometry_histories_visit_id_fkey
+  foreign key (visit_id) references public.patient_visits(id) on delete cascade;
+
+alter table public.patient_optometry_history_revisions
+  drop constraint if exists patient_optometry_history_revisions_visit_id_fkey;
+alter table public.patient_optometry_history_revisions
+  add constraint patient_optometry_history_revisions_visit_id_fkey
+  foreign key (visit_id) references public.patient_visits(id) on delete cascade;
 
 create index if not exists patients_current_visit_idx on public.patients (org_id, current_visit_id);
 create index if not exists invoices_visit_created_idx on public.invoices (org_id, visit_id, created_at desc);

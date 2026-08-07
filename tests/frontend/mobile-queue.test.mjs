@@ -59,7 +59,7 @@ test("mobile consultation drafts are scoped and clearable", async () => {
     resolveMobileConsultationScope,
     writeMobileConsultationDraft,
   } = await importWebModule("lib/mobile/consultation.ts");
-  const scope = resolveMobileConsultationScope({ id: "u1", org_id: "o1" }, "p1");
+  const scope = resolveMobileConsultationScope({ id: "u1", org_id: "o1" }, "p1", "v1");
 
   writeMobileConsultationDraft(scope, {
     symptoms: "Cough",
@@ -72,7 +72,7 @@ test("mobile consultation drafts are scoped and clearable", async () => {
   });
 
   assert.equal(readMobileConsultationDraft(scope).noteId, "n1");
-  assert.equal(readMobileConsultationDraft(resolveMobileConsultationScope({ id: "u2", org_id: "o1" }, "p1")), null);
+  assert.equal(readMobileConsultationDraft(resolveMobileConsultationScope({ id: "u2", org_id: "o1" }, "p1", "v1")), null);
   clearMobileConsultationDraft(scope);
   assert.equal(readMobileConsultationDraft(scope), null);
 });

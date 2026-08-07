@@ -13,6 +13,7 @@ OPTOMETRY_HISTORY_COLUMNS = [
     "history.id as history_id",
     "history.org_id",
     "history.patient_id",
+    "history.visit_id",
     "history.payload",
     "history.revision",
     "history.updated_by",
@@ -35,7 +36,12 @@ class PostgresOptometryHistoryRepository:
     def __init__(self, connection_manager: PostgresConnectionManager) -> None:
         self.connection_manager = connection_manager
 
-    async def get_optometry_history(self, org_id: str, patient_id: str) -> dict[str, Any] | None:
+    async def get_optometry_history(
+        self,
+        org_id: str,
+        patient_id: str,
+        visit_id: str | None = None,
+    ) -> dict[str, Any] | None:
         def _get() -> dict[str, Any] | None:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
@@ -45,9 +51,11 @@ class PostgresOptometryHistoryRepository:
                         from public.patient_optometry_histories history
                         left join public.clinic_users clinic_user on clinic_user.id = history.updated_by
                         where history.org_id = %s and history.patient_id = %s
+                          and (%s::uuid is null or history.visit_id = %s::uuid)
+                        order by history.updated_at desc, history.id desc
                         limit 1
                         """,
-                        (org_id, patient_id),
+                        (org_id, patient_id, visit_id, visit_id),
                     )
                     row = cursor.fetchone()
                     if not row:
@@ -72,25 +80,36 @@ class PostgresOptometryHistoryRepository:
         updated_by: str,
         expected_revision: int,
         payload: dict[str, Any],
+        visit_id: str | None = None,
     ) -> dict[str, Any]:
         def _save() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "select id from public.patients where org_id = %s and id = %s for update",
+                        "select id, current_visit_id from public.patients where org_id = %s and id = %s for update",
                         (org_id, patient_id),
                     )
-                    if not cursor.fetchone():
+                    patient_row = cursor.fetchone()
+                    if not patient_row:
                         raise ValueError("Patient not found for this organization.")
+                    resolved_visit_id = visit_id or (str(patient_row[1]) if patient_row[1] else "")
+                    if not resolved_visit_id:
+                        raise ValueError("Patient does not have a current visit.")
+                    cursor.execute(
+                        "select id from public.patient_visits where org_id = %s and patient_id = %s and id = %s limit 1",
+                        (org_id, patient_id, resolved_visit_id),
+                    )
+                    if not cursor.fetchone():
+                        raise ValueError("Visit not found for this patient.")
 
                     cursor.execute(
                         """
                         select id, revision
                         from public.patient_optometry_histories
-                        where org_id = %s and patient_id = %s
+                        where org_id = %s and patient_id = %s and visit_id = %s
                         for update
                         """,
-                        (org_id, patient_id),
+                        (org_id, patient_id, resolved_visit_id),
                     )
                     existing = cursor.fetchone()
                     current_revision = int(existing[1]) if existing else 0
@@ -118,14 +137,15 @@ class PostgresOptometryHistoryRepository:
                         cursor.execute(
                             """
                             insert into public.patient_optometry_histories (
-                              id, org_id, patient_id, payload, revision, updated_by
+                              id, org_id, patient_id, visit_id, payload, revision, updated_by
                             )
-                            values (%s, %s, %s, %s::jsonb, %s, %s)
+                            values (%s, %s, %s, %s, %s::jsonb, %s, %s)
                             """,
                             (
                                 history_id,
                                 org_id,
                                 patient_id,
+                                resolved_visit_id,
                                 serialized,
                                 next_revision,
                                 updated_by,
@@ -135,14 +155,15 @@ class PostgresOptometryHistoryRepository:
                     cursor.execute(
                         """
                         insert into public.patient_optometry_history_revisions (
-                          history_id, org_id, patient_id, revision, payload, updated_by
+                          history_id, org_id, patient_id, visit_id, revision, payload, updated_by
                         )
-                        values (%s, %s, %s, %s, %s::jsonb, %s)
+                        values (%s, %s, %s, %s, %s, %s::jsonb, %s)
                         """,
                         (
                             history_id,
                             org_id,
                             patient_id,
+                            resolved_visit_id,
                             next_revision,
                             serialized,
                             updated_by,
@@ -170,6 +191,7 @@ class PostgresOptometryHistoryRepository:
         self,
         org_id: str,
         patient_id: str,
+        visit_id: str | None = None,
     ) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
             with self.connection_manager.pool.connection() as connection:
@@ -177,13 +199,14 @@ class PostgresOptometryHistoryRepository:
                     cursor.execute(
                         """
                         select revision.id, revision.history_id, revision.org_id,
-                          revision.patient_id, revision.revision, revision.payload,
+                          revision.patient_id, revision.visit_id, revision.revision, revision.payload,
                           revision.updated_by, revision.created_at
                         from public.patient_optometry_history_revisions revision
                         where revision.org_id = %s and revision.patient_id = %s
-                        order by revision.revision desc
+                          and (%s::uuid is null or revision.visit_id = %s::uuid)
+                        order by revision.created_at desc, revision.revision desc
                         """,
-                        (org_id, patient_id),
+                        (org_id, patient_id, visit_id, visit_id),
                     )
                     rows = [_row_to_dict(row, cursor) for row in cursor.fetchall()]
                     for row in rows:

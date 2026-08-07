@@ -221,7 +221,7 @@ async def generate_saved_note_pdf(
     note_id: str,
     repo: AppRepository = Depends(get_repository),
     storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
 ) -> StreamingResponse:
     try:
         note = await repo.get_note(str(current_user.org_id), note_id)

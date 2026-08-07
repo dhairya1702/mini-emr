@@ -130,3 +130,52 @@ test("closing a consultation cancels pending WhatsApp delivery polling", async (
 
   expect(deliveryPolls).toBe(0);
 });
+
+test("optometry consultation separates History, Examination, and Consultation", async ({ page }) => {
+  const user = buildUser();
+  const patient = buildPatient({
+    id: "patient-optometry-steps-1",
+    name: "Riley Shah",
+    reason: "Vision review",
+    status: "waiting",
+  });
+
+  await seedSession(page, { user });
+  await mockClinicBootstrap(page, {
+    user,
+    clinicSettings: buildClinicSettings({ clinic_specialty: "optometry" }),
+    patients: [patient],
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open chart for Riley Shah" }).click();
+  await page.getByRole("button", { name: "Start consultation" }).click();
+
+  const steps = page.getByRole("navigation", { name: "Consultation steps" });
+  await expect(steps.getByRole("button", { name: /History/ })).toBeVisible();
+  await expect(steps.getByRole("button", { name: /Examination/ })).toBeVisible();
+  await expect(steps.getByRole("button", { name: /Consultation/ })).toBeVisible();
+  await expect(steps.getByRole("button", { name: /History/ })).toHaveAttribute("aria-current", "step");
+  await page.getByLabel("Add attachment").setInputFiles({
+    name: "history-scan.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
+  });
+  await expect(page.getByText("history-scan.png")).toBeVisible();
+
+  await page.getByRole("button", { name: "Continue to Examination" }).click();
+  await expect(steps.getByRole("button", { name: /Examination/ })).toHaveAttribute("aria-current", "step");
+  await expect(page.getByText("Tests", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
+
+  await page.getByLabel("UCVA distance").first().fill("6/6");
+  await page.getByRole("button", { name: "Save Eye Exam" }).click();
+  await expect(steps.getByRole("button", { name: /Consultation/ })).toHaveAttribute("aria-current", "step");
+  await expect(page.getByLabel("Symptoms")).toBeVisible();
+  await expect(page.getByText("Tests", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Examinations completed", { exact: true })).toBeVisible();
+  await expect(page.getByText("history-scan.png")).toBeVisible();
+
+  await steps.getByRole("button", { name: /Examination/ }).click();
+  await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
+});

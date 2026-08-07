@@ -1,12 +1,13 @@
 import type { AuthUser } from "@/lib/types";
 
-const WORKSPACE_STORAGE_PREFIX = "consultation-workspace:v2";
-const WORKSPACE_VERSION = 2;
+const WORKSPACE_STORAGE_PREFIX = "consultation-workspace:v3";
+const WORKSPACE_VERSION = 3;
 
 type WorkspaceScope = {
   orgId: string;
   userId: string;
   patientId: string;
+  visitId: string;
 };
 
 type PersistedWorkspaceSnapshot<TSnapshot> = {
@@ -28,25 +29,28 @@ function normalizeScope(scope: WorkspaceScope) {
     orgId: scope.orgId.trim(),
     userId: scope.userId.trim(),
     patientId: scope.patientId.trim(),
+    visitId: scope.visitId.trim(),
   };
 }
 
 export function resolveConsultationWorkspaceScope(
   currentUser: AuthUser | null | undefined,
   patientId: string,
+  visitId: string,
 ): WorkspaceScope | null {
   const orgId = currentUser?.org_id?.trim() || "";
   const userId = currentUser?.id?.trim() || "";
   const normalizedPatientId = patientId.trim();
-  if (!orgId || !userId || !normalizedPatientId) {
+  const normalizedVisitId = visitId.trim();
+  if (!orgId || !userId || !normalizedPatientId || !normalizedVisitId) {
     return null;
   }
-  return { orgId, userId, patientId: normalizedPatientId };
+  return { orgId, userId, patientId: normalizedPatientId, visitId: normalizedVisitId };
 }
 
 export function consultationWorkspaceKey(scope: WorkspaceScope) {
   const normalized = normalizeScope(scope);
-  return `${WORKSPACE_STORAGE_PREFIX}:${normalized.orgId}:${normalized.userId}:${normalized.patientId}`;
+  return `${WORKSPACE_STORAGE_PREFIX}:${normalized.orgId}:${normalized.userId}:${normalized.patientId}:${normalized.visitId}`;
 }
 
 export function readConsultationWorkspace<TSnapshot>(

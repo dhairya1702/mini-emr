@@ -131,7 +131,7 @@ export default function PatientsPage() {
 
   function openPatientChart(patient: Patient) {
     rememberRecentPatient(patient);
-    router.push(`/patients/${patient.id}`);
+    router.push(`/patients/${patient.id}?from=patients`);
   }
 
   async function handleExport() {

@@ -12,6 +12,7 @@ import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-
 import { MyopiaManagementModal } from "@/components/optometry/myopia/myopia-management-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
 import { EyeExamModal } from "@/components/optometry/eye-exam-modal";
+import { OptometryHistoryReadOnly } from "@/components/optometry/history-panel";
 import { ReferralPackageModal } from "@/components/referral-package-modal";
 import { api } from "@/lib/api";
 import {
@@ -548,10 +549,12 @@ function VisitDetailPanel({
   detailError: string;
   isLoadingDetail: boolean;
   onOpenVisitAttachment: (attachment: PatientVisitAttachmentRow) => void;
-  openSections: Record<"note" | "attachments", boolean>;
+  openSections: Record<"history" | "attachments", boolean>;
   selectedVisit: PatientChartVisit | null;
-  toggleSection: (section: "note" | "attachments") => void;
+  toggleSection: (section: "history" | "attachments") => void;
 }) {
+  const [notePreviewError, setNotePreviewError] = useState("");
+  const [isOpeningNotePreview, setIsOpeningNotePreview] = useState(false);
   if (!selectedVisit) {
     return (
       <section className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-6 py-10 text-center text-sm text-slate-500">
@@ -561,8 +564,31 @@ function VisitDetailPanel({
   }
 
   const attachments = detail?.attachments ?? [];
-  const noteContent = detail?.consultation_note?.content?.trim() || "";
   const reason = detail?.reason || selectedVisit.reason || "Recorded visit";
+
+  async function openNotePreview() {
+    const noteId = detail?.consultation_note?.note_id;
+    if (!noteId || isOpeningNotePreview) return;
+    const previewWindow = window.open("", "_blank");
+    if (!previewWindow) {
+      setNotePreviewError("Allow pop-ups to preview the consultation note.");
+      return;
+    }
+    previewWindow.opener = null;
+    setIsOpeningNotePreview(true);
+    setNotePreviewError("");
+    try {
+      const blob = await api.generateSavedNotePdf(noteId);
+      const objectUrl = URL.createObjectURL(blob);
+      previewWindow.location.href = objectUrl;
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (previewError) {
+      previewWindow.close();
+      setNotePreviewError(previewError instanceof Error ? previewError.message : "Failed to preview consultation note.");
+    } finally {
+      setIsOpeningNotePreview(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -574,25 +600,33 @@ function VisitDetailPanel({
         </div>
       </section>
 
-      <CollapsibleSection
-        description="Consultation note"
-        isOpen={openSections.note}
-        onToggle={() => toggleSection("note")}
-      >
-        {isLoadingDetail ? (
-          <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-4 py-8 text-center text-sm text-slate-500">
-            Loading consultation note...
+      <section className="overflow-hidden rounded-xl border border-[#dbe7ef] bg-white">
+        <button
+          type="button"
+          disabled={isLoadingDetail || !detail?.consultation_note?.note_id || isOpeningNotePreview}
+          onClick={() => void openNotePreview()}
+          className="flex w-full items-center justify-between gap-4 px-6 py-4 text-left transition hover:bg-[#f7fbfd] disabled:cursor-default disabled:opacity-70"
+        >
+          <div>
+            <h4 className="text-lg font-semibold text-slate-900">Consultation note</h4>
+            <p className="mt-1 text-sm text-slate-500">
+              {isLoadingDetail ? "Loading..." : detail?.consultation_note ? (isOpeningNotePreview ? "Opening letterhead preview..." : "Open letterhead preview") : "No consultation note on this visit yet."}
+            </p>
           </div>
-        ) : noteContent ? (
-          <div className="whitespace-pre-wrap rounded-xl border border-[#dbe7ef] bg-[#f7fbfd] px-4 py-3 text-sm leading-6 text-slate-700">
-            {noteContent}
-          </div>
-        ) : (
-          <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-4 py-8 text-center text-sm text-slate-500">
-            No consultation note on this visit yet.
-          </div>
-        )}
-      </CollapsibleSection>
+          <ChevronRight className="h-5 w-5 text-slate-500" />
+        </button>
+        {notePreviewError ? <p className="border-t border-[#dbe7ef] px-6 py-3 text-sm text-rose-600">{notePreviewError}</p> : null}
+      </section>
+
+      {detail?.optometry_history ? (
+        <CollapsibleSection
+          description="History"
+          isOpen={openSections.history}
+          onToggle={() => toggleSection("history")}
+        >
+          <OptometryHistoryReadOnly payload={detail.optometry_history} />
+        </CollapsibleSection>
+      ) : null}
 
       <CollapsibleSection
         description="Files and media"
@@ -1302,8 +1336,8 @@ export function PatientDetailsDrawer({
   const [selectedContactLensEntryId, setSelectedContactLensEntryId] = useState("");
   const [selectedLowVisionEntryId, setSelectedLowVisionEntryId] = useState("");
   const [genericModuleEntryError, setGenericModuleEntryError] = useState("");
-  const [openVisitSections, setOpenVisitSections] = useState<Record<"note" | "attachments", boolean>>({
-    note: false,
+  const [openVisitSections, setOpenVisitSections] = useState<Record<"history" | "attachments", boolean>>({
+    history: false,
     attachments: false,
   });
   const [selectedVisitId, setSelectedVisitId] = useState("");
@@ -1320,7 +1354,7 @@ export function PatientDetailsDrawer({
   onLoadTimelineRef.current = onLoadTimeline;
 
   useEffect(() => {
-    setOpenVisitSections({ note: false, attachments: false });
+    setOpenVisitSections({ history: false, attachments: false });
   }, [selectedVisitId]);
 
   useEffect(() => {
@@ -1752,7 +1786,7 @@ export function PatientDetailsDrawer({
   const contactLensEntries = moduleEntriesFor(moduleEntries, "contact_lens");
   const lowVisionEntries = moduleEntriesFor(moduleEntries, "low_vision");
 
-  function toggleVisitSection(section: "note" | "attachments") {
+  function toggleVisitSection(section: "history" | "attachments") {
     setOpenVisitSections((current) => ({ ...current, [section]: !current[section] }));
   }
 
@@ -2688,7 +2722,7 @@ export function PatientDetailsDrawer({
                   {visitsError ? <p className="mt-2 text-sm text-rose-600">{visitsError}</p> : null}
                   <div className="max-h-[58vh] space-y-1.5 overflow-y-auto pr-1">
                     {visits.length ? (
-                      visits.map((visit, index) => (
+                      visits.map((visit) => (
                         <button
                           key={visit.id}
                           type="button"
@@ -2704,7 +2738,7 @@ export function PatientDetailsDrawer({
                               <div className="rounded-lg bg-[#f3f8fb] p-1.5 ring-1 ring-[#dbe7ef]">
                                 <UserRound className="h-4 w-4 text-[#2f8fd3]" />
                               </div>
-                              <p className="truncate text-sm font-semibold text-slate-900">Visit {index + 1}</p>
+                              <p className="truncate text-sm font-semibold text-slate-900">Visit {visit.visit_number}</p>
                             </div>
                             <p className="shrink-0 text-xs text-slate-500">{formatDateTime(visit.created_at)}</p>
                           </div>

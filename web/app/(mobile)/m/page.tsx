@@ -191,7 +191,7 @@ export default function MobileQueuePage() {
           ) : queuePatients.length ? (
             <div className="space-y-3">
               {queuePatients.map((patient) => {
-                const scope = resolveMobileConsultationScope(currentUser, patient.id);
+                const scope = resolveMobileConsultationScope(currentUser, patient.id, patient.current_visit?.id || "");
                 const draft = scope ? readMobileConsultationDraft(scope) : null;
                 return (
                   <MobilePatientCard

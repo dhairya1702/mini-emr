@@ -146,7 +146,7 @@ function normalizeHistoryPayload(payload: OptometryHistoryPayload): OptometryHis
   };
 }
 
-export function useOptometryHistory(patientId: string, enabled = true) {
+export function useOptometryHistory(patientId: string, visitId?: string | null, enabled = true) {
   const [record, setRecord] = useState<OptometryHistory | null>(null);
   const [draft, setDraft] = useState<OptometryHistoryPayload>(createEmptyOptometryHistory);
   const [isLoading, setIsLoading] = useState(enabled);
@@ -161,7 +161,9 @@ export function useOptometryHistory(patientId: string, enabled = true) {
     setIsLoading(true);
     setError("");
     try {
-      const loaded = await api.getPatientOptometryHistory(patientId);
+      const loaded = visitId
+        ? await api.getPatientVisitOptometryHistory(patientId, visitId)
+        : await api.getPatientOptometryHistory(patientId);
       const payload = normalizeHistoryPayload(loaded.payload);
       setRecord({ ...loaded, payload });
       setDraft(payload);
@@ -172,7 +174,7 @@ export function useOptometryHistory(patientId: string, enabled = true) {
     } finally {
       setIsLoading(false);
     }
-  }, [enabled, patientId]);
+  }, [enabled, patientId, visitId]);
 
   useEffect(() => {
     let active = true;
@@ -187,7 +189,12 @@ export function useOptometryHistory(patientId: string, enabled = true) {
     }
     setIsLoading(true);
     setError("");
-    api.getPatientOptometryHistory(patientId)
+    setRecord(null);
+    setDraft(createEmptyOptometryHistory());
+    const request = visitId
+      ? api.getPatientVisitOptometryHistory(patientId, visitId)
+      : api.getPatientOptometryHistory(patientId);
+    request
       .then((loaded) => {
         if (!active) return;
         const payload = normalizeHistoryPayload(loaded.payload);
@@ -206,7 +213,7 @@ export function useOptometryHistory(patientId: string, enabled = true) {
     return () => {
       active = false;
     };
-  }, [enabled, patientId]);
+  }, [enabled, patientId, visitId]);
 
   const savedPayload = useMemo(
     () => record?.payload ?? createEmptyOptometryHistory(),
@@ -247,7 +254,7 @@ export function useOptometryHistory(patientId: string, enabled = true) {
     setIsSaving(true);
     setError("");
     try {
-      const saved = await api.savePatientOptometryHistory(patientId, {
+      const requestPayload = {
         expected_revision: record?.revision ?? 0,
         payload: {
           ...draft,
@@ -279,7 +286,10 @@ export function useOptometryHistory(patientId: string, enabled = true) {
                 .map((entry) => ({ condition: entry.condition.trim(), comment: entry.comment.trim() }))
                 .filter((entry) => entry.condition),
         },
-      });
+      };
+      const saved = visitId
+        ? await api.savePatientVisitOptometryHistory(patientId, visitId, requestPayload)
+        : await api.savePatientOptometryHistory(patientId, requestPayload);
       const payload = normalizeHistoryPayload(saved.payload);
       setRecord({ ...saved, payload });
       setDraft(payload);
@@ -818,10 +828,8 @@ function HistoryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function HistorySummaryRows({ controller }: { controller: OptometryHistoryController }) {
-  const saved = controller.savedPayload;
-  if (controller.isLoading) return <p className="py-6 text-center text-sm text-slate-500">Loading...</p>;
-  if (!controller.hasDetails) return <p className="py-6 text-center text-sm text-slate-500">No history recorded.</p>;
+function HistoryPayloadRows({ saved }: { saved: OptometryHistoryPayload }) {
+  if (!hasOptometryHistoryDetails(saved)) return <p className="py-6 text-center text-sm text-slate-500">No history recorded.</p>;
   return (
     <div>
       <HistoryRow
@@ -838,52 +846,35 @@ function HistorySummaryRows({ controller }: { controller: OptometryHistoryContro
       />
       {saved.no_known_allergies ? <HistoryRow label="Allergies" value="No known allergies" /> : (
         <>
-          <HistoryRow
-            label="Drug allergies"
-            value={saved.drug_allergy_entries.map((entry) => (
-              entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition
-            )).join("\n")}
-          />
-          <HistoryRow
-            label="Contact allergies"
-            value={saved.contact_allergy_entries.map((entry) => (
-              entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition
-            )).join("\n")}
-          />
-          <HistoryRow
-            label="Food allergies"
-            value={saved.food_allergy_entries.map((entry) => (
-              entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition
-            )).join("\n")}
-          />
+          <HistoryRow label="Drug allergies" value={saved.drug_allergy_entries.map((entry) => entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition).join("\n")} />
+          <HistoryRow label="Contact allergies" value={saved.contact_allergy_entries.map((entry) => entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition).join("\n")} />
+          <HistoryRow label="Food allergies" value={saved.food_allergy_entries.map((entry) => entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition).join("\n")} />
         </>
       )}
       <HistoryRow label="Current medications" value={saved.current_medications} />
       <HistoryRow label="Family" value={saved.family} />
       {saved.wears_glasses !== null ? <HistoryRow label="Wears glasses" value={booleanLabel(saved.wears_glasses)} /> : null}
-      <HistoryRow
-        label="Glasses & contacts"
-        value={[
-          saved.glasses_since ? `Since ${saved.glasses_since}` : "",
-          saved.glasses_usage,
-          saved.lens_type,
-          saved.prescription_age ? `Rx ${saved.prescription_age}` : "",
-          saved.pd ? `PD ${saved.pd}` : "",
-        ].filter(Boolean).join(" · ")}
-      />
+      <HistoryRow label="Glasses & contacts" value={[saved.glasses_since ? `Since ${saved.glasses_since}` : "", saved.glasses_usage, saved.lens_type, saved.prescription_age ? `Rx ${saved.prescription_age}` : "", saved.pd ? `PD ${saved.pd}` : ""].filter(Boolean).join(" · ")} />
       <HistoryRow label="Current power OD" value={formatPower(saved.right_power)} />
       <HistoryRow label="Current power OS" value={formatPower(saved.left_power)} />
       <HistoryRow label="Glasses notes" value={saved.glasses_notes} />
       {saved.wears_contact_lenses !== null ? <HistoryRow label="Wears contact lenses" value={booleanLabel(saved.wears_contact_lenses)} /> : null}
-      <HistoryRow
-        label="Contact lenses"
-        value={[saved.contacts_since ? `Since ${saved.contacts_since}` : "", saved.contact_lens_type, saved.contact_lens_notes]
-          .filter(Boolean).join(" · ")}
-      />
+      <HistoryRow label="Contact lenses" value={[saved.contacts_since ? `Since ${saved.contacts_since}` : "", saved.contact_lens_type, saved.contact_lens_notes].filter(Boolean).join(" · ")} />
       <HistoryRow label="Contact power OD" value={formatPower(saved.right_contact_power)} />
       <HistoryRow label="Contact power OS" value={formatPower(saved.left_contact_power)} />
     </div>
   );
+}
+
+function HistorySummaryRows({ controller }: { controller: OptometryHistoryController }) {
+  if (controller.isLoading) return <p className="py-6 text-center text-sm text-slate-500">Loading...</p>;
+  if (!controller.hasDetails) return <p className="py-6 text-center text-sm text-slate-500">No history recorded.</p>;
+  return <HistoryPayloadRows saved={controller.savedPayload} />;
+}
+
+export function OptometryHistoryReadOnly({ payload }: { payload: OptometryHistoryPayload | null | undefined }) {
+  const saved = normalizeHistoryPayload(payload ?? createEmptyOptometryHistory());
+  return <HistoryPayloadRows saved={saved} />;
 }
 
 export function OptometryHistoryEditor({
@@ -976,12 +967,14 @@ export function OptometryHistorySummary({
 
 export function OptometryHistoryPanel({
   patientId,
+  visitId,
   collapsible = false,
 }: {
   patientId: string;
+  visitId?: string | null;
   collapsible?: boolean;
 }) {
-  const controller = useOptometryHistory(patientId);
+  const controller = useOptometryHistory(patientId, visitId);
   const [isExpanded, setIsExpanded] = useState(!collapsible);
   const [isEditing, setIsEditing] = useState(false);
 

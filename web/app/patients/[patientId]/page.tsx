@@ -13,9 +13,10 @@ export default function PatientChartPage() {
   const params = useParams<{ patientId: string }>();
   const patientId = params.patientId;
   const router = useRouter();
-  const [fromHistory] = useState(
-    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("from") === "history",
+  const [origin] = useState(
+    () => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("from") : null,
   );
+  const fromHistory = origin === "history";
   const backLabel = fromHistory ? "History" : "Patients";
   const backHref = fromHistory ? "/history" : "/patients";
 
@@ -77,7 +78,11 @@ export default function PatientChartPage() {
   }
 
   function goBack() {
-    router.push(backHref);
+    if (origin === "history" || origin === "patients") {
+      router.back();
+      return;
+    }
+    router.replace(backHref);
   }
 
   if (!patient) {

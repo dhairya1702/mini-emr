@@ -48,21 +48,18 @@ test("solo consultation billing keeps custom items after the old polling interva
   await expect(page.getByText("Plan: Hydration and observation.")).toBeVisible();
   await page.getByRole("button", { name: "Done" }).click();
 
-  await expect(page.getByRole("heading", { level: 2, name: "Reset Check", exact: true })).toBeVisible();
-  await expect(page.getByText("Invoice Items for Reset Check")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: "Reset Check Invoice", exact: true })).toBeVisible();
 
-  await page.getByPlaceholder("e.g. Procedure charge, dressing, emergency fee").fill("Custom fee");
+  await page.getByPlaceholder("Manual item").fill("Custom fee");
   const decimalInputs = page.locator('input[inputmode="decimal"]');
   await decimalInputs.last().fill("250");
   await page.getByRole("button", { name: "Add", exact: true }).click();
 
-  await expect(page.getByText("2 items")).toBeVisible();
   await expect(page.getByText("Custom fee")).toBeVisible();
 
   await page.waitForTimeout(6500);
 
   await expect(page.getByText("Custom fee")).toBeVisible();
-  await expect(page.getByText("2 items")).toBeVisible();
 });
 
 test("consultation follow-up failure keeps the drawer open and shows the error", async ({ page }) => {
@@ -110,8 +107,8 @@ test("consultation follow-up failure keeps the drawer open and shows the error",
   await expect(page.getByText("Plan: Hydration and observation.")).toBeVisible();
 
   await page.getByRole("button", { name: "Follow-up" }).click();
-  await page.getByLabel("Follow-up Date").fill("2026-06-30");
-  await page.getByLabel("Follow-up Notes").fill("Return for review");
+  await page.getByLabel("Date", { exact: true }).fill("2026-06-30");
+  await page.getByLabel("Notes", { exact: true }).fill("Return for review");
   await page.getByRole("button", { name: "Done" }).click();
 
   await expect(page.getByText("Follow-up create failed.")).toBeVisible();

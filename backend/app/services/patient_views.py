@@ -1,6 +1,6 @@
 from app.db import AppRepository
 from app.schema_domains.billing import InvoiceOut
-from app.schema_domains.optometry import MyopiaDeltaOut, MyopiaHistoryOut, MyopiaMeasurementOut
+from app.schema_domains.optometry import MyopiaDeltaOut, MyopiaHistoryOut, MyopiaMeasurementOut, OptometryHistoryPayload
 from app.schema_domains.patients import (
     NoteOut,
     PatientChartVisitOut,
@@ -355,11 +355,14 @@ async def list_patient_chart_visits_view(
 ) -> list[PatientChartVisitOut]:
     await repo.get_patient(org_id, patient_id)
     visits = await repo.list_patient_visits_for_patient(org_id, patient_id)
-    visits.sort(key=lambda row: row["created_at"], reverse=True)
+    chronological = sorted(visits, key=lambda row: (row["created_at"], str(row["id"])))
+    visit_numbers = {str(visit["id"]): index + 1 for index, visit in enumerate(chronological)}
+    visits.sort(key=lambda row: (row["created_at"], str(row["id"])), reverse=True)
     return [
         PatientChartVisitOut(
             id=visit["id"],
             patient_id=visit["patient_id"],
+            visit_number=visit_numbers[str(visit["id"])],
             reason=str(visit.get("reason") or ""),
             created_at=visit["created_at"],
         )
@@ -399,6 +402,15 @@ async def build_patient_visit_detail_view(
             ]
     visit_notes.sort(key=lambda note: note.finalized_at or note.created_at, reverse=True)
     primary_note = visit_notes[0] if visit_notes else None
+    history_payload = None
+    if primary_note:
+        history_snapshot = primary_note.snapshot_optometry_history or primary_note.optometry_history or {}
+        if isinstance(history_snapshot, dict) and history_snapshot.get("payload"):
+            history_payload = OptometryHistoryPayload.model_validate(history_snapshot["payload"])
+    if history_payload is None:
+        history_row = await repo.get_optometry_history(org_id, patient_id, visit_id)
+        if history_row:
+            history_payload = OptometryHistoryPayload.model_validate(history_row.get("payload") or {})
 
     attachment_rows: list[PatientVisitAttachmentRowOut] = []
     seen_note_attachment_keys: set[str] = set()
@@ -452,12 +464,14 @@ async def build_patient_visit_detail_view(
         timestamp=selected_visit["created_at"],
         consultation_note=(
             PatientVisitNoteDetailOut(
+                note_id=primary_note.id,
                 status=str(primary_note.status),
                 content=str(primary_note.snapshot_content or primary_note.content or "").strip(),
             )
             if primary_note
             else None
         ),
+        optometry_history=history_payload,
         attachments=attachment_rows,
         timeline=related_timeline,
     )

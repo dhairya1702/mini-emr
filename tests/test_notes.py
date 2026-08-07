@@ -579,3 +579,103 @@ def test_optometry_history_is_blocked_for_other_specialties(client):
         headers=headers,
     )
     assert response.status_code == 400
+
+
+def test_optometry_history_is_scoped_to_visit_and_visit_numbers_are_chronological(client, monkeypatch):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="visit-history@clinic.com",
+        clinic_name="Visit History Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    org_id = session["user"]["org_id"]
+    repo.clinic_settings[org_id]["clinic_specialty"] = "optometry"
+
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Visit History Patient",
+            "phone": "5550109090",
+            "reason": "First visit",
+            "age": 28,
+        },
+        headers=headers,
+    ).json()
+    first_visit_id = patient["current_visit"]["id"]
+
+    first_saved = test_client.put(
+        f"/patients/{patient['id']}/visits/{first_visit_id}/optometry-history",
+        json={"expected_revision": 0, "payload": {"family": "Mother has glaucoma."}},
+        headers=headers,
+    )
+    assert first_saved.status_code == 200, first_saved.json()
+    assert first_saved.json()["visit_id"] == first_visit_id
+
+    second_patient = test_client.post(
+        f"/patients/{patient['id']}/visits",
+        json={
+            "name": patient["name"],
+            "phone": patient["phone"],
+            "email": patient.get("email", ""),
+            "address": patient.get("address", ""),
+            "reason": "Second visit",
+            "age": 28,
+        },
+        headers=headers,
+    ).json()
+    second_visit_id = second_patient["current_visit"]["id"]
+
+    second_empty = test_client.get(
+        f"/patients/{patient['id']}/visits/{second_visit_id}/optometry-history",
+        headers=headers,
+    )
+    assert second_empty.status_code == 200
+    assert second_empty.json()["exists"] is False
+    assert second_empty.json()["payload"]["family"] == ""
+
+    first_reloaded = test_client.get(
+        f"/patients/{patient['id']}/visits/{first_visit_id}/optometry-history",
+        headers=headers,
+    )
+    assert first_reloaded.json()["payload"]["family"] == "Mother has glaucoma."
+
+    visits = test_client.get(f"/patients/{patient['id']}/visits", headers=headers)
+    assert visits.status_code == 200
+    assert [row["visit_number"] for row in visits.json()] == [2, 1]
+    assert [row["id"] for row in visits.json()] == [second_visit_id, first_visit_id]
+
+    second_saved = test_client.put(
+        f"/patients/{patient['id']}/visits/{second_visit_id}/optometry-history",
+        json={"expected_revision": 0, "payload": {"family": "Father has myopia."}},
+        headers=headers,
+    )
+    assert second_saved.status_code == 200
+
+    async def unavailable_ai(**_kwargs):
+        raise RuntimeError("AI disabled for deterministic visit-history test.")
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", unavailable_ai)
+    generated = test_client.post(
+        "/generate-note",
+        json={
+            "patient_id": patient["id"],
+            "visit_id": second_visit_id,
+            "symptoms": "Blurred distance vision",
+            "diagnosis": "Refractive error",
+            "medications": "",
+            "notes": "Refraction performed.",
+        },
+        headers=headers,
+    )
+    assert generated.status_code == 200, generated.json()
+    note_id = generated.json()["note_id"]
+    assert repo.notes[note_id]["visit_id"] == second_visit_id
+    assert repo.notes[note_id]["optometry_history"]["payload"]["family"] == "Father has myopia."
+
+    first_detail = test_client.get(
+        f"/patients/{patient['id']}/visits/{first_visit_id}/details",
+        headers=headers,
+    )
+    assert first_detail.status_code == 200, first_detail.json()
+    assert first_detail.json()["optometry_history"]["family"] == "Mother has glaucoma."

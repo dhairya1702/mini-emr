@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { ReferralPackageModal } from "@/components/referral-package-modal";
+import { OptometryHistoryReadOnly } from "@/components/optometry/history-panel";
 import { BinocularVisionModal } from "@/components/optometry/binocular-vision-modal";
 import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal";
 import { api } from "@/lib/api";
@@ -47,7 +48,7 @@ import { getSpecialtyModules, specialtyHasModule, type SpecialtyModuleKey } from
 import { formatModuleSummary, moduleEntriesFor, moduleLabel } from "@/lib/structured-modules";
 
 type MobileTab = "visits" | "tests" | "attachments" | "timeline";
-type VisitSectionKey = "note" | "attachments";
+type VisitSectionKey = "history" | "attachments";
 type PhotoPreview = {
   src: string;
   alt: string;
@@ -514,7 +515,7 @@ export default function MobilePatientPage() {
   const [loadingVisitDetailId, setLoadingVisitDetailId] = useState("");
   const [visitDetailError, setVisitDetailError] = useState("");
   const [openSections, setOpenSections] = useState<Record<VisitSectionKey, boolean>>({
-    note: false,
+    history: false,
     attachments: false,
   });
   const [notes, setNotes] = useState<ConsultationNote[]>([]);
@@ -555,7 +556,7 @@ export default function MobilePatientPage() {
   const [isSummaryOpen, setIsSummaryOpen] = useState(true);
 
   useEffect(() => {
-    setOpenSections({ note: false, attachments: false });
+    setOpenSections({ history: false, attachments: false });
   }, [selectedVisitId]);
 
   useEffect(() => {
@@ -940,6 +941,24 @@ export default function MobilePatientPage() {
     }
   }
 
+  async function openConsultationNote(noteId: string) {
+    const previewWindow = window.open("", "_blank");
+    if (!previewWindow) {
+      setError("Allow pop-ups to preview the consultation note.");
+      return;
+    }
+    previewWindow.opener = null;
+    try {
+      const blob = await api.generateSavedNotePdf(noteId);
+      const objectUrl = URL.createObjectURL(blob);
+      previewWindow.location.href = objectUrl;
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (previewError) {
+      previewWindow.close();
+      setError(previewError instanceof Error ? previewError.message : "Failed to preview consultation note.");
+    }
+  }
+
   async function openLinkedAttachment(attachmentId: string, label: string, contentType: string, timestamp: string) {
     if (!patient) {
       return;
@@ -1292,8 +1311,9 @@ export default function MobilePatientPage() {
                               }`}
                             >
                               <div className="flex items-start justify-between gap-2">
-                                <span className="text-sm font-bold text-slate-900">
-                                  {visit.reason || `Visit ${index + 1}`}
+                                <span className="min-w-0">
+                                  <span className="block text-sm font-bold text-slate-900">Visit {visit.visit_number}</span>
+                                  {visit.reason ? <span className="mt-0.5 block truncate text-xs text-slate-500">{visit.reason}</span> : null}
                                 </span>
                                 <span className="shrink-0 whitespace-nowrap text-[11px] text-slate-400">
                                   {shortDate(visit.created_at)}
@@ -1321,21 +1341,27 @@ export default function MobilePatientPage() {
                                 {visitDetailError ? (
                                   <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{visitDetailError}</p>
                                 ) : null}
-                                <VisitDetailSection
-                                  title="Consultation note"
-                                  isOpen={openSections.note}
-                                  onToggle={() => toggleSection("note")}
+                                <button
+                                  type="button"
+                                  disabled={isLoadingDetail || !detail?.consultation_note?.note_id}
+                                  onClick={() => detail?.consultation_note?.note_id && void openConsultationNote(detail.consultation_note.note_id)}
+                                  className="flex w-full items-center justify-between rounded-[12px] border border-[#dbe7ef] bg-white px-4 py-3 text-left disabled:opacity-60"
                                 >
-                                  {isLoadingDetail ? (
-                                    <p className="text-sm text-slate-400">Loading consultation note...</p>
-                                  ) : detail?.consultation_note?.content ? (
-                                    <div className="whitespace-pre-wrap rounded-[10px] border border-[#dbe7ef] bg-[#f7fbfd] px-3 py-2.5 text-[13px] leading-6 text-slate-700">
-                                      {detail.consultation_note.content}
-                                    </div>
-                                  ) : (
-                                    <p className="text-sm text-slate-400">No consultation note on this visit yet.</p>
-                                  )}
-                                </VisitDetailSection>
+                                  <span>
+                                    <span className="block text-sm font-semibold text-slate-800">Consultation note</span>
+                                    <span className="mt-0.5 block text-xs text-slate-400">{isLoadingDetail ? "Loading..." : detail?.consultation_note ? "Open letterhead preview" : "No consultation note on this visit yet."}</span>
+                                  </span>
+                                  <ChevronDown className="h-4 w-4 -rotate-90 text-slate-400" />
+                                </button>
+                                {detail?.optometry_history ? (
+                                  <VisitDetailSection
+                                    title="History"
+                                    isOpen={openSections.history}
+                                    onToggle={() => toggleSection("history")}
+                                  >
+                                    <OptometryHistoryReadOnly payload={detail.optometry_history} />
+                                  </VisitDetailSection>
+                                ) : null}
                                 <VisitDetailSection
                                   title="Files & media"
                                   count={detail?.attachments.length ?? 0}

@@ -14,6 +14,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AddPatientModal } from "@/components/add-patient-modal";
@@ -223,6 +224,16 @@ function buildAutoDraftInvoiceItems(
 }
 
 export default function HomePage() {
+  const router = useRouter();
+  const [workspaceLocation, setWorkspaceLocation] = useState(() => {
+    if (typeof window === "undefined") return { kind: "", patientId: "" };
+    const params = new URLSearchParams(window.location.search);
+    return { kind: params.get("workspace") || "", patientId: params.get("patient") || "" };
+  });
+  const workspaceKind = workspaceLocation.kind;
+  const workspacePatientId = workspaceLocation.patientId;
+  const workspaceOpenedInAppRef = useRef(false);
+  const workspaceTransitionRef = useRef(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [checkInRequests, setCheckInRequests] = useState<CheckInRequest[]>([]);
   const [pendingCheckInRequestId, setPendingCheckInRequestId] = useState("");
@@ -332,6 +343,62 @@ export default function HomePage() {
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
   const workspaceMode = clinicSettings?.workspace_mode ?? "team";
   const isSoloWorkspace = workspaceMode === "solo";
+
+  useEffect(() => {
+    function syncWorkspaceFromLocation() {
+      const params = new URLSearchParams(window.location.search);
+      setWorkspaceLocation({
+        kind: params.get("workspace") || "",
+        patientId: params.get("patient") || "",
+      });
+    }
+    window.addEventListener("popstate", syncWorkspaceFromLocation);
+    return () => window.removeEventListener("popstate", syncWorkspaceFromLocation);
+  }, []);
+
+  useEffect(() => {
+    if (!workspaceKind || !workspacePatientId) {
+      setSelectedPatient(null);
+      setDrawerMode(null);
+      setBillingPatientId("");
+      return;
+    }
+    const workspacePatient = patients.find((entry) => entry.id === workspacePatientId);
+    if (!workspacePatient) return;
+    if (workspaceKind === "chart" || workspaceKind === "consultation") {
+      setSelectedPatient(workspacePatient);
+      setDrawerMode(workspaceKind === "chart" ? "details" : "consultation");
+      setBillingPatientId("");
+      return;
+    }
+    if (workspaceKind === "billing") {
+      setBillingPatientId(workspacePatient.id);
+      setSelectedPatient(null);
+      setDrawerMode(null);
+    }
+  }, [patients, workspaceKind, workspacePatientId]);
+
+  function pushWorkspace(kind: "chart" | "consultation" | "billing", patientId: string) {
+    workspaceOpenedInAppRef.current = true;
+    setWorkspaceLocation({ kind, patientId });
+    const target = `/?workspace=${kind}&patient=${encodeURIComponent(patientId)}`;
+    if (workspaceKind) {
+      window.history.replaceState(window.history.state, "", target);
+    } else {
+      window.history.pushState(window.history.state, "", target);
+    }
+  }
+
+  function closeWorkspace() {
+    if (workspaceOpenedInAppRef.current) {
+      workspaceOpenedInAppRef.current = false;
+      router.back();
+      return;
+    }
+    setWorkspaceLocation({ kind: "", patientId: "" });
+    router.replace("/");
+  }
+
   useEffect(() => {
     const intervalId = window.setInterval(() => setQueueClock(Date.now()), 60000);
     return () => window.clearInterval(intervalId);
@@ -625,12 +692,16 @@ export default function HomePage() {
   }
 
   function openBillingWorkspace(patientId: string) {
+    if (workspaceKind === "consultation") {
+      workspaceTransitionRef.current = true;
+    }
     const patient = patients.find((entry) => entry.id === patientId);
     setBillingPatientId(patientId);
     resetBillingWorkspaceState();
     setBillingRecipientEmail(patient?.email ?? "");
     setSelectedPatient(null);
     setDrawerMode(null);
+    pushWorkspace("billing", patientId);
   }
 
   function commitTrainingPatients(updater: Patient[] | ((current: Patient[]) => Patient[])) {
@@ -1280,6 +1351,7 @@ export default function HomePage() {
     setSelectedPatient(null);
     setDrawerMode(null);
     resetBillingWorkspaceState();
+    closeWorkspace();
   }
 
   async function completeBillingWorkflow(markBilled: boolean) {
@@ -1379,6 +1451,7 @@ export default function HomePage() {
   function handleOpenPatient(patient: Patient) {
     setSelectedPatient(patient);
     setDrawerMode("details");
+    pushWorkspace("chart", patient.id);
   }
 
   async function handleStartConsultation(patient: Patient) {
@@ -1393,6 +1466,7 @@ export default function HomePage() {
       );
       setSelectedPatient(latestPatient);
       setDrawerMode("consultation");
+      pushWorkspace("consultation", latestPatient.id);
     } catch {
       return;
     }
@@ -1401,12 +1475,14 @@ export default function HomePage() {
   async function handleLoadPatientVisits(patientId: string): Promise<PatientChartVisit[]> {
     if (isTrainingMode) {
       const patient = patients.find((entry) => entry.id === patientId);
+      const trainingVisits = patient
+        ? createTrainingTimeline(patient).filter((event) => event.type === "visit_recorded")
+        : [];
       return patient
-        ? createTrainingTimeline(patient)
-            .filter((event) => event.type === "visit_recorded")
-            .map((event) => ({
+        ? trainingVisits.map((event, index) => ({
               id: String(event.entity_id || ""),
               patient_id: patient.id,
+              visit_number: trainingVisits.length - index,
               reason: String((event.details?.reason as string | undefined) || patient.reason || ""),
               created_at: event.timestamp,
             }))
@@ -1432,6 +1508,7 @@ export default function HomePage() {
         reason: String((visit.details?.reason as string | undefined) || patient.reason || ""),
         timestamp: visit.timestamp,
         consultation_note: null,
+        optometry_history: null,
         attachments: [],
         timeline: [],
       };
@@ -1759,6 +1836,7 @@ export default function HomePage() {
         onClose={() => {
           setSelectedPatient(null);
           setDrawerMode(null);
+          closeWorkspace();
         }}
       />
 
@@ -1774,6 +1852,11 @@ export default function HomePage() {
         onClose={() => {
           setSelectedPatient(null);
           setDrawerMode(null);
+          if (workspaceTransitionRef.current) {
+            workspaceTransitionRef.current = false;
+            return;
+          }
+          closeWorkspace();
         }}
         onDone={async (patient, followUp) => {
           if (followUp && !isTrainingMode) {
