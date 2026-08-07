@@ -16,6 +16,11 @@ test("eye exam uses the seven-page clinical workflow", () => {
   ]) assert.ok(source.includes(label), `Missing eye exam page: ${label}`);
 });
 
+test("eye exam page tabs stay compact and on one line", () => {
+  assert.ok(source.includes("h-11 min-w-[160px]"));
+  assert.ok(source.includes("whitespace-nowrap"));
+});
+
 test("eye exam retains the source clinical assessments", () => {
   for (const label of [
     "UCVA",

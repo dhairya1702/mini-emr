@@ -51,7 +51,6 @@ import { EyeExamModal } from "@/components/optometry/eye-exam-modal";
 import { ClinicalDrawingModal } from "@/components/clinical-drawing-modal";
 import {
   OptometryHistoryEditor,
-  OptometryHistorySummary,
   useOptometryHistory,
 } from "@/components/optometry/history-panel";
 import {
@@ -2069,13 +2068,14 @@ export function ConsultationDrawer({
         key={label}
         type="button"
         onClick={onClick}
-        className={`min-w-[170px] max-w-[240px] rounded-xl border px-4 py-3 text-left transition ${
+        aria-current={active ? "page" : undefined}
+        className={`min-w-[140px] flex-1 shrink-0 border-r border-[#bfd7e8] px-5 py-3 text-center text-sm font-semibold transition last:border-r-0 ${
           active
-            ? "border-[#6daed8] bg-[#e8f2fa] text-[#235f8e]"
-            : "border-[#dbe7ef] bg-white text-slate-700 hover:bg-[#f3f8fb]"
+            ? "bg-[#376f9f] text-white"
+            : "bg-white text-slate-700 hover:bg-[#f3f8fb] hover:text-slate-950"
         }`}
       >
-        <span className="block text-sm font-semibold text-slate-900">{label}</span>
+        {label}
       </button>
     );
   }
@@ -2151,30 +2151,34 @@ export function ConsultationDrawer({
 
   function renderTestsSection(examinationWorkspace = false) {
     return (
-      <section className="rounded-[18px] border border-[#bfd7e8] bg-white/90 p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-600">Tests</p>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          {renderModuleButton(
-            "Vitals",
-            activeInlineModule === "vitals",
-            () => setActiveInlineModule((current) => (current === "vitals" ? null : "vitals")),
-          )}
-          {specialtyModules.map((moduleKey) => {
+      <section>
+        <div className="w-full overflow-x-auto border-y border-[#bfd7e8] bg-white">
+          <div className="flex min-w-max" role="tablist" aria-label="Clinical modules">
+            {renderModuleButton(
+              "Vitals",
+              activeInlineModule === "vitals",
+              () => setActiveInlineModule((current) => (current === "vitals" ? null : "vitals")),
+            )}
+            {specialtyModules.map((moduleKey) => {
             const copy = TEST_MODULE_COPY[moduleKey];
             const openModule = () => {
               if (moduleKey === "eye_exam") {
+                setActiveInlineModule(null);
                 setActiveOptometryStep("examination");
               } else if (moduleKey === "contact_lens") {
+                setActiveInlineModule(null);
                 openOptometryModule("contactLens");
               } else if (moduleKey === "binocular_vision") {
+                setActiveInlineModule(null);
                 openOptometryModule("binocularVision");
               } else if (moduleKey === "low_vision") {
+                setActiveInlineModule(null);
                 openOptometryModule("lowVision");
               } else if (moduleKey === "myopia_management") {
+                setActiveInlineModule(null);
                 openOptometryModule("myopiaManagement");
               } else if (moduleKey === "tbi_evaluation") {
+                setActiveInlineModule(null);
                 openOptometryModule("tbiEvaluation");
               } else if (moduleKey === "pediatric_growth_measurement") {
                 setActivePediatricModule("growth");
@@ -2186,11 +2190,12 @@ export function ConsultationDrawer({
                 setActivePediatricModule("pediatricFollowUp");
               }
             };
-            return renderModuleButton(copy.label, examinationWorkspace && moduleKey === "eye_exam", openModule);
-          })}
+            return renderModuleButton(copy.label, examinationWorkspace && moduleKey === "eye_exam" && activeInlineModule !== "vitals", openModule);
+            })}
+          </div>
         </div>
         {moduleEntryError ? <p className="mt-3 text-sm font-medium text-rose-600">{moduleEntryError}</p> : null}
-        <div className="mt-4">{renderInlineModuleDetail()}</div>
+        {activeInlineModule ? <div className="mt-4">{renderInlineModuleDetail()}</div> : null}
       </section>
     );
   }
@@ -2616,41 +2621,24 @@ export function ConsultationDrawer({
             {renderAttachmentsSection()}
           </div>
         ) : isOptometryClinic && activeOptometryStep === "examination" ? (
-          <div className="space-y-5">
+          <div className="space-y-4">
             {renderTestsSection(true)}
-            <section className="overflow-hidden rounded-[18px] border border-[#bfd7e8] bg-white">
-              <div className="border-b border-[#dbe7ef] px-5 py-4">
-                <h3 className="text-xl font-semibold text-slate-900">Examination</h3>
-                <p className="mt-1 text-sm text-slate-600">Complete the structured refraction and ocular examination for this visit.</p>
-              </div>
-              <div className="p-3 sm:p-5">
-                <EyeExamModal
-                  open
-                  inline
-                  value={form.eyeExam}
-                  activePage={activeEyeExamPage}
-                  onActivePageChange={setActiveEyeExamPage}
-                  onClose={() => undefined}
-                  onSave={async (next) => {
-                    setForm((current) => ({ ...current, eyeExam: next }));
-                    await saveStructuredModuleEntry("eye_exam", next as unknown as Record<string, unknown>, buildEyeExamSummary(next));
-                    setActiveOptometryStep("consultation");
-                  }}
-                />
-              </div>
-            </section>
+            {activeInlineModule !== "vitals" ? <EyeExamModal
+              open
+              inline
+              value={form.eyeExam}
+              activePage={activeEyeExamPage}
+              onActivePageChange={setActiveEyeExamPage}
+              onClose={() => undefined}
+              onSave={async (next) => {
+                setForm((current) => ({ ...current, eyeExam: next }));
+                await saveStructuredModuleEntry("eye_exam", next as unknown as Record<string, unknown>, buildEyeExamSummary(next));
+                setActiveOptometryStep("consultation");
+              }}
+            /> : null}
           </div>
         ) : (
         <form className="grid gap-5 pr-1 xl:grid-cols-[minmax(0,1fr)_410px]" onSubmit={handleGenerate}>
-          {isOptometryClinic ? (
-            <div className="space-y-5 xl:hidden">
-              <OptometryHistorySummary
-                controller={optometryHistory}
-                onEdit={() => setActiveOptometryStep("history")}
-                compact
-              />
-            </div>
-          ) : null}
           <div className="space-y-4">
             {isOptometryClinic ? (
               <section className="rounded-[18px] border border-[#bfd7e8] bg-[#f7fbfd] px-4 py-3.5">
@@ -2885,7 +2873,7 @@ export function ConsultationDrawer({
               </p>
             </div>
           </div>
-          <div className={isOptometryClinic ? "space-y-4 xl:col-start-1 xl:row-start-2" : "space-y-4"}>
+          <div className={isOptometryClinic ? "space-y-4 xl:col-start-2 xl:row-start-1 xl:self-start xl:sticky xl:top-4" : "space-y-4"}>
             {renderAssistantPanel()}
             <section className="hidden overflow-hidden rounded-[18px] border border-[#bfd7e8] bg-white/90">
               <div className="border-b border-[#dbe7ef] px-4 py-4">
@@ -3260,14 +3248,6 @@ export function ConsultationDrawer({
               </div>
             </div>
           </div>
-          {isOptometryClinic ? (
-            <div className="hidden space-y-4 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:block xl:self-start xl:sticky xl:top-4">
-              <OptometryHistorySummary
-                controller={optometryHistory}
-                onEdit={() => setActiveOptometryStep("history")}
-              />
-            </div>
-          ) : null}
         </form>
         )}
       </div>
