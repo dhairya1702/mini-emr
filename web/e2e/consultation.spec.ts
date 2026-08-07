@@ -132,6 +132,7 @@ test("closing a consultation cancels pending WhatsApp delivery polling", async (
 });
 
 test("optometry consultation separates History, Examination, and Consultation", async ({ page }) => {
+  await page.clock.install();
   const user = buildUser();
   const patient = buildPatient({
     id: "patient-optometry-steps-1",
@@ -169,6 +170,17 @@ test("optometry consultation separates History, Examination, and Consultation", 
   await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
 
   await page.getByLabel("UCVA distance").first().fill("6/6");
+  await page.getByRole("button", { name: /Glasses prescriptions/ }).click();
+  await expect(page.getByRole("heading", { name: "Glasses Prescriptions" })).toBeVisible();
+
+  const queueRefresh = page.waitForRequest((request) => (
+    new URL(request.url()).pathname === "/patients" && request.method() === "GET"
+  ));
+  await page.clock.fastForward(16_000);
+  await queueRefresh;
+  await expect(steps.getByRole("button", { name: /Examination/ })).toHaveAttribute("aria-current", "step");
+  await expect(page.getByRole("heading", { name: "Glasses Prescriptions" })).toBeVisible();
+
   await page.getByRole("button", { name: "Save Eye Exam" }).click();
   await expect(steps.getByRole("button", { name: /Consultation/ })).toHaveAttribute("aria-current", "step");
   await expect(page.getByLabel("Symptoms")).toBeVisible();
@@ -177,5 +189,5 @@ test("optometry consultation separates History, Examination, and Consultation", 
   await expect(page.getByText("history-scan.png")).toBeVisible();
 
   await steps.getByRole("button", { name: /Examination/ }).click();
-  await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Glasses Prescriptions" })).toBeVisible();
 });

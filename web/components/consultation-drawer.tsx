@@ -336,6 +336,7 @@ type ConsultationWorkspaceSnapshot = {
   clinicalExtractions?: ClinicalExtractions;
   currentConsultationModules?: Array<{ module_type: string; payload: Record<string, unknown> }>;
   activeOptometryStep?: OptometryConsultationStep;
+  activeEyeExamPage?: number;
 };
 
 type OptometryConsultationStep = "history" | "examination" | "consultation";
@@ -560,6 +561,8 @@ export function ConsultationDrawer({
   const specialtyModules = getSpecialtyModules(clinicSpecialty);
   const [form, setForm] = useState(createEmptyForm);
   const [activeOptometryStep, setActiveOptometryStep] = useState<OptometryConsultationStep>("history");
+  const [activeEyeExamPage, setActiveEyeExamPage] = useState(0);
+  const [hydratedConsultationKey, setHydratedConsultationKey] = useState("");
   const [openSections, setOpenSections] = useState(createClosedConsultationSections);
   const [activeInlineModule, setActiveInlineModule] = useState<InlineModuleKey | null>(null);
   const [activePediatricModule, setActivePediatricModule] = useState<PediatricModuleKey | null>(null);
@@ -615,17 +618,22 @@ export function ConsultationDrawer({
   const [assistantError, setAssistantError] = useState("");
   const cancelWhatsAppDeliveryTrackingRef = useRef<(() => void) | null>(null);
   const patientId = patient?.id ?? "";
+  const patientVisitId = patient?.current_visit?.id ?? "";
   const currentUserId = currentUser?.id ?? "";
   const currentOrgId = currentUser?.org_id ?? "";
+  const hydrationPatientRef = useRef(patient);
+  hydrationPatientRef.current = patient;
+  const consultationHydrationKey = patientId
+    ? [currentOrgId, currentUserId, patientId, patientVisitId, clinicSpecialty ?? "", isTrainingMode ? "training" : "live"].join(":")
+    : "";
   const workspaceScope = useMemo(
     () => {
-      const visitId = patient?.current_visit?.id || "";
-      if (!patientId || !visitId || !currentUserId || !currentOrgId) {
+      if (!patientId || !patientVisitId || !currentUserId || !currentOrgId) {
         return null;
       }
-      return { orgId: currentOrgId, userId: currentUserId, patientId, visitId };
+      return { orgId: currentOrgId, userId: currentUserId, patientId, visitId: patientVisitId };
     },
-    [currentOrgId, currentUserId, patient?.current_visit?.id, patientId],
+    [currentOrgId, currentUserId, patientId, patientVisitId],
   );
   const optometryHistory = useOptometryHistory(
     patientId,
@@ -634,14 +642,15 @@ export function ConsultationDrawer({
   );
 
   useEffect(() => {
-    if (!patient) {
+    const hydrationPatient = hydrationPatientRef.current;
+    if (!hydrationPatient || !consultationHydrationKey) {
       return;
     }
 
     let active = true;
     const cachedWorkspace = workspaceScope
       ? readConsultationWorkspace<ConsultationWorkspaceSnapshot>(workspaceScope, {
-          legacyPatientId: patient.id,
+          legacyPatientId: hydrationPatient.id,
         })
       : null;
     const baseForm = createEmptyForm();
@@ -649,6 +658,7 @@ export function ConsultationDrawer({
     setActiveOptometryStep(
       cachedWorkspace?.activeOptometryStep ?? (cachedWorkspace ? "consultation" : "history"),
     );
+    setActiveEyeExamPage(cachedWorkspace?.activeEyeExamPage ?? 0);
     setStatusMessage("");
     setIsGenerating(false);
     setIsGeneratingPdf(false);
@@ -745,13 +755,14 @@ export function ConsultationDrawer({
     setNoteStatus(cachedWorkspace?.noteStatus ?? "");
     setIsEmailSent(cachedWorkspace?.isEmailSent ?? false);
     setIsWhatsAppSent(cachedWorkspace?.isWhatsAppSent ?? false);
-    setRecipientEmail(cachedWorkspace?.recipientEmail ?? patient.email ?? "");
-    setRecipientPhone(cachedWorkspace?.recipientPhone ?? patient.phone ?? "");
+    setRecipientEmail(cachedWorkspace?.recipientEmail ?? hydrationPatient.email ?? "");
+    setRecipientPhone(cachedWorkspace?.recipientPhone ?? hydrationPatient.phone ?? "");
     setWhatsAppDeliveryStatus("");
+    setHydratedConsultationKey(consultationHydrationKey);
 
     void Promise.allSettled([
       api.listCatalogItems(),
-      specialtyModules.length ? api.listPatientModuleEntries(patient.id) : Promise.resolve([] as LongitudinalTrackRecord[]),
+      specialtyModules.length ? api.listPatientModuleEntries(hydrationPatient.id) : Promise.resolve([] as LongitudinalTrackRecord[]),
     ])
       .then(([itemsResult, moduleEntriesResult]) => {
         if (!active) {
@@ -779,10 +790,14 @@ export function ConsultationDrawer({
       cancelWhatsAppDeliveryTrackingRef.current?.();
       cancelWhatsAppDeliveryTrackingRef.current = null;
     };
-  }, [clinicSpecialty, isTrainingMode, patient, specialtyModules.length, workspaceScope]);
+  }, [consultationHydrationKey, specialtyModules.length, workspaceScope]);
 
   useEffect(() => {
-    if (!patient || !workspaceScope) {
+    if (
+      !patientId
+      || !workspaceScope
+      || hydratedConsultationKey !== consultationHydrationKey
+    ) {
       return;
     }
 
@@ -803,14 +818,17 @@ export function ConsultationDrawer({
       clinicalExtractions,
       currentConsultationModules,
       activeOptometryStep,
+      activeEyeExamPage,
     });
   }, [
+    activeEyeExamPage,
     activeOptometryStep,
     currentNoteId,
     clinicalExtractions,
     currentConsultationModules,
     form,
     hasGeneratedNote,
+    hydratedConsultationKey,
     isFollowUpOpen,
     isDraftDirty,
     isEmailSent,
@@ -818,10 +836,11 @@ export function ConsultationDrawer({
     medicineSearch,
     noteStatus,
     openSections,
-    patient,
+    patientId,
     recipientEmail,
     recipientPhone,
     selectedMedicineIds,
+    consultationHydrationKey,
     workspaceScope,
   ]);
 
@@ -2609,6 +2628,8 @@ export function ConsultationDrawer({
                   open
                   inline
                   value={form.eyeExam}
+                  activePage={activeEyeExamPage}
+                  onActivePageChange={setActiveEyeExamPage}
                   onClose={() => undefined}
                   onSave={async (next) => {
                     setForm((current) => ({ ...current, eyeExam: next }));
