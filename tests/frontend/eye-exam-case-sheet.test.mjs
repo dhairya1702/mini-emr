@@ -11,7 +11,7 @@ test("eye exam uses the seven-page clinical workflow", () => {
     "Glasses prescriptions",
     "PMT and Keratometry",
     "IOP",
-    "Ocular",
+    "Ocular Examination",
     "Additional tests",
   ]) assert.ok(source.includes(label), `Missing eye exam page: ${label}`);
 });
@@ -50,6 +50,9 @@ test("eye exam retains the source clinical assessments", () => {
 
 test("removed eye exam sections are no longer rendered", () => {
   for (const label of [
+    'label="General examination"',
+    'label="One eyed"',
+    'label="Squint evaluation"',
     'label="Refraction comments"',
     "Dry autorefraction",
     "Dilated autorefraction",

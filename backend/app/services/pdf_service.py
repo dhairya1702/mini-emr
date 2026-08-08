@@ -140,6 +140,33 @@ def _wrap_text(text: str, font_name: str, font_size: int, max_width: float) -> l
     return lines
 
 
+def _wrap_text_after_label(
+    text: str,
+    font_name: str,
+    font_size: int,
+    first_line_width: float,
+    continuation_width: float,
+) -> list[str]:
+    """Wrap text beside a label, then use the full row width below it."""
+    words = text.strip().split()
+    if not words:
+        return []
+
+    lines: list[str] = []
+    current = words[0]
+    current_width = first_line_width
+    for word in words[1:]:
+        candidate = f"{current} {word}"
+        if stringWidth(candidate, font_name, font_size) <= current_width:
+            current = candidate
+            continue
+        lines.append(current)
+        current = word
+        current_width = continuation_width
+    lines.append(current)
+    return lines
+
+
 def _clamp_margin(value: Any) -> float:
     try:
         margin = float(value)
@@ -756,7 +783,13 @@ def _draw_template_note_body(
 
         first_paragraph = paragraphs[0]
         first_line_width = max(available_width - label_width, 24)
-        first_lines = _wrap_text(first_paragraph, "Helvetica", font_size, first_line_width)
+        first_lines = _wrap_text_after_label(
+            first_paragraph,
+            "Helvetica",
+            font_size,
+            first_line_width,
+            available_width,
+        )
         if first_lines:
             pdf.drawString(x + 2 + label_width, current_y, first_lines[0])
             current_y -= line_height

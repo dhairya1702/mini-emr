@@ -170,8 +170,8 @@ test("optometry consultation separates History, Examination, and Consultation", 
   await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
 
   await page.getByLabel("UCVA distance").first().fill("6/6");
-  await page.getByRole("button", { name: /Glasses prescriptions/ }).click();
-  await expect(page.getByRole("heading", { name: "Glasses Prescriptions" })).toBeVisible();
+  await page.getByRole("button", { name: /Ocular Examination/ }).click();
+  await expect(page.getByRole("heading", { name: "Ocular Examination" })).toBeVisible();
 
   const queueRefresh = page.waitForRequest((request) => (
     new URL(request.url()).pathname === "/patients" && request.method() === "GET"
@@ -179,7 +179,7 @@ test("optometry consultation separates History, Examination, and Consultation", 
   await page.clock.fastForward(16_000);
   await queueRefresh;
   await expect(steps.getByRole("button", { name: /Examination/ })).toHaveAttribute("aria-current", "step");
-  await expect(page.getByRole("heading", { name: "Glasses Prescriptions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ocular Examination" })).toBeVisible();
 
   await page.getByRole("button", { name: "Save Eye Exam" }).click();
   await expect(steps.getByRole("button", { name: /Consultation/ })).toHaveAttribute("aria-current", "step");
@@ -197,5 +197,5 @@ test("optometry consultation separates History, Examination, and Consultation", 
   expect(recipientBox?.x ?? 0).toBeGreaterThan(symptomsBox?.x ?? Number.MAX_SAFE_INTEGER);
 
   await steps.getByRole("button", { name: /Examination/ }).click();
-  await expect(page.getByRole("heading", { name: "Glasses Prescriptions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ocular Examination" })).toBeVisible();
 });

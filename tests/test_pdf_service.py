@@ -7,7 +7,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 import test_app  # noqa: F401
 
 from app.services import pdf_service
-from app.services.pdf_service import _classify_structured_tables, _extract_note_body, _parse_note_sections, _template_content_start_y, build_note_pdf
+from app.services.pdf_service import _classify_structured_tables, _extract_note_body, _parse_note_sections, _template_content_start_y, _wrap_text_after_label, build_note_pdf
+
+
+def test_labeled_note_text_uses_full_width_after_first_line(monkeypatch) -> None:
+    monkeypatch.setattr(pdf_service, "stringWidth", lambda text, *_args: float(len(text)))
+
+    assert _wrap_text_after_label(
+        "alpha beta gamma delta epsilon",
+        "Helvetica",
+        10,
+        10,
+        18,
+    ) == ["alpha beta", "gamma delta", "epsilon"]
 
 
 class _RecordingCanvas:
