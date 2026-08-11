@@ -13,7 +13,8 @@ test("contact lens UI preserves all four source case-sheet modules", () => {
 test("multi-page contact lens sheets provide back and next navigation", () => {
   assert.ok(source.includes("movePage(-1)"));
   assert.ok(source.includes("movePage(1)"));
-  assert.ok(source.includes("Page {page + 1} of {activeConfig.pages.length}"));
+  assert.ok(source.includes("OptometryActionFooter"));
+  assert.ok(source.includes("Continue Consultation"));
 });
 
 test("general case sheet retains source clinical tables", () => {

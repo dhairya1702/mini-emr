@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { LowVisionPayload } from "@/lib/types";
-import { OptometryModalShell } from "@/components/optometry/optometry-modal-shell";
+import { OptometryActionFooter, OptometryModalShell } from "@/components/optometry/optometry-modal-shell";
 
 type Data = Record<string, unknown>;
 type Path = string[];
 type Setter = (path: Path, value: unknown) => void;
 
-type LowVisionModalProps = { open: boolean; value: LowVisionPayload; onClose: () => void; onSave: (next: LowVisionPayload) => void | Promise<void>; onDraftChange?: (next: LowVisionPayload) => void; inline?: boolean; sidebar?: ReactNode; activePage?: number; onActivePageChange?: (page: number) => void };
+type LowVisionModalProps = { open: boolean; value: LowVisionPayload; onClose: () => void; onSave: (next: LowVisionPayload) => void | Promise<void>; onContinue?: () => void | Promise<void>; onDraftChange?: (next: LowVisionPayload) => void; inline?: boolean; sidebar?: ReactNode; activePage?: number; onActivePageChange?: (page: number) => void };
 
 const PAGES = ["Initial assessment", "Devices & distance tasks", "Near tasks & mobility", "Daily living & behaviour", "Visual acuity & refraction", "Fields & visual function", "Low vision device trials", "Rehabilitation plan"];
 
@@ -44,7 +44,7 @@ function Trials({ data, change }: { data: Data; change: Setter }) { return <Page
 
 function Plan({ data, change }: { data: Data; change: Setter }) { return <Page title="Low Vision Rehabilitation Plan and Management"><Choice label="Preference of absorptive lenses" path={["plan", "absorptive_lens"]} options={["Dark grey", "Light grey", "Dark yellow", "Light yellow", "Dark brown", "Light brown", "Other"]} data={data} change={change} /><Field label="Problem summary" path={["plan", "problem_summary"]} data={data} change={change} multiline /><Field label="Management plan" path={["plan", "management_plan"]} data={data} change={change} multiline /><Title>Prescription</Title><Field label="Optical devices suggested" path={["plan", "optical_devices"]} data={data} change={change} multiline /><Field label="Distance task" path={["plan", "distance_task"]} data={data} change={change} /><Field label="Near task" path={["plan", "near_task"]} data={data} change={change} /><Field label="Non-optical devices suggested" path={["plan", "non_optical_devices"]} data={data} change={change} multiline /><Field label="Other devices suggested" path={["plan", "other_devices"]} data={data} change={change} multiline /><Choice label="Motivated to use LVDs" path={["plan", "motivated"]} options={["Not applicable", "Yes", "No"]} data={data} change={change} /><Multi label="If no, reason" path={["plan", "not_motivated_reason"]} options={["Cost", "Cosmetic blemish", "Handling problem", "Does not match task", "Wants to decide later", "Manages with own LVDs", "Other"]} data={data} change={change} /><Choice label="LVDs purchased" path={["plan", "purchased"]} options={["Yes", "No"]} data={data} change={change} /><Field label="Source suggested" path={["plan", "source"]} data={data} change={change} /><Field label="Cross-consult to department" path={["plan", "cross_consult"]} data={data} change={change} /><Field label="Next appointment" path={["plan", "next_appointment"]} data={data} change={change} /></Page>; }
 
-export function LowVisionModal({ open, value, onClose, onSave, onDraftChange, inline = false, sidebar, activePage, onActivePageChange }: LowVisionModalProps) {
+export function LowVisionModal({ open, value, onClose, onSave, onContinue, onDraftChange, inline = false, sidebar, activePage, onActivePageChange }: LowVisionModalProps) {
   const [draft, setDraft] = useState(value);
   const [internalPage, setInternalPage] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
@@ -81,21 +81,21 @@ export function LowVisionModal({ open, value, onClose, onSave, onDraftChange, in
     setIsSaving(true);
     try {
       await onSave(draft);
-      onClose();
+      if (!onContinue) onClose();
     } finally {
       setIsSaving(false);
     }
   };
   const footer = (
-    <div className={`sticky bottom-0 z-20 flex shrink-0 flex-wrap items-center gap-2 border-t border-[#dbe7ef] bg-white px-3 py-3 shadow-[0_-8px_20px_rgba(15,23,42,0.06)] sm:px-6 ${inline ? "-mx-1" : ""}`}>
-      {!inline ? <button type="button" disabled={isSaving} onClick={onClose} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60">Cancel</button> : null}
+    <OptometryActionFooter inline={inline} pageLabel={`Page ${page + 1} of ${PAGES.length}`}>
+      {!inline && !onContinue ? <button type="button" disabled={isSaving} onClick={onClose} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60">Cancel</button> : null}
       <button type="button" disabled={page === 0 || isSaving} onClick={() => movePage(-1)} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-40">Back</button>
-      <span className="mr-auto text-xs font-medium text-slate-500">Page {page + 1} of {PAGES.length}</span>
-      <button type="button" disabled={isSaving} onClick={saveAssessment} className="rounded-xl border border-slate-900 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 disabled:opacity-60">{isSaving ? "Saving..." : "Save Low Vision Assessment"}</button>
-      {page < PAGES.length - 1 ? <button type="button" disabled={isSaving} onClick={() => movePage(1)} className="rounded-xl bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-600 disabled:opacity-60">Next</button> : null}
-    </div>
+      <button type="button" disabled={page === PAGES.length - 1 || isSaving} onClick={() => movePage(1)} className="rounded-xl bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+      <button type="button" disabled={isSaving} onClick={saveAssessment} className="rounded-xl border border-slate-900 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 disabled:opacity-60">{isSaving ? "Saving..." : "Save"}</button>
+      {onContinue ? <button type="button" disabled={isSaving} onClick={onContinue} className="rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#287fc0] disabled:opacity-60">Continue Consultation</button> : null}
+    </OptometryActionFooter>
   );
-  return <OptometryModalShell open={open} title="Low Vision Initial Assessment" description="Digital low vision assessment and rehabilitation case sheet." saveLabel="Save Low Vision Assessment" onClose={onClose} onSave={saveAssessment} isSaving={isSaving} footer={footer} inline={inline} sidebar={sidebar}>
+  return <OptometryModalShell open={open} title="Low Vision Initial Assessment" description="Digital low vision assessment and rehabilitation case sheet." saveLabel="Save" onClose={onClose} onSave={saveAssessment} isSaving={isSaving} footer={footer} inline={inline} sidebar={sidebar}>
     <div ref={pageTopRef} />
     <nav className="flex w-full overflow-x-auto border-y border-slate-300" aria-label="Low vision case-sheet pages">{PAGES.map((label, index) => <button key={label} type="button" onClick={() => selectPage(index)} className={`relative min-w-[164px] flex-1 px-5 py-3 text-sm font-semibold ${page === index ? "z-10 bg-[#376f9f] text-white" : "bg-slate-50 text-slate-600"}`} style={{ clipPath: index === PAGES.length - 1 ? undefined : "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)", marginLeft: index ? -8 : 0 }}><span className="mr-1 text-[10px] opacity-70">PAGE {index + 1}</span> {label}</button>)}</nav>
     {page === 0 ? <Initial data={data} change={change} /> : null}{page === 1 ? <Devices data={data} change={change} /> : null}{page === 2 ? <NearMobility data={data} change={change} /> : null}{page === 3 ? <DailyLiving data={data} change={change} /> : null}{page === 4 ? <Acuity data={data} change={change} /> : null}{page === 5 ? <Fields data={data} change={change} /> : null}{page === 6 ? <Trials data={data} change={change} /> : null}{page === 7 ? <Plan data={data} change={change} /> : null}

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { OptometryModalShell } from "@/components/optometry/optometry-modal-shell";
+import { OptometryActionFooter, OptometryModalShell } from "@/components/optometry/optometry-modal-shell";
 import { ClinicalDrawingModal } from "@/components/clinical-drawing-modal";
 import { hasEyeExamData } from "@/lib/structured-modules";
 import type { EyeExamPayload } from "@/lib/types";
@@ -208,27 +208,26 @@ export function EyeExamModal({ open, value, onClose, onSave, onDraftChange, onCo
     }
   };
   const footer = (
-    <div className={`sticky bottom-0 z-20 flex shrink-0 flex-wrap items-center gap-2 border-t border-[#dbe7ef] bg-white px-3 py-3 shadow-[0_-8px_20px_rgba(15,23,42,0.06)] sm:px-6 ${inline ? "-mx-1" : ""}`}>
+    <OptometryActionFooter inline={inline} pageLabel={`Page ${page + 1} of ${PAGES.length}`}>
       {!inline && !onContinue ? <button type="button" disabled={isSaving} onClick={onClose} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60">
         Cancel
       </button> : null}
       <button type="button" disabled={page === 0 || isSaving} onClick={() => movePage(-1)} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-40">
         Back
       </button>
-      <span className="mr-auto text-xs font-medium text-slate-500">Page {page + 1} of {PAGES.length}</span>
-      <button type="button" disabled={isSaving} onClick={async () => { if (await saveExam()) { if (!onContinue) onClose(); } }} className="rounded-xl border border-slate-900 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 disabled:opacity-60">
-        {isSaving ? "Saving..." : "Save Eye Exam"}
-      </button>
-      {page < PAGES.length - 1 ? <button type="button" disabled={isSaving} onClick={() => movePage(1)} className="rounded-xl bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-600 disabled:opacity-60">
+      <button type="button" disabled={page === PAGES.length - 1 || isSaving} onClick={() => movePage(1)} className="rounded-xl bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40">
         Next
-      </button> : null}
+      </button>
+      <button type="button" disabled={isSaving} onClick={async () => { if (await saveExam()) { if (!onContinue) onClose(); } }} className="rounded-xl border border-slate-900 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 disabled:opacity-60">
+        {isSaving ? "Saving..." : "Save"}
+      </button>
       {onContinue ? <button type="button" disabled={isSaving} onClick={continueToConsultation} className="rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#287fc0] disabled:opacity-60">
-        {isSaving ? "Saving..." : "Continue to Consultation"}
+        {isSaving ? "Saving..." : "Continue Consultation"}
       </button> : null}
-    </div>
+    </OptometryActionFooter>
   );
 
-  return <OptometryModalShell open={open} title="Eye Exam" description="Complete optometrist refraction and ocular examination case sheet." saveLabel="Save Eye Exam" onClose={onClose} onSave={async () => { await saveExam(); }} isSaving={isSaving} footer={footer} inline={inline} sidebar={sidebar}>
+  return <OptometryModalShell open={open} title="Eye Exam" description="Complete optometrist refraction and ocular examination case sheet." saveLabel="Save" onClose={onClose} onSave={async () => { await saveExam(); }} isSaving={isSaving} footer={footer} inline={inline} sidebar={sidebar}>
     <div ref={examTopRef} />
     <nav className="flex w-full overflow-x-auto border-y border-slate-300" aria-label="Eye exam case-sheet pages">{PAGES.map((label, index) => <button key={label} type="button" onClick={() => selectPage(index)} className={`relative h-11 min-w-[160px] flex-1 whitespace-nowrap px-3 py-2 text-xs font-semibold leading-none ${page === index ? "z-10 bg-[#376f9f] text-white" : "bg-slate-50 text-slate-600"}`} style={{ clipPath: index === PAGES.length - 1 ? undefined : "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)", marginLeft: index ? -8 : 0 }}><span className="mr-1 text-[9px] opacity-70">PAGE {index + 1}</span> {label}</button>)}</nav>
     {page === 0 ? <VisualAcuity data={data} change={change} /> : null}

@@ -3533,8 +3533,8 @@ export function ConsultationDrawer({
         onClose={() => navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true)}
         onSave={async () => {
           await saveContactLens();
-          navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true);
         }}
+        onContinue={() => navigateConsultationHistory("consultation")}
         onChange={updateContactLens}
         onEyeChange={updateContactLensEye}
         sidebar={renderPreviousEvaluations("contact_lens", selectContactLensEntry)}
@@ -3561,8 +3561,8 @@ export function ConsultationDrawer({
         onClose={() => navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true)}
         onSave={async (next) => {
           await saveLowVision(next);
-          navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true);
         }}
+        onContinue={() => navigateConsultationHistory("consultation")}
         sidebar={renderPreviousEvaluations("low_vision", selectLowVisionEntry)}
       />
       <MyopiaManagementModal

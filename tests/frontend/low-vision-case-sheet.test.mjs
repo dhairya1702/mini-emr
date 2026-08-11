@@ -20,7 +20,8 @@ test("low vision module retains all eight source pages", () => {
 test("low vision pages provide back and next navigation", () => {
   assert.ok(source.includes("movePage(-1)"));
   assert.ok(source.includes("movePage(1)"));
-  assert.ok(source.includes("Page {page + 1} of {PAGES.length}"));
+  assert.ok(source.includes("OptometryActionFooter"));
+  assert.ok(source.includes("Continue Consultation"));
 });
 
 test("low vision module retains source clinical assessments", () => {

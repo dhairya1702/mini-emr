@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const source = await readFile(new URL("../../web/components/optometry/eye-exam-modal.tsx", import.meta.url), "utf8");
+const shellSource = await readFile(new URL("../../web/components/optometry/optometry-modal-shell.tsx", import.meta.url), "utf8");
 
 test("eye exam uses the seven-page clinical workflow", () => {
   for (const label of [
@@ -24,9 +25,11 @@ test("eye exam page tabs stay compact and on one line", () => {
 test("eye exam provides page navigation and a separate consultation action", () => {
   assert.ok(source.includes("movePage(-1)"));
   assert.ok(source.includes("movePage(1)"));
-  assert.ok(source.includes("Continue to Consultation"));
-  assert.ok(source.includes("Page {page + 1} of {PAGES.length}"));
+  assert.ok(source.includes("Continue Consultation"));
+  assert.ok(source.includes("OptometryActionFooter"));
   assert.ok(source.includes("onContinue?:"));
+  assert.ok(shellSource.includes("fixed inset-x-0 bottom-0"));
+  assert.ok(shellSource.includes("h-28 shrink-0 sm:h-20"));
 });
 
 test("eye exam retains the source clinical assessments", () => {

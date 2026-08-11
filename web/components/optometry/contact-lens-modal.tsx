@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { ContactLensEyeEntry, ContactLensPayload } from "@/lib/types";
-import { OptometryModalShell } from "@/components/optometry/optometry-modal-shell";
+import { OptometryActionFooter, OptometryModalShell } from "@/components/optometry/optometry-modal-shell";
 
 type SheetType = ContactLensPayload["case_sheet_type"];
 type SheetData = Record<string, unknown>;
@@ -14,6 +14,7 @@ type ContactLensModalProps = {
   value: ContactLensPayload;
   onClose: () => void;
   onSave: () => void | Promise<void>;
+  onContinue?: () => void | Promise<void>;
   onChange: (patch: Partial<ContactLensPayload>) => void;
   onEyeChange: (eye: "right" | "left", patch: Partial<ContactLensEyeEntry>) => void;
   inline?: boolean;
@@ -142,7 +143,7 @@ function ScleralSheet({ page, data, setValue }: SheetProps) {
   return <SheetPage title="Scleral Fitting and Final Parameters"><PairTable title="Fitting Assessment" base={["fitting"]} rows={[["Centration", "centration"], ["Movement", "movement"], ["Vault - central", "vault_central"], ["Vault - peripheral", "vault_peripheral"], ["360 degree landing", "landing_360"], ["Blanching", "blanching"], ["360 degree impingement", "impingement_360"], ["Impression", "impression"], ["Comments / changes required", "changes"]]} data={data} setValue={setValue} /><EyeTable title="Final Parameters" base={["final"]} columns={[["BC", "bc"], ["Diameter", "diameter"], ["Power", "power"], ["Sag value", "sag"], ["Edge lift / landing zone", "landing_zone"], ["Brand name", "brand"]]} data={data} setValue={setValue} /><LineField label="Advice and management" path={["advice"]} data={data} setValue={setValue} multiline /></SheetPage>;
 }
 
-export function ContactLensModal({ open, value, onClose, onSave, onChange, inline = false, sidebar, activePage, onActivePageChange }: ContactLensModalProps) {
+export function ContactLensModal({ open, value, onClose, onSave, onContinue, onChange, inline = false, sidebar, activePage, onActivePageChange }: ContactLensModalProps) {
   const [internalPage, setInternalPage] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const pageTopRef = useRef<HTMLDivElement>(null);
@@ -169,16 +170,16 @@ export function ContactLensModal({ open, value, onClose, onSave, onChange, inlin
     }
   };
   const footer = (
-    <div className={`sticky bottom-0 z-20 flex shrink-0 flex-wrap items-center gap-2 border-t border-[#dbe7ef] bg-white px-3 py-3 shadow-[0_-8px_20px_rgba(15,23,42,0.06)] sm:px-6 ${inline ? "-mx-1" : ""}`}>
-      {!inline ? <button type="button" disabled={isSaving} onClick={onClose} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60">Cancel</button> : null}
+    <OptometryActionFooter inline={inline} pageLabel={`Page ${page + 1} of ${activeConfig.pages.length}`}>
+      {!inline && !onContinue ? <button type="button" disabled={isSaving} onClick={onClose} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60">Cancel</button> : null}
       <button type="button" disabled={page === 0 || isSaving} onClick={() => movePage(-1)} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:cursor-not-allowed disabled:opacity-40">Back</button>
-      <span className="mr-auto text-xs font-medium text-slate-500">Page {page + 1} of {activeConfig.pages.length}</span>
-      <button type="button" disabled={isSaving} onClick={saveCaseSheet} className="rounded-xl border border-slate-900 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 disabled:opacity-60">{isSaving ? "Saving..." : "Save Case Sheet"}</button>
-      {page < activeConfig.pages.length - 1 ? <button type="button" disabled={isSaving} onClick={() => movePage(1)} className="rounded-xl bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-600 disabled:opacity-60">Next</button> : null}
-    </div>
+      <button type="button" disabled={page === activeConfig.pages.length - 1 || isSaving} onClick={() => movePage(1)} className="rounded-xl bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+      <button type="button" disabled={isSaving} onClick={saveCaseSheet} className="rounded-xl border border-slate-900 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 disabled:opacity-60">{isSaving ? "Saving..." : "Save"}</button>
+      {onContinue ? <button type="button" disabled={isSaving} onClick={onContinue} className="rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#287fc0] disabled:opacity-60">Continue Consultation</button> : null}
+    </OptometryActionFooter>
   );
 
-  return <OptometryModalShell open={open} title="Contact Lens Case Sheets" description="Digital versions of the General, Soft, RGP and Scleral contact lens case sheets." saveLabel="Save Case Sheet" onClose={onClose} onSave={saveCaseSheet} isSaving={isSaving} footer={footer} inline={inline} sidebar={sidebar}>
+  return <OptometryModalShell open={open} title="Contact Lens Case Sheets" description="Digital versions of the General, Soft, RGP and Scleral contact lens case sheets." saveLabel="Save" onClose={onClose} onSave={saveCaseSheet} isSaving={isSaving} footer={footer} inline={inline} sidebar={sidebar}>
     <div ref={pageTopRef} />
     <div className="flex flex-wrap gap-2 border-b border-slate-300 pb-4">{SHEETS.map((sheet) => <button key={sheet.key} type="button" onClick={() => { selectPage(0); onChange({ case_sheet_type: sheet.key }); }} className={`border px-4 py-2 text-sm font-semibold ${value.case_sheet_type === sheet.key ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700"}`}>{sheet.label}</button>)}</div>
     <nav className="flex w-full overflow-x-auto border-y border-slate-300" aria-label={`${activeConfig.label} pages`}>{activeConfig.pages.map((label, index) => <button key={label} type="button" onClick={() => selectPage(index)} className={`relative min-w-[150px] flex-1 px-5 py-3 text-sm font-semibold ${page === index ? "z-10 bg-[#376f9f] text-white" : "bg-slate-50 text-slate-600"}`} style={{ clipPath: index === activeConfig.pages.length - 1 ? undefined : "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)", marginLeft: index ? -8 : 0 }}><span className="mr-1 text-[10px] opacity-70">PAGE {index + 1}</span> {label}</button>)}</nav>

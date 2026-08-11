@@ -17,6 +17,25 @@ type OptometryModalShellProps = {
   sidebar?: ReactNode;
 };
 
+type OptometryActionFooterProps = {
+  inline: boolean;
+  pageLabel: string;
+  children: ReactNode;
+};
+
+export function OptometryActionFooter({ inline, pageLabel, children }: OptometryActionFooterProps) {
+  const actionBar = (
+    <div className={`${inline ? "fixed inset-x-0 bottom-0 z-30" : "sticky bottom-0 z-20"} flex w-full shrink-0 flex-wrap items-center gap-2 border-t border-[#dbe7ef] bg-white px-3 py-3 shadow-[0_-8px_20px_rgba(15,23,42,0.06)] sm:px-6`}>
+      <span className="mr-auto text-xs font-medium text-slate-500">{pageLabel}</span>
+      {children}
+    </div>
+  );
+
+  if (!inline) return actionBar;
+
+  return <div className="h-28 shrink-0 sm:h-20">{actionBar}</div>;
+}
+
 export function OptometryModalShell({
   open,
   title,

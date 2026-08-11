@@ -174,7 +174,16 @@ test("optometry consultation separates History, Examination, and Consultation", 
   await expect(steps.getByRole("button", { name: /Examination/ })).toHaveAttribute("aria-current", "step");
   await expect(page.getByRole("tablist", { name: "Clinical modules" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Continue to Consultation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue Consultation" })).toBeVisible();
+  const eyeExamFooter = page.getByRole("button", { name: "Save", exact: true }).locator("..");
+  await expect(eyeExamFooter.getByRole("button")).toHaveText([
+    "Back",
+    "Next",
+    "Save",
+    "Continue Consultation",
+  ]);
+  const eyeExamFooterBottomGap = await eyeExamFooter.evaluate((element) => window.innerHeight - element.getBoundingClientRect().bottom);
+  expect(Math.abs(eyeExamFooterBottomGap)).toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "Next", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Refraction" })).toBeVisible();
@@ -195,11 +204,33 @@ test("optometry consultation separates History, Examination, and Consultation", 
   const clinicalModules = page.getByRole("tablist", { name: "Clinical modules" });
   await clinicalModules.getByRole("button", { name: "Contact lens", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Contact Lens Initial Work-up" })).toBeVisible();
-  const contactLensFooter = page.getByRole("button", { name: "Save Case Sheet" }).locator("..");
+  const contactLensFooter = page.getByRole("button", { name: "Save", exact: true }).last().locator("..");
+  await expect(contactLensFooter.getByRole("button")).toHaveText([
+    "Back",
+    "Next",
+    "Save",
+    "Continue Consultation",
+  ]);
+  const contactLensFooterBottomGap = await contactLensFooter.evaluate((element) => window.innerHeight - element.getBoundingClientRect().bottom);
+  expect(Math.abs(contactLensFooterBottomGap)).toBeLessThanOrEqual(1);
   await contactLensFooter.getByRole("button", { name: "Next", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Clinical Assessment" })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Contact Lens Initial Work-up" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
+
+  await clinicalModules.getByRole("button", { name: "Low vision", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Low Vision Initial Assessment", exact: true }).last()).toBeVisible();
+  const lowVisionFooter = page.getByRole("button", { name: "Save", exact: true }).last().locator("..");
+  await expect(lowVisionFooter.getByRole("button")).toHaveText([
+    "Back",
+    "Next",
+    "Save",
+    "Continue Consultation",
+  ]);
+  const lowVisionFooterBottomGap = await lowVisionFooter.evaluate((element) => window.innerHeight - element.getBoundingClientRect().bottom);
+  expect(Math.abs(lowVisionFooterBottomGap)).toBeLessThanOrEqual(1);
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
 
@@ -219,15 +250,15 @@ test("optometry consultation separates History, Examination, and Consultation", 
   await expect(steps.getByRole("button", { name: /Examination/ })).toHaveAttribute("aria-current", "step");
   await expect(page.getByRole("heading", { name: "Ocular Examination" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Save Eye Exam" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Eye exam saved.")).toBeVisible();
   await expect(steps.getByRole("button", { name: /Examination/ })).toHaveAttribute("aria-current", "step");
-  await page.getByRole("button", { name: "Continue to Consultation" }).click();
+  await page.getByRole("button", { name: "Continue Consultation" }).click();
   await expect(steps.getByRole("button", { name: /Consultation/ })).toHaveAttribute("aria-current", "step");
   await page.goBack();
   await expect(steps.getByRole("button", { name: /Examination/ })).toHaveAttribute("aria-current", "step");
   await expect(page.getByRole("heading", { name: "Ocular Examination" })).toBeVisible();
-  await page.getByRole("button", { name: "Continue to Consultation" }).click();
+  await page.getByRole("button", { name: "Continue Consultation" }).click();
   await expect(steps.getByRole("button", { name: /Consultation/ })).toHaveAttribute("aria-current", "step");
   await expect(page.getByLabel("Symptoms")).toBeVisible();
   await expect(page.getByRole("tablist", { name: "Clinical modules" })).toHaveCount(0);
