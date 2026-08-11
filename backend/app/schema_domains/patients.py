@@ -1,5 +1,5 @@
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -277,6 +277,7 @@ class NoteOut(BaseModel):
     id: UUID
     patient_id: UUID
     visit_id: UUID | None = None
+    visit_reason: str | None = None
     content: str
     status: NoteStatus = "draft"
     version_number: int = 1
@@ -338,13 +339,36 @@ class FollowUpOut(BaseModel):
     org_id: UUID
     patient_id: UUID
     patient_name: str | None = None
+    patient_email: str | None = None
+    patient_phone: str | None = None
     created_by: UUID | None = None
     scheduled_for: datetime
     notes: str
     status: FollowUpStatus
     completed_at: datetime | None = None
     reminder_sent_at: datetime | None = None
+    appointment_id: UUID | None = None
+    appointment_status: str | None = None
+    appointment_scheduled_for: datetime | None = None
+    last_contacted_at: datetime | None = None
+    last_contact_channels: list[str] = Field(default_factory=list)
+    last_delivery_status: str | None = None
+    last_delivery_error: str | None = None
+    reminder_count: int = 0
     created_at: datetime
+
+
+class FollowUpReminderRequest(BaseModel):
+    channels: list[Literal["email", "whatsapp"]] = Field(min_length=1, max_length=2)
+    idempotency_key: str = Field(min_length=8, max_length=120, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class FollowUpReminderOut(BaseModel):
+    follow_up_id: UUID
+    sent_at: datetime
+    delivery_status: Literal["sent", "partial", "failed"]
+    channels: dict[str, str] = Field(default_factory=dict)
+    errors: dict[str, str] = Field(default_factory=dict)
 
 
 class FollowUpBookingContextOut(BaseModel):

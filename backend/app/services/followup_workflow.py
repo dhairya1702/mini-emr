@@ -8,8 +8,8 @@ from app.config import get_settings
 from app.db import AppRepository
 from app.formatting import format_display_datetime
 from app.schema_domains.auth_settings import UserOut
-from app.schema_domains.patients import FollowUpCreate, FollowUpOut, FollowUpUpdate
-from app.services.audit_service import record_follow_up_created, record_follow_up_updated
+from app.schema_domains.patients import FollowUpCreate, FollowUpOut, FollowUpReminderOut, FollowUpReminderRequest, FollowUpUpdate
+from app.services.audit_service import record_follow_up_created, record_follow_up_updated, write_audit_event
 from app.services.followup_booking_service import create_follow_up_booking_token, decode_follow_up_booking_token
 from app.services.email_service import EmailDeliveryError, send_clinic_email_message
 from app.services.whatsapp_followup_workflow import send_follow_up_booking_invitation
@@ -183,10 +183,16 @@ async def expire_stale_schedule_workflow(repo: AppRepository, org_id: str) -> No
     clinic_settings = await repo.get_clinic_settings(org_id)
     stale_before = clinic_day_start_utc(clinic_settings).isoformat()
     await repo.cancel_expired_appointments(org_id, stale_before)
-    await repo.cancel_expired_follow_ups(org_id, stale_before)
 
 
-async def _send_follow_up_email_if_needed(repo: AppRepository, current_user: UserOut, follow_up: dict) -> None:
+async def _send_follow_up_email(
+    repo: AppRepository,
+    current_user: UserOut,
+    follow_up: dict,
+    *,
+    mark_automatic_reminder: bool,
+    message_key: str,
+) -> None:
     patient = await repo.get_patient(str(current_user.org_id), str(follow_up["patient_id"]))
     recipient = str(patient.get("email") or "").strip()
     if not recipient:
@@ -212,10 +218,147 @@ async def _send_follow_up_email_if_needed(repo: AppRepository, current_user: Use
         subject=subject,
         text_content=text_content,
         html_content=html_content,
-        message_id=f"<follow-up-{follow_up['id']}@clinicos>",
+        message_id=f"<follow-up-{follow_up['id']}-{message_key}@clinicos>",
         include_automated_footer=False,
     )
-    await repo.mark_follow_up_reminder_sent(str(current_user.org_id), str(follow_up["id"]))
+    if mark_automatic_reminder:
+        await repo.mark_follow_up_reminder_sent(str(current_user.org_id), str(follow_up["id"]))
+
+
+async def _send_follow_up_email_if_needed(repo: AppRepository, current_user: UserOut, follow_up: dict) -> None:
+    await _send_follow_up_email(
+        repo,
+        current_user,
+        follow_up,
+        mark_automatic_reminder=True,
+        message_key="due-reminder",
+    )
+
+
+async def enrich_follow_up_tracking(repo: AppRepository, follow_up: dict) -> dict:
+    tracking_getter = getattr(repo, "get_follow_up_tracking", None)
+    if callable(tracking_getter):
+        tracking = await tracking_getter(str(follow_up["org_id"]), str(follow_up["id"]))
+    else:
+        appointment = await repo.get_appointment_for_follow_up(str(follow_up["org_id"]), str(follow_up["id"]))
+        events = [
+            event
+            for event in await repo.list_audit_events(str(follow_up["org_id"]), limit=500)
+            if event.get("entity_type") == "follow_up"
+            and str(event.get("entity_id")) == str(follow_up["id"])
+            and event.get("action") in {"follow_up_invitation_sent", "follow_up_reminder_sent"}
+        ]
+        latest = events[0] if events else {}
+        metadata = latest.get("metadata") or {}
+        tracking = {
+            "appointment_id": appointment.get("id") if appointment else None,
+            "appointment_status": appointment.get("status") if appointment else None,
+            "appointment_scheduled_for": appointment.get("scheduled_for") if appointment else None,
+            "last_contacted_at": latest.get("created_at"),
+            "last_contact_channels": metadata.get("channels") or [],
+            "last_delivery_status": metadata.get("delivery_status"),
+            "last_delivery_error": metadata.get("error"),
+            "reminder_count": sum(event.get("action") == "follow_up_reminder_sent" for event in events),
+        }
+    return {
+        **follow_up,
+        **tracking,
+        "last_contacted_at": tracking.get("last_contacted_at") or follow_up.get("reminder_sent_at"),
+        "last_contact_channels": tracking.get("last_contact_channels") or (["email"] if follow_up.get("reminder_sent_at") else []),
+        "reminder_count": int(tracking.get("reminder_count") or 0),
+    }
+
+
+async def remind_follow_up_patient_workflow(
+    repo: AppRepository,
+    current_user: UserOut,
+    follow_up_id: str,
+    payload: FollowUpReminderRequest,
+) -> FollowUpReminderOut:
+    org_id = str(current_user.org_id)
+    follow_up = next(
+        (item for item in await repo.list_follow_ups(org_id, limit=500) if str(item["id"]) == follow_up_id),
+        None,
+    )
+    if not follow_up:
+        raise ValueError("Follow-up not found for this organization.")
+    if str(follow_up.get("status") or "") != "scheduled":
+        raise ValueError("This patient has already left the active follow-up list.")
+    appointment = await repo.get_appointment_for_follow_up(org_id, follow_up_id)
+    if appointment and str(appointment.get("status") or "") in {"scheduled", "checked_in"}:
+        raise ValueError("This patient has already scheduled an appointment.")
+
+    tracked = await enrich_follow_up_tracking(repo, follow_up)
+    last_contacted_at = tracked.get("last_contacted_at")
+    if last_contacted_at:
+        elapsed = datetime.now(UTC) - _as_utc_minute(last_contacted_at)
+        if elapsed < timedelta(hours=24):
+            retry_at = _as_utc_minute(last_contacted_at) + timedelta(hours=24)
+            raise ValueError(f"A reminder was sent recently. Try again after {retry_at.isoformat()}.")
+
+    patient = await repo.get_patient(org_id, str(follow_up["patient_id"]))
+    clinic_settings = await repo.get_clinic_settings(org_id)
+    requested_channels = list(dict.fromkeys(payload.channels))
+    channel_statuses: dict[str, str] = {}
+    errors: dict[str, str] = {}
+
+    if "email" in requested_channels:
+        try:
+            await _send_follow_up_email(
+                repo,
+                current_user,
+                follow_up,
+                mark_automatic_reminder=False,
+                message_key=f"manual-{payload.idempotency_key}",
+            )
+            channel_statuses["email"] = "sent"
+        except Exception as exc:
+            channel_statuses["email"] = "failed"
+            errors["email"] = str(getattr(exc, "detail", exc))[:500]
+
+    if "whatsapp" in requested_channels:
+        try:
+            event = await send_follow_up_booking_invitation(
+                repo,
+                org_id=org_id,
+                follow_up=follow_up,
+                patient=patient,
+                clinic_settings=clinic_settings,
+                idempotency_key=f"follow-up:{follow_up_id}:reminder:{payload.idempotency_key}",
+                intent="follow_up_booking_reminder",
+            )
+            if event is None:
+                raise RuntimeError("WhatsApp reminders are not configured.")
+            channel_statuses["whatsapp"] = "sent"
+        except Exception as exc:
+            channel_statuses["whatsapp"] = "failed"
+            errors["whatsapp"] = str(getattr(exc, "detail", exc))[:500]
+
+    successful = sum(status == "sent" for status in channel_statuses.values())
+    delivery_status = "sent" if successful == len(requested_channels) else "partial" if successful else "failed"
+    sent_at = datetime.now(UTC)
+    await write_audit_event(
+        repo,
+        current_user,
+        entity_type="follow_up",
+        entity_id=follow_up_id,
+        action="follow_up_reminder_sent",
+        summary=f"Sent a follow-up reminder to {str(patient.get('name') or 'the patient').strip()}.",
+        metadata={
+            "channels": requested_channels,
+            "channel_statuses": channel_statuses,
+            "delivery_status": delivery_status,
+            "error": "; ".join(f"{channel}: {message}" for channel, message in errors.items()),
+            "idempotency_key": payload.idempotency_key,
+        },
+    )
+    return FollowUpReminderOut(
+        follow_up_id=follow_up_id,
+        sent_at=sent_at,
+        delivery_status=delivery_status,
+        channels=channel_statuses,
+        errors=errors,
+    )
 
 
 async def _record_immediate_reminder_failure(
@@ -439,26 +582,54 @@ async def create_follow_up_workflow(
         patient_name,
         format_display_datetime(created["scheduled_for"], str(clinic_settings.get("timezone") or "UTC")),
     )
+    invitation_channels: list[str] = []
+    invitation_errors: dict[str, str] = {}
     try:
-        await send_follow_up_booking_invitation(
+        whatsapp_event = await send_follow_up_booking_invitation(
             repo,
             org_id=str(current_user.org_id),
             follow_up=created,
             patient=patient,
             clinic_settings=clinic_settings,
         )
+        if whatsapp_event is not None:
+            invitation_channels.append("whatsapp")
     except Exception as exc:
+        invitation_errors["whatsapp"] = str(getattr(exc, "detail", exc))[:500]
         await _record_booking_invitation_failure(repo, current_user, created, exc)
-    lead_hours = max(
-        1,
-        min(int(getattr(get_settings(), "follow_up_reminder_lead_hours", 24)), 168),
+    try:
+        await _send_follow_up_email(
+            repo,
+            current_user,
+            created,
+            mark_automatic_reminder=False,
+            message_key="invitation",
+        )
+        invitation_channels.append("email")
+    except (RuntimeError, EmailDeliveryError) as exc:
+        invitation_errors["email"] = str(getattr(exc, "detail", exc))[:500]
+        await _record_immediate_reminder_failure(repo, current_user, created, exc)
+    delivery_status = (
+        "sent"
+        if invitation_channels and not invitation_errors
+        else "partial"
+        if invitation_channels
+        else "failed"
     )
-    if scheduled_for <= datetime.now(UTC) + timedelta(hours=lead_hours):
-        try:
-            await _send_follow_up_email_if_needed(repo, current_user, created)
-        except (RuntimeError, EmailDeliveryError) as exc:
-            await _record_immediate_reminder_failure(repo, current_user, created, exc)
-    return FollowUpOut(**created)
+    await write_audit_event(
+        repo,
+        current_user,
+        entity_type="follow_up",
+        entity_id=str(created["id"]),
+        action="follow_up_invitation_sent",
+        summary=f"Sent a follow-up booking invitation to {patient_name}.",
+        metadata={
+            "channels": invitation_channels,
+            "delivery_status": delivery_status,
+            "error": "; ".join(f"{channel}: {message}" for channel, message in invitation_errors.items()),
+        },
+    )
+    return FollowUpOut(**(await enrich_follow_up_tracking(repo, {**created, "patient_name": patient_name, "patient_email": patient.get("email"), "patient_phone": patient.get("phone")})))
 
 
 async def update_follow_up_workflow(

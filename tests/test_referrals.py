@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from io import BytesIO
 from types import SimpleNamespace
@@ -13,9 +14,16 @@ from test_app import auth_headers_for_token, client, register_test_clinic
 from app.services import referral_workflow
 
 
+def test_referral_snapshot_json_conversion_handles_uuid():
+    patient_id = uuid4()
+    converted = referral_workflow._json_value({"patient": {"id": patient_id}, "ids": [patient_id]})
+    assert converted == {"patient": {"id": str(patient_id)}, "ids": [str(patient_id)]}
+    json.dumps(converted)
+
+
 @pytest.fixture(autouse=True)
 def referral_pdf_builder(monkeypatch):
-    def fake_build(_snapshot, _attachments):
+    def fake_build(_snapshot, _attachments, **_kwargs):
         output = BytesIO()
         writer = PdfWriter()
         writer.add_blank_page(width=595, height=842)
@@ -135,6 +143,59 @@ def test_referral_package_is_frozen_and_downloadable(client):
     assert [row["id"] for row in listed.json()] == [package["id"]]
 
 
+def test_referral_creation_freezes_saved_chart_summary_and_patient_note_pdf(client, monkeypatch):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="referral-summary@clinic.com",
+        clinic_name="Summary Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = _patient(test_client, headers, "Summary Patient")
+    exact_summary = "This is the exact saved chart summary. It must not be regenerated."
+    repo.patients[patient["id"]]["ai_summary"] = exact_summary
+    note_id = _final_note(repo, session["user"]["org_id"], patient["id"], "Frozen patient note content")
+    captured: dict = {}
+
+    def fake_note_pdf(*, patient, note_content, generated_on, assets):
+        captured["note_patient"] = patient
+        captured["note_content"] = note_content
+        captured["note_date"] = generated_on
+        captured["note_assets"] = assets
+        output = BytesIO()
+        writer = PdfWriter()
+        writer.add_blank_page(width=595, height=842)
+        writer.write(output)
+        return output.getvalue()
+
+    def fake_referral_pdf(snapshot, attachments, **kwargs):
+        captured["snapshot"] = snapshot
+        captured["attachments"] = attachments
+        captured.update(kwargs)
+        output = BytesIO()
+        writer = PdfWriter()
+        writer.add_blank_page(width=595, height=842)
+        writer.write(output)
+        return output.getvalue(), 1
+
+    monkeypatch.setattr(referral_workflow, "build_note_pdf", fake_note_pdf)
+    monkeypatch.setattr(referral_workflow, "build_referral_package_pdf", fake_referral_pdf)
+
+    response = test_client.post(
+        f"/patients/{patient['id']}/referral-packages",
+        json=_create_payload(note_id),
+        headers=headers,
+    )
+
+    assert response.status_code == 201, response.text
+    assert captured["snapshot"]["patient"]["ai_summary"] == exact_summary
+    assert captured["snapshot"]["schema_version"] == 2
+    assert captured["note_content"] == "Frozen patient note content"
+    assert captured["note_assets"] == []
+    assert len(captured["consultation_pdfs"]) == 1
+    assert captured["clinic_context"]["clinic_name"] == "Summary Clinic"
+
+
 def test_referral_rejects_draft_and_cross_patient_records(client):
     test_client, repo = client
     session = register_test_clinic(test_client, identifier="referral-scope@clinic.com", clinic_name="Scope Clinic")
@@ -178,7 +239,7 @@ def test_referral_email_delivery_is_recorded(client, monkeypatch):
         json={
             "channels": ["email"],
             "recipients": [{"recipient_type": "doctor", "name": "Dr Receiver", "email": "doctor@example.com"}],
-            "message": "Clinical referral attached.",
+            "message": "",
         },
         headers=headers,
     )
@@ -186,6 +247,11 @@ def test_referral_email_delivery_is_recorded(client, monkeypatch):
     assert response.json()["success"] is True
     assert response.json()["deliveries"][0]["status"] == "sent"
     assert sent[0]["attachments"][0][2] == "application/pdf"
+    assert sent[0]["subject"] == "Referral for Referral Patient"
+    assert sent[0]["text_content"] == (
+        "Hello Dr. Receiver, Send Clinic is referring Referral Patient to you for Retinal opinion. "
+        "The referral letter is attached."
+    )
     detail = test_client.get(f"/referral-packages/{package['id']}", headers=headers).json()
     assert detail["status"] == "sent"
     assert detail["deliveries"][0]["recipient"] == "doctor@example.com"
@@ -211,8 +277,8 @@ def test_referral_whatsapp_delivery_uses_frozen_pdf_and_is_recorded(client, monk
         f"/referral-packages/{package['id']}/send",
         json={
             "channels": ["whatsapp"],
-            "recipients": [{"recipient_type": "doctor", "name": "Dr Receiver", "phone": "+919876543211"}],
-            "message": "Clinical referral attached.",
+            "recipients": [{"recipient_type": "patient", "name": "Referral Patient", "phone": "+919876543211"}],
+            "message": "",
             "idempotency_key": "referral-wa-test",
         },
         headers=headers,
@@ -223,3 +289,7 @@ def test_referral_whatsapp_delivery_uses_frozen_pdf_and_is_recorded(client, monk
     assert sent[0]["document_type"] == "referral_package"
     assert sent[0]["document_id"] == package["id"]
     assert sent[0]["pdf_bytes"].startswith(b"%PDF-")
+    assert sent[0]["caption"] == (
+        "Hello Referral Patient, your referral letter from WhatsApp Clinic is attached. "
+        "Please show it to the doctor or hospital you are visiting."
+    )

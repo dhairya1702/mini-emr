@@ -4,10 +4,11 @@ from app.api_errors import bad_request_error
 from app.auth import require_admin
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
-from app.schema_domains.billing import CatalogItemCreate, CatalogItemOut, CatalogStockUpdate
+from app.schema_domains.billing import CatalogItemCreate, CatalogItemOut, CatalogItemUpdate, CatalogStockUpdate
 from app.services.catalog_workflow import (
     create_catalog_item_workflow,
     delete_catalog_item_workflow,
+    update_catalog_item_workflow,
     update_catalog_stock_workflow,
 )
 
@@ -45,6 +46,19 @@ async def update_catalog_stock(
 ) -> CatalogItemOut:
     try:
         return await update_catalog_stock_workflow(repo, current_user, item_id, payload)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+
+
+@router.patch("/catalog/{item_id}", response_model=CatalogItemOut)
+async def update_catalog_item(
+    item_id: str,
+    payload: CatalogItemUpdate,
+    current_user: UserOut = Depends(require_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> CatalogItemOut:
+    try:
+        return await update_catalog_item_workflow(repo, current_user, item_id, payload)
     except ValueError as exc:
         raise bad_request_error(exc) from exc
 

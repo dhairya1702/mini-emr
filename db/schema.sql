@@ -420,12 +420,17 @@ create table if not exists public.public_check_in_requests (
   reviewed_by uuid references public.clinic_users(id) on delete set null,
   reviewed_at timestamptz,
   rejection_reason text not null default '',
+  tracking_token_hash text,
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default (now() + interval '12 hours')
 );
 
 create index if not exists public_check_in_requests_org_status_created_idx
   on public.public_check_in_requests (org_id, status, created_at desc);
+
+create unique index if not exists public_check_in_requests_tracking_token_hash_uidx
+  on public.public_check_in_requests (tracking_token_hash)
+  where tracking_token_hash is not null;
 
 create index if not exists public_check_in_requests_org_phone_idx
   on public.public_check_in_requests (org_id, submitted_phone_normalized);

@@ -239,6 +239,7 @@ export interface ConsultationNote {
   id: string;
   patient_id: string;
   visit_id: string | null;
+  visit_reason?: string | null;
   content: string;
   status: "draft" | "final" | "sent";
   version_number: number;
@@ -1033,13 +1034,31 @@ export interface FollowUp {
   org_id: string;
   patient_id: string;
   patient_name?: string | null;
+  patient_email?: string | null;
+  patient_phone?: string | null;
   created_by: string | null;
   scheduled_for: string;
   notes: string;
   status: FollowUpStatus;
   completed_at: string | null;
   reminder_sent_at: string | null;
+  appointment_id?: string | null;
+  appointment_status?: string | null;
+  appointment_scheduled_for?: string | null;
+  last_contacted_at?: string | null;
+  last_contact_channels?: string[];
+  last_delivery_status?: "sent" | "partial" | "failed" | null;
+  last_delivery_error?: string | null;
+  reminder_count?: number;
   created_at: string;
+}
+
+export interface FollowUpReminderResult {
+  follow_up_id: string;
+  sent_at: string;
+  delivery_status: "sent" | "partial" | "failed";
+  channels: Record<string, string>;
+  errors: Record<string, string>;
 }
 
 export type CatalogItemType = "service" | "medicine" | "program";
@@ -1163,6 +1182,15 @@ export interface PublicCheckInContext {
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string;
+}
+
+export type PublicCheckInStatus = "pending" | "approved" | "rejected" | "expired";
+
+export interface PublicCheckInSubmission {
+  id: string;
+  status: PublicCheckInStatus;
+  clinic_name: string;
+  tracking_token: string;
 }
 
 export interface PublicAppointmentSlots {
@@ -1560,6 +1588,18 @@ export interface CatalogItemCreatePayload {
   program_key?: string | null;
   program_definition?: MyopiaProgramDefinition | null;
   is_active?: boolean;
+}
+
+export interface CatalogItemUpdatePayload {
+  name: string;
+  item_type: CatalogItemType;
+  default_price: number;
+  track_inventory: boolean;
+  low_stock_threshold: number;
+  unit: string;
+  hsn_sac_code?: string;
+  gst_rate?: number | null;
+  aliases?: string[];
 }
 
 export interface CatalogStockUpdatePayload {

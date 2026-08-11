@@ -1,6 +1,6 @@
 from ipaddress import ip_address
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from app.api_errors import bad_request_error
 from app.db import AppRepository, get_repository
@@ -17,6 +17,7 @@ from app.schema_domains.checkins import (
     PublicAppointmentSlotsOut,
     PublicCheckInContextOut,
     PublicCheckInCreate,
+    PublicCheckInStatusOut,
     PublicCheckInSubmittedOut,
 )
 from app.services.auth_flow import enforce_repository_rate_limit
@@ -119,11 +120,27 @@ async def create_public_check_in(
             id=created["id"],
             status=created["status"],
             clinic_name=config["clinic_name"],
+            tracking_token=created["tracking_token"],
         )
     except HTTPException:
         raise
     except ValueError as exc:
         raise bad_request_error(exc) from exc
+
+
+@router.get("/public/check-in/status", response_model=PublicCheckInStatusOut)
+async def get_public_check_in_status(
+    x_check_in_token: str = Header(..., min_length=32, max_length=200),
+    repo: AppRepository = Depends(get_repository),
+) -> PublicCheckInStatusOut:
+    try:
+        await enforce_repository_rate_limit(repo, "public_check_in_status", x_check_in_token)
+        row = await repo.get_public_check_in_status(x_check_in_token)
+        return PublicCheckInStatusOut(status=row["status"])
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Check-in request not found.") from exc
 
 
 @router.get("/public/check-in/appointment-slots", response_model=PublicAppointmentSlotsOut)

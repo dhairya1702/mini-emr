@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import secrets
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -29,6 +31,7 @@ CHECK_IN_REQUEST_COLUMNS = [
     "rejection_reason",
     "created_at",
     "expires_at",
+    "tracking_token_hash",
 ]
 
 
@@ -145,6 +148,9 @@ class PostgresCheckInsRepository:
         if len("".join(char for char in normalized_phone if char.isdigit())) < 6:
             raise ValueError("Enter a valid phone number.")
 
+        tracking_token = secrets.token_urlsafe(32)
+        tracking_token_hash = hashlib.sha256(tracking_token.encode("utf-8")).hexdigest()
+
         def _create() -> dict[str, Any]:
             try:
                 with self.connection_manager.pool.connection() as connection:
@@ -167,9 +173,9 @@ class PostgresCheckInsRepository:
                               org_id, submitted_name, submitted_phone,
                               submitted_phone_normalized, submitted_email,
                               submitted_date_of_birth, submitted_sex_at_birth,
-                              submitted_reason
+                              submitted_reason, tracking_token_hash
                             )
-                            values (%s, %s, %s, %s, %s, %s, %s, %s)
+                            values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                             returning {_columns_sql(CHECK_IN_REQUEST_COLUMNS)}
                             """,
                             (
@@ -181,15 +187,49 @@ class PostgresCheckInsRepository:
                                 date_of_birth,
                                 sex_at_birth,
                                 reason.strip(),
+                                tracking_token_hash,
                             ),
                         )
-                        return _row_to_dict(cursor.fetchone(), cursor)
+                        created = _row_to_dict(cursor.fetchone(), cursor)
+                        created["tracking_token"] = tracking_token
+                        return created
             except UniqueViolation as error:
                 raise ValueError(
                     "A check-in request with these details is already waiting for review."
                 ) from error
 
         return await asyncio.to_thread(_create)
+
+    async def get_public_check_in_status(self, tracking_token: str) -> dict[str, Any]:
+        tracking_token_hash = hashlib.sha256(tracking_token.encode("utf-8")).hexdigest()
+
+        def _get() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        update public.public_check_in_requests
+                        set status = 'expired'
+                        where tracking_token_hash = %s
+                          and status = 'pending'
+                          and expires_at <= now()
+                        """,
+                        (tracking_token_hash,),
+                    )
+                    cursor.execute(
+                        """
+                        select status
+                        from public.public_check_in_requests
+                        where tracking_token_hash = %s
+                        """,
+                        (tracking_token_hash,),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("Check-in request not found.")
+                    return {"status": str(row[0])}
+
+        return await asyncio.to_thread(_get)
 
     async def list_public_check_in_requests(self, org_id: str) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
@@ -397,16 +437,27 @@ class PostgresCheckInsRepository:
                     )
                     visit_id = str(cursor.fetchone()[0])
                     cursor.execute(
+                        """
+                        select coalesce(max(queue_position), 0) + 1
+                        from public.patients
+                        where org_id = %s and status = 'waiting' and id <> %s
+                        """,
+                        (org_id, patient["id"]),
+                    )
+                    position_row = cursor.fetchone()
+                    queue_position = int(position_row[0] if position_row else 1)
+                    cursor.execute(
                         f"""
                         update public.patients
                         set reason = %s, status = 'waiting', billed = false,
                           current_visit_id = %s, last_visit_at = now(),
+                          stage_entered_at = now(), queue_position = %s,
                           ai_summary_stale = true,
                           ai_summary_revision = ai_summary_revision + 1
                         where id = %s and org_id = %s
                         returning {_columns_sql(PATIENT_COLUMNS)}
                         """,
-                        (request["submitted_reason"], visit_id, patient["id"], org_id),
+                        (request["submitted_reason"], visit_id, queue_position, patient["id"], org_id),
                     )
                     saved = _patient_with_profile_photo_url(_row_to_dict(cursor.fetchone(), cursor))
                     saved["current_visit"] = {

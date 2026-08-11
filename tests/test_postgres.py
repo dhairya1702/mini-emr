@@ -1949,6 +1949,38 @@ def test_postgres_billing_repository_invoice_rpc_and_invoice_items():
     assert loaded["items"][0]["id"] == "invoice-item-1"
 
 
+def test_postgres_billing_repository_finalize_interpolates_returning_columns():
+    finalized_row = list(_invoice_row())
+    finalized_row[13] = "2026-06-11T20:05:00+00:00"
+    finalized_row[14] = "user-1"
+    cursor = ScriptedCursor(
+        descriptions=[
+            INVOICE_COLUMNS,
+            ["id"],
+            INVOICE_ITEM_COLUMNS,
+            [],
+            INVOICE_COLUMNS,
+        ],
+        fetchone_rows=[_invoice_row(), ("patient-1",), tuple(finalized_row)],
+        fetchall_rows=[[]],
+    )
+    repo = PostgresBillingRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    result = asyncio.run(
+        repo.finalize_invoice(
+            "org-1",
+            "invoice-1",
+            completed_by="user-1",
+        )
+    )
+
+    finalize_statement, params = cursor.executed[4]
+    assert "returning id, org_id, patient_id" in finalize_statement
+    assert "{_columns_sql" not in finalize_statement
+    assert params == ("user-1", False, "org-1", "invoice-1")
+    assert result["completed_by"] == "user-1"
+
+
 def test_postgres_attachments_repository_metadata_flow():
     cursor = ScriptedCursor(
         descriptions=[["id"], PATIENT_ATTACHMENT_COLUMNS, PATIENT_ATTACHMENT_COLUMNS],

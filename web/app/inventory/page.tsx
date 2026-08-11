@@ -12,6 +12,7 @@ import type { CatalogItem, CatalogItemType } from "@/lib/types";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 
 type InventoryFilter = "all" | CatalogItemType | "tracked" | "low_stock";
+type InventoryCatalogFormState = Omit<CatalogFormState, "item_type"> & { item_type: CatalogItemType };
 
 const filterOptions: Array<{ value: InventoryFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -22,7 +23,7 @@ const filterOptions: Array<{ value: InventoryFilter; label: string }> = [
   { value: "low_stock", label: "Low stock" },
 ];
 
-function emptyCatalogForm(itemType: CatalogFormState["item_type"] = "service"): CatalogFormState {
+function emptyCatalogForm(itemType: CatalogItemType = "service"): InventoryCatalogFormState {
   return {
     name: "",
     item_type: itemType,
@@ -58,12 +59,12 @@ export default function InventoryPage() {
   const router = useRouter();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isCatalogDrawerOpen, setIsCatalogDrawerOpen] = useState(false);
-  const [catalogForm, setCatalogForm] = useState<CatalogFormState>(() => emptyCatalogForm());
+  const [editingCatalogItem, setEditingCatalogItem] = useState<CatalogItem | null>(null);
+  const [catalogForm, setCatalogForm] = useState<InventoryCatalogFormState>(() => emptyCatalogForm());
+  const [stockAdjustment, setStockAdjustment] = useState("");
   const [catalogError, setCatalogError] = useState("");
   const [catalogStatus, setCatalogStatus] = useState("");
   const [isSavingCatalog, setIsSavingCatalog] = useState(false);
-  const [stockAdjustments, setStockAdjustments] = useState<Record<string, string>>({});
-  const [adjustingStockId, setAdjustingStockId] = useState("");
   const [deletingCatalogId, setDeletingCatalogId] = useState("");
   const [inventorySearch, setInventorySearch] = useState("");
   const [inventoryFilter, setInventoryFilter] = useState<InventoryFilter>("all");
@@ -91,6 +92,7 @@ export default function InventoryPage() {
     applyClinicSettings,
     handleAddStaffUser,
     handleCreateCatalogItem,
+    handleUpdateCatalogItem,
     handleAdjustCatalogStock,
     handleDeleteCatalogItem,
     handleCreateInvoice,
@@ -142,6 +144,42 @@ export default function InventoryPage() {
   const programCount = catalogItems.filter((item) => item.item_type === "program").length;
   const lowStockCount = catalogItems.filter(isLowStock).length;
 
+  function openAddCatalogItem() {
+    setCatalogError("");
+    setCatalogStatus("");
+    setEditingCatalogItem(null);
+    setCatalogForm(emptyCatalogForm());
+    setStockAdjustment("");
+    setIsCatalogDrawerOpen(true);
+  }
+
+  function openEditCatalogItem(item: CatalogItem) {
+    setCatalogError("");
+    setCatalogStatus("");
+    setEditingCatalogItem(item);
+    setCatalogForm({
+      name: item.name,
+      item_type: item.item_type,
+      default_price: String(item.default_price),
+      track_inventory: item.track_inventory,
+      stock_quantity: String(item.stock_quantity),
+      low_stock_threshold: String(item.low_stock_threshold),
+      unit: item.unit,
+      hsn_sac_code: item.hsn_sac_code || "",
+      gst_rate: item.gst_rate === null ? "" : String(item.gst_rate),
+      aliases: item.aliases.join(", "),
+    });
+    setStockAdjustment("");
+    setIsCatalogDrawerOpen(true);
+  }
+
+  function closeCatalogDrawer() {
+    setIsCatalogDrawerOpen(false);
+    setEditingCatalogItem(null);
+    setStockAdjustment("");
+    setCatalogError("");
+  }
+
   useEffect(() => {
     if (isAuthReady && currentUser?.role === "staff") {
       router.replace("/");
@@ -162,6 +200,7 @@ export default function InventoryPage() {
     const stockQuantity = Number(catalogForm.stock_quantity || "0");
     const lowStockThreshold = Number(catalogForm.low_stock_threshold || "0");
     const gstRate = catalogForm.gst_rate ? Number(catalogForm.gst_rate) : null;
+    const stockDelta = Number(stockAdjustment || "0");
     if (!catalogForm.name.trim()) {
       setCatalogError("Name is required.");
       return;
@@ -178,27 +217,45 @@ export default function InventoryPage() {
       setCatalogError("Enter a valid low-stock threshold.");
       return;
     }
+    if (editingCatalogItem && stockAdjustment.trim() && (!Number.isFinite(stockDelta) || stockDelta === 0)) {
+      setCatalogError("Enter a stock adjustment other than zero, or leave it blank.");
+      return;
+    }
+    if (editingCatalogItem?.track_inventory && stockDelta < -editingCatalogItem.stock_quantity) {
+      setCatalogError("Stock cannot go below zero.");
+      return;
+    }
     if (Boolean(catalogForm.hsn_sac_code.trim()) !== (gstRate !== null)) {
       setCatalogError("Enter both HSN/SAC code and GST rate, or leave both blank.");
       return;
     }
     setIsSavingCatalog(true);
     try {
-      await handleCreateCatalogItem({
+      const editablePayload = {
         name: catalogForm.name.trim(),
         item_type: catalogForm.item_type,
         default_price: price,
         track_inventory: catalogForm.track_inventory,
-        stock_quantity: catalogForm.track_inventory ? stockQuantity : 0,
         low_stock_threshold: catalogForm.track_inventory ? lowStockThreshold : 0,
         unit: catalogForm.unit.trim(),
         hsn_sac_code: catalogForm.hsn_sac_code.trim(),
         gst_rate: gstRate,
         aliases: catalogForm.aliases.split(",").map((alias) => alias.trim()).filter(Boolean),
-      });
-      setCatalogStatus(catalogForm.item_type === "service" ? "Service saved." : "Medicine saved.");
-      setCatalogForm(emptyCatalogForm(catalogForm.item_type));
-      setIsCatalogDrawerOpen(false);
+      };
+      if (editingCatalogItem) {
+        await handleUpdateCatalogItem(editingCatalogItem.id, editablePayload);
+        if (catalogForm.track_inventory && stockDelta !== 0) {
+          await handleAdjustCatalogStock(editingCatalogItem.id, stockDelta);
+        }
+        setCatalogStatus("Inventory item updated.");
+      } else {
+        await handleCreateCatalogItem({
+          ...editablePayload,
+          stock_quantity: catalogForm.track_inventory ? stockQuantity : 0,
+        });
+        setCatalogStatus(catalogForm.item_type === "service" ? "Service saved." : "Medicine saved.");
+      }
+      closeCatalogDrawer();
     } catch (saveError) {
       setCatalogError(saveError instanceof Error ? saveError.message : "Failed to save catalog item.");
     } finally {
@@ -206,34 +263,15 @@ export default function InventoryPage() {
     }
   }
 
-  async function handleAdjustStock(itemId: string) {
-    const raw = stockAdjustments[itemId] ?? "";
-    const delta = Number(raw);
-    if (!Number.isFinite(delta) || delta === 0) {
-      setCatalogError("Enter a stock adjustment other than zero.");
-      return;
-    }
-    setAdjustingStockId(itemId);
-    setCatalogError("");
-    setCatalogStatus("");
-    try {
-      await handleAdjustCatalogStock(itemId, delta);
-      setStockAdjustments((current) => ({ ...current, [itemId]: "" }));
-      setCatalogStatus(delta > 0 ? "Stock increased." : "Stock reduced.");
-    } catch (adjustError) {
-      setCatalogError(adjustError instanceof Error ? adjustError.message : "Failed to adjust stock.");
-    } finally {
-      setAdjustingStockId("");
-    }
-  }
-
   async function handleDeleteCatalog(itemId: string) {
+    if (!window.confirm("Delete this inventory item? Existing invoices will keep their saved line-item details.")) return;
     setDeletingCatalogId(itemId);
     setCatalogError("");
     setCatalogStatus("");
     try {
       await handleDeleteCatalogItem(itemId);
       setCatalogStatus("Inventory item removed.");
+      closeCatalogDrawer();
     } catch (deleteError) {
       setCatalogError(deleteError instanceof Error ? deleteError.message : "Failed to remove inventory item.");
     } finally {
@@ -285,12 +323,7 @@ export default function InventoryPage() {
               </label>
               <button
                 type="button"
-                onClick={() => {
-                  setCatalogError("");
-                  setCatalogStatus("");
-                  setCatalogForm(emptyCatalogForm());
-                  setIsCatalogDrawerOpen(true);
-                }}
+                onClick={openAddCatalogItem}
                 aria-label="Add inventory item"
                 title="Add inventory item"
                 className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#2f8fd3] text-white transition hover:bg-[#287fc0] active:scale-[0.99]"
@@ -319,25 +352,34 @@ export default function InventoryPage() {
           <div className="mt-5 overflow-x-auto rounded-[18px] border border-[#dbe7ef]">
             {filteredCatalogItems.length ? (
               <div>
-                <div className="grid min-w-[980px] grid-cols-[minmax(0,1.4fr)_120px_120px_120px_150px_96px] gap-4 bg-[#f3f8fb]/80 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <div className="grid min-w-[900px] grid-cols-[minmax(0,1.5fr)_120px_120px_120px_120px] gap-4 bg-[#f3f8fb]/80 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                   <p>Name</p>
                   <p>Type</p>
                   <p>Unit</p>
                   <p className="text-right">Price</p>
                   <p>Stock</p>
-                  <p className="text-right">Actions</p>
                 </div>
                 {filteredCatalogItems.map((item) => (
                   <div
                     key={item.id}
-                    className="grid min-w-[980px] grid-cols-[minmax(0,1.4fr)_120px_120px_120px_150px_96px] items-center gap-4 border-t border-[#dbe7ef] px-5 py-3.5"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Edit ${item.name}`}
+                    onClick={() => openEditCatalogItem(item)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openEditCatalogItem(item);
+                      }
+                    }}
+                    className="grid min-w-[900px] cursor-pointer grid-cols-[minmax(0,1.5fr)_120px_120px_120px_120px] items-center gap-4 border-t border-[#dbe7ef] px-5 py-3.5 text-left transition hover:bg-[#f3f8fb]/80 focus:bg-[#f3f8fb]/80 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#9fc7e1]"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-slate-900">{item.name}</p>
                       {isLowStock(item) ? (
                         <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-amber-700">
                           <AlertTriangle className="h-3 w-3" />
-                          Low stock threshold reached
+                          Low Stock
                         </p>
                       ) : null}
                     </div>
@@ -347,54 +389,9 @@ export default function InventoryPage() {
                     </div>
                     <p className="truncate text-sm text-slate-600">{item.unit || "per entry"}</p>
                     <p className="text-right text-sm font-semibold tabular-nums text-slate-900">{item.default_price.toFixed(2)}</p>
-                    <div>
-                      <p className={`text-sm tabular-nums ${isLowStock(item) ? "font-semibold text-amber-700" : "text-slate-700"}`}>
-                        {stockLabel(item)}
-                      </p>
-                      {item.track_inventory ? (
-                        <div className="mt-2 flex gap-1.5">
-                          <input
-                            value={stockAdjustments[item.id] ?? ""}
-                            inputMode="decimal"
-                            onChange={(event) => setStockAdjustments((current) => ({ ...current, [item.id]: event.target.value }))}
-                            placeholder="+10 / -2"
-                            className="h-8 w-20 rounded-xl border border-[#bfd7e8] bg-white px-2.5 text-xs text-slate-800 outline-none transition focus:border-[#9fc7e1]"
-                          />
-                          <button
-                            type="button"
-                            disabled={adjustingStockId === item.id || currentUser?.role !== "admin"}
-                            onClick={() => void handleAdjustStock(item.id)}
-                            className="h-8 rounded-xl border border-[#bfd7e8] bg-white px-2.5 text-xs font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-50"
-                          >
-                            {adjustingStockId === item.id ? "..." : "Adjust"}
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="flex justify-end">
-                      {item.item_type === "program" ? (
-                        <button
-                          type="button"
-                          onClick={() => router.push("/care-programs/manage/myopia-care")}
-                          aria-label={`Configure ${item.name}`}
-                          title={`Configure ${item.name}`}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#bfd7e8] bg-white text-[#2a6fa8] transition hover:bg-sky-50"
-                        >
-                          <Settings2 className="h-4 w-4" />
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={deletingCatalogId === item.id || currentUser?.role !== "admin"}
-                          onClick={() => void handleDeleteCatalog(item.id)}
-                          aria-label={`Delete ${item.name}`}
-                          title={`Delete ${item.name}`}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#bfd7e8] bg-white text-slate-600 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
+                    <p className={`text-sm tabular-nums ${isLowStock(item) ? "font-semibold text-amber-700" : "text-slate-700"}`}>
+                      {stockLabel(item)}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -409,7 +406,7 @@ export default function InventoryPage() {
                 <p className="mt-1 text-sm text-slate-500">Add services and medicines so staff can bill from the catalog.</p>
                 <button
                   type="button"
-                  onClick={() => setIsCatalogDrawerOpen(true)}
+                  onClick={openAddCatalogItem}
                   className="mt-5 rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0]"
                 >
                   Add item
@@ -423,19 +420,19 @@ export default function InventoryPage() {
         <div className="fixed inset-0 z-30 bg-slate-950/35 backdrop-blur-sm">
           <button
             type="button"
-            aria-label="Close add item drawer"
+            aria-label="Close inventory item drawer"
             className="absolute inset-0"
-            onClick={() => setIsCatalogDrawerOpen(false)}
+            onClick={closeCatalogDrawer}
           />
           <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col overflow-hidden bg-white shadow-[0_35px_90px_rgba(15,23,42,0.22)]">
             <div className="flex items-start justify-between gap-4 border-b border-[#dbe7ef] px-6 py-5">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Inventory item</p>
-                <h2 className="mt-2 text-xl font-semibold text-slate-900">Add item</h2>
+                <h2 className="mt-2 text-xl font-semibold text-slate-900">{editingCatalogItem ? "Edit item" : "Add item"}</h2>
               </div>
               <button
                 type="button"
-                onClick={() => setIsCatalogDrawerOpen(false)}
+                onClick={closeCatalogDrawer}
                 aria-label="Close"
                 className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#dbe7ef] text-slate-500 transition hover:bg-[#f3f8fb] hover:text-slate-900"
               >
@@ -465,17 +462,19 @@ export default function InventoryPage() {
                     <select
                       value={catalogForm.item_type}
                       onChange={(event) => {
-                        const nextType = event.target.value as CatalogFormState["item_type"];
+                        const nextType = event.target.value as CatalogItemType;
                         setCatalogForm((current) => ({
                           ...current,
                           item_type: nextType,
                           track_inventory: nextType === "medicine" ? true : current.track_inventory,
                         }));
                       }}
-                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                      disabled={editingCatalogItem?.item_type === "program"}
+                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <option value="service">Service</option>
                       <option value="medicine">Medicine</option>
+                      {editingCatalogItem?.item_type === "program" ? <option value="program">Program</option> : null}
                     </select>
                   </label>
                   <label className="block">
@@ -511,12 +510,14 @@ export default function InventoryPage() {
                 </label>
 
                 <div className="rounded-xl border border-[#dbe7ef] bg-[#f8fbfd] p-4">
-                  <p className="text-sm font-semibold text-slate-800">GST details (optional)</p>
-                  <p className="mt-1 text-xs text-slate-500">Leave both blank to keep this item untaxed.</p>
+                  <p className="text-sm text-slate-800">
+                    <span className="font-semibold">GST</span>{" "}
+                    <span className="font-normal">(leave blank to keep the item untaxed)</span>
+                  </p>
                   <div className="mt-3 grid gap-4 sm:grid-cols-2">
                     <label className="block">
                       <span className="mb-2 block text-sm font-medium text-slate-700">
-                        {catalogForm.item_type === "service" ? "SAC code" : "HSN code"}
+                        {catalogForm.item_type === "medicine" ? "HSN code" : "SAC code"}
                       </span>
                       <input
                         value={catalogForm.hsn_sac_code}
@@ -547,6 +548,7 @@ export default function InventoryPage() {
                   <input
                     type="checkbox"
                     checked={catalogForm.track_inventory}
+                    disabled={editingCatalogItem?.item_type === "program"}
                     onChange={(event) => setCatalogForm((current) => ({ ...current, track_inventory: event.target.checked }))}
                   />
                   Track stock for this item
@@ -554,16 +556,25 @@ export default function InventoryPage() {
 
                 {catalogForm.track_inventory ? (
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="block">
-                      <span className="mb-2 block text-sm font-medium text-slate-700">Opening stock</span>
-                      <input
-                        value={catalogForm.stock_quantity}
-                        inputMode="decimal"
-                        onChange={(event) => setCatalogForm((current) => ({ ...current, stock_quantity: event.target.value }))}
-                        placeholder="100"
-                        className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
-                      />
-                    </label>
+                    {editingCatalogItem ? (
+                      <div className="block">
+                        <span className="mb-2 block text-sm font-medium text-slate-700">Current stock</span>
+                        <div className="flex h-11 items-center rounded-xl border border-[#dbe7ef] bg-[#f3f8fb] px-4 text-sm font-semibold tabular-nums text-slate-800">
+                          {editingCatalogItem.stock_quantity}
+                        </div>
+                      </div>
+                    ) : (
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-medium text-slate-700">Opening stock</span>
+                        <input
+                          value={catalogForm.stock_quantity}
+                          inputMode="decimal"
+                          onChange={(event) => setCatalogForm((current) => ({ ...current, stock_quantity: event.target.value }))}
+                          placeholder="100"
+                          className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
+                        />
+                      </label>
+                    )}
                     <label className="block">
                       <span className="mb-2 block text-sm font-medium text-slate-700">Low stock alert</span>
                       <input
@@ -574,24 +585,66 @@ export default function InventoryPage() {
                         className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
                       />
                     </label>
+                    {editingCatalogItem ? (
+                      <label className="block sm:col-span-2">
+                        <span className="mb-2 block text-sm font-medium text-slate-700">Adjust stock</span>
+                        <input
+                          value={stockAdjustment}
+                          inputMode="decimal"
+                          onChange={(event) => setStockAdjustment(event.target.value)}
+                          placeholder="+10 or -2"
+                          className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
+                        />
+                        {stockAdjustment.trim() && Number.isFinite(Number(stockAdjustment)) ? (
+                          <span className="mt-2 block text-xs font-medium text-[#2a6fa8]">
+                            New stock: {editingCatalogItem.stock_quantity + Number(stockAdjustment)}
+                          </span>
+                        ) : null}
+                      </label>
+                    ) : null}
                   </div>
                 ) : null}
+
               </div>
-              <div className="flex items-center justify-end gap-3 border-t border-[#dbe7ef] px-6 py-4">
-                <button
-                  type="button"
-                  onClick={() => setIsCatalogDrawerOpen(false)}
-                  className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingCatalog || currentUser?.role !== "admin"}
-                  className="rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
-                >
-                  {isSavingCatalog ? "Saving..." : "Save item"}
-                </button>
+              <div className="flex items-center justify-between gap-3 border-t border-[#dbe7ef] px-6 py-4">
+                <div>
+                  {editingCatalogItem?.item_type === "program" ? (
+                    <button
+                      type="button"
+                      onClick={() => router.push("/care-programs/manage/myopia-care")}
+                      className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-[#2a6fa8] transition hover:bg-sky-50"
+                    >
+                      <Settings2 className="h-4 w-4" />
+                      Configure program
+                    </button>
+                  ) : editingCatalogItem ? (
+                    <button
+                      type="button"
+                      disabled={deletingCatalogId === editingCatalogItem.id || currentUser?.role !== "admin"}
+                      onClick={() => void handleDeleteCatalog(editingCatalogItem.id)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {deletingCatalogId === editingCatalogItem.id ? "Deleting…" : "Delete"}
+                    </button>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={closeCatalogDrawer}
+                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingCatalog || currentUser?.role !== "admin"}
+                    className="rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+                  >
+                    {isSavingCatalog ? "Saving..." : editingCatalogItem ? "Save changes" : "Save item"}
+                  </button>
+                </div>
               </div>
             </form>
           </aside>

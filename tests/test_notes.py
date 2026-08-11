@@ -213,6 +213,7 @@ def test_sent_consultation_note_is_emailed_and_locked_to_saved_record(client, mo
     assert notes.status_code == 200
     assert notes.json()[0]["sent_at"] is not None
     assert notes.json()[0]["status"] == "sent"
+    assert notes.json()[0]["visit_reason"] == patient["reason"]
 
 
 def test_consultation_note_can_be_sent_on_whatsapp(client, monkeypatch):

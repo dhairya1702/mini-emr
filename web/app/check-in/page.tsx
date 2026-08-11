@@ -10,6 +10,7 @@ import type {
   PublicAppointmentBooking,
   PublicAppointmentSlots,
   PublicCheckInContext,
+  PublicCheckInStatus,
   SexAtBirth,
 } from "@/lib/types";
 
@@ -28,7 +29,9 @@ function CheckInPageContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [trackingToken, setTrackingToken] = useState("");
+  const [hasLoadedTrackingToken, setHasLoadedTrackingToken] = useState(false);
+  const [checkInStatus, setCheckInStatus] = useState<PublicCheckInStatus | null>(null);
   const [appointmentSlots, setAppointmentSlots] = useState<PublicAppointmentSlots | null>(null);
   const [selectedSlot, setSelectedSlot] = useState("");
   const [appointment, setAppointment] = useState<PublicAppointmentBooking | null>(null);
@@ -36,6 +39,12 @@ function CheckInPageContent() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    setTrackingToken(new URLSearchParams(window.location.hash.slice(1)).get("check-in") || "");
+    setHasLoadedTrackingToken(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoadedTrackingToken) return;
     if (initialBookingToken) {
       let active = true;
       api.getPublicAppointment(initialBookingToken)
@@ -54,6 +63,26 @@ function CheckInPageContent() {
         .finally(() => {
           if (active) setIsLoading(false);
         });
+      return () => {
+        active = false;
+      };
+    }
+    if (trackingToken) {
+      let active = true;
+      if (token) {
+        api.getPublicCheckInContext(token)
+          .then((row) => {
+            if (active) setContext(row);
+          })
+          .catch(() => {
+            // The private tracking token remains usable after the public QR link changes.
+          })
+          .finally(() => {
+            if (active) setIsLoading(false);
+          });
+      } else {
+        setIsLoading(false);
+      }
       return () => {
         active = false;
       };
@@ -77,7 +106,37 @@ function CheckInPageContent() {
     return () => {
       active = false;
     };
-  }, [initialBookingToken, token]);
+  }, [hasLoadedTrackingToken, initialBookingToken, token, trackingToken]);
+
+  useEffect(() => {
+    if (!trackingToken || (checkInStatus && checkInStatus !== "pending")) return;
+    let active = true;
+    async function refreshStatus() {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const response = await api.getPublicCheckInStatus(trackingToken);
+        if (active) setCheckInStatus(response.status);
+      } catch {
+        // Keep the last useful status and retry; staff review remains authoritative.
+      }
+    }
+    void refreshStatus();
+    const intervalId = window.setInterval(() => void refreshStatus(), 10000);
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") void refreshStatus();
+    }
+    function handleFocus() {
+      void refreshStatus();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [checkInStatus, trackingToken]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -101,7 +160,7 @@ function CheckInPageContent() {
         }
         return;
       }
-      await api.submitPublicCheckIn({
+      const submitted = await api.submitPublicCheckIn({
         token,
         name,
         phone,
@@ -110,7 +169,11 @@ function CheckInPageContent() {
         sex_at_birth: sexAtBirth,
         reason,
       });
-      setSubmitted(true);
+      setTrackingToken(submitted.tracking_token);
+      setCheckInStatus(submitted.status);
+      const url = new URL(window.location.href);
+      url.hash = new URLSearchParams({ "check-in": submitted.tracking_token }).toString();
+      window.history.replaceState({}, "", url.toString());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Could not submit check-in.");
     } finally {
@@ -291,13 +354,45 @@ function CheckInPageContent() {
               </div>
             ) : null}
           </section>
-        ) : submitted && context ? (
-          <section className="rounded-lg border border-emerald-200 bg-white p-7">
-            <CheckCircle2 className="h-10 w-10 text-emerald-500" />
-            <h2 className="mt-5 text-xl font-semibold text-slate-900">Check-in submitted</h2>
+        ) : trackingToken ? (
+          <section className={`rounded-lg border bg-white p-7 ${
+            checkInStatus === "approved"
+              ? "border-emerald-200"
+              : checkInStatus === "rejected" || checkInStatus === "expired"
+                ? "border-rose-200"
+                : "border-[#bfe0f5]"
+          }`} aria-live="polite">
+            {checkInStatus === "approved" ? (
+              <CheckCircle2 className="h-10 w-10 text-emerald-500" />
+            ) : checkInStatus === "rejected" || checkInStatus === "expired" ? (
+              <XCircle className="h-10 w-10 text-rose-500" />
+            ) : (
+              <Clock3 className="h-10 w-10 text-[#2f8fd3]" />
+            )}
+            <h2 className="mt-5 text-xl font-semibold text-slate-900">
+              {checkInStatus === "approved"
+                ? "You’re in the queue"
+                : checkInStatus === "rejected"
+                  ? "Please speak with reception"
+                  : checkInStatus === "expired"
+                    ? "This request expired"
+                    : "Check-in submitted"}
+            </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Reception at {context.clinic_name} will confirm your place in the queue.
+              {checkInStatus === "approved"
+                ? "Your place is confirmed. Please remain nearby while the clinic prepares for your visit."
+                : checkInStatus === "rejected"
+                  ? "Reception could not add this request to the queue. Please speak with clinic staff for help."
+                  : checkInStatus === "expired"
+                    ? "Submit a new check-in request or speak with reception for help."
+                    : `Reception${context?.clinic_name ? ` at ${context.clinic_name}` : ""} is reviewing your request. Keep this page open for confirmation.`}
             </p>
+            {!checkInStatus || checkInStatus === "pending" ? (
+              <p className="mt-4 inline-flex items-center gap-2 text-xs font-medium text-[#2a6fa8]">
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                Checking for an update…
+              </p>
+            ) : null}
           </section>
         ) : appointmentSlots && context ? (
           <section className="rounded-lg border border-[#dbe7ef] bg-white p-6 sm:p-7">

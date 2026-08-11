@@ -24,7 +24,6 @@ export interface ReferralDraft {
   longitudinalTrackIds: string[];
   emailRecipients: string;
   whatsappRecipients: string;
-  deliveryMessage: string;
 }
 
 export function createReferralDraft(patient: Patient): ReferralDraft {
@@ -47,7 +46,6 @@ export function createReferralDraft(patient: Patient): ReferralDraft {
     longitudinalTrackIds: [],
     emailRecipients: patient.email || "",
     whatsappRecipients: patient.phone || "",
-    deliveryMessage: `Please find the referral package for ${patient.name}.`,
   };
 }
 
@@ -92,4 +90,8 @@ export function referralRecordCount(draft: ReferralDraft) {
   return draft.consultationNoteIds.length
     + draft.attachmentIds.length
     + draft.longitudinalTrackIds.length;
+}
+
+export function referralConsultationReason(visitReason: string | null | undefined, patientReason: string | null | undefined) {
+  return visitReason?.trim() || patientReason?.trim() || "Consultation";
 }

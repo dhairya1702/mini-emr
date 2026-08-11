@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { CalendarDays, LogOut, Menu, Search } from "lucide-react";
+import { Bell, CalendarDays, LogOut, Menu, Search } from "lucide-react";
 import Link from "next/link";
 
 import { AuthUser } from "@/lib/types";
@@ -13,6 +13,9 @@ interface AppHeaderProps {
   onLogout: () => void;
   onOpenSettings?: () => void;
   timezone?: string;
+  checkInCount?: number;
+  hasUnseenCheckIns?: boolean;
+  onOpenCheckIns?: () => void;
 }
 
 function initialsForUser(user: AuthUser | null) {
@@ -49,6 +52,9 @@ export function AppHeader({
   onLogout,
   onOpenSettings,
   timezone,
+  checkInCount = 0,
+  hasUnseenCheckIns = false,
+  onOpenCheckIns,
 }: AppHeaderProps) {
   const [globalSearch, setGlobalSearch] = useState("");
   const navItems = [
@@ -103,10 +109,31 @@ export function AppHeader({
         </form>
 
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
-          <span className="hidden items-center gap-1.5 rounded-xl border border-[#bfe0f5] bg-[#ecf6fd] px-3 py-2 text-xs font-semibold text-[#2a6fa8] sm:inline-flex">
-            <CalendarDays className="h-3.5 w-3.5" />
-            {formatClinicDate(timezone)}
-          </span>
+          {onOpenCheckIns ? (
+            <button
+              type="button"
+              onClick={onOpenCheckIns}
+              aria-label={`Open check-in requests${checkInCount ? `, ${checkInCount} pending` : ""}`}
+              className={`hidden items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition sm:inline-flex motion-reduce:animate-none ${
+                checkInCount
+                  ? "border-[#79b7de] bg-[#e8f4fb] text-[#1d659a] shadow-[0_0_0_4px_rgba(47,143,211,0.10)]"
+                  : "border-[#bfe0f5] bg-[#ecf6fd] text-[#2a6fa8]"
+              } ${hasUnseenCheckIns ? "animate-pulse" : ""}`}
+            >
+              <Bell className="h-3.5 w-3.5" />
+              <span>Check-ins</span>
+              {checkInCount ? (
+                <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#2f8fd3] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  {checkInCount > 99 ? "99+" : checkInCount}
+                </span>
+              ) : null}
+            </button>
+          ) : (
+            <span className="hidden items-center gap-1.5 rounded-xl border border-[#bfe0f5] bg-[#ecf6fd] px-3 py-2 text-xs font-semibold text-[#2a6fa8] sm:inline-flex">
+              <CalendarDays className="h-3.5 w-3.5" />
+              {formatClinicDate(timezone)}
+            </span>
+          )}
           {currentUser ? (
             <span className="hidden rounded-xl border border-[#dbe7ef] bg-[#edf5fa] px-3 py-2 text-xs font-semibold capitalize text-[#2a6fa8] sm:inline-flex">
               {currentUser.role}

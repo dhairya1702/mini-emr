@@ -38,6 +38,11 @@ class PublicCheckInSubmittedOut(BaseModel):
     id: UUID
     status: CheckInRequestStatus
     clinic_name: str
+    tracking_token: str
+
+
+class PublicCheckInStatusOut(BaseModel):
+    status: CheckInRequestStatus
 
 
 class PublicAppointmentSlotsOut(BaseModel):

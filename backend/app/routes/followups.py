@@ -1,5 +1,6 @@
 import hmac
 import logging
+import asyncio
 from datetime import UTC, date, datetime
 from uuid import UUID
 
@@ -12,8 +13,8 @@ from app.config import get_settings
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.common import FollowUpStatus
-from app.schema_domains.patients import FollowUpCreate, FollowUpOut, FollowUpUpdate
-from app.services.followup_workflow import create_follow_up_workflow, send_due_follow_up_emails_workflow, update_follow_up_workflow
+from app.schema_domains.patients import FollowUpCreate, FollowUpOut, FollowUpReminderOut, FollowUpReminderRequest, FollowUpUpdate
+from app.services.followup_workflow import create_follow_up_workflow, enrich_follow_up_tracking, remind_follow_up_patient_workflow, send_due_follow_up_emails_workflow, update_follow_up_workflow
 
 
 logger = logging.getLogger(__name__)
@@ -55,9 +56,12 @@ async def list_follow_ups(
     current_user: UserOut = Depends(get_current_user),
 ) -> list[FollowUpOut]:
     clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
-    effective_date = scheduled_date or clinic_today(clinic_settings)
-    scheduled_from, scheduled_to = utc_day_bounds_for_clinic(effective_date, clinic_settings)
-    if upcoming and scheduled_date is None:
+    scheduled_from = None
+    scheduled_to = None
+    if scheduled_date is not None:
+        scheduled_from, scheduled_to = utc_day_bounds_for_clinic(scheduled_date, clinic_settings)
+    elif upcoming:
+        scheduled_from, _ = utc_day_bounds_for_clinic(clinic_today(clinic_settings), clinic_settings)
         scheduled_to = None
     follow_ups = await repo.list_follow_ups(
         str(current_user.org_id),
@@ -67,7 +71,23 @@ async def list_follow_ups(
         scheduled_from=scheduled_from,
         scheduled_to=scheduled_to,
     )
-    return [FollowUpOut(**follow_up) for follow_up in follow_ups]
+    enriched = await asyncio.gather(*(enrich_follow_up_tracking(repo, follow_up) for follow_up in follow_ups))
+    return [FollowUpOut(**follow_up) for follow_up in enriched]
+
+
+@router.post("/follow-ups/{follow_up_id}/remind", response_model=FollowUpReminderOut)
+async def remind_follow_up_patient(
+    follow_up_id: str,
+    payload: FollowUpReminderRequest,
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> FollowUpReminderOut:
+    try:
+        return await remind_follow_up_patient_workflow(repo, current_user, follow_up_id, payload)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="remind_follow_up_patient") from exc
 
 
 @router.patch("/follow-ups/{follow_up_id}", response_model=FollowUpOut)

@@ -311,6 +311,28 @@ async def record_catalog_stock_adjusted(
     )
 
 
+async def record_catalog_item_updated(
+    repo: AppRepository,
+    current_user: UserOut,
+    item: dict,
+    *,
+    changed_fields: list[str],
+) -> None:
+    await write_audit_event(
+        repo,
+        current_user,
+        entity_type="catalog_item",
+        entity_id=str(item["id"]),
+        action="catalog_item_updated",
+        summary=f"Updated catalog item {item['name']}.",
+        metadata={
+            "item_name": item.get("name"),
+            "item_type": item.get("item_type"),
+            "changed_fields": changed_fields,
+        },
+    )
+
+
 async def record_catalog_item_deleted(
     repo: AppRepository,
     current_user: UserOut,

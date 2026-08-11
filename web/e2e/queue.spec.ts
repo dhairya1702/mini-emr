@@ -84,3 +84,64 @@ test("queue drag moves a waiting patient into consultation", async ({ page }) =>
   await dragByLabel(page, "Waiting queue", "Drag Morgan Lee", "Consultation queue");
   await expect(page.getByLabel("Consultation queue").getByText("Morgan Lee", { exact: true })).toBeVisible();
 });
+
+test("queue header reviews and approves a QR check-in request", async ({ page }) => {
+  const user = buildUser({ doctor_signature_name: "signature.png" });
+  const existingPatient = buildPatient();
+  const approvedPatient = buildPatient({
+    id: "patient-qr-1",
+    name: "Jordan QR",
+    phone: "5550104040",
+    reason: "Blurred vision",
+    queue_position: 2,
+  });
+  let pending = true;
+
+  await seedSession(page, { user });
+  await mockClinicBootstrap(page, {
+    user,
+    clinicSettings: buildClinicSettings({ clinic_specialty: "general_physician" }),
+    patients: [existingPatient],
+  });
+  await mockQueueIntake(page, [existingPatient]);
+  await page.route("**/check-in/requests", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(pending ? [{
+        id: "request-qr-1",
+        submitted_name: "Jordan QR",
+        submitted_phone: "5550104040",
+        submitted_email: "jordan@example.com",
+        submitted_date_of_birth: "1990-04-12",
+        submitted_sex_at_birth: "other",
+        submitted_reason: "Blurred vision",
+        status: "pending",
+        approved_patient_id: null,
+        reviewed_by: null,
+        reviewed_at: null,
+        created_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        candidates: [],
+      }] : []),
+    });
+  });
+  await page.route("**/check-in/requests/request-qr-1/approve", async (route) => {
+    pending = false;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(approvedPatient) });
+  });
+
+  await page.goto("/");
+
+  const checkInsButton = page.getByRole("button", { name: "Open check-in requests, 1 pending" });
+  await expect(checkInsButton).toBeVisible();
+  await expect(checkInsButton).toHaveClass(/animate-pulse/);
+  await checkInsButton.click();
+  await expect(page.getByRole("heading", { name: "Check-in requests" })).toBeVisible();
+  await expect(page.getByText("Jordan QR", { exact: true })).toBeVisible();
+  await expect(checkInsButton).not.toHaveClass(/animate-pulse/);
+
+  await page.getByRole("button", { name: "Approve and add Jordan QR to queue" }).click();
+  await expect(page.getByText("All caught up")).toBeVisible();
+  await expect(page.getByLabel("Waiting queue").getByText("Jordan QR", { exact: true })).toBeVisible();
+});

@@ -97,6 +97,7 @@ from app.schema_domains.patients import calculate_age_from_dob
 from app.services.case_study_specialty import apply_case_study_specialty_enrichment
 from app.services.document_helpers import build_document_context_for_user, serialize_note_assets
 from app.services.followup_workflow import _as_utc_minute
+from app.services import followup_workflow as followup_workflow_module
 from app.services import followup_booking_service as followup_booking_service_module
 from app.storage import get_patient_attachment_storage
 
@@ -1063,6 +1064,7 @@ class FakeRepo:
         ):
             raise ValueError("A check-in request with these details is already waiting for review.")
         request_id = str(uuid4())
+        tracking_token = str(uuid4())
         row = {
             "id": request_id,
             "org_id": org_id,
@@ -1080,9 +1082,26 @@ class FakeRepo:
             "rejection_reason": "",
             "created_at": _now(),
             "expires_at": _now() + timedelta(hours=12),
+            "tracking_token_hash": hashlib.sha256(tracking_token.encode("utf-8")).hexdigest(),
         }
         self.public_check_in_requests[request_id] = row
-        return row
+        return {**row, "tracking_token": tracking_token}
+
+    async def get_public_check_in_status(self, tracking_token: str) -> dict:
+        tracking_token_hash = hashlib.sha256(tracking_token.encode("utf-8")).hexdigest()
+        request = next(
+            (
+                row
+                for row in self.public_check_in_requests.values()
+                if row.get("tracking_token_hash") == tracking_token_hash
+            ),
+            None,
+        )
+        if request is None:
+            raise ValueError("Check-in request not found.")
+        if request["status"] == "pending" and request["expires_at"] <= _now():
+            request["status"] = "expired"
+        return {"status": request["status"]}
 
     async def list_public_check_in_requests(self, org_id: str) -> list[dict]:
         rows = []
@@ -2159,7 +2178,7 @@ class FakeRepo:
     async def get_referral_package(self, org_id: str, package_id: str) -> dict:
         row = self.referral_packages.get(package_id)
         if row is None or row["org_id"] != org_id:
-            raise ValueError("Referral package not found for this organization.")
+            raise ValueError("Referral not found for this organization.")
         return row
 
     async def list_referral_packages(self, org_id: str, patient_id: str) -> list[dict]:
@@ -2442,10 +2461,13 @@ class FakeRepo:
         )
 
     async def list_notes_for_patient(self, org_id: str, patient_id: str) -> list[dict]:
-        return [
-            note for note in self.notes.values()
-            if note["org_id"] == org_id and note["patient_id"] == patient_id
-        ]
+        rows = []
+        for note in self.notes.values():
+            if note["org_id"] != org_id or note["patient_id"] != patient_id:
+                continue
+            visit = self.patient_visits.get(str(note.get("visit_id") or "")) or {}
+            rows.append({**note, "visit_reason": visit.get("reason")})
+        return rows
 
     async def mark_note_sent(self, org_id: str, note_id: str, *, sent_by: str, sent_to: str) -> dict:
         note = await self.get_note(org_id, note_id)
@@ -2489,6 +2511,13 @@ class FakeRepo:
         if next_quantity < 0:
             raise ValueError("Stock cannot go below zero.")
         item["stock_quantity"] = next_quantity
+        return item
+
+    async def update_catalog_item(self, org_id: str, item_id: str, payload) -> dict:
+        item = self.catalog_items[item_id]
+        if item["org_id"] != org_id:
+            raise ValueError("Inventory item not found for this organization.")
+        item.update(payload.model_dump())
         return item
 
     async def delete_catalog_item(self, org_id: str, item_id: str) -> None:
@@ -3163,6 +3192,16 @@ def test_public_qr_check_in_requires_staff_approval_and_suggests_existing_patien
     ).json()
     repo.patients[existing["id"]]["status"] = "done"
     repo.patients[existing["id"]]["billed"] = True
+    queue_anchor = test_client.post(
+        "/patients",
+        headers=headers,
+        json={
+            "name": "Already Waiting",
+            "phone": "9000000001",
+            "reason": "Routine visit",
+            "date_of_birth": "1988-01-02",
+        },
+    ).json()
 
     config = test_client.get("/check-in/config", headers=headers)
     assert config.status_code == 200
@@ -3191,6 +3230,23 @@ def test_public_qr_check_in_requires_staff_approval_and_suggests_existing_patien
     )
     assert submitted.status_code == 201
     request_id = submitted.json()["id"]
+    tracking_token = submitted.json()["tracking_token"]
+    assert tracking_token
+    assert repo.public_check_in_requests[request_id]["tracking_token_hash"] == hashlib.sha256(
+        tracking_token.encode("utf-8")
+    ).hexdigest()
+    pending_status = test_client.get(
+        "/public/check-in/status",
+        headers={"X-Check-In-Token": tracking_token},
+    )
+    assert pending_status.status_code == 200
+    assert pending_status.json() == {"status": "pending"}
+    missing_status = test_client.get(
+        "/public/check-in/status",
+        headers={"X-Check-In-Token": str(uuid4())},
+    )
+    assert missing_status.status_code == 404
+    assert missing_status.json()["detail"] == "Check-in request not found."
     assert not any(
         patient["reason"] == "Blurred vision" and patient["status"] == "waiting"
         for patient in repo.patients.values()
@@ -3220,6 +3276,12 @@ def test_public_qr_check_in_requires_staff_approval_and_suggests_existing_patien
     assert approved.json()["email"] == "trusted@example.com"
     assert approved.json()["reason"] == "Blurred vision"
     assert approved.json()["status"] == "waiting"
+    assert approved.json()["queue_position"] == queue_anchor["queue_position"] + 1
+    approved_status = test_client.get(
+        "/public/check-in/status",
+        headers={"X-Check-In-Token": tracking_token},
+    )
+    assert approved_status.json() == {"status": "approved"}
     assert test_client.get("/check-in/requests", headers=headers).json() == []
 
     new_submission = test_client.post(
@@ -3243,6 +3305,40 @@ def test_public_qr_check_in_requires_staff_approval_and_suggests_existing_patien
     assert new_patient.status_code == 200
     assert new_patient.json()["email"] == "new.qr.patient@example.com"
     assert new_patient.json()["sex_at_birth"] == "other"
+    assert new_patient.json()["queue_position"] == approved.json()["queue_position"] + 1
+
+    rejected_submission = test_client.post(
+        "/public/check-in",
+        json={
+            "token": public_token,
+            "name": "Declined Patient",
+            "phone": "9123456781",
+            "email": "declined@example.com",
+            "date_of_birth": "2002-09-10",
+            "sex_at_birth": "female",
+            "reason": "Dry eyes",
+        },
+    ).json()
+    rejected = test_client.post(
+        f"/check-in/requests/{rejected_submission['id']}/reject",
+        headers=headers,
+        json={"reason": ""},
+    )
+    assert rejected.status_code == 200
+    rejected_status = test_client.get(
+        "/public/check-in/status",
+        headers={"X-Check-In-Token": rejected_submission["tracking_token"]},
+    )
+    assert rejected_status.json() == {"status": "rejected"}
+    repo.public_check_in_requests[rejected_submission["id"]].update(
+        status="pending",
+        expires_at=_now() - timedelta(seconds=1),
+    )
+    expired_status = test_client.get(
+        "/public/check-in/status",
+        headers={"X-Check-In-Token": rejected_submission["tracking_token"]},
+    )
+    assert expired_status.json() == {"status": "expired"}
 
 
 def test_public_qr_appointment_books_only_after_capacity_check_and_can_be_managed(client):
@@ -3468,6 +3564,69 @@ def test_public_follow_up_booking_reschedules_and_creates_appointment(client):
     assert any(event.get("metadata", {}).get("source") == "public_follow_up_booking" for event in appointment_events)
     assert any(event["action"] == "appointment_rescheduled" for event in appointment_events)
     assert any(event["action"] == "appointment_cancelled" for event in appointment_events)
+
+
+def test_staff_can_remind_patient_and_follow_up_tracking_is_returned(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="reminders@example.com", clinic_name="Reminder Clinic")
+    token = session["token"]
+
+    async def fake_email(*_args, **_kwargs):
+        return None
+
+    async def fake_whatsapp(*_args, **_kwargs):
+        return {"id": "message-1", "status": "accepted"}
+
+    monkeypatch.setattr(followup_workflow_module, "_send_follow_up_email", fake_email)
+    monkeypatch.setattr(followup_workflow_module, "send_follow_up_booking_invitation", fake_whatsapp)
+
+    patient_response = test_client.post(
+        "/patients",
+        headers=auth_headers_for_token(token),
+        json={
+            "name": "Reminder Patient",
+            "phone": "5550105555",
+            "email": "reminder-patient@example.com",
+            "address": "123 Main Street",
+            "reason": "Review",
+            "age": 34,
+            "weight": 68,
+            "height": 170,
+            "temperature": 98.4,
+        },
+    )
+    assert patient_response.status_code == 201
+    patient = patient_response.json()
+    follow_up_response = test_client.post(
+        f"/patients/{patient['id']}/follow-ups",
+        headers=auth_headers_for_token(token),
+        json={
+            "scheduled_for": (datetime.now(UTC) + timedelta(days=7)).isoformat(),
+            "notes": "Pressure review",
+        },
+    )
+    assert follow_up_response.status_code == 201
+    follow_up = follow_up_response.json()
+
+    for event in repo.audit_events.values():
+        if event["entity_type"] == "follow_up" and event["entity_id"] == follow_up["id"]:
+            event["created_at"] = datetime.now(UTC) - timedelta(hours=25)
+
+    reminder_response = test_client.post(
+        f"/follow-ups/{follow_up['id']}/remind",
+        headers=auth_headers_for_token(token),
+        json={"channels": ["email", "whatsapp"], "idempotency_key": "test-reminder-1"},
+    )
+    assert reminder_response.status_code == 200
+    assert reminder_response.json()["delivery_status"] == "sent"
+    assert reminder_response.json()["channels"] == {"email": "sent", "whatsapp": "sent"}
+
+    listed = test_client.get("/follow-ups", headers=auth_headers_for_token(token))
+    assert listed.status_code == 200
+    tracked = next(row for row in listed.json() if row["id"] == follow_up["id"])
+    assert tracked["reminder_count"] == 1
+    assert tracked["last_contact_channels"] == ["email", "whatsapp"]
+    assert tracked["last_delivery_status"] == "sent"
 
 
 def test_follow_up_slot_normalizer_accepts_iso_strings() -> None:

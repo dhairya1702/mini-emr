@@ -292,12 +292,15 @@ class PostgresRecordsRepository:
         def _list() -> list[dict[str, Any]]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
+                    note_columns = ", ".join(f"note.{column}" for column in NOTE_COLUMNS)
                     cursor.execute(
                         f"""
-                        select {_columns_sql(NOTE_COLUMNS)}
-                        from public.notes
-                        where org_id = %s and patient_id = %s
-                        order by created_at desc
+                        select {note_columns}, visit.reason as visit_reason
+                        from public.notes note
+                        left join public.patient_visits visit
+                          on visit.org_id = note.org_id and visit.id = note.visit_id
+                        where note.org_id = %s and note.patient_id = %s
+                        order by note.created_at desc
                         """,
                         (org_id, patient_id),
                     )
@@ -423,18 +426,23 @@ class PostgresRecordsRepository:
                     patient_ids = sorted({str(follow_up["patient_id"]) for follow_up in follow_ups})
                     cursor.execute(
                         """
-                        select id, name
+                        select id, name, email, phone
                         from public.patients
                         where org_id = %s and id = any(%s::uuid[])
                         """,
                         (org_id, patient_ids),
                     )
-                    patient_names = {
-                        str(row_dict["id"]): str(row_dict.get("name") or "").strip()
+                    patients = {
+                        str(row_dict["id"]): row_dict
                         for row_dict in (_row_to_dict(row, cursor) for row in cursor.fetchall())
                     }
                     rows = [
-                        {**follow_up, "patient_name": patient_names.get(str(follow_up["patient_id"]), "")}
+                        {
+                            **follow_up,
+                            "patient_name": str(patients.get(str(follow_up["patient_id"]), {}).get("name") or "").strip(),
+                            "patient_email": str(patients.get(str(follow_up["patient_id"]), {}).get("email") or "").strip(),
+                            "patient_phone": str(patients.get(str(follow_up["patient_id"]), {}).get("phone") or "").strip(),
+                        }
                         for follow_up in follow_ups
                     ]
                     normalized_query = (query or "").strip().lower()
@@ -448,6 +456,57 @@ class PostgresRecordsRepository:
                     return rows
 
         return await asyncio.to_thread(_list)
+
+    async def get_follow_up_tracking(self, org_id: str, follow_up_id: str) -> dict[str, Any]:
+        def _get() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select
+                          appointment.id as appointment_id,
+                          appointment.status as appointment_status,
+                          appointment.scheduled_for as appointment_scheduled_for,
+                          contact.created_at as last_contacted_at,
+                          coalesce(contact.metadata->'channels', '[]'::jsonb) as last_contact_channels,
+                          nullif(contact.metadata->>'delivery_status', '') as last_delivery_status,
+                          nullif(contact.metadata->>'error', '') as last_delivery_error,
+                          coalesce(reminders.reminder_count, 0)::int as reminder_count
+                        from public.follow_ups follow_up
+                        left join lateral (
+                          select id, status, scheduled_for
+                          from public.appointments
+                          where org_id = follow_up.org_id and follow_up_id = follow_up.id
+                          order by created_at desc
+                          limit 1
+                        ) appointment on true
+                        left join lateral (
+                          select created_at, metadata
+                          from public.audit_events
+                          where org_id = follow_up.org_id
+                            and entity_type = 'follow_up'
+                            and entity_id = follow_up.id::text
+                            and action in ('follow_up_invitation_sent', 'follow_up_reminder_sent')
+                          order by created_at desc
+                          limit 1
+                        ) contact on true
+                        left join lateral (
+                          select count(*) as reminder_count
+                          from public.audit_events
+                          where org_id = follow_up.org_id
+                            and entity_type = 'follow_up'
+                            and entity_id = follow_up.id::text
+                            and action = 'follow_up_reminder_sent'
+                        ) reminders on true
+                        where follow_up.org_id = %s and follow_up.id = %s
+                        limit 1
+                        """,
+                        (org_id, follow_up_id),
+                    )
+                    row = cursor.fetchone()
+                    return _row_to_dict(row, cursor) if row else {}
+
+        return await asyncio.to_thread(_get)
 
     async def list_follow_ups_for_patient(self, org_id: str, patient_id: str) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:

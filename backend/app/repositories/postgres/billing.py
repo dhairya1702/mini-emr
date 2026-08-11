@@ -19,7 +19,7 @@ from app.repositories.postgres.care_programs import (
     activate_pending_program_enrollments,
     provision_program_enrollments_for_invoice,
 )
-from app.schema_domains.billing import CatalogItemCreate, CatalogStockUpdate, InvoiceCreate
+from app.schema_domains.billing import CatalogItemCreate, CatalogItemUpdate, CatalogStockUpdate, InvoiceCreate
 
 
 CATALOG_ITEM_COLUMNS = [
@@ -196,6 +196,38 @@ class PostgresBillingRepository:
                     return _row_to_dict(row, cursor)
 
         return await asyncio.to_thread(_get)
+
+    async def update_catalog_item(self, org_id: str, item_id: str, payload: CatalogItemUpdate) -> dict[str, Any]:
+        values = payload.model_dump()
+        values["name"] = values["name"].strip()
+        values["unit"] = values["unit"].strip()
+
+        def _update() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        update public.catalog_items
+                        set name = %s, item_type = %s, default_price = %s,
+                          track_inventory = %s, low_stock_threshold = %s,
+                          unit = %s, hsn_sac_code = %s, gst_rate = %s,
+                          aliases = %s::jsonb
+                        where org_id = %s and id = %s
+                        returning {_columns_sql(CATALOG_ITEM_COLUMNS)}
+                        """,
+                        (
+                            values["name"], values["item_type"], values["default_price"],
+                            values["track_inventory"], values["low_stock_threshold"],
+                            values["unit"], values["hsn_sac_code"], values["gst_rate"],
+                            json.dumps(values["aliases"]), org_id, item_id,
+                        ),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("Catalog item not found for this organization.")
+                    return _row_to_dict(row, cursor)
+
+        return await asyncio.to_thread(_update)
 
     async def update_catalog_stock(self, org_id: str, item_id: str, payload: CatalogStockUpdate) -> dict[str, Any]:
         def _update() -> dict[str, Any]:
@@ -625,7 +657,7 @@ class PostgresBillingRepository:
                             (org_id, str(invoice["patient_id"])),
                         )
                         cursor.execute(
-                            """
+                            f"""
                             update public.invoices
                             set completed_at = coalesce(completed_at, now()),
                                 completed_by = coalesce(completed_by, %s),

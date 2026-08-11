@@ -23,6 +23,7 @@ RATE_LIMIT_WINDOWS: dict[str, tuple[int, float]] = {
     "public_follow_up_booking_post": (10, 300.0),
     "public_check_in_get": (60, 300.0),
     "public_check_in_post": (3, 300.0),
+    "public_check_in_status": (60, 300.0),
     "public_appointment_get": (30, 300.0),
     "public_appointment_post": (5, 300.0),
     "public_appointment_post_ip": (10, 300.0),

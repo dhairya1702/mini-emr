@@ -15,6 +15,7 @@ import {
   CaseStudy,
   CaseStudySavePayload,
   CatalogItemCreatePayload,
+  CatalogItemUpdatePayload,
   CatalogStockUpdatePayload,
   ClinicSettings,
   ClinicSettingsUpdatePayload,
@@ -23,6 +24,8 @@ import {
   PublicAppointmentBooking,
   PublicAppointmentSlots,
   PublicCheckInContext,
+  PublicCheckInStatus,
+  PublicCheckInSubmission,
   ClinicalAnalysisPayload,
   ClinicalAnalysisResponse,
   ClinicalQuestionsPayload,
@@ -38,6 +41,7 @@ import {
   FinalizeInvoicePayload,
   FollowUp,
   FollowUpCreatePayload,
+  FollowUpReminderResult,
   FollowUpUpdatePayload,
   GenerateLetterPayload,
   GenerateLetterResponse,
@@ -440,9 +444,13 @@ export const api = {
     sex_at_birth: "female" | "male" | "other";
     reason: string;
   }) =>
-    request<{ id: string; status: string; clinic_name: string }>("/public/check-in", {
+    request<PublicCheckInSubmission>("/public/check-in", {
       method: "POST",
       body: JSON.stringify(payload),
+    }),
+  getPublicCheckInStatus: (trackingToken: string) =>
+    request<{ status: PublicCheckInStatus }>("/public/check-in/status", {
+      headers: { "X-Check-In-Token": trackingToken },
     }),
   getPublicAppointmentSlots: (token: string) =>
     request<PublicAppointmentSlots>(
@@ -560,6 +568,11 @@ export const api = {
   createCatalogItem: (payload: CatalogItemCreatePayload) =>
     request<CatalogItem>("/catalog", {
       method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateCatalogItem: (itemId: string, payload: CatalogItemUpdatePayload) =>
+    request<CatalogItem>(`/catalog/${itemId}`, {
+      method: "PATCH",
       body: JSON.stringify(payload),
     }),
   updateCatalogStock: (itemId: string, payload: CatalogStockUpdatePayload) =>
@@ -771,6 +784,11 @@ export const api = {
     request<FollowUp>(`/follow-ups/${followUpId}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
+    }),
+  remindFollowUp: (followUpId: string, channels: Array<"email" | "whatsapp">, idempotencyKey: string) =>
+    request<FollowUpReminderResult>(`/follow-ups/${followUpId}/remind`, {
+      method: "POST",
+      body: JSON.stringify({ channels, idempotency_key: idempotencyKey }),
     }),
   listPatients: (options?: {
     activeOnly?: boolean;

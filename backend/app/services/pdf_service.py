@@ -875,6 +875,21 @@ def _draw_document_signature(
     _draw_doctor_signature(pdf, data, width=width, margin_x=margin_x, bottom_limit=bottom_limit, max_width=max_width, y=y)
 
 
+def _template_signature_content_floor(data: dict[str, Any], *, height: float, bottom_limit: float) -> float:
+    reserved_tops = [bottom_limit]
+    if _resolve_signature(data):
+        signature_y = _clamp_normalized(
+            data.get("document_template_signature_y"), DEFAULT_TEMPLATE_SIGNATURE_BOX["y"]
+        )
+        reserved_tops.append(height - (signature_y * height))
+    if str(data.get("doctor_name") or "").strip():
+        name_y = _clamp_normalized(
+            data.get("document_template_doctor_name_y"), DEFAULT_TEMPLATE_DOCTOR_NAME_BOX["y"]
+        )
+        reserved_tops.append(height - (name_y * height))
+    return max(reserved_tops) + 8
+
+
 def _template_content_start_y(top_y: float, page_height: float, document_kind: str) -> float:
     safe_top_y = page_height - TEMPLATE_MIN_TOP_CLEARANCE[document_kind]
     return min(top_y, safe_top_y)
@@ -1750,18 +1765,30 @@ def build_note_pdf(patient: dict[str, Any], note_content: str, generated_on: str
     return _append_pdf_bytes(base_pdf, assets_pdf)
 
 
-def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: str) -> bytes:
+def build_letter_pdf(
+    clinic: dict[str, Any],
+    letter_content: str,
+    generated_on: str,
+    *,
+    document_title: str = "Clinic Letter",
+    show_generated_date: bool = True,
+) -> bytes:
     template = _resolve_template(clinic, "letter")
     width, height = _page_size_for_template(template)
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=(width, height))
     use_template = template is not None
     margin_x, top_y, max_width, bottom_limit = _content_bounds(clinic, use_template, (width, height))
+    content_bottom_limit = (
+        _template_signature_content_floor(clinic, height=height, bottom_limit=bottom_limit)
+        if use_template
+        else bottom_limit
+    )
 
     clinic_name = clinic.get("clinic_name", "ClinicOS") or "ClinicOS"
     custom_header = clinic.get("custom_header", "")
     custom_footer = clinic.get("custom_footer", "")
-    pdf.setTitle("Clinic Letter")
+    pdf.setTitle(document_title)
 
     if use_template:
         _start_page(pdf, template, width, height)
@@ -1773,7 +1800,7 @@ def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: 
 
         pdf.setFillColor(HexColor("#475569"))
         pdf.setFont("Helvetica", 10)
-        pdf.drawString(margin_x, top_y - 18, "Clinic Letter")
+        pdf.drawString(margin_x, top_y - 18, document_title)
         if custom_header.strip():
             header_lines = _wrap_text(custom_header.strip(), "Helvetica", 10, max_width)
             header_y = top_y - 32
@@ -1781,15 +1808,16 @@ def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: 
                 pdf.drawString(margin_x, header_y, header_line)
                 header_y -= 12
 
-        pdf.setFont("Helvetica-Bold", 10)
-        generated_label = "Date:"
-        label_width = stringWidth(generated_label + " ", "Helvetica-Bold", 10)
-        value_width = stringWidth(generated_on, "Helvetica", 10)
-        right_x = width - margin_x - label_width - value_width
-        pdf.setFillColor(HexColor("#1e293b"))
-        pdf.drawString(right_x, top_y, generated_label)
-        pdf.setFont("Helvetica", 10)
-        pdf.drawString(right_x + label_width, top_y, generated_on)
+        if show_generated_date:
+            pdf.setFont("Helvetica-Bold", 10)
+            generated_label = "Date:"
+            label_width = stringWidth(generated_label + " ", "Helvetica-Bold", 10)
+            value_width = stringWidth(generated_on, "Helvetica", 10)
+            right_x = width - margin_x - label_width - value_width
+            pdf.setFillColor(HexColor("#1e293b"))
+            pdf.drawString(right_x, top_y, generated_label)
+            pdf.setFont("Helvetica", 10)
+            pdf.drawString(right_x + label_width, top_y, generated_on)
 
         y = top_y - (78 if custom_header.strip() else 52)
 
@@ -1804,13 +1832,13 @@ def build_letter_pdf(clinic: dict[str, Any], letter_content: str, generated_on: 
 
         if ":" in stripped:
             label, value = stripped.split(":", 1)
-            if label.strip() in {"To", "Subject"}:
+            if label.strip() in {"Date", "From", "To", "Subject"}:
                 y = _draw_label_value_line(pdf, margin_x, y, label.strip(), value.strip(), max_width)
                 continue
 
         wrapped_lines = _wrap_text(stripped, "Helvetica", 11, max_width)
         for wrapped in wrapped_lines:
-            if y < bottom_limit:
+            if y < content_bottom_limit:
                 pdf.showPage()
                 if use_template:
                     _start_page(pdf, template, width, height)

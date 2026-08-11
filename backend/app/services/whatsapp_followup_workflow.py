@@ -26,6 +26,8 @@ async def send_follow_up_booking_invitation(
     follow_up: dict[str, Any],
     patient: dict[str, Any],
     clinic_settings: dict[str, Any],
+    idempotency_key: str | None = None,
+    intent: str = "follow_up_booking_invitation",
 ) -> dict[str, Any] | None:
     settings = get_settings()
     template_name = str(getattr(settings, "whatsapp_follow_up_template_name", "") or "").strip()
@@ -33,7 +35,7 @@ async def send_follow_up_booking_invitation(
         return None
 
     follow_up_id = str(follow_up["id"])
-    idempotency_key = f"follow-up:{follow_up_id}:booking-invitation"
+    idempotency_key = idempotency_key or f"follow-up:{follow_up_id}:booking-invitation"
     existing = await repo.get_whatsapp_message_event_by_idempotency(org_id, idempotency_key)
     if existing:
         return existing
@@ -61,7 +63,7 @@ async def send_follow_up_booking_invitation(
         direction="outbound",
         recipient_wa_id=recipient,
         message_text=message_text,
-        intent="follow_up_booking_invitation",
+        intent=intent,
         status="queued",
         raw_payload=raw_context,
         document_type="follow_up",

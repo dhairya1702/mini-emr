@@ -60,7 +60,7 @@ class PostgresReferralsRepository:
                     )
                     result = cursor.fetchone()
                     if not result:
-                        raise ValueError("Failed to create referral package.")
+                        raise ValueError("Failed to create referral.")
                     return _row_to_dict(result, cursor)
 
         return await asyncio.to_thread(_create)
@@ -75,7 +75,7 @@ class PostgresReferralsRepository:
                     )
                     result = cursor.fetchone()
                     if not result:
-                        raise ValueError("Referral package not found for this organization.")
+                        raise ValueError("Referral not found for this organization.")
                     return _row_to_dict(result, cursor)
 
         return await asyncio.to_thread(_get)

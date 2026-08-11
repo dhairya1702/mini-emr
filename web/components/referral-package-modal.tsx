@@ -21,6 +21,7 @@ import { api } from "@/lib/api";
 import {
   buildReferralCreatePayload,
   createReferralDraft,
+  referralConsultationReason,
   referralDraftError,
   referralRecordCount,
   splitRecipients,
@@ -37,7 +38,7 @@ import type {
 
 type WizardStep = 1 | 2 | 3;
 
-const STEP_LABELS = ["Referral Details", "Select Records", "Review & Send"];
+const STEP_LABELS = ["Referral Details", "Choose Information", "Review & Send"];
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString([], {
@@ -73,12 +74,6 @@ function moduleLabel(value: string) {
 function recordSummary(record: LongitudinalTrackRecord) {
   const summary = record.summary_fields?.summary ?? record.summary_fields?.result;
   return typeof summary === "string" && summary.trim() ? summary.trim() : `${moduleLabel(record.track_type)} saved`;
-}
-
-function noteTitle(note: ConsultationNote) {
-  const content = note.snapshot_content || note.content || "Consultation note";
-  const firstLine = content.split("\n").map((line) => line.trim()).find(Boolean);
-  return firstLine?.slice(0, 90) || "Consultation note";
 }
 
 function toggleId(values: string[], id: string) {
@@ -195,9 +190,11 @@ export function ReferralPackageModal({
   if (!open) return null;
 
   const selectedCount = referralRecordCount(draft);
+  const emailRecipientCount = splitRecipients(draft.emailRecipients).length;
+  const phoneRecipientCount = splitRecipients(draft.whatsappRecipients).length;
 
   function update<K extends keyof ReferralDraft>(key: K, value: ReferralDraft[K]) {
-    if (key !== "emailRecipients" && key !== "whatsappRecipients" && key !== "deliveryMessage") {
+    if (key !== "emailRecipients" && key !== "whatsappRecipients") {
       setCreatedReferral(null);
     }
     setError("");
@@ -299,7 +296,7 @@ export function ReferralPackageModal({
   async function handleGenerate() {
     await run("generate", async () => {
       await ensureReferral();
-      setSuccess("Referral package generated and frozen in patient history.");
+      setSuccess("Referral generated and saved in patient history.");
     });
   }
 
@@ -308,7 +305,7 @@ export function ReferralPackageModal({
     await run(`download:${referral.id}`, async () => {
       const blob = await api.downloadReferralPdf(referral.id);
       downloadBlob(blob, `${patient.name.replace(/\s+/g, "_")}_referral.pdf`);
-      setSuccess("Referral PDF downloaded.");
+      setSuccess("Referral downloaded.");
     });
   }
 
@@ -320,7 +317,7 @@ export function ReferralPackageModal({
       const result = await api.sendReferralPackage(referral.id, {
         channels: ["email"],
         recipients: rows.map((email) => ({ recipient_type: email === draft.patientEmail ? "patient" as const : "doctor" as const, name: email === draft.patientEmail ? patient.name : draft.doctorName, email, phone: "" })),
-        message: draft.deliveryMessage.trim(),
+        message: "",
         idempotency_key: crypto.randomUUID(),
       });
       if (!result.success) throw new Error(result.message || "Email delivery failed.");
@@ -339,7 +336,7 @@ export function ReferralPackageModal({
       const result = await api.sendReferralPackage(referral.id, {
         channels: ["whatsapp"],
         recipients: rows.map((phone) => ({ recipient_type: phone === draft.patientPhone ? "patient" as const : "doctor" as const, name: phone === draft.patientPhone ? patient.name : draft.doctorName, email: "", phone })),
-        message: draft.deliveryMessage.trim(),
+        message: "",
         idempotency_key: crypto.randomUUID(),
       });
       if (!result.success) throw new Error(result.message || "Phone delivery failed.");
@@ -350,35 +347,12 @@ export function ReferralPackageModal({
     });
   }
 
-  async function handleSendBoth() {
-    if (!createdReferral) return;
-    const emails = splitRecipients(draft.emailRecipients);
-    const phones = splitRecipients(draft.whatsappRecipients);
-    if (!emails.length || !phones.length) return setError("Enter both an email address and a phone number.");
-    await run(`both:${createdReferral.id}`, async () => {
-      const recipients = [
-        ...emails.map((email) => ({ recipient_type: email === draft.patientEmail ? "patient" as const : "doctor" as const, name: email === draft.patientEmail ? patient.name : draft.doctorName, email, phone: "" })),
-        ...phones.map((phone) => ({ recipient_type: phone === draft.patientPhone ? "patient" as const : "doctor" as const, name: phone === draft.patientPhone ? patient.name : draft.doctorName, email: "", phone })),
-      ];
-      const result = await api.sendReferralPackage(createdReferral.id, {
-        channels: ["email", "whatsapp"],
-        recipients,
-        message: draft.deliveryMessage.trim(),
-        idempotency_key: crypto.randomUUID(),
-      });
-      if (!result.success) throw new Error(result.message || "Referral delivery failed.");
-      setCreatedReferral((current) => current ? { ...current, deliveries: [...current.deliveries, ...result.deliveries] } : current);
-      setHistory((current) => current.map((item) => item.id === createdReferral.id ? { ...item, deliveries: [...item.deliveries, ...result.deliveries] } : item));
-      setSuccess(result.message);
-    });
-  }
-
   async function handleResend(referral: ReferralPackage, channel: "email" | "whatsapp") {
     await run(`resend:${channel}:${referral.id}`, async () => {
       const result = await api.sendReferralPackage(referral.id, {
         channels: [channel],
         recipients: [],
-        message: draft.deliveryMessage.trim(),
+        message: "",
         idempotency_key: crypto.randomUUID(),
       });
       if (!result.success) throw new Error(result.message || "Referral delivery failed.");
@@ -400,11 +374,11 @@ export function ReferralPackageModal({
       <div className="flex h-[100dvh] flex-col overflow-hidden">
         <header className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 p-2 text-slate-600" aria-label="Close referral package">
+            <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 p-2 text-slate-600" aria-label="Close referral">
               <ArrowLeft className="h-4 w-4" />
             </button>
             <div className="min-w-0">
-              <h2 className="truncate text-xl font-semibold text-slate-950">Referral Package</h2>
+              <h2 className="truncate text-xl font-semibold text-slate-950">Referral</h2>
               <p className="truncate text-sm text-slate-500">{patient.name} · {patient.phone}</p>
             </div>
           </div>
@@ -434,7 +408,7 @@ export function ReferralPackageModal({
                     {item.recipient_phone || (item.recipient_type !== "doctor" && patient.phone) ? <button type="button" disabled={Boolean(busyAction)} onClick={() => void handleResend(item, "whatsapp")} className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700"><MessageCircle className="mr-1 inline h-3 w-3" />Resend</button> : null}
                   </div>
                 </div>
-              )) : <p className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-6 text-center text-sm text-slate-500">No referral packages yet.</p>}
+              )) : <p className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-6 text-center text-sm text-slate-500">No referrals yet.</p>}
             </div>
           </aside>
 
@@ -460,7 +434,7 @@ export function ReferralPackageModal({
               {!isLoading && step === 1 ? (
                 <div className="mt-8 space-y-8">
                   <section>
-                    <h3 className="text-base font-semibold text-slate-950">Send Package To</h3>
+                    <h3 className="text-base font-semibold text-slate-950">Send Referral To</h3>
                     <div className="mt-3 grid gap-3 sm:grid-cols-3">
                       {(["patient", "doctor", "both"] as ReferralRecipientType[]).map((value) => (
                         <button key={value} type="button" onClick={() => chooseRecipientType(value)} className={`rounded-xl border px-4 py-3 text-left text-sm font-medium capitalize ${draft.recipientType === value ? "border-[#2f8fd3] bg-[#eef7fd] text-[#155c8d]" : "border-slate-200 text-slate-700"}`}>{value === "both" ? "Patient And Doctor" : value}</button>
@@ -491,7 +465,7 @@ export function ReferralPackageModal({
                     <Field label="Urgency"><select className={inputClass} value={draft.urgency} onChange={(event) => update("urgency", event.target.value as ReferralDraft["urgency"])}><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></select></Field>
                     <Field label="Referral Note"><textarea rows={3} className={inputClass} value={draft.referralNote} onChange={(event) => update("referralNote", event.target.value)} placeholder="Treatment provided, relevant context, or a message to the receiving doctor" /></Field>
                   </section>
-                  <div className="flex justify-end"><button type="button" onClick={continueFromDetails} className="rounded-lg bg-[#2f8fd3] px-6 py-2.5 text-sm font-semibold text-white">Continue to Records</button></div>
+                  <div className="flex justify-end"><button type="button" onClick={continueFromDetails} className="rounded-lg bg-[#2f8fd3] px-6 py-2.5 text-sm font-semibold text-white">Choose Information</button></div>
                 </div>
               ) : null}
 
@@ -502,14 +476,14 @@ export function ReferralPackageModal({
                     <div className="mt-3 divide-y divide-slate-200 border-y border-slate-200">
                       {selectableNotes.length ? selectableNotes.map((note) => (
                         <div key={note.id} className="py-3.5">
-                          <Checkbox checked={draft.consultationNoteIds.includes(note.id)} label={`${formatDate(note.finalized_at || note.created_at)} · ${noteTitle(note)}`} onChange={() => update("consultationNoteIds", toggleId(draft.consultationNoteIds, note.id))} />
+                          <Checkbox checked={draft.consultationNoteIds.includes(note.id)} label={`${formatDate(note.finalized_at || note.created_at)} · ${referralConsultationReason(note.visit_reason, patient.reason)}`} onChange={() => update("consultationNoteIds", toggleId(draft.consultationNoteIds, note.id))} />
                         </div>
                       )) : <p className="py-5 text-sm text-slate-500">No completed consultations found.</p>}
                     </div>
                   </section>
 
                   <section>
-                    <div className="flex items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-950">Tests And Evaluations</h3><p className="mt-1 text-sm text-slate-500">Choose the complete saved case sheets relevant to this referral.</p></div><Stethoscope className="h-5 w-5 text-[#2f8fd3]" /></div>
+                    <div className="flex items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-950">Tests And Evaluations</h3><p className="mt-1 text-sm text-slate-500">Choose the saved examination results relevant to this referral.</p></div><Stethoscope className="h-5 w-5 text-[#2f8fd3]" /></div>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       {sortedTests.length ? sortedTests.map((test) => (
                         <button key={test.id} type="button" onClick={() => update("longitudinalTrackIds", toggleId(draft.longitudinalTrackIds, test.id))} className={`flex items-start gap-3 rounded-xl border p-3 text-left ${draft.longitudinalTrackIds.includes(test.id) ? "border-[#2f8fd3] bg-[#eef7fd]" : "border-slate-200"}`}>
@@ -535,7 +509,7 @@ export function ReferralPackageModal({
                       )) : <p className="py-5 text-sm text-slate-500">No patient attachments found.</p>}
                     </div>
                   </section>
-                  <div className="flex items-center justify-between gap-3"><button type="button" onClick={() => setStep(1)} className="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700">Back</button><button type="button" onClick={continueFromRecords} className="rounded-lg bg-[#2f8fd3] px-6 py-2.5 text-sm font-semibold text-white">Review {selectedCount} Selected Record{selectedCount === 1 ? "" : "s"}</button></div>
+                  <div className="flex items-center justify-between gap-3"><button type="button" onClick={() => setStep(1)} className="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700">Back</button><button type="button" onClick={continueFromRecords} className="rounded-lg bg-[#2f8fd3] px-6 py-2.5 text-sm font-semibold text-white">Review Referral</button></div>
                 </div>
               ) : null}
 
@@ -548,17 +522,17 @@ export function ReferralPackageModal({
                         <div><dt className="text-slate-500">Recipient</dt><dd className="mt-1 font-medium text-slate-900">{draft.recipientType === "patient" ? patient.name : `${draft.doctorName}${draft.recipientType === "both" ? ` and ${patient.name}` : ""}`}</dd></div>
                         <div><dt className="text-slate-500">Clinic</dt><dd className="mt-1 font-medium text-slate-900">{draft.clinic || "Not specified"}</dd></div>
                         <div><dt className="text-slate-500">Clinical Question</dt><dd className="mt-1 whitespace-pre-wrap text-slate-900">{draft.clinicalQuestion || "Not specified"}</dd></div>
-                        <div><dt className="text-slate-500">Included Records</dt><dd className="mt-1 font-medium text-slate-900">{selectedCount} selected</dd></div>
+                        <div><dt className="text-slate-500">Included Information</dt><dd className="mt-1 font-medium text-slate-900">{selectedCount} item{selectedCount === 1 ? "" : "s"}</dd></div>
                       </dl>
                       {draft.referralNote ? <div className="mt-5 border-t border-slate-200 pt-4"><p className="text-sm text-slate-500">Referral Note</p><p className="mt-1 whitespace-pre-wrap text-sm text-slate-900">{draft.referralNote}</p></div> : null}
                     </section>
                     <section className="rounded-xl border border-slate-200 p-5">
-                      <h3 className="font-semibold text-slate-950">Package Contents</h3>
+                      <h3 className="font-semibold text-slate-950">Included Information</h3>
                       <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
                         <p>{draft.consultationNoteIds.length} consultation{draft.consultationNoteIds.length === 1 ? "" : "s"}</p>
                         <p>{draft.longitudinalTrackIds.length} test{draft.longitudinalTrackIds.length === 1 ? "" : "s"}</p>
                         <p>{draft.attachmentIds.length} attachment{draft.attachmentIds.length === 1 ? "" : "s"}</p>
-                        <p>Patient snapshot and referral cover</p>
+                        <p>Patient details and referral letter</p>
                       </div>
                     </section>
                     <button type="button" onClick={() => setStep(2)} className="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700">Back to Selection</button>
@@ -566,19 +540,19 @@ export function ReferralPackageModal({
 
                   <aside className="space-y-5 rounded-xl border border-[#bfd7e8] bg-[#f7fbfd] p-5">
                     {!createdReferral ? (
-                      <div><h3 className="font-semibold text-slate-950">Create Frozen Package</h3><p className="mt-2 text-sm leading-6 text-slate-600">Generating freezes this exact selection. Future chart changes will not alter the referral.</p><button type="button" onClick={() => void handleGenerate()} disabled={Boolean(busyAction)} className="mt-4 w-full rounded-lg bg-[#2f8fd3] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{busyAction === "generate" ? "Generating..." : "Generate Referral PDF"}</button></div>
+                      <div><h3 className="font-semibold text-slate-950">Generate Referral</h3><p className="mt-2 text-sm leading-6 text-slate-600">This creates a referral letter using the information selected on the previous step.</p><button type="button" onClick={() => void handleGenerate()} disabled={Boolean(busyAction)} className="mt-4 w-full rounded-lg bg-[#2f8fd3] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{busyAction === "generate" ? "Generating..." : "Generate Referral"}</button>{busyAction === "generate" ? <div role="status" aria-live="polite" className="mt-4 flex flex-col items-center gap-2 text-center text-sm font-medium text-[#1d6a9f]"><RefreshCw className="h-7 w-7 animate-spin" /><span>Preparing the referral…</span></div> : null}</div>
                     ) : (
                       <>
-                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"><Check className="mr-2 inline h-4 w-4" />Package generated {createdReferral.page_count ? `· ${createdReferral.page_count} pages` : ""} {createdReferral.file_size ? `· ${formatBytes(createdReferral.file_size)}` : ""}</div>
-                        <button type="button" onClick={() => void handleDownload()} disabled={Boolean(busyAction)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#2f8fd3] bg-white px-4 py-2.5 text-sm font-semibold text-[#1d6a9f]"><Download className="h-4 w-4" />Download PDF</button>
-                        <Field label="Email Recipients"><textarea rows={2} className={inputClass} value={draft.emailRecipients} onChange={(event) => update("emailRecipients", event.target.value)} placeholder="Separate multiple addresses with commas" /></Field>
-                        <button type="button" onClick={() => void handleEmail()} disabled={Boolean(busyAction)} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2f8fd3] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"><Mail className="h-4 w-4" />{busyAction.startsWith("email:") ? "Sending..." : "Send by Email"}</button>
-                        <Field label="Phone Numbers"><textarea rows={2} className={inputClass} value={draft.whatsappRecipients} onChange={(event) => update("whatsappRecipients", event.target.value)} placeholder="Separate multiple numbers with commas" /></Field>
-                        <Field label="Accompanying Message"><textarea rows={3} className={inputClass} value={draft.deliveryMessage} onChange={(event) => update("deliveryMessage", event.target.value)} /></Field>
-                        <button type="button" onClick={() => void handleWhatsApp()} disabled={Boolean(busyAction)} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#14a38b] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"><MessageCircle className="h-4 w-4" />{busyAction.startsWith("whatsapp:") ? "Sending..." : "Send to Phone Number"}</button>
-                        {draft.emailRecipients.trim() && draft.whatsappRecipients.trim() ? (
-                          <button type="button" onClick={() => void handleSendBoth()} disabled={Boolean(busyAction)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#14a38b] bg-white px-4 py-2.5 text-sm font-semibold text-[#108873] disabled:opacity-60"><Mail className="h-4 w-4" /><MessageCircle className="h-4 w-4" />{busyAction.startsWith("both:") ? "Sending both..." : "Send by Email And Phone"}</button>
-                        ) : null}
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"><Check className="mr-2 inline h-4 w-4" />Referral ready {createdReferral.page_count ? `· ${createdReferral.page_count} pages` : ""} {createdReferral.file_size ? `· ${formatBytes(createdReferral.file_size)}` : ""}</div>
+                        <div className="space-y-2">
+                          {draft.recipientType !== "doctor" ? <dl className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm"><p className="mb-1.5 font-semibold text-slate-900">Patient</p><div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 py-1"><dt className="font-semibold text-slate-600">Email:</dt><dd className="break-all text-right text-slate-900">{draft.patientEmail.trim() || "Not provided"}</dd></div><div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 py-1"><dt className="font-semibold text-slate-600">Number:</dt><dd className="break-all text-right text-slate-900">{draft.patientPhone.trim() || "Not provided"}</dd></div></dl> : null}
+                          {draft.recipientType !== "patient" ? <dl className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm"><p className="mb-1.5 font-semibold text-slate-900">{draft.doctorName || "Doctor"}</p><div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 py-1"><dt className="font-semibold text-slate-600">Email:</dt><dd className="break-all text-right text-slate-900">{draft.doctorEmail.trim() || "Not provided"}</dd></div><div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 py-1"><dt className="font-semibold text-slate-600">Number:</dt><dd className="break-all text-right text-slate-900">{draft.doctorPhone.trim() || "Not provided"}</dd></div></dl> : null}
+                        </div>
+                        <div className="space-y-2.5">
+                          <button type="button" onClick={() => void handleDownload()} disabled={Boolean(busyAction)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#2f8fd3] bg-white px-4 py-2.5 text-sm font-semibold text-[#1d6a9f] disabled:opacity-60"><Download className="h-4 w-4" />Download Referral</button>
+                          <button type="button" onClick={() => void handleEmail()} disabled={Boolean(busyAction) || emailRecipientCount === 0} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2f8fd3] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"><Mail className="h-4 w-4" />{busyAction.startsWith("email:") ? "Sending..." : emailRecipientCount > 1 ? `Send Email to ${emailRecipientCount} Recipients` : "Send Email"}</button>
+                          <button type="button" onClick={() => void handleWhatsApp()} disabled={Boolean(busyAction) || phoneRecipientCount === 0} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#14a38b] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"><MessageCircle className="h-4 w-4" />{busyAction.startsWith("whatsapp:") ? "Sending..." : phoneRecipientCount > 1 ? `Send Phone to ${phoneRecipientCount} Recipients` : "Send Phone"}</button>
+                        </div>
                       </>
                     )}
                   </aside>

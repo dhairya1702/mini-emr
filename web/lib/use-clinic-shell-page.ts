@@ -249,6 +249,17 @@ export function useClinicShellPage<T>({
     );
   }, []);
 
+  const handleUpdateCatalogItem = useCallback(async (
+    itemId: string,
+    payload: Omit<ClinicCatalogItemPayload, "stock_quantity">,
+  ) => {
+    const updated = await api.updateCatalogItem(itemId, payload);
+    setCatalogItems((current) =>
+      current.map((item) => (item.id === itemId ? updated : item)).sort((left, right) => left.name.localeCompare(right.name)),
+    );
+    return updated;
+  }, []);
+
   const handleDeleteCatalogItem = useCallback(async (itemId: string) => {
     await api.deleteCatalogItem(itemId);
     setCatalogItems((current) => current.filter((item) => item.id !== itemId));
@@ -330,6 +341,7 @@ export function useClinicShellPage<T>({
     handleUploadUserSignature,
     handleRemoveUserSignature,
     handleCreateCatalogItem,
+    handleUpdateCatalogItem,
     handleAdjustCatalogStock,
     handleDeleteCatalogItem,
     handleCreateInvoice,

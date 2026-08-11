@@ -52,6 +52,55 @@ def test_catalog_gst_requires_hsn_sac_and_rate_together(client):
     assert rate_only.status_code == 422
 
 
+def test_catalog_item_can_be_edited_without_overwriting_stock(client):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="catalog-edit@clinic.com",
+        clinic_name="Catalog Edit Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    created = test_client.post(
+        "/catalog",
+        headers=headers,
+        json={
+            "name": "Eye Drops",
+            "item_type": "medicine",
+            "default_price": 200,
+            "track_inventory": True,
+            "stock_quantity": 12,
+            "low_stock_threshold": 3,
+            "unit": "bottle",
+        },
+    ).json()
+
+    updated = test_client.patch(
+        f"/catalog/{created['id']}",
+        headers=headers,
+        json={
+            "name": "Lubricating Eye Drops",
+            "item_type": "medicine",
+            "default_price": 240,
+            "track_inventory": True,
+            "low_stock_threshold": 5,
+            "unit": "bottle",
+            "hsn_sac_code": "3004",
+            "gst_rate": 12,
+            "aliases": ["eye drops", "lubricant"],
+        },
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Lubricating Eye Drops"
+    assert updated.json()["default_price"] == 240
+    assert updated.json()["stock_quantity"] == 12
+    assert updated.json()["low_stock_threshold"] == 5
+    assert updated.json()["aliases"] == ["eye drops", "lubricant"]
+    audit = list(repo.audit_events.values())[-1]
+    assert audit["action"] == "catalog_item_updated"
+    assert "name" in audit["metadata"]["changed_fields"]
+
+
 def test_invoice_adds_catalog_gst_and_snapshots_the_tax_details(client):
     test_client, repo = client
     session = register_test_clinic(

@@ -51,6 +51,38 @@ class CatalogItemCreate(CatalogItemBase):
     pass
 
 
+class CatalogItemUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    item_type: CatalogItemType
+    default_price: float = Field(ge=0, le=100000)
+    track_inventory: bool = False
+    low_stock_threshold: float = Field(default=0, ge=0, le=1000000)
+    unit: str = Field(default="", max_length=40)
+    hsn_sac_code: str = Field(default="", max_length=8, pattern=r"^\d{0,8}$")
+    gst_rate: float | None = Field(default=None, gt=0, le=100)
+    aliases: list[str] = Field(default_factory=list, max_length=30)
+
+    @field_validator("aliases")
+    @classmethod
+    def normalize_aliases(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for alias in value:
+            cleaned = alias.strip()
+            if cleaned and cleaned.casefold() not in {entry.casefold() for entry in normalized}:
+                normalized.append(cleaned[:120])
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_gst_pair(self) -> "CatalogItemUpdate":
+        code = self.hsn_sac_code.strip()
+        if code and len(code) not in {4, 6, 8}:
+            raise ValueError("HSN/SAC code must contain 4, 6, or 8 digits.")
+        if bool(code) != (self.gst_rate is not None):
+            raise ValueError("Enter both HSN/SAC code and GST rate, or leave both blank.")
+        self.hsn_sac_code = code
+        return self
+
+
 class CatalogItemOut(CatalogItemBase):
     id: UUID
     org_id: UUID

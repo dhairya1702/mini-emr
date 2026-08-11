@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { CalendarClock, Plus } from "lucide-react";
+import { AlertCircle, CalendarClock, Mail, MessageCircle, Plus } from "lucide-react";
 
 import { api } from "@/lib/api";
 import {
@@ -47,7 +47,7 @@ interface SettingsDrawerAppointmentsPanelProps {
 
 type AppointmentView = "appointments" | "followUps";
 type AppointmentFilter = "all" | "scheduled" | "checked_in" | "cancelled";
-type FollowUpFilter = "all" | "scheduled" | "completed" | "cancelled";
+type FollowUpFilter = "needs_action" | "delivery_issues" | "history";
 
 export function SettingsDrawerAppointmentsPanel({
   onCheckInAppointment,
@@ -64,7 +64,7 @@ export function SettingsDrawerAppointmentsPanel({
   const [patients, setPatients] = useState<Patient[]>([]);
   const [activeView, setActiveView] = useState<AppointmentView>("appointments");
   const [appointmentFilter, setAppointmentFilter] = useState<AppointmentFilter>("all");
-  const [followUpFilter, setFollowUpFilter] = useState<FollowUpFilter>("all");
+  const [followUpFilter, setFollowUpFilter] = useState<FollowUpFilter>("needs_action");
   const [appointmentQuery, setAppointmentQuery] = useState("");
   const [followUpQuery, setFollowUpQuery] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
@@ -79,6 +79,8 @@ export function SettingsDrawerAppointmentsPanel({
   const [followUpTime, setFollowUpTime] = useState("");
   const [followUpNotes, setFollowUpNotes] = useState("");
   const [savingAppointmentId, setSavingAppointmentId] = useState("");
+  const [remindingFollowUpId, setRemindingFollowUpId] = useState("");
+  const [reminderChannels, setReminderChannels] = useState<Array<"email" | "whatsapp">>([]);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [newAppointment, setNewAppointment] = useState({
@@ -181,20 +183,10 @@ export function SettingsDrawerAppointmentsPanel({
               }
             })
           : api.listFollowUps({
-              status: followUpFilter === "all" ? undefined : followUpFilter,
               q: followUpQuery.trim() || undefined,
-              scheduled_date: selectedDate || undefined,
-              upcoming: selectedDate ? undefined : true,
             }).then((rows) => {
               if (active) {
-                setFollowUps(
-                  rows.filter((followUp) => {
-                    const scheduledDate = formatIsoDateInTimeZone(followUp.scheduled_for, clinicTimezone);
-                    return selectedDate
-                      ? scheduledDate === selectedDate
-                      : scheduledDate >= todayIsoDate;
-                  }),
-                );
+                setFollowUps(rows);
               }
             });
 
@@ -339,12 +331,44 @@ export function SettingsDrawerAppointmentsPanel({
   }
 
   function toggleFollowUpActions(followUp: FollowUp) {
-    if (followUp.status !== "scheduled") {
-      return;
-    }
     setStatusMessage("");
     setEditingFollowUpId((current) => (current === followUp.id ? "" : current));
     setExpandedFollowUpId((current) => (current === followUp.id ? "" : followUp.id));
+    setReminderChannels([
+      ...(followUp.patient_email ? ["email" as const] : []),
+      ...(followUp.patient_phone ? ["whatsapp" as const] : []),
+    ]);
+  }
+
+  async function handleRemindPatient(followUp: FollowUp) {
+    if (!reminderChannels.length) {
+      setStatusMessage("This patient has no available email or WhatsApp contact.");
+      return;
+    }
+    setRemindingFollowUpId(followUp.id);
+    setStatusMessage("");
+    try {
+      const result = await api.remindFollowUp(followUp.id, reminderChannels, crypto.randomUUID());
+      setFollowUps((current) => current.map((item) => item.id === followUp.id ? {
+        ...item,
+        last_contacted_at: result.sent_at,
+        last_contact_channels: reminderChannels,
+        last_delivery_status: result.delivery_status,
+        last_delivery_error: Object.values(result.errors).join("; ") || null,
+        reminder_count: (item.reminder_count || 0) + 1,
+      } : item));
+      setStatusMessage(
+        result.delivery_status === "sent"
+          ? "Reminder sent."
+          : result.delivery_status === "partial"
+            ? "Reminder sent through one channel; another channel failed."
+            : "The reminder could not be delivered.",
+      );
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Failed to remind the patient.");
+    } finally {
+      setRemindingFollowUpId("");
+    }
   }
 
   async function handleSaveFollowUp(followUpId: string) {
@@ -361,7 +385,7 @@ export function SettingsDrawerAppointmentsPanel({
         status: "scheduled",
       });
       setFollowUps((current) =>
-        current.map((followUp) => (followUp.id === followUpId ? updated : followUp)),
+        current.map((followUp) => (followUp.id === followUpId ? { ...followUp, ...updated } : followUp)),
       );
       setEditingFollowUpId("");
       setExpandedFollowUpId("");
@@ -382,7 +406,7 @@ export function SettingsDrawerAppointmentsPanel({
     try {
       const updated = await onUpdateFollowUp(followUpId, { status });
       setFollowUps((current) =>
-        current.map((followUp) => (followUp.id === followUpId ? updated : followUp)),
+        current.map((followUp) => (followUp.id === followUpId ? { ...followUp, ...updated } : followUp)),
       );
       if (editingFollowUpId === followUpId) {
         setEditingFollowUpId("");
@@ -497,8 +521,7 @@ export function SettingsDrawerAppointmentsPanel({
         notes: newFollowUp.notes.trim(),
       });
       setFollowUps((current) => [created, ...current]);
-      setSelectedDate(newFollowUp.date);
-      setFollowUpFilter("all");
+      setFollowUpFilter("needs_action");
       setIsCreateOpen(false);
       setNewFollowUp((current) => ({
         patientId: current.patientId,
@@ -512,6 +535,42 @@ export function SettingsDrawerAppointmentsPanel({
     } finally {
       setIsCreating(false);
     }
+  }
+
+  const isBookedFollowUp = (followUp: FollowUp) =>
+    Boolean(followUp.appointment_id && followUp.appointment_status !== "cancelled");
+  const needsActionFollowUps = followUps.filter(
+    (followUp) => followUp.status === "scheduled" && !isBookedFollowUp(followUp) && followUp.last_delivery_status !== "failed",
+  );
+  const deliveryIssueFollowUps = followUps.filter(
+    (followUp) => followUp.status === "scheduled" && !isBookedFollowUp(followUp) && ["failed", "partial"].includes(followUp.last_delivery_status || ""),
+  );
+  const historyFollowUps = followUps.filter(
+    (followUp) => followUp.status !== "scheduled" || isBookedFollowUp(followUp),
+  );
+  const visibleFollowUps = followUpFilter === "needs_action"
+    ? needsActionFollowUps
+    : followUpFilter === "delivery_issues"
+      ? deliveryIssueFollowUps
+      : historyFollowUps;
+
+  function waitingLabel(followUp: FollowUp) {
+    const days = Math.max(0, Math.floor((Date.now() - new Date(followUp.created_at).getTime()) / 86_400_000));
+    return days === 0 ? "Today" : `${days} day${days === 1 ? "" : "s"}`;
+  }
+
+  function followUpStateLabel(followUp: FollowUp) {
+    if (isBookedFollowUp(followUp)) return "Booked";
+    if (followUp.status === "completed") return "Resolved";
+    if (followUp.status === "cancelled") return "Cancelled";
+    if (followUp.last_delivery_status === "failed") return "Delivery failed";
+    if (followUp.last_delivery_status === "partial") return "Partially delivered";
+    return "Awaiting patient";
+  }
+
+  function reminderAvailableAt(followUp: FollowUp) {
+    if (!followUp.last_contacted_at) return null;
+    return new Date(new Date(followUp.last_contacted_at).getTime() + 24 * 60 * 60 * 1000);
   }
 
   return (
@@ -867,137 +926,96 @@ export function SettingsDrawerAppointmentsPanel({
           </>
         ) : (
           <>
-            <div className="mb-4 flex flex-wrap gap-2">
+            <div className="mb-4 flex flex-wrap items-center gap-2">
               <input
                 value={followUpQuery}
                 onChange={(event) => setFollowUpQuery(event.target.value)}
-                placeholder="Search patient or follow-up notes"
+                placeholder="Search patient or reason"
                 className="min-w-[260px] rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
-              {(["all", "scheduled", "completed", "cancelled"] as FollowUpFilter[]).map((filter) => (
+              {([
+                { id: "needs_action", label: "Needs Action", count: needsActionFollowUps.length },
+                { id: "delivery_issues", label: "Delivery Issues", count: deliveryIssueFollowUps.length },
+                { id: "history", label: "History", count: historyFollowUps.length },
+              ] as Array<{ id: FollowUpFilter; label: string; count: number }>).map((filter) => (
                 <button
-                  key={filter}
+                  key={filter.id}
                   type="button"
-                  onClick={() => setFollowUpFilter(filter)}
+                  onClick={() => setFollowUpFilter(filter.id)}
                   className={`rounded-xl px-3 py-1.5 text-xs font-medium uppercase tracking-[0.14em] transition ${
-                    followUpFilter === filter
+                    followUpFilter === filter.id
                       ? "bg-[#2f8fd3] text-white"
                       : "border border-[#bfd7e8] bg-white text-slate-600 hover:bg-[#f3f8fb]"
                   }`}
                 >
-                  {formatStatusLabel(filter)}
+                  {filter.label} <span className="ml-1 opacity-75">{filter.count}</span>
                 </button>
               ))}
-              <input
-                type="date"
-                aria-label="Filter follow-ups by date"
-                value={selectedDate}
-                onChange={(event) => setSelectedDate(event.target.value)}
-                className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
-              />
-              {selectedDate ? (
-                <button
-                  type="button"
-                  onClick={() => setSelectedDate("")}
-                  className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2.5 text-xs font-medium text-[#2a6fa8] transition hover:bg-[#f3f8fb]"
-                >
-                  Show all upcoming
-                </button>
-              ) : (
-                <span className="inline-flex items-center rounded-xl bg-[#edf5fa] px-3 py-2.5 text-xs font-medium text-[#2a6fa8]">
-                  All upcoming
-                </span>
-              )}
             </div>
-            {followUps.length ? (
+            {visibleFollowUps.length ? (
               <div className="overflow-hidden rounded-[22px] border border-[#bfd7e8]">
                 <table className="w-full border-collapse text-sm">
                   <thead className="bg-[#f3f8fb]/80 text-slate-600">
                     <tr>
                       <th className="px-4 py-3 text-left font-semibold">Patient</th>
-                      <th className="px-4 py-3 text-left font-semibold">Follow-Up For</th>
-                      <th className="px-4 py-3 text-left font-semibold">Notes</th>
-                      <th className="px-4 py-3 text-left font-semibold">Status</th>
+                      <th className="px-4 py-3 text-left font-semibold">Due</th>
+                      <th className="px-4 py-3 text-left font-semibold">Waiting</th>
+                      <th className="px-4 py-3 text-left font-semibold">Last Contact</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white">
-                    {followUps.map((followUp) => (
+                    {visibleFollowUps.map((followUp) => (
                       <Fragment key={followUp.id}>
                         <tr
-                          role={followUp.status === "scheduled" ? "button" : undefined}
-                          tabIndex={followUp.status === "scheduled" ? 0 : undefined}
-                          aria-expanded={followUp.status === "scheduled" ? expandedFollowUpId === followUp.id : undefined}
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={expandedFollowUpId === followUp.id}
                           onClick={() => toggleFollowUpActions(followUp)}
                           onKeyDown={(event) => {
-                            if (followUp.status !== "scheduled") {
-                              return;
-                            }
                             if (event.key === "Enter" || event.key === " ") {
                               event.preventDefault();
                               toggleFollowUpActions(followUp);
                             }
                           }}
-                          className={`border-t border-[#dbe7ef] first:border-t-0 ${
-                            followUp.status === "scheduled"
-                              ? "cursor-pointer transition hover:bg-[#f3f8fb]/60 focus:outline-none focus-visible:bg-[#f3f8fb]/60"
-                              : ""
-                          }`}
+                          className="cursor-pointer border-t border-[#dbe7ef] first:border-t-0 transition hover:bg-[#f3f8fb]/60 focus:outline-none focus-visible:bg-[#f3f8fb]/60"
                         >
                           <td className="px-4 py-3 text-slate-800">
-                            {followUp.patient_name || "Patient"}
+                            <p className="font-medium">{followUp.patient_name || "Patient"}</p>
+                            <p className="mt-1 max-w-[280px] truncate text-xs text-slate-500">{followUp.notes || "Follow-up"}</p>
                           </td>
                           <td className="px-4 py-3 text-slate-600">{formatDateTime(followUp.scheduled_for)}</td>
-                          <td className="px-4 py-3 text-slate-600">{followUp.notes || "No notes"}</td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex rounded-xl border px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] ${statusChipClasses(followUp.status)}`}>
-                              {formatStatusLabel(followUp.status)}
-                            </span>
+                          <td className="px-4 py-3 text-slate-600">{waitingLabel(followUp)}</td>
+                          <td className="px-4 py-3 text-slate-600">
+                            {followUp.last_contacted_at ? formatDateTime(followUp.last_contacted_at) : "Not delivered"}
+                            {followUp.last_contact_channels?.length ? <p className="mt-1 text-xs capitalize text-slate-400">{followUp.last_contact_channels.join(" + ")}</p> : null}
                           </td>
                         </tr>
-                        {expandedFollowUpId === followUp.id && followUp.status === "scheduled" ? (
+                        {expandedFollowUpId === followUp.id ? (
                           <tr className="border-t border-[#dbe7ef] bg-[#f3f8fb]/40">
                             <td colSpan={4} className="px-4 py-4">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    startFollowUpEdit(followUp);
-                                  }}
-                                  disabled={savingAppointmentId === followUp.id}
-                                  className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60"
-                                >
-                                  Reschedule
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void handleUpdateFollowUpStatus(followUp.id, "completed");
-                                  }}
-                                  disabled={savingAppointmentId === followUp.id}
-                                  className="rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60"
-                                >
-                                  Complete
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void handleUpdateFollowUpStatus(followUp.id, "cancelled");
-                                  }}
-                                  disabled={savingAppointmentId === followUp.id}
-                                  className="rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ) : null}
-                        {editingFollowUpId === followUp.id && followUp.status === "scheduled" ? (
-                          <tr className="border-t border-[#dbe7ef] bg-[#f3f8fb]/40">
-                            <td colSpan={4} className="px-4 py-4">
+                              {followUp.status === "scheduled" ? <div className="space-y-4">
+                                <div className="space-y-3 rounded-xl border border-[#dbe7ef] bg-white p-4">
+                                  <div className="flex items-center gap-10 text-sm text-slate-700">
+                                    <p><span className="font-medium text-slate-950">Email:</span> {followUp.patient_email || "Not available"}</p>
+                                    <p><span className="font-medium text-slate-950">Phone:</span> {followUp.patient_phone || "Not available"}</p>
+                                  </div>
+                                  {followUp.last_delivery_error ? <p className="text-sm text-rose-700"><AlertCircle className="mr-1 inline h-4 w-4" />{followUp.last_delivery_error}</p> : null}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-3">
+                                  {followUp.patient_email ? <label className="inline-flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={reminderChannels.includes("email")} onChange={() => setReminderChannels((current) => current.includes("email") ? current.filter((channel) => channel !== "email") : [...current, "email"])} /><Mail className="h-4 w-4" />Email</label> : null}
+                                  {followUp.patient_phone ? <label className="inline-flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={reminderChannels.includes("whatsapp")} onChange={() => setReminderChannels((current) => current.includes("whatsapp") ? current.filter((channel) => channel !== "whatsapp") : [...current, "whatsapp"])} /><MessageCircle className="h-4 w-4" />WhatsApp</label> : null}
+                                  <button type="button" onClick={() => void handleRemindPatient(followUp)} disabled={remindingFollowUpId === followUp.id || !reminderChannels.length || Boolean(reminderAvailableAt(followUp) && reminderAvailableAt(followUp)! > new Date())} className="rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
+                                    {remindingFollowUpId === followUp.id ? "Sending..." : "Remind Patient"}
+                                  </button>
+                                  {reminderAvailableAt(followUp) && reminderAvailableAt(followUp)! > new Date() ? <span className="text-xs text-slate-500">Available after {formatDateTime(reminderAvailableAt(followUp)!.toISOString())}</span> : null}
+                                  <button type="button" onClick={() => startFollowUpEdit(followUp)} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700">Change due date</button>
+                                  <button type="button" onClick={() => void handleUpdateFollowUpStatus(followUp.id, "completed")} className="rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700">Mark resolved</button>
+                                  <button type="button" onClick={() => void handleUpdateFollowUpStatus(followUp.id, "cancelled")} className="rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700">Cancel</button>
+                                </div>
+                              </div> : <div className="text-sm text-slate-600">
+                                {isBookedFollowUp(followUp) && followUp.appointment_scheduled_for ? <>Appointment booked for <strong>{formatDateTime(followUp.appointment_scheduled_for)}</strong>. It is now managed in Appointments.</> : <>This follow-up is in history as {followUpStateLabel(followUp).toLowerCase()}.</>}
+                              </div>}
+                              {editingFollowUpId === followUp.id && followUp.status === "scheduled" ?
                               <div className="grid gap-3 md:grid-cols-[220px_180px_1fr_auto] md:items-end">
                                 <label className="block">
                                   <span className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-slate-500">New Date</span>
@@ -1043,7 +1061,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     Hide
                                   </button>
                                 </div>
-                              </div>
+                              </div> : null}
                             </td>
                           </tr>
                         ) : null}
@@ -1054,7 +1072,7 @@ export function SettingsDrawerAppointmentsPanel({
               </div>
             ) : (
               <div className="rounded-[16px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/30 px-6 py-16 text-center text-sm text-slate-500">
-                No follow-ups matched this view.
+                {followUpFilter === "needs_action" ? "No patients are waiting to schedule a follow-up." : followUpFilter === "delivery_issues" ? "No follow-up delivery issues." : "No follow-up history yet."}
               </div>
             )}
           </>
