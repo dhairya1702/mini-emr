@@ -125,7 +125,8 @@ test("closing a consultation cancels pending WhatsApp delivery polling", async (
   await expect(page.getByText("WhatsApp: Accepted")).toBeVisible();
 
   await page.getByRole("complementary").locator("button").first().click();
-  await expect(page.getByRole("complementary")).toHaveCount(0);
+  await expect(page.getByText("Patient Chart", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Symptoms")).toHaveCount(0);
   await page.waitForTimeout(3500);
 
   expect(deliveryPolls).toBe(0);
@@ -157,6 +158,11 @@ test("optometry consultation separates History, Examination, and Consultation", 
   await expect(steps.getByRole("button", { name: /Examination/ })).toBeVisible();
   await expect(steps.getByRole("button", { name: /Consultation/ })).toBeVisible();
   await expect(steps.getByRole("button", { name: /History/ })).toHaveAttribute("aria-current", "step");
+  await expect(page).toHaveURL(/workspace=consultation.*consultationStep=history/);
+  await page.goBack();
+  await expect(page.getByText("Patient Chart", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Continue consultation" }).click();
+  await expect(steps.getByRole("button", { name: /History/ })).toHaveAttribute("aria-current", "step");
   await page.getByLabel("Add attachment").setInputFiles({
     name: "history-scan.png",
     mimeType: "image/png",
@@ -168,8 +174,40 @@ test("optometry consultation separates History, Examination, and Consultation", 
   await expect(steps.getByRole("button", { name: /Examination/ })).toHaveAttribute("aria-current", "step");
   await expect(page.getByRole("tablist", { name: "Clinical modules" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue to Consultation" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Refraction" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
+  await expect(steps.getByRole("button", { name: /Examination/ })).toHaveAttribute("aria-current", "step");
+  await page.goBack();
+  await expect(steps.getByRole("button", { name: /History/ })).toHaveAttribute("aria-current", "step");
+  await page.getByRole("button", { name: "Continue to Examination" }).click();
+  await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
+
+  await page.getByLabel("UCVA distance").first().fill("6/9");
+  await page.goBack();
+  await expect(steps.getByRole("button", { name: /History/ })).toHaveAttribute("aria-current", "step");
+  await page.getByRole("button", { name: "Continue to Examination" }).click();
+  await expect(page.getByLabel("UCVA distance").first()).toHaveValue("6/9");
+
+  const clinicalModules = page.getByRole("tablist", { name: "Clinical modules" });
+  await clinicalModules.getByRole("button", { name: "Contact lens", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Contact Lens Initial Work-up" })).toBeVisible();
+  const contactLensFooter = page.getByRole("button", { name: "Save Case Sheet" }).locator("..");
+  await contactLensFooter.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Clinical Assessment" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Contact Lens Initial Work-up" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
 
   await page.getByLabel("UCVA distance").first().fill("6/6");
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Refraction" })).toBeVisible();
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
   await page.getByRole("button", { name: /Ocular Examination/ }).click();
   await expect(page.getByRole("heading", { name: "Ocular Examination" })).toBeVisible();
 
@@ -182,6 +220,14 @@ test("optometry consultation separates History, Examination, and Consultation", 
   await expect(page.getByRole("heading", { name: "Ocular Examination" })).toBeVisible();
 
   await page.getByRole("button", { name: "Save Eye Exam" }).click();
+  await expect(page.getByText("Eye exam saved.")).toBeVisible();
+  await expect(steps.getByRole("button", { name: /Examination/ })).toHaveAttribute("aria-current", "step");
+  await page.getByRole("button", { name: "Continue to Consultation" }).click();
+  await expect(steps.getByRole("button", { name: /Consultation/ })).toHaveAttribute("aria-current", "step");
+  await page.goBack();
+  await expect(steps.getByRole("button", { name: /Examination/ })).toHaveAttribute("aria-current", "step");
+  await expect(page.getByRole("heading", { name: "Ocular Examination" })).toBeVisible();
+  await page.getByRole("button", { name: "Continue to Consultation" }).click();
   await expect(steps.getByRole("button", { name: /Consultation/ })).toHaveAttribute("aria-current", "step");
   await expect(page.getByLabel("Symptoms")).toBeVisible();
   await expect(page.getByRole("tablist", { name: "Clinical modules" })).toHaveCount(0);
@@ -198,4 +244,6 @@ test("optometry consultation separates History, Examination, and Consultation", 
 
   await steps.getByRole("button", { name: /Examination/ }).click();
   await expect(page.getByRole("heading", { name: "Ocular Examination" })).toBeVisible();
+  await page.getByRole("complementary").locator("button").first().click();
+  await expect(page.getByLabel("Symptoms")).toHaveCount(0);
 });

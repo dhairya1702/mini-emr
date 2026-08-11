@@ -1114,6 +1114,7 @@ export default function MobileConsultationPage() {
           <EyeExamModal
             open={isEyeExamOpen}
             value={form.eyeExam}
+            onDraftChange={(next) => setForm((current) => ({ ...current, eyeExam: next }))}
             onClose={() => setIsEyeExamOpen(false)}
             onSave={async (next) => {
               setForm((current) => ({ ...current, eyeExam: next }));
@@ -1149,6 +1150,7 @@ export default function MobileConsultationPage() {
           <LowVisionModal
             open={isLowVisionOpen}
             value={form.lowVision}
+            onDraftChange={(next) => setForm((current) => ({ ...current, lowVision: next }))}
             onClose={() => setIsLowVisionOpen(false)}
             onSave={async (next) => {
               await saveLowVision(next);

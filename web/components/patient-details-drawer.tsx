@@ -810,6 +810,7 @@ function PatientStructuredModuleShell({
   children,
   entries,
   moduleKey,
+  isLoading,
   onClose,
   onNew,
   onSelectEntry,
@@ -820,6 +821,7 @@ function PatientStructuredModuleShell({
   children: ReactNode;
   entries: LongitudinalTrackRecord[];
   moduleKey: SpecialtyModuleKey;
+  isLoading: boolean;
   onClose: () => void;
   onNew: () => void;
   onSelectEntry: (entry: LongitudinalTrackRecord) => void;
@@ -852,7 +854,11 @@ function PatientStructuredModuleShell({
               </button>
             </div>
             <div className="mt-3 space-y-2">
-              {entries.length ? entries.map((entry) => (
+              {isLoading ? (
+                <p role="status" className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-5 text-center text-sm text-slate-500">
+                  Loading previous evaluations…
+                </p>
+              ) : entries.length ? entries.map((entry) => (
                 <button
                   key={entry.id}
                   type="button"
@@ -1304,6 +1310,7 @@ export function PatientDetailsDrawer({
   const [myopiaHistory, setMyopiaHistory] = useState<MyopiaHistory | null>(null);
   const [growthHistory, setGrowthHistory] = useState<PediatricGrowthSummary | null>(null);
   const [moduleEntries, setModuleEntries] = useState<LongitudinalTrackRecord[]>([]);
+  const [isModuleEntriesLoading, setIsModuleEntriesLoading] = useState(false);
   const [tbiEvaluations, setTbiEvaluations] = useState<TbiEvaluationRecord[]>([]);
   const [binocularVisionEvaluations, setBinocularVisionEvaluations] = useState<BinocularVisionEvaluationRecord[]>([]);
   const [eyeExam, setEyeExam] = useState<EyeExamPayload>(createEmptyEyeExam);
@@ -1632,6 +1639,24 @@ export function PatientDetailsDrawer({
       setTbiError("");
       setBinocularVisionError("");
       setModuleEntryError("");
+      setIsModuleEntriesLoading(true);
+      const moduleEntriesPromise = isTrainingMode
+        ? Promise.resolve([] as LongitudinalTrackRecord[])
+        : api.listPatientModuleEntries(patientId);
+      void moduleEntriesPromise
+        .then((entries) => {
+          if (!active) return;
+          setModuleEntries(entries);
+          setModuleEntryError("");
+        })
+        .catch((loadError) => {
+          if (!active) return;
+          setModuleEntries([]);
+          setModuleEntryError(loadError instanceof Error ? loadError.message : "Failed to load module entries.");
+        })
+        .finally(() => {
+          if (active) setIsModuleEntriesLoading(false);
+        });
       try {
         const emptyMyopiaHistory = {
           patient_id: patientId,
@@ -1650,12 +1675,11 @@ export function PatientDetailsDrawer({
           flags: [],
           records: [],
         } satisfies PediatricGrowthSummary;
-        const [nextMyopiaHistory, nextGrowthHistory, nextTbiEvaluations, nextBinocularVisionEvaluations, nextModuleEntries] = await Promise.allSettled([
+        const [nextMyopiaHistory, nextGrowthHistory, nextTbiEvaluations, nextBinocularVisionEvaluations] = await Promise.allSettled([
           hasMyopiaManagement && onLoadMyopiaHistory ? onLoadMyopiaHistory(patientId) : Promise.resolve(emptyMyopiaHistory),
           hasGrowthMeasurement && onLoadGrowthHistory ? onLoadGrowthHistory(patientId) : Promise.resolve(emptyGrowthHistory),
           hasTbiEvaluation && !isTrainingMode ? api.listPatientTbiEvaluations(patientId) : Promise.resolve([] as TbiEvaluationRecord[]),
           hasBinocularVision && !isTrainingMode ? api.listPatientBinocularVisionEvaluations(patientId) : Promise.resolve([] as BinocularVisionEvaluationRecord[]),
-          isTrainingMode ? Promise.resolve([] as LongitudinalTrackRecord[]) : api.listPatientModuleEntries(patientId),
         ]);
         if (!active) {
           return;
@@ -1682,12 +1706,6 @@ export function PatientDetailsDrawer({
         } else {
           setBinocularVisionEvaluations([]);
           setBinocularVisionError(nextBinocularVisionEvaluations.reason instanceof Error ? nextBinocularVisionEvaluations.reason.message : "Failed to load binocular vision evaluations.");
-        }
-        if (nextModuleEntries.status === "fulfilled") {
-          setModuleEntries(nextModuleEntries.value);
-        } else {
-          setModuleEntries([]);
-          setModuleEntryError(nextModuleEntries.reason instanceof Error ? nextModuleEntries.reason.message : "Failed to load module entries.");
         }
         setHasLoadedTestsTab(true);
       } catch (loadError) {
@@ -2987,6 +3005,7 @@ export function PatientDetailsDrawer({
         open={isEyeExamOpen}
         patient={currentPatient}
         moduleKey="eye_exam"
+        isLoading={isModuleEntriesLoading}
         entries={eyeExamEntries}
         selectedEntryId={selectedEyeExamEntryId}
         onClose={() => setIsEyeExamOpen(false)}
@@ -2996,6 +3015,7 @@ export function PatientDetailsDrawer({
         <EyeExamModal
           open
           value={eyeExam}
+          onDraftChange={setEyeExam}
           inline
           onClose={() => setIsEyeExamOpen(false)}
           onSave={async (next) => {
@@ -3010,6 +3030,7 @@ export function PatientDetailsDrawer({
         open={isContactLensOpen}
         patient={currentPatient}
         moduleKey="contact_lens"
+        isLoading={isModuleEntriesLoading}
         entries={contactLensEntries}
         selectedEntryId={selectedContactLensEntryId}
         onClose={() => setIsContactLensOpen(false)}
@@ -3033,6 +3054,7 @@ export function PatientDetailsDrawer({
         open={isLowVisionOpen}
         patient={currentPatient}
         moduleKey="low_vision"
+        isLoading={isModuleEntriesLoading}
         entries={lowVisionEntries}
         selectedEntryId={selectedLowVisionEntryId}
         onClose={() => setIsLowVisionOpen(false)}
@@ -3043,6 +3065,7 @@ export function PatientDetailsDrawer({
           open
           inline
           value={lowVision}
+          onDraftChange={setLowVision}
           onClose={() => {}}
           onSave={(next) => {
             void handleSaveLowVision(next);

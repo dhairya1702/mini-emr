@@ -21,6 +21,14 @@ test("eye exam page tabs stay compact and on one line", () => {
   assert.ok(source.includes("whitespace-nowrap"));
 });
 
+test("eye exam provides page navigation and a separate consultation action", () => {
+  assert.ok(source.includes("movePage(-1)"));
+  assert.ok(source.includes("movePage(1)"));
+  assert.ok(source.includes("Continue to Consultation"));
+  assert.ok(source.includes("Page {page + 1} of {PAGES.length}"));
+  assert.ok(source.includes("onContinue?:"));
+});
+
 test("eye exam retains the source clinical assessments", () => {
   for (const label of [
     "UCVA",

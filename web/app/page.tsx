@@ -378,15 +378,39 @@ export default function HomePage() {
     }
   }, [patients, workspaceKind, workspacePatientId]);
 
-  function pushWorkspace(kind: "chart" | "consultation" | "billing", patientId: string) {
+  function pushWorkspace(kind: "chart" | "consultation" | "billing", patientId: string, replaceCurrent = false) {
     workspaceOpenedInAppRef.current = true;
     setWorkspaceLocation({ kind, patientId });
     const target = `/?workspace=${kind}&patient=${encodeURIComponent(patientId)}`;
-    if (workspaceKind) {
-      window.history.replaceState(window.history.state, "", target);
+    const nextHistoryState = { ...(window.history.state || {}), clinicWorkspace: kind } as Record<string, unknown>;
+    if (kind === "consultation") nextHistoryState.consultationDepth = 0;
+    else delete nextHistoryState.consultationDepth;
+    if (replaceCurrent) {
+      window.history.replaceState(nextHistoryState, "", target);
     } else {
-      window.history.pushState(window.history.state, "", target);
+      window.history.pushState(nextHistoryState, "", target);
     }
+  }
+
+  function closeConsultationWorkspace() {
+    const consultationDepth = Number(window.history.state?.consultationDepth);
+    if (workspaceOpenedInAppRef.current && Number.isFinite(consultationDepth) && consultationDepth >= 0) {
+      workspaceOpenedInAppRef.current = false;
+      window.history.go(-(consultationDepth + 1));
+      return;
+    }
+    closeWorkspace();
+  }
+
+  function finishConsultationWorkspace() {
+    const consultationDepth = Number(window.history.state?.consultationDepth);
+    workspaceOpenedInAppRef.current = false;
+    if (Number.isFinite(consultationDepth) && consultationDepth >= 0 && window.history.length > consultationDepth + 1) {
+      window.history.go(-(consultationDepth + 2));
+      return;
+    }
+    setWorkspaceLocation({ kind: "", patientId: "" });
+    router.replace("/");
   }
 
   function closeWorkspace() {
@@ -701,7 +725,7 @@ export default function HomePage() {
     setBillingRecipientEmail(patient?.email ?? "");
     setSelectedPatient(null);
     setDrawerMode(null);
-    pushWorkspace("billing", patientId);
+    pushWorkspace("billing", patientId, Boolean(workspaceKind));
   }
 
   function commitTrainingPatients(updater: Patient[] | ((current: Patient[]) => Patient[])) {
@@ -1836,7 +1860,7 @@ export default function HomePage() {
         onClose={() => {
           setSelectedPatient(null);
           setDrawerMode(null);
-          closeWorkspace();
+          closeConsultationWorkspace();
         }}
       />
 
@@ -1867,8 +1891,10 @@ export default function HomePage() {
             if (isSoloWorkspace && !isTrainingMode) {
               openBillingWorkspace(donePatient.id);
             } else {
+              workspaceTransitionRef.current = true;
               setSelectedPatient(null);
               setDrawerMode(null);
+              finishConsultationWorkspace();
             }
           } catch {
             return;

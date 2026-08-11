@@ -11,6 +11,7 @@ type OptometryModalShellProps = {
   onClose: () => void;
   onSave: () => void | Promise<void>;
   children: ReactNode;
+  footer?: ReactNode;
   isSaving?: boolean;
   inline?: boolean;
   sidebar?: ReactNode;
@@ -24,6 +25,7 @@ export function OptometryModalShell({
   onClose,
   onSave,
   children,
+  footer,
   isSaving = false,
   inline = false,
   sidebar,
@@ -36,11 +38,11 @@ export function OptometryModalShell({
     return (
       <div className="space-y-5">
         {children}
-        <div className="flex justify-end">
+        {footer ?? <div className="flex justify-end">
           <button type="button" disabled={isSaving} onClick={onSave} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60">
             {isSaving ? "Saving..." : saveLabel}
           </button>
-        </div>
+        </div>}
       </div>
     );
   }
@@ -69,14 +71,14 @@ export function OptometryModalShell({
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-2 py-3 max-sm:[&_input]:rounded-lg max-sm:[&_input]:px-3 max-sm:[&_input]:py-2 max-sm:[&_input]:text-sm max-sm:[&_label_span]:mb-1 max-sm:[&_section]:rounded-xl max-sm:[&_section]:p-3 max-sm:[&_textarea]:rounded-lg max-sm:[&_textarea]:px-3 max-sm:[&_textarea]:py-2 max-sm:[&_textarea]:text-sm sm:space-y-5 sm:px-6 sm:py-5">{children}</div>
         )}
 
-        <div className="flex shrink-0 justify-end gap-2 border-t border-[#dbe7ef] px-3 py-3 sm:gap-3 sm:px-6">
+        {footer ?? <div className="flex shrink-0 justify-end gap-2 border-t border-[#dbe7ef] px-3 py-3 sm:gap-3 sm:px-6">
           <button type="button" onClick={onClose} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] sm:px-5 sm:py-3">
             Cancel
           </button>
           <button type="button" disabled={isSaving} onClick={onSave} className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60 sm:px-5 sm:py-3">
             {isSaving ? "Saving..." : saveLabel}
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   );

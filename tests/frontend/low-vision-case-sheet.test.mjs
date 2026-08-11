@@ -17,6 +17,12 @@ test("low vision module retains all eight source pages", () => {
   ]) assert.ok(source.includes(label), `Missing low vision page: ${label}`);
 });
 
+test("low vision pages provide back and next navigation", () => {
+  assert.ok(source.includes("movePage(-1)"));
+  assert.ok(source.includes("movePage(1)"));
+  assert.ok(source.includes("Page {page + 1} of {PAGES.length}"));
+});
+
 test("low vision module retains source clinical assessments", () => {
   for (const label of [
     "Family History",

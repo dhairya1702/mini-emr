@@ -339,6 +339,7 @@ type ConsultationWorkspaceSnapshot = {
 };
 
 type OptometryConsultationStep = "history" | "examination" | "consultation";
+type ConsultationHistoryModule = "" | "eye_exam" | "vitals" | "contact_lens" | "binocular_vision" | "low_vision" | "myopia_management" | "tbi_evaluation";
 type InlineModuleKey = "vitals" | "medicines";
 type PediatricModuleKey = "growth" | "wellChild" | "parentHandout" | "pediatricFollowUp";
 type AssistantStage = "idle" | "questions" | "analysis";
@@ -561,6 +562,8 @@ export function ConsultationDrawer({
   const [form, setForm] = useState(createEmptyForm);
   const [activeOptometryStep, setActiveOptometryStep] = useState<OptometryConsultationStep>("history");
   const [activeEyeExamPage, setActiveEyeExamPage] = useState(0);
+  const [activeContactLensPage, setActiveContactLensPage] = useState(0);
+  const [activeLowVisionPage, setActiveLowVisionPage] = useState(0);
   const [hydratedConsultationKey, setHydratedConsultationKey] = useState("");
   const [openSections, setOpenSections] = useState(createClosedConsultationSections);
   const [activeInlineModule, setActiveInlineModule] = useState<InlineModuleKey | null>(null);
@@ -590,6 +593,7 @@ export function ConsultationDrawer({
   const [isTbiLoading, setIsTbiLoading] = useState(false);
   const [tbiError, setTbiError] = useState("");
   const [moduleEntries, setModuleEntries] = useState<LongitudinalTrackRecord[]>([]);
+  const [isModuleEntriesLoading, setIsModuleEntriesLoading] = useState(false);
   const [moduleEntryError, setModuleEntryError] = useState("");
   const [currentConsultationModules, setCurrentConsultationModules] = useState<Array<{ module_type: string; payload: Record<string, unknown> }>>([]);
   const [hasGeneratedNote, setHasGeneratedNote] = useState(false);
@@ -634,6 +638,10 @@ export function ConsultationDrawer({
     },
     [currentOrgId, currentUserId, patientId, patientVisitId],
   );
+  const pendingWorkspaceWriteRef = useRef<{
+    scope: { orgId: string; userId: string; patientId: string; visitId: string };
+    snapshot: ConsultationWorkspaceSnapshot;
+  } | null>(null);
   const optometryHistory = useOptometryHistory(
     patientId,
     patient?.current_visit?.id,
@@ -690,6 +698,7 @@ export function ConsultationDrawer({
     setIsTbiLoading(false);
     setTbiError("");
     setModuleEntries([]);
+    setIsModuleEntriesLoading(Boolean(specialtyModules.length));
     setModuleEntryError("");
     setCurrentConsultationModules(cachedWorkspace?.currentConsultationModules ?? []);
     setMedicineSearch(cachedWorkspace?.medicineSearch ?? "");
@@ -759,30 +768,34 @@ export function ConsultationDrawer({
     setWhatsAppDeliveryStatus("");
     setHydratedConsultationKey(consultationHydrationKey);
 
-    void Promise.allSettled([
-      api.listCatalogItems(),
-      specialtyModules.length ? api.listPatientModuleEntries(hydrationPatient.id) : Promise.resolve([] as LongitudinalTrackRecord[]),
-    ])
-      .then(([itemsResult, moduleEntriesResult]) => {
-        if (!active) {
-          return;
-        }
-
-        if (itemsResult.status === "fulfilled") {
-          setMedicineItems(itemsResult.value.filter((item) => item.item_type === "medicine"));
-        } else {
-          setMedicineItems([]);
-          setStatusMessage(itemsResult.reason instanceof Error ? itemsResult.reason.message : "Failed to load inventory medicines.");
-        }
-
-        if (moduleEntriesResult.status === "fulfilled") {
-          setModuleEntries(moduleEntriesResult.value);
-          setModuleEntryError("");
-        } else {
-          setModuleEntries([]);
-          setModuleEntryError(moduleEntriesResult.reason instanceof Error ? moduleEntriesResult.reason.message : "Failed to load previous evaluations.");
-        }
+    void api.listCatalogItems()
+      .then((items) => {
+        if (active) setMedicineItems(items.filter((item) => item.item_type === "medicine"));
+      })
+      .catch((loadError) => {
+        if (!active) return;
+        setMedicineItems([]);
+        setStatusMessage(loadError instanceof Error ? loadError.message : "Failed to load inventory medicines.");
       });
+
+    if (specialtyModules.length) {
+      void api.listPatientModuleEntries(hydrationPatient.id)
+        .then((entries) => {
+          if (!active) return;
+          setModuleEntries(entries);
+          setModuleEntryError("");
+        })
+        .catch((loadError) => {
+          if (!active) return;
+          setModuleEntries([]);
+          setModuleEntryError(loadError instanceof Error ? loadError.message : "Failed to load previous evaluations.");
+        })
+        .finally(() => {
+          if (active) setIsModuleEntriesLoading(false);
+        });
+    } else {
+      setIsModuleEntriesLoading(false);
+    }
 
     return () => {
       active = false;
@@ -800,7 +813,7 @@ export function ConsultationDrawer({
       return;
     }
 
-    writeConsultationWorkspace(workspaceScope, {
+    const snapshot: ConsultationWorkspaceSnapshot = {
       form,
       openSections,
       selectedMedicineIds,
@@ -818,7 +831,15 @@ export function ConsultationDrawer({
       currentConsultationModules,
       activeOptometryStep,
       activeEyeExamPage,
-    });
+    };
+    pendingWorkspaceWriteRef.current = { scope: workspaceScope, snapshot };
+    const timeoutId = window.setTimeout(() => {
+      const pending = pendingWorkspaceWriteRef.current;
+      if (!pending) return;
+      writeConsultationWorkspace(pending.scope, pending.snapshot);
+      pendingWorkspaceWriteRef.current = null;
+    }, 150);
+    return () => window.clearTimeout(timeoutId);
   }, [
     activeEyeExamPage,
     activeOptometryStep,
@@ -842,6 +863,58 @@ export function ConsultationDrawer({
     consultationHydrationKey,
     workspaceScope,
   ]);
+
+  useEffect(() => () => {
+    const pending = pendingWorkspaceWriteRef.current;
+    if (!pending) return;
+    writeConsultationWorkspace(pending.scope, pending.snapshot);
+    pendingWorkspaceWriteRef.current = null;
+  }, [consultationHydrationKey]);
+
+  useEffect(() => {
+    if (!patientId || !isOptometryClinic || !hydratedConsultationKey) {
+      return;
+    }
+
+    function restoreConsultationLocation() {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("workspace") !== "consultation" || url.searchParams.get("patient") !== patientId) {
+        return;
+      }
+      const stepParam = url.searchParams.get("consultationStep");
+      if (!stepParam) {
+        url.searchParams.set("consultationStep", activeOptometryStep);
+        if (activeOptometryStep === "examination") {
+          url.searchParams.set("consultationModule", "eye_exam");
+          url.searchParams.set("consultationPage", String(activeEyeExamPage));
+        }
+        window.history.replaceState(window.history.state, "", url.toString());
+        return;
+      }
+      if (!(["history", "examination", "consultation"] as string[]).includes(stepParam)) {
+        return;
+      }
+
+      const step = stepParam as OptometryConsultationStep;
+      const moduleParam = (url.searchParams.get("consultationModule") || "") as ConsultationHistoryModule;
+      const pageParam = Number.parseInt(url.searchParams.get("consultationPage") || "0", 10);
+      const page = Number.isFinite(pageParam) && pageParam >= 0 ? pageParam : 0;
+      setActiveOptometryStep(step);
+      setActiveInlineModule(step === "examination" && moduleParam === "vitals" ? "vitals" : null);
+      setIsContactLensOpen(step === "examination" && moduleParam === "contact_lens");
+      setIsBinocularVisionOpen(step === "examination" && moduleParam === "binocular_vision");
+      setIsLowVisionOpen(step === "examination" && moduleParam === "low_vision");
+      setIsMyopiaManagementOpen(step === "examination" && moduleParam === "myopia_management");
+      setIsTbiEvaluationOpen(step === "examination" && moduleParam === "tbi_evaluation");
+      if (step === "examination" && (!moduleParam || moduleParam === "eye_exam")) setActiveEyeExamPage(page);
+      if (step === "examination" && moduleParam === "contact_lens") setActiveContactLensPage(page);
+      if (step === "examination" && moduleParam === "low_vision") setActiveLowVisionPage(page);
+    }
+
+    restoreConsultationLocation();
+    window.addEventListener("popstate", restoreConsultationLocation);
+    return () => window.removeEventListener("popstate", restoreConsultationLocation);
+  }, [activeEyeExamPage, activeOptometryStep, hydratedConsultationKey, isOptometryClinic, patientId]);
 
   const filteredMedicineItems = useMemo(() => {
     const query = medicineSearch.trim().toLowerCase();
@@ -930,6 +1003,17 @@ export function ConsultationDrawer({
       active = false;
     };
   }, [isOptometryClinic, isTbiEvaluationOpen, isTrainingMode, patientId]);
+
+  if (patient && consultationHydrationKey && hydratedConsultationKey !== consultationHydrationKey) {
+    return (
+      <aside className="fixed inset-0 z-30 flex w-screen items-center justify-center border-l-2 border-[#9fc7e1] bg-white p-6">
+        <div role="status" className="rounded-2xl border border-[#bfd7e8] bg-[#f7fbfd] px-6 py-5 text-center shadow-sm">
+          <p className="text-sm font-semibold text-slate-900">Restoring consultation…</p>
+          <p className="mt-1 text-xs text-slate-500">Your examination entries are stored locally and will appear momentarily.</p>
+        </div>
+      </aside>
+    );
+  }
 
   if (!patient) {
     return null;
@@ -1403,23 +1487,14 @@ export function ConsultationDrawer({
   }
 
   function openOptometryModule(section: "contactLens" | "binocularVision" | "lowVision" | "myopiaManagement" | "tbiEvaluation") {
-    if (section === "contactLens") {
-      setIsContactLensOpen(true);
-      return;
-    }
-    if (section === "binocularVision") {
-      setIsBinocularVisionOpen(true);
-      return;
-    }
-    if (section === "lowVision") {
-      setIsLowVisionOpen(true);
-      return;
-    }
-    if (section === "tbiEvaluation") {
-      setIsTbiEvaluationOpen(true);
-      return;
-    }
-    setIsMyopiaManagementOpen(true);
+    const moduleBySection: Record<typeof section, ConsultationHistoryModule> = {
+      contactLens: "contact_lens",
+      binocularVision: "binocular_vision",
+      lowVision: "low_vision",
+      myopiaManagement: "myopia_management",
+      tbiEvaluation: "tbi_evaluation",
+    };
+    navigateConsultationHistory("examination", moduleBySection[section]);
   }
 
   function updateContactLens(patch: Partial<ContactLensPayload>) {
@@ -1476,7 +1551,11 @@ export function ConsultationDrawer({
           </button>
         </div>
         <div className="mt-3 space-y-2">
-          {entries.length ? entries.map((entry) => (
+          {isModuleEntriesLoading ? (
+            <p role="status" className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-5 text-center text-sm text-slate-500">
+              Loading previous evaluations…
+            </p>
+          ) : entries.length ? entries.map((entry) => (
             <button
               key={entry.id}
               type="button"
@@ -1974,6 +2053,44 @@ export function ConsultationDrawer({
     [form.bloodPressureSystolic, form.bloodPressureDiastolic, form.pulse, form.spo2, form.bloodSugar].some((value) => value.trim()) ? "Vitals" : "",
   ].filter(Boolean);
 
+  function navigateConsultationHistory(
+    step: OptometryConsultationStep,
+    module: ConsultationHistoryModule = "",
+    page = 0,
+    replace = false,
+  ) {
+    const normalizedModule = step === "examination" ? (module || "eye_exam") : "";
+    const normalizedPage = Math.max(0, page);
+    setActiveOptometryStep(step);
+    setActiveInlineModule(step === "examination" && normalizedModule === "vitals" ? "vitals" : null);
+    setIsContactLensOpen(step === "examination" && normalizedModule === "contact_lens");
+    setIsBinocularVisionOpen(step === "examination" && normalizedModule === "binocular_vision");
+    setIsLowVisionOpen(step === "examination" && normalizedModule === "low_vision");
+    setIsMyopiaManagementOpen(step === "examination" && normalizedModule === "myopia_management");
+    setIsTbiEvaluationOpen(step === "examination" && normalizedModule === "tbi_evaluation");
+    if (normalizedModule === "eye_exam") setActiveEyeExamPage(normalizedPage);
+    if (normalizedModule === "contact_lens") setActiveContactLensPage(normalizedPage);
+    if (normalizedModule === "low_vision") setActiveLowVisionPage(normalizedPage);
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("consultationStep", step);
+    if (normalizedModule) {
+      url.searchParams.set("consultationModule", normalizedModule);
+      url.searchParams.set("consultationPage", String(normalizedPage));
+    } else {
+      url.searchParams.delete("consultationModule");
+      url.searchParams.delete("consultationPage");
+    }
+    if (url.toString() === window.location.href) return;
+    const currentDepth = Number(window.history.state?.consultationDepth);
+    const consultationDepth = Number.isFinite(currentDepth) && currentDepth >= 0 ? currentDepth : 0;
+    const nextHistoryState = {
+      ...(window.history.state || {}),
+      consultationDepth: replace ? consultationDepth : consultationDepth + 1,
+    };
+    window.history[replace ? "replaceState" : "pushState"](nextHistoryState, "", url.toString());
+  }
+
   async function leaveHistory() {
     if (activeOptometryStep !== "history" || await optometryHistory.save()) {
       setForm((current) => {
@@ -1995,12 +2112,12 @@ export function ConsultationDrawer({
 
   async function openExamination() {
     if (!await leaveHistory()) return;
-    setActiveOptometryStep("examination");
+    navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage);
   }
 
   async function openConsultation() {
     if (!await leaveHistory()) return;
-    setActiveOptometryStep("consultation");
+    navigateConsultationHistory("consultation");
   }
 
   function renderAssistantQuestionControl(question: ClinicalAssistantQuestion) {
@@ -2157,14 +2274,13 @@ export function ConsultationDrawer({
             {renderModuleButton(
               "Vitals",
               activeInlineModule === "vitals",
-              () => setActiveInlineModule((current) => (current === "vitals" ? null : "vitals")),
+              () => navigateConsultationHistory("examination", activeInlineModule === "vitals" ? "eye_exam" : "vitals"),
             )}
             {specialtyModules.map((moduleKey) => {
             const copy = TEST_MODULE_COPY[moduleKey];
             const openModule = () => {
               if (moduleKey === "eye_exam") {
-                setActiveInlineModule(null);
-                setActiveOptometryStep("examination");
+                navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage);
               } else if (moduleKey === "contact_lens") {
                 setActiveInlineModule(null);
                 openOptometryModule("contactLens");
@@ -2574,7 +2690,7 @@ export function ConsultationDrawer({
                   aria-current={active ? "step" : undefined}
                   onClick={() => {
                     if (step === "history") {
-                      setActiveOptometryStep("history");
+                      navigateConsultationHistory("history");
                     } else if (step === "examination") {
                       void openExamination();
                     } else {
@@ -2627,13 +2743,16 @@ export function ConsultationDrawer({
               open
               inline
               value={form.eyeExam}
+              onDraftChange={(next) => setForm((current) => ({ ...current, eyeExam: next }))}
               activePage={activeEyeExamPage}
-              onActivePageChange={setActiveEyeExamPage}
+              onActivePageChange={(nextPage) => navigateConsultationHistory("examination", "eye_exam", nextPage)}
               onClose={() => undefined}
               onSave={async (next) => {
                 setForm((current) => ({ ...current, eyeExam: next }));
                 await saveStructuredModuleEntry("eye_exam", next as unknown as Record<string, unknown>, buildEyeExamSummary(next));
-                setActiveOptometryStep("consultation");
+              }}
+              onContinue={async () => {
+                navigateConsultationHistory("consultation");
               }}
             /> : null}
           </div>
@@ -2655,7 +2774,7 @@ export function ConsultationDrawer({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setActiveOptometryStep("examination")}
+                    onClick={() => navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage)}
                     className="rounded-xl border border-[#2f8fd3] bg-white px-4 py-2 text-sm font-semibold text-[#287fc0] transition hover:bg-[#edf5fa]"
                   >
                     Review Examination
@@ -3409,10 +3528,12 @@ export function ConsultationDrawer({
       <ContactLensModal
         open={isOptometryClinic && isContactLensOpen}
         value={form.contactLens}
-        onClose={() => setIsContactLensOpen(false)}
+        activePage={activeContactLensPage}
+        onActivePageChange={(nextPage) => navigateConsultationHistory("examination", "contact_lens", nextPage)}
+        onClose={() => navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true)}
         onSave={async () => {
           await saveContactLens();
-          setIsContactLensOpen(false);
+          navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true);
         }}
         onChange={updateContactLens}
         onEyeChange={updateContactLensEye}
@@ -3425,19 +3546,22 @@ export function ConsultationDrawer({
         isLoading={isBinocularVisionLoading}
         error={binocularVisionError}
         readOnly={false}
-        onClose={() => setIsBinocularVisionOpen(false)}
+        onClose={() => navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true)}
         onSave={async (payload) => {
           await saveBinocularVisionEvaluation(payload);
-          setIsBinocularVisionOpen(false);
+          navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true);
         }}
       />
       <LowVisionModal
         open={isOptometryClinic && isLowVisionOpen}
         value={form.lowVision}
-        onClose={() => setIsLowVisionOpen(false)}
+        onDraftChange={(next) => setForm((current) => ({ ...current, lowVision: next }))}
+        activePage={activeLowVisionPage}
+        onActivePageChange={(nextPage) => navigateConsultationHistory("examination", "low_vision", nextPage)}
+        onClose={() => navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true)}
         onSave={async (next) => {
           await saveLowVision(next);
-          setIsLowVisionOpen(false);
+          navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true);
         }}
         sidebar={renderPreviousEvaluations("low_vision", selectLowVisionEntry)}
       />
@@ -3445,10 +3569,10 @@ export function ConsultationDrawer({
         open={isOptometryClinic && isMyopiaManagementOpen}
         value={form.myopiaManagement}
         patientAge={currentPatient.age}
-        onClose={() => setIsMyopiaManagementOpen(false)}
+        onClose={() => navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true)}
         onSave={async (next) => {
           await saveMyopiaManagement(next);
-          setIsMyopiaManagementOpen(false);
+          navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true);
         }}
       />
       <TbiEvaluationModal
@@ -3458,10 +3582,10 @@ export function ConsultationDrawer({
         isLoading={isTbiLoading}
         error={tbiError}
         readOnly={false}
-        onClose={() => setIsTbiEvaluationOpen(false)}
+        onClose={() => navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true)}
         onSave={async (payload) => {
           await saveTbiEvaluation(payload);
-          setIsTbiEvaluationOpen(false);
+          navigateConsultationHistory("examination", "eye_exam", activeEyeExamPage, true);
         }}
       />
     </aside>
