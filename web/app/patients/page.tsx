@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, RefreshCw, Search } from "lucide-react";
+import { Download, LoaderCircle, RefreshCw, Search } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { api } from "@/lib/api";
 import { loadRecentPatients, saveRecentPatient } from "@/lib/recent-patients";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
+import { useInfinitePatients } from "@/lib/use-infinite-patients";
 import { Patient } from "@/lib/types";
 
 function formatVisitDate(value: string) {
@@ -20,10 +21,6 @@ function formatVisitDate(value: string) {
   });
 }
 
-function normalizePhone(value: string) {
-  return value.replace(/\D/g, "");
-}
-
 function upsertPatient(current: Patient[], incoming: Patient) {
   const withoutMatch = current.filter((patient) => patient.id !== incoming.id);
   return [incoming, ...withoutMatch].sort((left, right) =>
@@ -33,23 +30,14 @@ function upsertPatient(current: Patient[], incoming: Patient) {
 
 export default function PatientsPage() {
   const router = useRouter();
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [recentPatients, setRecentPatients] = useState<Patient[]>([]);
   const [exportStatus, setExportStatus] = useState("");
   const [exportError, setExportError] = useState("");
   const [isExporting, setIsExporting] = useState(false);
-  const lastCompletedPatientQueryRef = useRef<string | null>(null);
-  const patientSearchRequestIdRef = useRef(0);
-  const loadPageData = useCallback(async () => {
-    const records = await api.listPatients({ limit: 500 });
-    lastCompletedPatientQueryRef.current = "";
-    return records.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at));
-  }, []);
-  const onPageData = useCallback((data: Patient[]) => {
-    setPatients(data);
-  }, []);
+  const loadPageData = useCallback(async () => null, []);
+  const onPageData = useCallback(() => undefined, []);
   const {
     currentUser,
     users,
@@ -62,7 +50,6 @@ export default function PatientsPage() {
     error,
     isAuthReady,
     isRedirectingToLogin,
-    isPageDataLoaded,
     handleLogout,
     handleSaveClinicSettings,
     applyClinicSettings,
@@ -81,6 +68,18 @@ export default function PatientsPage() {
     loadPageData,
     onPageData,
   });
+  const {
+    patients,
+    setPatients,
+    isLoading: isPatientsLoading,
+    isLoadingMore,
+    error: patientLoadError,
+    reload: reloadPatients,
+    sentinelRef,
+  } = useInfinitePatients({
+    enabled: isAuthReady && !isRedirectingToLogin && Boolean(currentUser),
+    q: query,
+  });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
   const currentUserId = currentUser?.id;
   const currentOrgId = currentUser?.org_id;
@@ -98,31 +97,6 @@ export default function PatientsPage() {
     if (searchQuery) setQuery(searchQuery);
   }, []);
 
-  useEffect(() => {
-    if (!isPageDataLoaded) {
-      return;
-    }
-    const normalizedQuery = query.trim();
-    const requestId = ++patientSearchRequestIdRef.current;
-    if (lastCompletedPatientQueryRef.current === normalizedQuery) {
-      return;
-    }
-    const timeoutId = window.setTimeout(async () => {
-      try {
-        const records = await api.listPatients({ q: normalizedQuery || undefined, limit: 500 });
-        if (requestId !== patientSearchRequestIdRef.current) {
-          return;
-        }
-        lastCompletedPatientQueryRef.current = normalizedQuery;
-        setPatients(records.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at)));
-      } catch {
-        // The shell-level request handling will surface auth/backend errors; keep
-        // the existing list visible if a transient search request fails.
-      }
-    }, 250);
-    return () => window.clearTimeout(timeoutId);
-  }, [isPageDataLoaded, query]);
-
   function rememberRecentPatient(patient: Patient) {
     if (!recentPatientsScope) {
       return;
@@ -130,19 +104,7 @@ export default function PatientsPage() {
     setRecentPatients(saveRecentPatient({ ...recentPatientsScope, patient }));
   }
 
-  const visiblePatients = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return patients;
-    }
-    const normalizedPhoneQuery = normalizePhone(normalizedQuery);
-    return patients.filter((patient) =>
-      patient.name.toLowerCase().includes(normalizedQuery) ||
-      patient.phone.toLowerCase().includes(normalizedQuery) ||
-      patient.reason.toLowerCase().includes(normalizedQuery) ||
-      (normalizedPhoneQuery.length >= 3 && normalizePhone(patient.phone).includes(normalizedPhoneQuery)),
-    );
-  }, [patients, query]);
+  const visiblePatients = patients;
 
   function openPatientChart(patient: Patient) {
     rememberRecentPatient(patient);
@@ -224,7 +186,7 @@ export default function PatientsPage() {
               </div>
               <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/60 px-4 py-2.5 text-sm text-slate-600 lg:min-w-[140px]">
                 <span className="text-lg font-semibold text-slate-900">{patients.length}</span>{" "}
-                <span className="font-medium text-slate-500">Patients</span>
+                <span className="font-medium text-slate-500">Loaded</span>
               </div>
             </div>
 
@@ -242,7 +204,7 @@ export default function PatientsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => window.location.reload()}
+                  onClick={reloadPatients}
                   aria-label="Retry loading patients"
                   title="Retry loading patients"
                   className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-slate-800 transition hover:bg-[#f3f8fb]"
@@ -331,20 +293,27 @@ export default function PatientsPage() {
                     ))}
                   </tbody>
                 </table>
+                <div ref={sentinelRef} data-testid="patient-scroll-sentinel" className="flex min-h-12 items-center justify-center" aria-live="polite">
+                  {isLoadingMore ? <LoaderCircle className="h-5 w-5 animate-spin text-[#2a6fa8]" aria-label="Loading more patients" /> : null}
+                </div>
               </div>
             ) : (
               <div className="px-6 py-16 text-center">
                 <p className="text-sm font-medium text-slate-700">
-                  {patients.length
+                  {isPatientsLoading
+                    ? "Loading patients..."
+                    : patients.length
                     ? "No patients match this search yet."
-                    : error === "Failed to fetch" || error.includes("timed out")
+                    : (patientLoadError || error) === "Failed to fetch" || (patientLoadError || error).includes("timed out")
                       ? "The backend is unavailable right now."
                       : "No patients have been recorded yet."}
                 </p>
                 <p className="mt-2 text-sm text-slate-500">
-                  {patients.length
+                  {isPatientsLoading
+                    ? ""
+                    : patients.length
                     ? "Try a broader name, reason, or phone fragment."
-                    : error === "Failed to fetch" || error.includes("timed out")
+                    : (patientLoadError || error) === "Failed to fetch" || (patientLoadError || error).includes("timed out")
                       ? "Check the API server and refresh this page."
                       : "Add a patient from the queue to start building the chart history."}
                 </p>

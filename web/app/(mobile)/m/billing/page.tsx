@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { LoaderCircle } from "lucide-react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { MobileAdminGate } from "@/components/mobile/mobile-admin-gate";
@@ -10,9 +11,8 @@ import { api } from "@/lib/api";
 import { calculateDraftInvoiceTaxTotals } from "@/lib/billing-tax";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { printBlob } from "@/lib/print";
+import { useInfinitePatients } from "@/lib/use-infinite-patients";
 import type { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
-
-const BILLABLE_PATIENT_LIMIT = 50;
 
 function createId() {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
@@ -118,7 +118,6 @@ function MobileBillingContent({
   userRole?: string;
 }) {
   const { catalogItems, loadCatalogItems, invalidateCatalog } = useClinicShell();
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedBillingPatientId, setSelectedBillingPatientId] = useState("");
   const [invoiceItems, setInvoiceItems] = useState<DraftInvoiceItem[]>([]);
   const [billingError, setBillingError] = useState("");
@@ -140,6 +139,18 @@ function MobileBillingContent({
   const [isSendingInvoiceWhatsApp, setIsSendingInvoiceWhatsApp] = useState(false);
   const [isInvoiceDirty, setIsInvoiceDirty] = useState(false);
   const [hasSeededBillingDraft, setHasSeededBillingDraft] = useState(false);
+  const {
+    patients,
+    setPatients,
+    isLoading: isPatientsLoading,
+    isLoadingMore: isLoadingMorePatients,
+    error: patientLoadError,
+    sentinelRef: patientSentinelRef,
+  } = useInfinitePatients({
+    enabled: authReady && !redirecting && userRole === "admin",
+    status: "done",
+    billed: false,
+  });
 
   const billablePatients = useMemo(() => patients.filter((patient) => patient.status === "done" && !patient.billed), [patients]);
   const selectedBillingPatient = useMemo(
@@ -171,13 +182,9 @@ function MobileBillingContent({
     }
     let active = true;
     setIsLoading(true);
-    Promise.all([
-      api.listPatients({ status: "done", billed: false, limit: BILLABLE_PATIENT_LIMIT }),
-      loadCatalogItems(),
-    ])
-      .then(([patientRows]) => {
+    loadCatalogItems()
+      .then(() => {
         if (!active) return;
-        setPatients(patientRows);
         setBillingError("");
       })
       .catch((loadError) => {
@@ -466,11 +473,16 @@ function MobileBillingContent({
 
   return (
     <MobileShell title="Billing">
-      {isLoading ? (
+      {isLoading || isPatientsLoading ? (
         <p className="clinic-empty-state">Loading billing...</p>
       ) : (
-        <SettingsDrawerBillingPanel
-          patients={billablePatients}
+      <SettingsDrawerBillingPanel
+        patients={billablePatients}
+        patientListFooter={(
+          <div ref={patientSentinelRef} className="flex min-h-10 items-center justify-center">
+            {isLoadingMorePatients ? <LoaderCircle className="h-5 w-5 animate-spin text-[#2a6fa8]" aria-label="Loading more billable patients" /> : null}
+          </div>
+        )}
           selectedBillingPatientId={selectedBillingPatientId}
           selectedBillingPatient={selectedBillingPatient}
           serviceItems={serviceItems}
@@ -485,7 +497,7 @@ function MobileBillingContent({
           amountPaidInput={amountPaidInput}
           balanceDue={balanceDue}
           paymentStatus={paymentStatus}
-          billingError={billingError}
+          billingError={billingError || patientLoadError}
           billingStatus={billingStatus}
           isSavingInvoice={isSavingInvoice}
           isFinalizingInvoice={isFinalizingInvoice}

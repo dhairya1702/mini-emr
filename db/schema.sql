@@ -1440,6 +1440,7 @@ create index if not exists patients_org_unbilled_done_idx
 on public.patients (org_id, last_visit_at desc)
 where status = 'done' and billed = false;
 create index if not exists patients_org_last_visit_idx on public.patients (org_id, last_visit_at desc);
+create index if not exists patients_org_last_visit_id_idx on public.patients (org_id, last_visit_at desc, id desc);
 create index if not exists patients_org_phone_last_visit_idx on public.patients (org_id, phone, last_visit_at desc);
 create index if not exists patient_visits_patient_created_idx on public.patient_visits (patient_id, created_at desc);
 create index if not exists patient_visits_org_created_idx on public.patient_visits (org_id, created_at desc);

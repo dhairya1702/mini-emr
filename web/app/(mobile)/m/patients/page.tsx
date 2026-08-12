@@ -1,12 +1,13 @@
 "use client";
 
-import { Download, RefreshCw, Search } from "lucide-react";
+import { Download, LoaderCircle, RefreshCw, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { api } from "@/lib/api";
+import { useInfinitePatients } from "@/lib/use-infinite-patients";
 import { loadRecentPatients, saveRecentPatient } from "@/lib/recent-patients";
 import type { Patient } from "@/lib/types";
 
@@ -17,10 +18,6 @@ function formatVisitDate(value: string) {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-function normalizePhone(value: string) {
-  return value.replace(/\D/g, "");
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -37,68 +34,33 @@ function downloadBlob(blob: Blob, filename: string) {
 export default function MobilePatientsPage() {
   const router = useRouter();
   const { currentUser, isAuthReady, isRedirectingToLogin } = useClinicShell();
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [recentPatients, setRecentPatients] = useState<Patient[]>([]);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [exportStatus, setExportStatus] = useState("");
   const [isExporting, setIsExporting] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const recentPatientsScope = useMemo(
     () => currentUser?.org_id && currentUser?.id ? { orgId: currentUser.org_id, userId: currentUser.id } : null,
     [currentUser?.id, currentUser?.org_id],
   );
 
-  async function loadPatients() {
-    if (!currentUser) {
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const rows = await api.listPatients({ q: query.trim() || undefined, limit: 500 });
-      setPatients(rows.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at)));
-      setError("");
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load patients.");
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!isAuthReady || isRedirectingToLogin || !currentUser) {
-      return;
-    }
-    let active = true;
-    void loadPatients().finally(() => {
-      if (!active) {
-        return;
-      }
-    });
-    return () => {
-      active = false;
-    };
-    // loadPatients intentionally reads current user/search state and is only needed on shell readiness changes/search.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser, isAuthReady, isRedirectingToLogin, query]);
+  const {
+    patients,
+    isLoading,
+    isLoadingMore,
+    error: patientLoadError,
+    reload: reloadPatients,
+    sentinelRef,
+  } = useInfinitePatients({
+    enabled: isAuthReady && !isRedirectingToLogin && Boolean(currentUser),
+    q: query,
+  });
 
   useEffect(() => {
     setRecentPatients(recentPatientsScope ? loadRecentPatients(recentPatientsScope) : []);
   }, [recentPatientsScope]);
 
-  const filteredPatients = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) {
-      return patients;
-    }
-    const normalizedPhoneQuery = normalizePhone(normalized);
-    return patients.filter((patient) => (
-      patient.name.toLowerCase().includes(normalized) ||
-      patient.phone.toLowerCase().includes(normalized) ||
-      patient.reason.toLowerCase().includes(normalized) ||
-      (normalizedPhoneQuery.length >= 3 && normalizePhone(patient.phone).includes(normalizedPhoneQuery))
-    ));
-  }, [patients, query]);
+  const filteredPatients = patients;
 
   function openPatient(patient: Patient) {
     if (recentPatientsScope) {
@@ -122,7 +84,7 @@ export default function MobilePatientsPage() {
   }
 
   return (
-    <MobileShell title="Patients" subtitle={`${filteredPatients.length} records`}>
+    <MobileShell title="Patients" subtitle={`${filteredPatients.length} loaded`}>
       <section className="-mx-1">
         <div className="grid gap-2">
           <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
@@ -147,7 +109,7 @@ export default function MobilePatientsPage() {
             </button>
             <button
               type="button"
-              onClick={() => void loadPatients()}
+              onClick={reloadPatients}
               className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#bfd7e8] bg-white text-slate-800"
               aria-label="Refresh patients"
               title="Refresh patients"
@@ -156,7 +118,7 @@ export default function MobilePatientsPage() {
             </button>
           </div>
           <p className="px-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
-            {patients.length} patient{patients.length === 1 ? "" : "s"}
+            {patients.length} patient{patients.length === 1 ? "" : "s"} loaded
           </p>
         </div>
 
@@ -182,7 +144,7 @@ export default function MobilePatientsPage() {
         {exportStatus ? <p className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{exportStatus}</p> : null}
       </section>
 
-      {error ? <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+      {error || patientLoadError ? <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error || patientLoadError}</p> : null}
       {isLoading ? (
         <p className="clinic-empty-state">Loading patients...</p>
       ) : (
@@ -207,6 +169,9 @@ export default function MobilePatientsPage() {
                   </p>
                 </button>
               ))}
+              <div ref={sentinelRef} data-testid="patient-scroll-sentinel" className="flex min-h-12 items-center justify-center">
+                {isLoadingMore ? <LoaderCircle className="h-5 w-5 animate-spin text-[#2a6fa8]" aria-label="Loading more patients" /> : null}
+              </div>
             </div>
           ) : (
             <div className="px-6 py-14 text-center">

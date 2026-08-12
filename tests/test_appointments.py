@@ -214,7 +214,7 @@ def test_appointment_can_be_created_listed_and_checked_into_queue(client):
 
     patients = test_client.get("/patients", headers=headers)
     assert patients.status_code == 200
-    assert patients.json()[0]["name"] == "Booked Patient"
+    assert patients.json()["items"][0]["name"] == "Booked Patient"
 
     timeline = test_client.get(
         f"/patients/{patient['id']}/timeline",
@@ -315,7 +315,7 @@ def test_appointment_check_in_requires_explicit_choice_when_phone_has_active_mat
 
     patients = test_client.get("/patients", headers=headers)
     assert patients.status_code == 200
-    assert len(patients.json()) == 1
+    assert len(patients.json()["items"]) == 1
 
 
 def test_appointment_check_in_can_link_existing_active_patient(client):
@@ -357,7 +357,7 @@ def test_appointment_check_in_can_link_existing_active_patient(client):
 
     patients = test_client.get("/patients", headers=headers)
     assert patients.status_code == 200
-    assert len(patients.json()) == 1
+    assert len(patients.json()["items"]) == 1
 
     updated_appointments = test_client.get(
         f"/appointments?scheduled_date={datetime.fromisoformat(appointment['scheduled_for']).date().isoformat()}",
@@ -412,7 +412,7 @@ def test_appointment_check_in_can_force_new_patient_with_existing_phone(client):
 
     patients = test_client.get("/patients", headers=headers)
     assert patients.status_code == 200
-    matches = [patient for patient in patients.json() if patient["phone"] == "5550121212"]
+    matches = [patient for patient in patients.json()["items"] if patient["phone"] == "5550121212"]
     assert len(matches) == 2
     assert {patient["name"] for patient in matches} == {"Parent Patient", "Child Patient"}
 

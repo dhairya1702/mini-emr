@@ -1264,6 +1264,12 @@ export interface QueueSnapshot {
   patients: Patient[];
 }
 
+export interface PatientPage {
+  items: Patient[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
 export type UserRole = "admin" | "staff";
 
 export interface UserRoleUpdatePayload {

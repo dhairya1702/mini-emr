@@ -21,10 +21,6 @@ export default function UsersPage() {
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(async () => null, []);
   const onPageData = useCallback(() => undefined, []);
-  const loadBillablePatients = useCallback(async () => {
-    const patients = await api.listPatients({ limit: 500 });
-    return patients.filter((patient) => patient.status === "done" && !patient.billed);
-  }, []);
   const {
     currentUser,
     users,
@@ -163,7 +159,6 @@ export default function UsersPage() {
           auditEvents={auditEvents}
           onLoadAuditEvents={loadAuditEvents}
           patients={[]}
-          onLoadBillingPatients={loadBillablePatients}
           catalogItems={catalogItems}
           onLoadCatalogItems={loadCatalogItems}
           onClose={() => setIsSettingsOpen(false)}

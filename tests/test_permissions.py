@@ -27,8 +27,8 @@ def test_auth_org_isolation_and_admin_staff_rules(client):
 
     list_a = test_client.get("/patients", headers=auth_headers_for_token(session_a["token"]))
     list_b = test_client.get("/patients", headers=auth_headers_for_token(session_b["token"]))
-    assert [patient["name"] for patient in list_a.json()] == ["Patient One"]
-    assert [patient["name"] for patient in list_b.json()] == ["Patient Two"]
+    assert [patient["name"] for patient in list_a.json()["items"]] == ["Patient One"]
+    assert [patient["name"] for patient in list_b.json()["items"]] == ["Patient Two"]
 
     create_staff = test_client.post(
         "/users/staff",

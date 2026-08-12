@@ -20,10 +20,10 @@ export default function MobileCaseStudyPage() {
     if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") return;
     let active = true;
     setIsLoading(true);
-    Promise.all([api.listPatients({ limit: 500 }), api.listCaseStudies()])
-      .then(([patientRows, caseStudyRows]) => {
+    Promise.all([api.listPatients({ limit: 6 }), api.listCaseStudies()])
+      .then(([patientPage, caseStudyRows]) => {
         if (!active) return;
-        setPatients(patientRows.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at)));
+        setPatients(patientPage.items);
         setCaseStudies(caseStudyRows);
         setError("");
       })

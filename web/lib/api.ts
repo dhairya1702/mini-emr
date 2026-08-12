@@ -77,6 +77,7 @@ import {
   PediatricGrowthSummary,
   OperationResult,
   Patient,
+  PatientPage,
   QueueSnapshot,
   PatientAttachment,
   PatientChartVisit,
@@ -801,32 +802,30 @@ export const api = {
       body: JSON.stringify({ channels, idempotency_key: idempotencyKey }),
     }),
   listPatients: (options?: {
-    activeOnly?: boolean;
     status?: PatientStatus;
     billed?: boolean;
     q?: string;
     limit?: number;
-    offset?: number;
+    cursor?: string;
   }) =>
-    request<Patient[]>(withQuery("/patients", {
-      active_only: options?.activeOnly ? "true" : undefined,
-      include_queue_context: "false",
+    request<PatientPage>(withQuery("/patients", {
       status: options?.status,
       billed: options?.billed === undefined ? undefined : String(options.billed),
       q: options?.q,
       limit: options?.limit,
-      offset: options?.offset,
+      cursor: options?.cursor,
     })),
   listAllPatients: async () => {
     const rows: Patient[] = [];
-    for (let offset = 0; ; offset += 500) {
-      const page = await request<Patient[]>(withQuery("/patients", {
-        include_queue_context: "false",
-        limit: 500,
-        offset,
+    let cursor: string | undefined;
+    for (;;) {
+      const page = await request<PatientPage>(withQuery("/patients", {
+        limit: 100,
+        cursor,
       }));
-      rows.push(...page);
-      if (page.length < 500) return rows;
+      rows.push(...page.items);
+      if (!page.has_more || !page.next_cursor) return rows;
+      cursor = page.next_cursor;
     }
   },
   listQueuePatients: () => request<QueueSnapshot>("/patients/queue"),

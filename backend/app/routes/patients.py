@@ -1,6 +1,10 @@
+import base64
+import binascii
+import json
+from datetime import datetime
 from pathlib import Path
 from io import BytesIO
-from uuid import uuid4
+from uuid import UUID, uuid4
 from PIL import Image
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -30,6 +34,7 @@ from app.schema_domains.patients import (
     PatientVisitDetailOut,
     PatientMatchOut,
     PatientOut,
+    PatientPageOut,
     QueueOrderUpdate,
     QueueSnapshotOut,
     PatientSummaryOut,
@@ -74,6 +79,25 @@ from app.storage import PatientAttachmentStorage, get_patient_attachment_storage
 
 
 router = APIRouter()
+
+
+def _encode_patient_cursor(patient: PatientOut) -> str:
+    payload = json.dumps(
+        {"last_visit_at": patient.last_visit_at.isoformat(), "id": str(patient.id)},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_patient_cursor(cursor: str | None) -> tuple[datetime | None, str | None]:
+    if not cursor:
+        return None, None
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+        return datetime.fromisoformat(str(payload["last_visit_at"])), str(UUID(str(payload["id"])))
+    except (binascii.Error, KeyError, TypeError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid patient cursor.") from exc
 
 ALLOWED_PATIENT_PROFILE_PHOTO_TYPES = {
     "image/jpeg",
@@ -188,30 +212,38 @@ def _profile_photo_extension(content_type: str) -> str:
     }.get(content_type, ".jpg")
 
 
-@router.get("/patients", response_model=list[PatientOut])
+@router.get("/patients", response_model=PatientPageOut)
 async def get_patients(
-    active_only: bool = Query(default=False),
-    include_queue_context: bool = Query(default=True),
     status: PatientStatus | None = Query(default=None),
     billed: bool | None = Query(default=None),
     q: str | None = Query(default=None, max_length=120),
-    limit: int = Query(default=500, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=500),
     repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
-) -> list[PatientOut]:
+) -> PatientPageOut:
     try:
+        cursor_last_visit_at, cursor_id = _decode_patient_cursor(cursor)
         rows = await repo.list_patients(
             str(current_user.org_id),
-            active_only=active_only,
+            active_only=False,
             status=status,
             billed=billed,
             query=q,
-            limit=limit,
-            offset=offset,
-            include_queue_context=include_queue_context,
+            limit=limit + 1,
+            cursor_last_visit_at=cursor_last_visit_at,
+            cursor_id=cursor_id,
+            include_queue_context=False,
         )
-        return [PatientOut(**row) for row in rows]
+        patients = [PatientOut(**row) for row in rows[:limit]]
+        has_more = len(rows) > limit
+        return PatientPageOut(
+            items=patients,
+            has_more=has_more,
+            next_cursor=_encode_patient_cursor(patients[-1]) if has_more and patients else None,
+        )
+    except HTTPException:
+        raise
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="get_patients") from exc
 

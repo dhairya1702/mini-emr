@@ -48,6 +48,27 @@ interface SettingsDrawerAppointmentsPanelProps {
 type AppointmentView = "appointments" | "followUps";
 type AppointmentFilter = "all" | "scheduled" | "checked_in" | "cancelled";
 type FollowUpFilter = "needs_action" | "delivery_issues" | "history";
+type AppointmentCacheEntry = { items: Appointment[]; loadedAt: number };
+type FollowUpCacheEntry = {
+  items: FollowUp[];
+  counts: Record<FollowUpFilter, number>;
+  nextCursor: string | null;
+  hasMore: boolean;
+  loadedAt: number;
+};
+
+const SCHEDULE_CACHE_TTL_MS = 30_000;
+const SCHEDULE_CACHE_MAX_ENTRIES = 12;
+
+function setBoundedCacheEntry<T>(cache: Map<string, T>, key: string, entry: T) {
+  cache.delete(key);
+  cache.set(key, entry);
+  while (cache.size > SCHEDULE_CACHE_MAX_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) break;
+    cache.delete(oldestKey);
+  }
+}
 
 export function SettingsDrawerAppointmentsPanel({
   onCheckInAppointment,
@@ -69,8 +90,11 @@ export function SettingsDrawerAppointmentsPanel({
   const [followUpNextCursor, setFollowUpNextCursor] = useState<string | null>(null);
   const [hasMoreFollowUps, setHasMoreFollowUps] = useState(false);
   const [isLoadingMoreFollowUps, setIsLoadingMoreFollowUps] = useState(false);
+  const [appointmentReloadKey, setAppointmentReloadKey] = useState(0);
   const [followUpReloadKey, setFollowUpReloadKey] = useState(0);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [patientQuery, setPatientQuery] = useState("");
+  const [isPatientSearchLoading, setIsPatientSearchLoading] = useState(false);
   const [activeView, setActiveView] = useState<AppointmentView>("appointments");
   const [appointmentFilter, setAppointmentFilter] = useState<AppointmentFilter>("all");
   const [followUpFilter, setFollowUpFilter] = useState<FollowUpFilter>("needs_action");
@@ -110,6 +134,14 @@ export function SettingsDrawerAppointmentsPanel({
   const [statusMessage, setStatusMessage] = useState("");
   const [loadError, setLoadError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const appointmentCacheRef = useRef(new Map<string, AppointmentCacheEntry>());
+  const followUpCacheRef = useRef(new Map<string, FollowUpCacheEntry>());
+  const appointmentRequestsRef = useRef(new Map<string, Promise<AppointmentCacheEntry>>());
+  const followUpRequestsRef = useRef(new Map<string, Promise<FollowUpCacheEntry>>());
+  const appointmentForceRefreshRef = useRef(false);
+  const followUpForceRefreshRef = useRef(false);
+  const appointmentPageKeyRef = useRef("");
   const followUpPageKeyRef = useRef("");
   const followUpLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const loadMoreFollowUpsRef = useRef<() => void>(() => undefined);
@@ -119,6 +151,18 @@ export function SettingsDrawerAppointmentsPanel({
     matches: PatientMatch[];
   } | null>(null);
   const todayIsoDate = getTodayIsoDateInTimeZone(clinicTimezone);
+
+  function invalidateAppointmentCache() {
+    appointmentCacheRef.current.clear();
+    appointmentForceRefreshRef.current = true;
+    setAppointmentReloadKey((current) => current + 1);
+  }
+
+  function invalidateFollowUpCache() {
+    followUpCacheRef.current.clear();
+    followUpForceRefreshRef.current = true;
+    setFollowUpReloadKey((current) => current + 1);
+  }
 
   function setView(view: AppointmentView) {
     setActiveView(view);
@@ -143,85 +187,171 @@ export function SettingsDrawerAppointmentsPanel({
   }, [createSignal]);
 
   useEffect(() => {
-    if (!isCreateOpen || activeView !== "followUps" || patients.length) {
+    if (!isCreateOpen || activeView !== "followUps") {
       return;
     }
     let active = true;
-    void api.listPatients({ limit: 500 })
-      .then((rows) => {
+    setIsPatientSearchLoading(true);
+    const timeoutId = window.setTimeout(() => void api.listPatients({ q: patientQuery.trim() || undefined, limit: 20 })
+      .then((page) => {
         if (!active) {
           return;
         }
-        setPatients(rows);
+        setPatients(page.items);
         setNewFollowUp((current) => ({
           ...current,
-          patientId: current.patientId || rows[0]?.id || "",
+          patientId: page.items.some((patient) => patient.id === current.patientId)
+            ? current.patientId
+            : page.items[0]?.id || "",
         }));
       })
       .catch((error) => {
         if (active) {
           setStatusMessage(error instanceof Error ? error.message : "Failed to load patients for follow-up.");
         }
-      });
+      })
+      .finally(() => {
+        if (active) setIsPatientSearchLoading(false);
+      }), patientQuery.trim() ? 300 : 0);
     return () => {
       active = false;
+      window.clearTimeout(timeoutId);
     };
-  }, [activeView, isCreateOpen, patients.length]);
+  }, [activeView, isCreateOpen, patientQuery]);
 
   useEffect(() => {
     let active = true;
     const activeQuery = activeView === "appointments" ? appointmentQuery : followUpQuery;
     const requestDelayMs = activeQuery.trim() ? 250 : 0;
-    if (activeView === "followUps") {
-      followUpPageKeyRef.current = `${followUpFilter}\u0000${followUpQuery.trim()}`;
-      setFollowUpNextCursor(null);
-      setHasMoreFollowUps(false);
+    const normalizedAppointmentQuery = appointmentQuery.trim();
+    const normalizedFollowUpQuery = followUpQuery.trim();
+    const appointmentKey = [
+      appointmentFilter,
+      normalizedAppointmentQuery,
+      selectedDate || "upcoming",
+      clinicTimezone,
+      todayIsoDate,
+    ].join("\u0000");
+    const followUpKey = `${followUpFilter}\u0000${normalizedFollowUpQuery}`;
+    const now = Date.now();
+    const forceRefresh = activeView === "appointments"
+      ? appointmentForceRefreshRef.current
+      : followUpForceRefreshRef.current;
+    const cachedAppointment = appointmentCacheRef.current.get(appointmentKey);
+    const cachedFollowUp = followUpCacheRef.current.get(followUpKey);
+    const cached = activeView === "appointments" ? cachedAppointment : cachedFollowUp;
+    const cacheIsFresh = Boolean(cached && now - cached.loadedAt < SCHEDULE_CACHE_TTL_MS);
+
+    if (activeView === "appointments") {
+      if (cachedAppointment && !forceRefresh) {
+        setAppointments(cachedAppointment.items);
+        appointmentPageKeyRef.current = appointmentKey;
+      }
+    } else {
       setIsLoadingMoreFollowUps(false);
+      if (cachedFollowUp && !forceRefresh) {
+        setFollowUps(cachedFollowUp.items);
+        setFollowUpCounts(cachedFollowUp.counts);
+        setFollowUpNextCursor(cachedFollowUp.nextCursor);
+        setHasMoreFollowUps(cachedFollowUp.hasMore);
+        followUpPageKeyRef.current = followUpKey;
+      } else if (followUpPageKeyRef.current !== followUpKey) {
+        setFollowUpNextCursor(null);
+        setHasMoreFollowUps(false);
+      }
     }
-    const timeoutId = window.setTimeout(() => {
-      setIsLoading(true);
+
+    if (cacheIsFresh && !forceRefresh) {
+      setIsLoading(false);
+      setIsRefreshing(false);
       setLoadError("");
-      const request =
-        activeView === "appointments"
-          ? api.listAppointments({
+      return () => {
+        active = false;
+      };
+    }
+
+    const hasVisibleCache = activeView === "appointments"
+      ? appointmentPageKeyRef.current === appointmentKey
+      : followUpPageKeyRef.current === followUpKey;
+    setIsLoading(!hasVisibleCache);
+    setIsRefreshing(hasVisibleCache);
+    setLoadError("");
+
+    const timeoutId = window.setTimeout(() => {
+      if (activeView === "appointments") {
+        appointmentForceRefreshRef.current = false;
+        let request = appointmentRequestsRef.current.get(appointmentKey);
+        if (!request) {
+          request = api.listAppointments({
               status: appointmentFilter === "all" ? undefined : appointmentFilter,
-              q: appointmentQuery.trim() || undefined,
+              q: normalizedAppointmentQuery || undefined,
               scheduled_date: selectedDate || undefined,
               upcoming: selectedDate ? undefined : true,
             }).then((rows) => {
-              if (active) {
-                setAppointments(
-                  rows.filter((appointment) => {
-                    const scheduledDate = formatIsoDateInTimeZone(appointment.scheduled_for, clinicTimezone);
-                    return selectedDate
-                      ? scheduledDate === selectedDate
-                      : scheduledDate >= todayIsoDate;
-                  }),
-                );
-              }
-            })
-          : api.listFollowUps({
-              view: followUpFilter,
-              q: followUpQuery.trim() || undefined,
-              limit: 20,
-            }).then((page) => {
-              if (active) {
-                setFollowUps(page.items);
-                setFollowUpCounts(page.counts);
-                setFollowUpNextCursor(page.next_cursor);
-                setHasMoreFollowUps(page.has_more);
-              }
+              const entry = {
+                items: rows.filter((appointment) => {
+                  const scheduledDate = formatIsoDateInTimeZone(appointment.scheduled_for, clinicTimezone);
+                  return selectedDate ? scheduledDate === selectedDate : scheduledDate >= todayIsoDate;
+                }),
+                loadedAt: Date.now(),
+              };
+              setBoundedCacheEntry(appointmentCacheRef.current, appointmentKey, entry);
+              return entry;
+            }).finally(() => {
+              appointmentRequestsRef.current.delete(appointmentKey);
             });
-
-      void request
-        .catch((error) => {
-          if (active) {
-            setLoadError(error instanceof Error ? error.message : "Failed to load schedule data.");
-          }
-        })
-        .finally(() => {
+          appointmentRequestsRef.current.set(appointmentKey, request);
+        }
+        void request.then((entry) => {
+          if (!active) return;
+          setAppointments(entry.items);
+          appointmentPageKeyRef.current = appointmentKey;
+        }).catch((error) => {
+          if (active) setLoadError(error instanceof Error ? error.message : "Failed to load schedule data.");
+        }).finally(() => {
           if (active) {
             setIsLoading(false);
+            setIsRefreshing(false);
+          }
+        });
+        return;
+      }
+
+      followUpForceRefreshRef.current = false;
+      let request = followUpRequestsRef.current.get(followUpKey);
+      if (!request) {
+        request = api.listFollowUps({
+              view: followUpFilter,
+              q: normalizedFollowUpQuery || undefined,
+              limit: 20,
+            }).then((page) => {
+              const entry = {
+                items: page.items,
+                counts: page.counts,
+                nextCursor: page.next_cursor,
+                hasMore: page.has_more,
+                loadedAt: Date.now(),
+              };
+              setBoundedCacheEntry(followUpCacheRef.current, followUpKey, entry);
+              return entry;
+            }).finally(() => {
+              followUpRequestsRef.current.delete(followUpKey);
+            });
+        followUpRequestsRef.current.set(followUpKey, request);
+      }
+      void request.then((entry) => {
+        if (!active) return;
+        setFollowUps(entry.items);
+        setFollowUpCounts(entry.counts);
+        setFollowUpNextCursor(entry.nextCursor);
+        setHasMoreFollowUps(entry.hasMore);
+        followUpPageKeyRef.current = followUpKey;
+      }).catch((error) => {
+        if (active) setLoadError(error instanceof Error ? error.message : "Failed to load schedule data.");
+      }).finally(() => {
+          if (active) {
+            setIsLoading(false);
+            setIsRefreshing(false);
           }
         });
     }, requestDelayMs);
@@ -229,9 +359,8 @@ export function SettingsDrawerAppointmentsPanel({
     return () => {
       active = false;
       window.clearTimeout(timeoutId);
-      setIsLoading(false);
     };
-  }, [activeView, appointmentFilter, appointmentQuery, clinicTimezone, followUpFilter, followUpQuery, followUpReloadKey, selectedDate, todayIsoDate]);
+  }, [activeView, appointmentFilter, appointmentQuery, appointmentReloadKey, clinicTimezone, followUpFilter, followUpQuery, followUpReloadKey, selectedDate, todayIsoDate]);
 
   async function loadMoreFollowUps() {
     if (activeView !== "followUps" || !hasMoreFollowUps || !followUpNextCursor || isLoadingMoreFollowUps) {
@@ -251,7 +380,15 @@ export function SettingsDrawerAppointmentsPanel({
       if (followUpPageKeyRef.current !== pageKey) return;
       setFollowUps((current) => {
         const seen = new Set(current.map((row) => row.id));
-        return [...current, ...page.items.filter((row) => !seen.has(row.id))];
+        const items = [...current, ...page.items.filter((row) => !seen.has(row.id))];
+        setBoundedCacheEntry(followUpCacheRef.current, pageKey, {
+          items,
+          counts: page.counts,
+          nextCursor: page.next_cursor,
+          hasMore: page.has_more,
+          loadedAt: Date.now(),
+        });
+        return items;
       });
       setFollowUpCounts(page.counts);
       setFollowUpNextCursor(page.next_cursor);
@@ -316,6 +453,7 @@ export function SettingsDrawerAppointmentsPanel({
         ),
       );
       setDuplicateCheckIn(null);
+      invalidateAppointmentCache();
       setStatusMessage("Appointment added to the waiting queue.");
     } catch (error) {
       setStatusMessage(
@@ -385,6 +523,7 @@ export function SettingsDrawerAppointmentsPanel({
       );
       setEditingAppointmentId("");
       setExpandedAppointmentId("");
+      invalidateAppointmentCache();
       setStatusMessage("Appointment rescheduled.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to reschedule appointment.");
@@ -430,9 +569,7 @@ export function SettingsDrawerAppointmentsPanel({
         last_delivery_error: Object.values(result.errors).join("; ") || null,
         reminder_count: (item.reminder_count || 0) + 1,
       } : item));
-      if (["failed", "partial"].includes(result.delivery_status)) {
-        setFollowUpReloadKey((current) => current + 1);
-      }
+      invalidateFollowUpCache();
       setStatusMessage(
         result.delivery_status === "sent"
           ? "Reminder sent."
@@ -462,7 +599,7 @@ export function SettingsDrawerAppointmentsPanel({
       });
       setEditingFollowUpId("");
       setExpandedFollowUpId("");
-      setFollowUpReloadKey((current) => current + 1);
+      invalidateFollowUpCache();
       setStatusMessage("Follow-up updated.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to update follow-up.");
@@ -485,7 +622,7 @@ export function SettingsDrawerAppointmentsPanel({
       if (expandedFollowUpId === followUpId) {
         setExpandedFollowUpId("");
       }
-      setFollowUpReloadKey((current) => current + 1);
+      invalidateFollowUpCache();
       setStatusMessage(
         status === "completed"
           ? "Follow-up marked completed."
@@ -514,6 +651,7 @@ export function SettingsDrawerAppointmentsPanel({
       if (expandedAppointmentId === appointmentId) {
         setExpandedAppointmentId("");
       }
+      invalidateAppointmentCache();
       setStatusMessage("Appointment cancelled.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to cancel appointment.");
@@ -554,6 +692,7 @@ export function SettingsDrawerAppointmentsPanel({
       setAppointments((current) => [created, ...current]);
       setSelectedDate(newAppointment.date);
       setAppointmentFilter("all");
+      invalidateAppointmentCache();
       setIsCreateOpen(false);
       setNewAppointment({
         name: "",
@@ -593,7 +732,7 @@ export function SettingsDrawerAppointmentsPanel({
         notes: newFollowUp.notes.trim(),
       });
       setFollowUpFilter("needs_action");
-      setFollowUpReloadKey((current) => current + 1);
+      invalidateFollowUpCache();
       setIsCreateOpen(false);
       setNewFollowUp((current) => ({
         patientId: current.patientId,
@@ -674,6 +813,12 @@ export function SettingsDrawerAppointmentsPanel({
               <Plus className="h-5 w-5" />
             </button>
           ) : null}
+          {isRefreshing ? (
+            <span className="inline-flex items-center gap-2 text-xs font-medium text-slate-500" role="status">
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+              Refreshing
+            </span>
+          ) : null}
         </div>
 
         {isCreateOpen ? (
@@ -705,8 +850,14 @@ export function SettingsDrawerAppointmentsPanel({
               </div>
             ) : (
               <div className="grid gap-3">
+                <input
+                  value={patientQuery}
+                  onChange={(event) => setPatientQuery(event.target.value)}
+                  placeholder="Search patient by name, phone, or reason"
+                  className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none"
+                />
                 <select value={newFollowUp.patientId} onChange={(event) => setNewFollowUp((current) => ({ ...current, patientId: event.target.value }))} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none">
-                  {patients.length ? null : <option value="">No patients found</option>}
+                  {patients.length ? null : <option value="">{isPatientSearchLoading ? "Searching patients..." : "No patients found"}</option>}
                   {patients.map((patient) => (
                     <option key={patient.id} value={patient.id}>{patient.name} · {patient.phone || "No phone"}</option>
                   ))}

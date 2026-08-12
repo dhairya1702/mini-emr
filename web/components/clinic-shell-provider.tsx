@@ -2,7 +2,9 @@
 
 import {
   createContext,
+  Dispatch,
   ReactNode,
+  SetStateAction,
   useCallback,
   useContext,
   useEffect,
@@ -22,7 +24,10 @@ import {
   CatalogItemCreatePayload,
   CatalogItemUpdatePayload,
   ClinicSettings,
+  DashboardStatus,
   MedicineCatalogItem,
+  Patient,
+  QueueSnapshot,
   StaffUserCreatePayload,
 } from "@/lib/types";
 
@@ -33,6 +38,8 @@ const MOBILE_SETUP_ONBOARDING_PATH = "/m/onboarding/setup";
 const SHELL_LOAD_MAX_ATTEMPTS = 2;
 const SHELL_LOAD_RETRY_DELAY_MS = 350;
 const SHARED_RESOURCE_TTL_MS = 5 * 60 * 1000;
+const QUEUE_RESOURCE_TTL_MS = 30 * 1000;
+const DASHBOARD_STATUS_TTL_MS = 15 * 1000;
 
 type ClinicShellContextValue = {
   currentUser: AuthUser | null;
@@ -75,6 +82,14 @@ type ClinicShellContextValue = {
   adjustCatalogStock: (itemId: string, delta: number) => Promise<CatalogItem>;
   deleteCatalogItem: (itemId: string) => Promise<void>;
   invalidateCatalog: (refresh?: boolean) => void;
+  queuePatients: Patient[];
+  queueRevision: string;
+  isQueueLoaded: boolean;
+  isQueueRefreshing: boolean;
+  setQueuePatients: Dispatch<SetStateAction<Patient[]>>;
+  applyQueueSnapshot: (snapshot: QueueSnapshot) => void;
+  loadQueueSnapshot: (force?: boolean) => Promise<QueueSnapshot>;
+  loadDashboardStatus: (force?: boolean) => Promise<DashboardStatus>;
 };
 
 const ClinicShellContext = createContext<ClinicShellContextValue | null>(null);
@@ -122,6 +137,10 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const [isActiveMedicinesLoaded, setIsActiveMedicinesLoaded] = useState(false);
   const [isActiveMedicinesLoading, setIsActiveMedicinesLoading] = useState(false);
   const [activeMedicinesError, setActiveMedicinesError] = useState("");
+  const [queuePatients, setQueuePatientsState] = useState<Patient[]>([]);
+  const [queueRevision, setQueueRevision] = useState("");
+  const [isQueueLoaded, setIsQueueLoaded] = useState(false);
+  const [isQueueRefreshing, setIsQueueRefreshing] = useState(false);
   const hasBootstrappedRef = useRef(false);
   const bootstrapPromiseRef = useRef<Promise<void> | null>(null);
   const usersRef = useRef<AuthUser[]>([]);
@@ -136,10 +155,52 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const resourceGenerationRef = useRef(0);
   const resourceOrgIdRef = useRef(currentUser?.org_id ?? "");
   const currentUserRef = useRef(currentUser);
+  const queuePatientsRef = useRef<Patient[]>([]);
+  const queueRevisionRef = useRef("");
+  const queueLoadedAtRef = useRef(0);
+  const queueGenerationRef = useRef(0);
+  const queueLoadPromiseRef = useRef<Promise<QueueSnapshot> | null>(null);
+  const dashboardStatusRef = useRef<DashboardStatus | null>(null);
+  const dashboardStatusLoadedAtRef = useRef(0);
+  const dashboardStatusPromiseRef = useRef<Promise<DashboardStatus> | null>(null);
   const trainingScope = useMemo(() => createTrainingScope(currentUser), [currentUser]);
+  const queueScopeRef = useRef("");
+
+  const setQueuePatients: Dispatch<SetStateAction<Patient[]>> = useCallback((updater) => {
+    setQueuePatientsState((current) => {
+      const next = typeof updater === "function" ? updater(current) : updater;
+      queuePatientsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const applyQueueSnapshot = useCallback((snapshot: QueueSnapshot) => {
+    queuePatientsRef.current = snapshot.patients;
+    queueRevisionRef.current = snapshot.revision;
+    queueLoadedAtRef.current = Date.now();
+    setQueuePatientsState(snapshot.patients);
+    setQueueRevision(snapshot.revision);
+    setIsQueueLoaded(true);
+  }, []);
+
+  const clearQueueResource = useCallback(() => {
+    queueGenerationRef.current += 1;
+    queuePatientsRef.current = [];
+    queueRevisionRef.current = "";
+    queueLoadedAtRef.current = 0;
+    queueLoadPromiseRef.current = null;
+    dashboardStatusRef.current = null;
+    dashboardStatusLoadedAtRef.current = 0;
+    dashboardStatusPromiseRef.current = null;
+    setQueuePatientsState([]);
+    setQueueRevision("");
+    setIsQueueLoaded(false);
+    setIsQueueRefreshing(false);
+  }, []);
 
   const clearSharedResources = useCallback(() => {
     resourceGenerationRef.current += 1;
+    clearQueueResource();
     usersRef.current = [];
     catalogItemsRef.current = [];
     activeMedicinesRef.current = [];
@@ -161,7 +222,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
     setUsersError("");
     setCatalogError("");
     setActiveMedicinesError("");
-  }, []);
+  }, [clearQueueResource]);
 
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -171,6 +232,12 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
       clearSharedResources();
     }
   }, [clearSharedResources, currentUser]);
+
+  useEffect(() => {
+    const scope = `${currentUser?.org_id ?? ""}:${isTrainingMode ? `training:${trainingScope ?? ""}` : "live"}`;
+    if (queueScopeRef.current && queueScopeRef.current !== scope) clearQueueResource();
+    queueScopeRef.current = scope;
+  }, [clearQueueResource, currentUser?.org_id, isTrainingMode, trainingScope]);
 
   const delay = useCallback(async (ms: number) => {
     await new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -308,6 +375,62 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const refreshShell = useCallback(async () => {
     await loadShell(true);
   }, [loadShell]);
+
+  const loadQueueSnapshot = useCallback((force = false) => {
+    const hasCachedSnapshot = Boolean(queueLoadedAtRef.current);
+    if (
+      !force
+      && hasCachedSnapshot
+      && Date.now() - queueLoadedAtRef.current < QUEUE_RESOURCE_TTL_MS
+    ) {
+      return Promise.resolve({
+        revision: queueRevisionRef.current,
+        patients: queuePatientsRef.current,
+      });
+    }
+    if (queueLoadPromiseRef.current) return queueLoadPromiseRef.current;
+
+    const generation = queueGenerationRef.current;
+    setIsQueueRefreshing(true);
+    const request = api.listQueuePatients()
+      .then((snapshot) => {
+        if (generation === queueGenerationRef.current) applyQueueSnapshot(snapshot);
+        return snapshot;
+      })
+      .finally(() => {
+        if (generation === queueGenerationRef.current) setIsQueueRefreshing(false);
+        if (queueLoadPromiseRef.current === request) queueLoadPromiseRef.current = null;
+      });
+    queueLoadPromiseRef.current = request;
+    return request;
+  }, [applyQueueSnapshot]);
+
+  const loadDashboardStatus = useCallback((force = false) => {
+    const cached = dashboardStatusRef.current;
+    if (
+      !force
+      && cached
+      && Date.now() - dashboardStatusLoadedAtRef.current < DASHBOARD_STATUS_TTL_MS
+    ) {
+      return Promise.resolve(cached);
+    }
+    if (dashboardStatusPromiseRef.current) return dashboardStatusPromiseRef.current;
+
+    const generation = queueGenerationRef.current;
+    const request = api.getDashboardStatus()
+      .then((status) => {
+        if (generation === queueGenerationRef.current) {
+          dashboardStatusRef.current = status;
+          dashboardStatusLoadedAtRef.current = Date.now();
+        }
+        return status;
+      })
+      .finally(() => {
+        if (dashboardStatusPromiseRef.current === request) dashboardStatusPromiseRef.current = null;
+      });
+    dashboardStatusPromiseRef.current = request;
+    return request;
+  }, []);
 
   const loadUsers = useCallback((force = false) => {
     if (!force && usersLoadedAtRef.current && Date.now() - usersLoadedAtRef.current < SHARED_RESOURCE_TTL_MS) {
@@ -616,12 +739,21 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
     adjustCatalogStock,
     deleteCatalogItem,
     invalidateCatalog,
+    queuePatients,
+    queueRevision,
+    isQueueLoaded,
+    isQueueRefreshing,
+    setQueuePatients,
+    applyQueueSnapshot,
+    loadQueueSnapshot,
+    loadDashboardStatus,
   }), [
     activeMedicines,
     activeMedicinesError,
     adjustCatalogStock,
     applyClinicSettings,
     applyCurrentUser,
+    applyQueueSnapshot,
     catalogError,
     catalogItems,
     clinicSettings,
@@ -640,17 +772,24 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
     isCatalogLoaded,
     isCatalogLoading,
     isRedirectingToLogin,
+    isQueueLoaded,
+    isQueueRefreshing,
     isTrainingMode,
     isUsersLoaded,
     isUsersLoading,
     invalidateCatalog,
     loadActiveMedicines,
     loadCatalogItems,
+    loadDashboardStatus,
+    loadQueueSnapshot,
     loadUsers,
     removeUserSignature,
     redirectToLogin,
     refreshShell,
     resetTrainingMode,
+    queuePatients,
+    queueRevision,
+    setQueuePatients,
     trainingScope,
     updateCatalogItem,
     updateUserRole,

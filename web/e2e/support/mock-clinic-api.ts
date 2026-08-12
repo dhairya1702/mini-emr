@@ -131,6 +131,27 @@ async function fulfillJson(route: Route, body: unknown, status = 200) {
   });
 }
 
+function patientPage(urlValue: string, patients: MockPatient[]) {
+  const url = new URL(urlValue);
+  const query = (url.searchParams.get("q") || "").trim().toLowerCase();
+  const status = url.searchParams.get("status");
+  const billed = url.searchParams.get("billed");
+  const limit = Math.max(1, Number(url.searchParams.get("limit") || 20));
+  const offset = Math.max(0, Number(url.searchParams.get("cursor") || 0));
+  const filtered = patients.filter((patient) => (
+    (!status || patient.status === status)
+    && (billed === null || patient.billed === (billed === "true"))
+    && (!query || [patient.name, patient.phone, patient.reason].some((value) => value.toLowerCase().includes(query)))
+  ));
+  const items = filtered.slice(offset, offset + limit);
+  const nextOffset = offset + items.length;
+  return {
+    items,
+    next_cursor: nextOffset < filtered.length ? String(nextOffset) : null,
+    has_more: nextOffset < filtered.length,
+  };
+}
+
 function nowIso() {
   return "2026-05-03T10:00:00.000Z";
 }
@@ -385,7 +406,7 @@ export async function mockClinicBootstrap(
     )));
   });
   await page.route(new RegExp(`${API_ORIGIN}/patients(?:\\?.*)?$`), async (route) => {
-    await fulfillJson(route, patients);
+    await fulfillJson(route, patientPage(route.request().url(), patients));
   });
   await page.route(new RegExp(`${API_ORIGIN}/patients/(?!queue(?:/|$))[^/]+$`), async (route) => {
     const patientId = route.request().url().split("/").pop() || "";
@@ -616,7 +637,7 @@ export async function mockLoginFlow(
     await fulfillJson(route, clinicSettings);
   });
   await page.route(`${API_ORIGIN}/patients`, async (route) => {
-    await fulfillJson(route, patients);
+    await fulfillJson(route, patientPage(route.request().url(), patients));
   });
   await page.route(`${API_ORIGIN}/audit-events*`, async (route) => {
     await fulfillJson(route, []);
@@ -652,7 +673,7 @@ export async function mockQueueIntake(page: Page, initialPatients: MockPatient[]
       await fulfillJson(route, created, 201);
       return;
     }
-    await fulfillJson(route, patients);
+    await fulfillJson(route, patientPage(route.request().url(), patients));
   });
 }
 

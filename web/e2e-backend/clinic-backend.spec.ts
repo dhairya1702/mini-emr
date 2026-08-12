@@ -249,11 +249,11 @@ test("tenant boundaries reject cross-organization patient and attachment access"
 
   const firstPatients = await request.get("/patients", { headers: authHeaders(first.token) });
   expect(firstPatients.status()).toBe(200);
-  expect((await firstPatients.json()).map((patient: { name: string }) => patient.name)).toContain("Tenant A Patient");
+  expect((await firstPatients.json()).items.map((patient: { name: string }) => patient.name)).toContain("Tenant A Patient");
 
   const secondPatients = await request.get("/patients", { headers: authHeaders(second.token) });
   expect(secondPatients.status()).toBe(200);
-  expect((await secondPatients.json()).map((patient: { name: string }) => patient.name)).not.toContain("Tenant A Patient");
+  expect((await secondPatients.json()).items.map((patient: { name: string }) => patient.name)).not.toContain("Tenant A Patient");
 
   const foreignPatientRead = await request.get(`/patients/${firstPatient.id}`, {
     headers: authHeaders(second.token),
@@ -1286,9 +1286,9 @@ test("queue ordering, lookup, visit details, patches, health, and internal remin
   expect(movedFirst.status).toBe("consultation");
   expect(movedSecond.status).toBe("waiting");
 
-  const activePatients = await request.get("/patients?active_only=true&limit=10&offset=0", { headers });
+  const activePatients = await request.get("/patients?limit=10", { headers });
   expect(activePatients.status()).toBe(200);
-  expect((await activePatients.json()).map((row: { id: string }) => row.id)).toContain(firstPatient.id);
+  expect((await activePatients.json()).items.map((row: { id: string }) => row.id)).toContain(firstPatient.id);
 
   const lookup = await request.get("/patients/lookup?phone=5551110001", { headers });
   expect(lookup.status()).toBe(200);

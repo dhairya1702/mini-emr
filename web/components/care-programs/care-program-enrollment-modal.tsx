@@ -72,7 +72,7 @@ export function CareProgramEnrollmentModal({
     setIsSearching(true);
     setError("");
     try {
-      setPatientMatches(await api.listPatients({ q: query, limit: 20 }));
+      setPatientMatches((await api.listPatients({ q: query, limit: 20 })).items);
       setSelectedPatientId("");
     } catch (searchError) {
       setError(searchError instanceof Error ? searchError.message : "Failed to search patients.");

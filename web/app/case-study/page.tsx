@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useState } from "react";
 import { Copy, Download, FileText, RefreshCw, Search, Sparkles } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
@@ -62,14 +62,16 @@ export default function CaseStudyPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isSourceLoading, setIsSourceLoading] = useState(false);
+  const [patientMatches, setPatientMatches] = useState<Patient[]>([]);
+  const [isPatientSearchLoading, setIsPatientSearchLoading] = useState(false);
 
   const loadPageData = useCallback(async () => {
     const [loadedPatients, loadedCaseStudies] = await Promise.all([
-      api.listPatients({ limit: 500 }),
+      api.listPatients({ limit: 20 }),
       api.listCaseStudies(),
     ]);
     return {
-      patients: loadedPatients.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at)),
+      patients: loadedPatients.items,
       caseStudies: loadedCaseStudies,
     };
   }, []);
@@ -118,19 +120,34 @@ export default function CaseStudyPage() {
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
   const selectedPatient = patients.find((patient) => patient.id === selectedPatientId) ?? null;
   const activeCaseStudy = caseStudies.find((caseStudy) => caseStudy.id === selectedCaseStudyId) ?? null;
-  const filteredPatients = useMemo(() => {
+  const filteredPatients = patientMatches;
+
+  useEffect(() => {
     const query = normalizePatientSearch(patientSearch);
-    if (!query) {
-      return [];
+    if (!query || !isPatientSearchFocused) {
+      setPatientMatches([]);
+      setIsPatientSearchLoading(false);
+      return;
     }
-    return patients
-      .filter((patient) =>
-        patient.name.toLowerCase().includes(query) ||
-        patient.phone.toLowerCase().includes(query) ||
-        patient.reason.toLowerCase().includes(query),
-      )
-      .slice(0, 12);
-  }, [patientSearch, patients]);
+    let active = true;
+    setIsPatientSearchLoading(true);
+    const timeoutId = window.setTimeout(() => {
+      void api.listPatients({ q: query, limit: 12 })
+        .then((page) => {
+          if (active) setPatientMatches(page.items);
+        })
+        .catch(() => {
+          if (active) setPatientMatches([]);
+        })
+        .finally(() => {
+          if (active) setIsPatientSearchLoading(false);
+        });
+    }, 300);
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [isPatientSearchFocused, patientSearch]);
 
   useEffect(() => {
     if (selectedPatientId) {
@@ -180,6 +197,7 @@ export default function CaseStudyPage() {
   }
 
   async function handleSelectPatient(patient: Patient) {
+    setPatients((current) => current.some((item) => item.id === patient.id) ? current : [patient, ...current]);
     setSelectedPatientId(patient.id);
     setPatientSearch(patient.name);
     setIsPatientSearchFocused(false);
@@ -378,7 +396,9 @@ export default function CaseStudyPage() {
                       </div>
                     {patientSearch.trim() && isPatientSearchFocused ? (
                       <div className="absolute left-0 right-0 top-[calc(100%+10px)] z-20 overflow-hidden rounded-[16px] border border-[#dbe7ef] bg-white shadow-[0_20px_44px_rgba(64,131,181,0.10)]">
-                        {filteredPatients.length ? (
+                        {isPatientSearchLoading ? (
+                          <div className="px-4 py-4 text-sm text-slate-500">Searching patients...</div>
+                        ) : filteredPatients.length ? (
                           filteredPatients.map((patient) => {
                             const isActive = patient.id === selectedPatientId;
                             return (
@@ -594,7 +614,6 @@ export default function CaseStudyPage() {
           auditEvents={auditEvents}
           onLoadAuditEvents={loadAuditEvents}
           patients={patients}
-          onLoadBillingPatients={() => api.listPatients({ limit: 500 })}
           catalogItems={catalogItems}
           onLoadCatalogItems={loadCatalogItems}
           onClose={() => setIsSettingsOpen(false)}

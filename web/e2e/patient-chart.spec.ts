@@ -121,10 +121,7 @@ test("patient chart preserves visits and summary when the queue refreshes", asyn
 
   const queueRefresh = page.waitForResponse((response) => {
     const url = new URL(response.url());
-    return url.pathname === "/patients"
-      && url.searchParams.get("active_only") === "true"
-      && url.searchParams.get("include_queue_context") === "true"
-      && response.request().method() === "GET";
+    return url.pathname === "/dashboard/status" && response.request().method() === "GET";
   });
   await page.evaluate(() => {
     const actualNow = Date.now;

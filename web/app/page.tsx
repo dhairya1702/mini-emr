@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddPatientModal } from "@/components/add-patient-modal";
 import { AppHeader } from "@/components/app-header";
 import { ConsultationDrawer } from "@/components/consultation-drawer";
+import { useClinicShell } from "@/components/clinic-shell-provider";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
 import { PendingCheckIns } from "@/components/pending-check-ins";
@@ -225,6 +226,14 @@ function buildAutoDraftInvoiceItems(
 
 export default function HomePage() {
   const router = useRouter();
+  const {
+    queuePatients: patients,
+    queueRevision,
+    setQueuePatients: setPatients,
+    applyQueueSnapshot,
+    loadQueueSnapshot,
+    loadDashboardStatus,
+  } = useClinicShell();
   const [workspaceLocation, setWorkspaceLocation] = useState(() => {
     if (typeof window === "undefined") return { kind: "", patientId: "" };
     const params = new URLSearchParams(window.location.search);
@@ -234,7 +243,6 @@ export default function HomePage() {
   const workspacePatientId = workspaceLocation.patientId;
   const workspaceOpenedInAppRef = useRef(false);
   const workspaceTransitionRef = useRef(false);
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [checkInRequests, setCheckInRequests] = useState<CheckInRequest[]>([]);
   const [checkInCount, setCheckInCount] = useState(0);
   const [isCheckInRequestsLoading, setIsCheckInRequestsLoading] = useState(false);
@@ -296,6 +304,7 @@ export default function HomePage() {
   const checkInStatusGenerationRef = useRef(0);
   const refreshDashboardStatusRef = useRef<(force?: boolean) => void>(() => undefined);
   const billingCatalogLoadRequestedRef = useRef(false);
+  if (queueRevision) loadedQueueRevisionRef.current = queueRevision;
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -319,10 +328,10 @@ export default function HomePage() {
     if (context.isTrainingMode) {
       return Promise.resolve({ revision: "training", patients: readTrainingPatients(context.trainingScope) });
     }
-    return api.listQueuePatients();
-  }, []);
+    return loadQueueSnapshot();
+  }, [loadQueueSnapshot]);
   const onPageData = useCallback((data: QueueSnapshot) => {
-    setPatients(data.patients);
+    applyQueueSnapshot(data);
     loadedQueueRevisionRef.current = data.revision;
     if (
       latestQueueRevisionRef.current
@@ -330,7 +339,7 @@ export default function HomePage() {
     ) {
       window.setTimeout(() => refreshQueueSnapshotRef.current(), 0);
     }
-  }, []);
+  }, [applyQueueSnapshot]);
   const {
     currentUser,
     users,
@@ -527,8 +536,7 @@ export default function HomePage() {
 
     queueRefreshInFlightRef.current = true;
     try {
-      const snapshot = await api.listQueuePatients();
-      setPatients(snapshot.patients);
+      const snapshot = await loadQueueSnapshot(true);
       loadedQueueRevisionRef.current = snapshot.revision;
       queueRefreshFailureCountRef.current = 0;
       nextQueueRefreshAllowedAtRef.current = 0;
@@ -551,7 +559,7 @@ export default function HomePage() {
         }
       }
     }
-  }, []);
+  }, [loadQueueSnapshot]);
   refreshQueueSnapshotRef.current = refreshQueueSnapshot;
 
   const refreshDashboardStatus = useCallback(async (force = false) => {
@@ -576,7 +584,7 @@ export default function HomePage() {
     lastCheckInStatusAttemptAtRef.current = now;
     const generation = checkInStatusGenerationRef.current;
     try {
-      const status = await api.getDashboardStatus();
+      const status = await loadDashboardStatus(force);
       if (generation !== checkInStatusGenerationRef.current) return;
 
       const previousRevision = checkInStatusRevisionRef.current;
@@ -626,7 +634,7 @@ export default function HomePage() {
         window.setTimeout(() => refreshDashboardStatusRef.current(true), 0);
       }
     }
-  }, [refreshCheckInRequests]);
+  }, [loadDashboardStatus, refreshCheckInRequests]);
   refreshDashboardStatusRef.current = refreshDashboardStatus;
 
   const openCheckInDrawer = useCallback(() => {
@@ -669,7 +677,7 @@ export default function HomePage() {
       nextQueueRefreshAllowedAtRef.current = 0;
       return;
     }
-    void refreshDashboardStatus(true);
+    void refreshDashboardStatus();
     const intervalId = window.setInterval(
       () => void refreshDashboardStatus(),
       QUEUE_REFRESH_INTERVAL_MS,

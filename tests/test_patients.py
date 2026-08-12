@@ -77,8 +77,8 @@ def test_queue_priority_and_shared_order_are_authoritative(client):
     assert [row["id"] for row in reordered.json()] == [urgent["id"], second["id"], first["id"]]
     assert [row["queue_position"] for row in reordered.json()] == [1, 2, 3]
 
-    listed = test_client.get("/patients", params={"active_only": True}, headers=headers)
-    assert [row["id"] for row in listed.json()] == [urgent["id"], second["id"], first["id"]]
+    listed = test_client.get("/patients/queue", headers=headers)
+    assert [row["id"] for row in listed.json()["patients"]] == [urgent["id"], second["id"], first["id"]]
 
 
 def test_patient_list_filters_completed_unbilled_patients_for_billing(client):
@@ -103,8 +103,54 @@ def test_patient_list_filters_completed_unbilled_patients_for_billing(client):
     )
 
     assert response.status_code == 200
-    assert [row["id"] for row in response.json()] == [billable["id"]]
-    assert waiting["id"] not in {row["id"] for row in response.json()}
+    assert [row["id"] for row in response.json()["items"]] == [billable["id"]]
+    assert waiting["id"] not in {row["id"] for row in response.json()["items"]}
+
+
+def test_patient_directory_uses_stable_cursor_pagination_and_basic_rows(client):
+    test_client, _repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="patient-pagination@clinic.com",
+        clinic_name="Patient Pagination Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    created_ids = []
+    for index in range(25):
+        created_ids.append(
+            _create_queue_patient(
+                test_client,
+                headers,
+                f"Paged Patient {index:02d}",
+                f"555019{index:04d}",
+            )["id"]
+        )
+
+    first = test_client.get("/patients", params={"limit": 20}, headers=headers)
+    assert first.status_code == 200
+    first_page = first.json()
+    assert len(first_page["items"]) == 20
+    assert first_page["has_more"] is True
+    assert first_page["next_cursor"]
+    assert all(item["current_visit"] is None for item in first_page["items"])
+    assert all(item["billing_summary"] is None for item in first_page["items"])
+
+    second = test_client.get(
+        "/patients",
+        params={"limit": 20, "cursor": first_page["next_cursor"]},
+        headers=headers,
+    )
+    assert second.status_code == 200
+    second_page = second.json()
+    assert len(second_page["items"]) == 5
+    assert second_page["has_more"] is False
+    assert second_page["next_cursor"] is None
+    listed_ids = [item["id"] for item in first_page["items"] + second_page["items"]]
+    assert len(listed_ids) == len(set(listed_ids)) == 25
+    assert set(listed_ids) == set(created_ids)
+
+    invalid = test_client.get("/patients", params={"cursor": "not-a-cursor"}, headers=headers)
+    assert invalid.status_code == 400
 
 
 def test_queue_reorder_moves_stages_and_rejects_duplicate_ids(client):
@@ -167,17 +213,13 @@ def test_queue_exposes_demographics_and_current_visit_context(client):
     assert patient["current_visit"]["kind"] == "new"
     assert patient["current_visit"]["source"] == "queue"
 
-    compatible_list = test_client.get("/patients", headers=headers)
-    assert compatible_list.status_code == 200
-    assert compatible_list.json()[0]["current_visit"]["id"] == patient["current_visit"]["id"]
+    queue_list = test_client.get("/patients/queue", headers=headers)
+    assert queue_list.status_code == 200
+    assert queue_list.json()["patients"][0]["current_visit"]["id"] == patient["current_visit"]["id"]
 
-    lightweight_list = test_client.get(
-        "/patients",
-        params={"include_queue_context": False},
-        headers=headers,
-    )
+    lightweight_list = test_client.get("/patients", headers=headers)
     assert lightweight_list.status_code == 200
-    lightweight_patient = lightweight_list.json()[0]
+    lightweight_patient = lightweight_list.json()["items"][0]
     assert lightweight_patient["current_visit"] is None
     assert lightweight_patient["billing_summary"] is None
     assert lightweight_patient["billing_estimate"] is None
@@ -265,7 +307,7 @@ def test_billing_column_summary_is_scoped_to_current_visit(client):
         },
     )
     assert invoice.status_code == 201
-    listed = test_client.get("/patients?active_only=true&limit=500", headers=headers).json()
+    listed = test_client.get("/patients/queue", headers=headers).json()["patients"]
     summary = next(row for row in listed if row["id"] == patient["id"])["billing_summary"]
     assert summary == {
         "invoice_id": invoice.json()["id"],
@@ -278,17 +320,13 @@ def test_billing_column_summary_is_scoped_to_current_visit(client):
         "sent_at": None,
     }
 
-    lightweight = test_client.get(
-        "/patients",
-        params={"active_only": True, "include_queue_context": False, "limit": 500},
-        headers=headers,
-    ).json()
+    lightweight = test_client.get("/patients", params={"limit": 100}, headers=headers).json()["items"]
     lightweight_patient = next(row for row in lightweight if row["id"] == patient["id"])
     assert lightweight_patient["current_visit"] is None
     assert lightweight_patient["billing_summary"] is None
     assert lightweight_patient["billing_estimate"] is None
 
-    enriched_again = test_client.get("/patients?active_only=true&limit=500", headers=headers).json()
+    enriched_again = test_client.get("/patients/queue", headers=headers).json()["patients"]
     enriched_summary = next(row for row in enriched_again if row["id"] == patient["id"])["billing_summary"]
     assert enriched_summary == summary
 

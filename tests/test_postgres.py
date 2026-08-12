@@ -1461,14 +1461,39 @@ def test_postgres_patient_list_skips_queue_enrichment_when_not_requested():
     )
     repo = PostgresPatientFlowRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
 
-    patients = asyncio.run(
-        repo.list_patients("org-1", limit=500, include_queue_context=False)
-    )
+    patients = asyncio.run(repo.list_patients("org-1", limit=20))
 
     assert len(cursor.executed) == 1
     assert "ai_summary" not in cursor.executed[0][0]
     assert patients[0]["id"] == "patient-1"
     assert patients[0]["current_visit_id"] == "visit-1"
+
+
+def test_postgres_patient_list_applies_stable_cursor_without_queue_enrichment():
+    cursor = ScriptedCursor(descriptions=[PATIENT_LIST_COLUMNS], fetchall_rows=[[]])
+    repo = PostgresPatientFlowRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+    cursor_time = datetime(2026, 8, 12, 12, 0, tzinfo=UTC)
+
+    patients = asyncio.run(
+        repo.list_patients(
+            "org-1",
+            limit=21,
+            cursor_last_visit_at=cursor_time,
+            cursor_id="00000000-0000-0000-0000-000000000042",
+        )
+    )
+
+    statement, params = cursor.executed[0]
+    assert patients == []
+    assert "(last_visit_at, id) < (%s, %s::uuid)" in statement
+    assert "order by last_visit_at desc, id desc" in " ".join(statement.split())
+    assert params == (
+        "org-1",
+        cursor_time,
+        "00000000-0000-0000-0000-000000000042",
+        21,
+        0,
+    )
 
 
 def test_postgres_patient_flow_repository_lists_appointments_with_filters():

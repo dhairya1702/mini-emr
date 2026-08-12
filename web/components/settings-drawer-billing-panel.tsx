@@ -1,6 +1,7 @@
 "use client";
 
 import { MessageCircle, Printer, ReceiptIndianRupee, Sparkles, Trash2, X } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { CatalogItem, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
@@ -18,6 +19,7 @@ interface SettingsDrawerBillingPanelProps {
   selectedBillingPatientId: string;
   selectedBillingPatient: Patient | null;
   showPatientSelector?: boolean;
+  patientListFooter?: ReactNode;
   serviceItems: CatalogItem[];
   medicineItems: CatalogItem[];
   invoiceItems: DraftInvoiceItem[];
@@ -68,6 +70,7 @@ export function SettingsDrawerBillingPanel({
   selectedBillingPatientId,
   selectedBillingPatient,
   showPatientSelector = true,
+  patientListFooter,
   serviceItems,
   medicineItems,
   invoiceItems,
@@ -173,6 +176,7 @@ export function SettingsDrawerBillingPanel({
                 </button>
               );
             }) : <p className="text-sm text-slate-600">No done patients yet.</p>}
+            {patientListFooter}
           </div>
         </div>
       ) : null}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { LoaderCircle } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
@@ -11,10 +12,10 @@ import { calculateDraftInvoiceTaxTotals } from "@/lib/billing-tax";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { printBlob } from "@/lib/print";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
+import { useInfinitePatients } from "@/lib/use-infinite-patients";
 import { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
 const BILLING_REFRESH_INTERVAL_MS = 30_000;
-const BILLABLE_PATIENT_LIMIT = 50;
 const RECENT_INVOICE_LIMIT = 5;
 
 function createId() {
@@ -180,7 +181,6 @@ function buildAutoDraftInvoiceItems(
 
 export default function BillingPage() {
   const router = useRouter();
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedBillingPatientId, setSelectedBillingPatientId] = useState("");
@@ -206,14 +206,9 @@ export default function BillingPage() {
   const [customItemUnitPrice, setCustomItemUnitPrice] = useState("");
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(async () => {
-    const [loadedPatients, loadedInvoices] = await Promise.all([
-      api.listPatients({ status: "done", billed: false, limit: BILLABLE_PATIENT_LIMIT }),
-      api.listInvoices({ limit: RECENT_INVOICE_LIMIT }),
-    ]);
-    return { patients: loadedPatients, invoices: loadedInvoices };
+    return { invoices: await api.listInvoices({ limit: RECENT_INVOICE_LIMIT }) };
   }, []);
-  const onPageData = useCallback((data: { patients: Patient[]; invoices: Invoice[] }) => {
-    setPatients(data.patients);
+  const onPageData = useCallback((data: { invoices: Invoice[] }) => {
     setInvoices(data.invoices);
   }, []);
   const {
@@ -254,6 +249,16 @@ export default function BillingPage() {
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
   const workspaceMode = clinicSettings?.workspace_mode ?? "team";
   const isSoloWorkspace = workspaceMode === "solo";
+  const {
+    patients,
+    setPatients,
+    isLoadingMore: isLoadingMorePatients,
+    sentinelRef: patientSentinelRef,
+  } = useInfinitePatients({
+    enabled: isAuthReady && !isRedirectingToLogin && currentUser?.role === "admin",
+    status: "done",
+    billed: false,
+  });
   const billablePatients = useMemo(() => patients.filter((patient) => patient.status === "done" && !patient.billed), [patients]);
   const selectedBillingPatient = useMemo(() => billablePatients.find((patient) => patient.id === selectedBillingPatientId) ?? null, [billablePatients, selectedBillingPatientId]);
   const invoiceTaxTotals = useMemo(
@@ -291,14 +296,10 @@ export default function BillingPage() {
         return;
       }
       try {
-        const [nextPatients, nextInvoices] = await Promise.all([
-          api.listPatients({ status: "done", billed: false, limit: BILLABLE_PATIENT_LIMIT }),
-          api.listInvoices({ limit: RECENT_INVOICE_LIMIT }),
-        ]);
+        const nextInvoices = await api.listInvoices({ limit: RECENT_INVOICE_LIMIT });
         if (!active) {
           return;
         }
-        setPatients(nextPatients);
         setInvoices(nextInvoices);
       } catch {
         // Keep the current billing workspace stable if a background refresh fails.
@@ -654,6 +655,11 @@ export default function BillingPage() {
         {error || catalogError ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error || catalogError}</div> : null}
         <SettingsDrawerBillingPanel
           patients={billablePatients}
+          patientListFooter={(
+            <div ref={patientSentinelRef} className="flex min-h-10 items-center justify-center">
+              {isLoadingMorePatients ? <LoaderCircle className="h-5 w-5 animate-spin text-[#2a6fa8]" aria-label="Loading more billable patients" /> : null}
+            </div>
+          )}
           selectedBillingPatientId={selectedBillingPatientId}
           selectedBillingPatient={selectedBillingPatient}
           serviceItems={serviceItems}

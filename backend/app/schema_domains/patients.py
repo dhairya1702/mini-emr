@@ -85,6 +85,12 @@ class PatientOut(BaseModel):
     billing_estimate: "QueueBillingEstimateOut | None" = None
 
 
+class PatientPageOut(BaseModel):
+    items: list[PatientOut] = Field(default_factory=list)
+    next_cursor: str | None = None
+    has_more: bool = False
+
+
 class CurrentVisitSummaryOut(BaseModel):
     id: UUID
     kind: VisitKind = "new"

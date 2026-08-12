@@ -446,7 +446,9 @@ class PostgresPatientFlowRepository:
         query: str | None = None,
         limit: int | None = None,
         offset: int = 0,
-        include_queue_context: bool = True,
+        cursor_last_visit_at: datetime | None = None,
+        cursor_id: str | None = None,
+        include_queue_context: bool = False,
     ) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
             with self.connection_manager.pool.connection() as connection:
@@ -468,24 +470,29 @@ class PostgresPatientFlowRepository:
                             "or reason ilike %s escape '\\')"
                         )
                         query_params.extend([pattern, pattern, pattern])
+                    cursor_clause = ""
+                    cursor_params: list[Any] = []
+                    if cursor_last_visit_at is not None and cursor_id is not None:
+                        cursor_clause = "and (last_visit_at, id) < (%s, %s::uuid)"
+                        cursor_params.extend([cursor_last_visit_at, cursor_id])
                     paging_clause = "limit %s offset %s" if limit is not None else ""
                     filter_params: list[Any] = []
                     if status is not None:
                         filter_params.append(status)
                     if billed is not None:
                         filter_params.append(billed)
-                    params_list: list[Any] = [org_id, *filter_params, *query_params]
+                    params_list: list[Any] = [org_id, *filter_params, *query_params, *cursor_params]
                     if limit is not None:
                         params_list.extend([limit, offset])
                     order_clause = (
-                        "last_visit_at desc"
-                        if status == "done" and billed is False
-                        else """
+                        """
                           case status when 'waiting' then 0 when 'consultation' then 1 else 2 end,
                           case when queue_priority = 'urgent' then 0 else 1 end,
                           queue_position asc,
                           last_visit_at desc
                         """
+                        if active_only
+                        else "last_visit_at desc, id desc"
                     )
                     cursor.execute(
                         f"""
@@ -496,6 +503,7 @@ class PostgresPatientFlowRepository:
                         {status_clause}
                         {billed_clause}
                         {query_clause}
+                        {cursor_clause}
                         order by {order_clause}
                         {paging_clause}
                         """,

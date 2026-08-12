@@ -49,10 +49,6 @@ export default function EarningsPage() {
   const [openingInvoiceId, setOpeningInvoiceId] = useState("");
   const [hoveredChartPointKey, setHoveredChartPointKey] = useState<string | null>(null);
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
-  const loadBillablePatients = useCallback(async () => {
-    const patients = await api.listPatients({ limit: 500 });
-    return patients.filter((patient) => patient.status === "done" && !patient.billed);
-  }, []);
   const loadPageData = useCallback(async () => {
     return {
       invoices: await api.listInvoices({ limit: 500 }),
@@ -686,7 +682,6 @@ export default function EarningsPage() {
         auditEvents={auditEvents}
         onLoadAuditEvents={loadAuditEvents}
         patients={[]}
-        onLoadBillingPatients={loadBillablePatients}
         catalogItems={catalogItems}
         onLoadCatalogItems={loadCatalogItems}
         onClose={() => setIsSettingsOpen(false)}

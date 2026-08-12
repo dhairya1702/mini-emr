@@ -1911,7 +1911,9 @@ class FakeRepo:
         query: str | None = None,
         limit: int | None = None,
         offset: int = 0,
-        include_queue_context: bool = True,
+        cursor_last_visit_at: datetime | None = None,
+        cursor_id: str | None = None,
+        include_queue_context: bool = False,
     ) -> list[dict]:
         normalized_query = str(query or "").strip().lower()
         rows = [
@@ -1932,13 +1934,21 @@ class FakeRepo:
                     or normalized_query in str(patient.get("reason") or "").lower()
                 )
             ]
-        rows.sort(
-            key=lambda patient: (
-                {"waiting": 0, "consultation": 1, "done": 2}[patient["status"]],
-                0 if patient.get("queue_priority", "normal") == "urgent" else 1,
-                int(patient.get("queue_position") or 0),
+        if active_only:
+            rows.sort(
+                key=lambda patient: (
+                    {"waiting": 0, "consultation": 1, "done": 2}[patient["status"]],
+                    0 if patient.get("queue_priority", "normal") == "urgent" else 1,
+                    int(patient.get("queue_position") or 0),
+                )
             )
-        )
+        else:
+            rows.sort(key=lambda patient: (patient["last_visit_at"], patient["id"]), reverse=True)
+            if cursor_last_visit_at is not None and cursor_id is not None:
+                rows = [
+                    patient for patient in rows
+                    if (patient["last_visit_at"], patient["id"]) < (cursor_last_visit_at, cursor_id)
+                ]
         selected = copy.deepcopy(rows[offset : offset + limit if limit is not None else None])
         if not include_queue_context:
             for patient in selected:
@@ -2082,7 +2092,7 @@ class FakeRepo:
                     patient["stage_entered_at"] = _now()
                 patient["status"] = status
                 patient["queue_position"] = position
-        return await self.list_patients(org_id, active_only=True, limit=500)
+        return await self.list_patients(org_id, active_only=True, limit=500, include_queue_context=True)
 
     async def get_patient(self, org_id: str, patient_id: str) -> dict:
         patient = self.patients[patient_id]

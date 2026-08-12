@@ -14,6 +14,7 @@ import {
   History,
   Info,
   LayoutDashboard,
+  LoaderCircle,
   GraduationCap,
   Search,
   QrCode,
@@ -40,6 +41,7 @@ import { printBlob } from "@/lib/print";
 import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
 import { Appointment, AuditEvent, AuthUser, CatalogItem, CatalogItemType, ClinicSettings, ClinicSettingsUpdatePayload, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
 import { hasUserSignature } from "@/lib/setup-checklist";
+import { useInfinitePatients } from "@/lib/use-infinite-patients";
 
 function createId() {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
@@ -63,7 +65,6 @@ interface SettingsDrawerProps {
   auditEvents: AuditEvent[];
   onLoadAuditEvents: () => Promise<AuditEvent[]>;
   patients: Patient[];
-  onLoadBillingPatients?: () => Promise<Patient[]>;
   catalogItems: CatalogItem[];
   onLoadCatalogItems: () => Promise<CatalogItem[]>;
   onClose: () => void;
@@ -525,8 +526,6 @@ export function SettingsDrawer({
   onLoadUsers,
   auditEvents,
   onLoadAuditEvents,
-  patients,
-  onLoadBillingPatients,
   catalogItems,
   onLoadCatalogItems,
   onClose,
@@ -638,9 +637,17 @@ export function SettingsDrawer({
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
   const [isSendingInvoiceWhatsApp, setIsSendingInvoiceWhatsApp] = useState(false);
   const [isInvoiceDirty, setIsInvoiceDirty] = useState(false);
-  const [billingPatients, setBillingPatients] = useState<Patient[]>(patients);
-  const [isBillingPatientsLoading, setIsBillingPatientsLoading] = useState(false);
-  const [hasLoadedBillingPatients, setHasLoadedBillingPatients] = useState(false);
+  const {
+    patients: billingPatients,
+    isLoading: isBillingPatientsLoading,
+    isLoadingMore: isLoadingMoreBillingPatients,
+    error: billingPatientsError,
+    sentinelRef: billingPatientSentinelRef,
+  } = useInfinitePatients({
+    enabled: open && activeTab === "billing",
+    status: "done",
+    billed: false,
+  });
   const specialtySectionRef = useRef<HTMLDivElement | null>(null);
   const hoursSectionRef = useRef<HTMLDivElement | null>(null);
   const templateSectionRef = useRef<HTMLDivElement | null>(null);
@@ -743,13 +750,6 @@ export function SettingsDrawer({
   }, [letterPdfPreviewUrl]);
 
   useEffect(() => {
-    setBillingPatients(patients);
-    if (patients.length) {
-      setHasLoadedBillingPatients(true);
-    }
-  }, [patients]);
-
-  useEffect(() => {
     if (!selectedBillingPatientId && billingPatients[0]) {
       setSelectedBillingPatientId(billingPatients[0].id);
     }
@@ -833,51 +833,6 @@ export function SettingsDrawer({
       active = false;
     };
   }, [activeTab, hasLoadedCatalog, isCatalogLoading, onLoadCatalogItems, open]);
-
-  useEffect(() => {
-    const needsBillingPatients = open && activeTab === "billing";
-    if (!needsBillingPatients) {
-      setIsBillingPatientsLoading(false);
-      return;
-    }
-
-    if (billingPatients.length || hasLoadedBillingPatients || isBillingPatientsLoading || !onLoadBillingPatients) {
-      return;
-    }
-
-    let active = true;
-    setIsBillingPatientsLoading(true);
-    setBillingError("");
-    void onLoadBillingPatients()
-      .then((loadedPatients) => {
-        if (active) {
-          setBillingPatients(loadedPatients);
-          setHasLoadedBillingPatients(true);
-        }
-      })
-      .catch((loadError) => {
-        if (active) {
-          setHasLoadedBillingPatients(true);
-          setBillingError(loadError instanceof Error ? loadError.message : "Failed to load billable patients.");
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setIsBillingPatientsLoading(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    activeTab,
-    billingPatients.length,
-    hasLoadedBillingPatients,
-    isBillingPatientsLoading,
-    onLoadBillingPatients,
-    open,
-  ]);
 
   useEffect(() => {
     if (!open || activeTab !== "audit") {
@@ -2200,6 +2155,11 @@ export function SettingsDrawer({
     return (
       <SettingsDrawerBillingPanel
         patients={billingPatients}
+        patientListFooter={(
+          <div ref={billingPatientSentinelRef} className="flex min-h-10 items-center justify-center">
+            {isLoadingMoreBillingPatients ? <LoaderCircle className="h-5 w-5 animate-spin text-[#2a6fa8]" aria-label="Loading more billable patients" /> : null}
+          </div>
+        )}
         selectedBillingPatientId={selectedBillingPatientId}
         selectedBillingPatient={selectedBillingPatient}
         serviceItems={serviceItems}
@@ -2214,7 +2174,7 @@ export function SettingsDrawer({
         amountPaidInput={amountPaidInput}
         balanceDue={balanceDue}
         paymentStatus={paymentStatus}
-        billingError={billingError}
+        billingError={billingError || billingPatientsError}
         billingStatus={
           isBillingPatientsLoading && !billingPatients.length
             ? "Loading billable patients..."
