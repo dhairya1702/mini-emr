@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 
@@ -13,9 +13,11 @@ import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { printBlob } from "@/lib/print";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { useInfinitePatients } from "@/lib/use-infinite-patients";
-import { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
+import { BillingDashboard, BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, InvoiceSummary, Patient, PaymentStatus } from "@/lib/types";
 
 const BILLING_REFRESH_INTERVAL_MS = 30_000;
+const BILLING_REFRESH_DEDUPE_MS = 2_000;
+const BILLING_REFRESH_MAX_BACKOFF_MS = 5 * 60_000;
 const RECENT_INVOICE_LIMIT = 5;
 
 function createId() {
@@ -25,8 +27,22 @@ function createId() {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function upsertInvoice(current: Invoice[], incoming: Invoice) {
-  return [incoming, ...current.filter((invoice) => invoice.id !== incoming.id)]
+function toInvoiceSummary(invoice: Invoice): InvoiceSummary {
+  return {
+    id: invoice.id,
+    patient_id: invoice.patient_id,
+    patient_name: invoice.patient_name,
+    item_count: invoice.items.length,
+    total: invoice.total,
+    payment_status: invoice.payment_status,
+    amount_paid: invoice.amount_paid,
+    balance_due: invoice.balance_due,
+    created_at: invoice.created_at,
+  };
+}
+
+function upsertInvoice(current: InvoiceSummary[], incoming: Invoice) {
+  return [toInvoiceSummary(incoming), ...current.filter((invoice) => invoice.id !== incoming.id)]
     .slice(0, RECENT_INVOICE_LIMIT);
 }
 
@@ -181,7 +197,7 @@ function buildAutoDraftInvoiceItems(
 
 export default function BillingPage() {
   const router = useRouter();
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceSummary[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedBillingPatientId, setSelectedBillingPatientId] = useState("");
   const [invoiceItems, setInvoiceItems] = useState<DraftInvoiceItem[]>([]);
@@ -204,12 +220,22 @@ export default function BillingPage() {
   const [customItemLabel, setCustomItemLabel] = useState("");
   const [customItemQuantity, setCustomItemQuantity] = useState("1");
   const [customItemUnitPrice, setCustomItemUnitPrice] = useState("");
+  const billingPatientsRevisionRef = useRef<string | null>(null);
+  const billingInvoicesRevisionRef = useRef<string | null>(null);
+  const pendingPatientsRevisionRef = useRef<string | null>(null);
+  const billingRefreshInFlightRef = useRef(false);
+  const billingRefreshLastStartedAtRef = useRef(0);
+  const billingRefreshRetryAtRef = useRef(0);
+  const billingRefreshBackoffRef = useRef(BILLING_REFRESH_INTERVAL_MS);
+  const isInvoiceDirtyRef = useRef(false);
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(async () => {
-    return { invoices: await api.listInvoices({ limit: RECENT_INVOICE_LIMIT }) };
+    return api.getBillingDashboard({ recent_invoice_limit: RECENT_INVOICE_LIMIT });
   }, []);
-  const onPageData = useCallback((data: { invoices: Invoice[] }) => {
-    setInvoices(data.invoices);
+  const onPageData = useCallback((data: BillingDashboard) => {
+    billingPatientsRevisionRef.current = data.billable_patients_revision;
+    billingInvoicesRevisionRef.current = data.invoices_revision;
+    setInvoices(data.recent_invoices);
   }, []);
   const {
     currentUser,
@@ -252,6 +278,7 @@ export default function BillingPage() {
   const {
     patients,
     setPatients,
+    reload: reloadPatients,
     isLoadingMore: isLoadingMorePatients,
     sentinelRef: patientSentinelRef,
   } = useInfinitePatients({
@@ -273,6 +300,15 @@ export default function BillingPage() {
   );
   const balanceDue = useMemo(() => Math.max(invoiceTotal - normalizedAmountPaid, 0), [invoiceTotal, normalizedAmountPaid]);
   useEffect(() => {
+    isInvoiceDirtyRef.current = isInvoiceDirty;
+    if (!isInvoiceDirty && pendingPatientsRevisionRef.current) {
+      billingPatientsRevisionRef.current = pendingPatientsRevisionRef.current;
+      pendingPatientsRevisionRef.current = null;
+      reloadPatients();
+    }
+  }, [isInvoiceDirty, reloadPatients]);
+
+  useEffect(() => {
     if (isAuthReady && currentUser?.role === "staff") {
       router.replace("/");
     }
@@ -292,17 +328,51 @@ export default function BillingPage() {
     let active = true;
 
     async function refreshBillingData() {
-      if (document.visibilityState !== "visible") {
+      const now = Date.now();
+      if (
+        document.visibilityState !== "visible"
+        || billingRefreshInFlightRef.current
+        || now < billingRefreshRetryAtRef.current
+        || now - billingRefreshLastStartedAtRef.current < BILLING_REFRESH_DEDUPE_MS
+      ) {
         return;
       }
+      billingRefreshInFlightRef.current = true;
+      billingRefreshLastStartedAtRef.current = now;
       try {
-        const nextInvoices = await api.listInvoices({ limit: RECENT_INVOICE_LIMIT });
-        if (!active) {
-          return;
+        const status = await api.getBillingStatus();
+        if (!active) return;
+
+        if (billingInvoicesRevisionRef.current === null) {
+          billingInvoicesRevisionRef.current = status.invoices_revision;
+        } else if (billingInvoicesRevisionRef.current !== status.invoices_revision) {
+          const nextInvoices = await api.listInvoiceSummaries({ limit: RECENT_INVOICE_LIMIT });
+          if (!active) return;
+          setInvoices(nextInvoices);
+          billingInvoicesRevisionRef.current = status.invoices_revision;
         }
-        setInvoices(nextInvoices);
+
+        if (billingPatientsRevisionRef.current === null) {
+          billingPatientsRevisionRef.current = status.billable_patients_revision;
+        } else if (billingPatientsRevisionRef.current !== status.billable_patients_revision) {
+          if (isInvoiceDirtyRef.current) {
+            pendingPatientsRevisionRef.current = status.billable_patients_revision;
+          } else {
+            billingPatientsRevisionRef.current = status.billable_patients_revision;
+            reloadPatients();
+          }
+        }
+
+        billingRefreshBackoffRef.current = BILLING_REFRESH_INTERVAL_MS;
+        billingRefreshRetryAtRef.current = 0;
       } catch {
-        // Keep the current billing workspace stable if a background refresh fails.
+        billingRefreshRetryAtRef.current = Date.now() + billingRefreshBackoffRef.current;
+        billingRefreshBackoffRef.current = Math.min(
+          billingRefreshBackoffRef.current * 2,
+          BILLING_REFRESH_MAX_BACKOFF_MS,
+        );
+      } finally {
+        billingRefreshInFlightRef.current = false;
       }
     }
 
@@ -333,7 +403,7 @@ export default function BillingPage() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [currentUser, isAuthReady, isRedirectingToLogin, isSoloWorkspace]);
+  }, [currentUser, isAuthReady, isRedirectingToLogin, isSoloWorkspace, reloadPatients]);
 
   useEffect(() => {
     if (!selectedBillingPatientId && billablePatients[0]) {
@@ -749,7 +819,7 @@ export default function BillingPage() {
                         <tr key={invoice.id} className="transition hover:bg-[#f3f8fb]/60">
                           <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm font-semibold text-slate-900">{patientName}</td>
                           <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-600">
-                            {invoice.items.length} item{invoice.items.length === 1 ? "" : "s"}
+                            {invoice.item_count} item{invoice.item_count === 1 ? "" : "s"}
                           </td>
                           <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-600">{statusLabel}</td>
                           <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-500">

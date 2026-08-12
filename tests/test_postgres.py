@@ -687,6 +687,48 @@ def test_postgres_dashboard_status_uses_one_read_only_statement_and_expiry_aware
     assert params == ("org-1", "org-1", "org-1")
 
 
+def test_postgres_billing_status_is_lightweight_and_invoice_summaries_skip_item_payloads():
+    status_cursor = ScriptedCursor(
+        descriptions=[["billing_patients_revision", "billable_patient_count", "billing_invoices_revision"]],
+        fetchone_rows=[("12", 3, "29")],
+    )
+    status_repo = PostgresBillingRepository(ScriptedManager(status_cursor))  # type: ignore[arg-type]
+
+    status = asyncio.run(status_repo.get_billing_status("org-1"))
+
+    assert status == {
+        "billable_patients_revision": "12",
+        "billable_patient_count": 3,
+        "invoices_revision": "29",
+    }
+    assert len(status_cursor.executed) == 1
+    assert status_cursor.executed[0][1] == ("org-1", "org-1")
+    assert "invoice_items" not in status_cursor.executed[0][0]
+
+    summary_cursor = ScriptedCursor(
+        descriptions=[[
+            "id", "patient_id", "patient_name", "item_count", "total",
+            "payment_status", "amount_paid", "balance_due", "created_at",
+        ]],
+        fetchall_rows=[[(
+            "invoice-1", "patient-1", "Patient One", 2, 800.0,
+            "partial", 100.0, 700.0, datetime(2026, 8, 12, tzinfo=UTC),
+        )]],
+    )
+    summary_repo = PostgresBillingRepository(ScriptedManager(summary_cursor))  # type: ignore[arg-type]
+
+    summaries = asyncio.run(summary_repo.list_invoice_summaries("org-1", limit=5))
+
+    assert summaries[0]["item_count"] == 2
+    assert "items" not in summaries[0]
+    assert "completed_by_name" not in summaries[0]
+    assert len(summary_cursor.executed) == 1
+    assert summary_cursor.executed[0][1] == ("org-1", 5)
+    statement = summary_cursor.executed[0][0].lower()
+    assert "clinic_users" not in statement
+    assert "select count(*)" in statement
+
+
 def test_postgres_platform_errors_repository_creates_trimmed_error():
     cursor = ScriptedCursor(
         descriptions=[PLATFORM_ERROR_COLUMNS],

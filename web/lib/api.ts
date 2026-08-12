@@ -2,6 +2,8 @@ import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
 import {
   AccountUpdatePayload,
   AuditEvent,
+  BillingDashboard,
+  BillingStatus,
   BillingSuggestionsResponse,
   Appointment,
   AppointmentCheckInPayload,
@@ -58,6 +60,7 @@ import {
   Invoice,
   InvoiceActionResult,
   InvoiceCreatePayload,
+  InvoiceSummary,
   GenerateNotePayload,
   GenerateNoteResponse,
   LongitudinalTrackCreatePayload,
@@ -595,6 +598,11 @@ export const api = {
     }),
   listInvoices: (options?: { limit?: number; offset?: number }) =>
     request<Invoice[]>(withQuery("/invoices", options ?? {})),
+  getBillingStatus: () => request<BillingStatus>("/billing/status"),
+  getBillingDashboard: (options?: { recent_invoice_limit?: number }) =>
+    request<BillingDashboard>(withQuery("/billing/dashboard", options ?? {})),
+  listInvoiceSummaries: (options?: { limit?: number }) =>
+    request<InvoiceSummary[]>(withQuery("/invoices/summaries", options ?? {})),
   listAllInvoices: async () => {
     const rows: Invoice[] = [];
     for (let offset = 0; ; offset += 500) {

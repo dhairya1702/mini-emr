@@ -925,6 +925,77 @@ class PostgresBillingRepository:
 
         return await asyncio.to_thread(_list)
 
+    async def get_billing_status(self, org_id: str) -> dict[str, Any]:
+        def _get() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select
+                          coalesce(revisions.billing_patients_revision, 0)::text,
+                          (
+                            select count(*)
+                            from public.patients
+                            where org_id = %s and status = 'done' and billed = false
+                          )::integer,
+                          coalesce(revisions.billing_invoices_revision, 0)::text
+                        from (values (1)) as singleton(value)
+                        left join public.dashboard_revisions revisions on revisions.org_id = %s
+                        """,
+                        (org_id, org_id),
+                    )
+                    row = cursor.fetchone()
+                    return {
+                        "billable_patients_revision": str(row[0]),
+                        "billable_patient_count": int(row[1]),
+                        "invoices_revision": str(row[2]),
+                    }
+
+        return await asyncio.to_thread(_get)
+
+    async def list_invoice_summaries(self, org_id: str, limit: int = 5) -> list[dict[str, Any]]:
+        def _list() -> list[dict[str, Any]]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select
+                          invoice.id,
+                          invoice.patient_id,
+                          patient.name as patient_name,
+                          (
+                            select count(*)
+                            from public.invoice_items item
+                            where item.org_id = invoice.org_id and item.invoice_id = invoice.id
+                          )::integer as item_count,
+                          invoice.total,
+                          invoice.payment_status,
+                          invoice.amount_paid,
+                          greatest(invoice.total - invoice.amount_paid, 0) as balance_due,
+                          invoice.created_at
+                        from public.invoices invoice
+                        left join public.patients patient
+                          on patient.org_id = invoice.org_id and patient.id = invoice.patient_id
+                        where invoice.org_id = %s
+                        order by invoice.created_at desc
+                        limit %s
+                        """,
+                        (org_id, limit),
+                    )
+                    return [_row_to_dict(row, cursor) for row in cursor.fetchall()]
+
+        return await asyncio.to_thread(_list)
+
+    async def get_billing_dashboard(self, org_id: str, recent_invoice_limit: int = 5) -> dict[str, Any]:
+        # Read the token first. If a mutation commits before the summaries are
+        # loaded, the next heartbeat sees the newer token and safely refreshes.
+        status = await self.get_billing_status(org_id)
+        recent_invoices = await self.list_invoice_summaries(
+            org_id,
+            limit=recent_invoice_limit,
+        )
+        return {**status, "recent_invoices": recent_invoices}
+
     async def list_invoices_for_patient(self, org_id: str, patient_id: str) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
             with self.connection_manager.pool.connection() as connection:

@@ -9,10 +9,13 @@ from app.auth import require_admin
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import (
+    BillingDashboardOut,
+    BillingStatusOut,
     FinalizeInvoiceRequest,
     InvoiceActionResponse,
     InvoiceCreate,
     InvoiceOut,
+    InvoiceSummaryOut,
     InvoicePaymentUpdate,
     SendInvoiceRequest,
     SendInvoiceWhatsAppRequest,
@@ -32,6 +35,47 @@ from app.services.whatsapp_document_workflow import send_invoice_whatsapp_workfl
 
 
 router = APIRouter()
+
+
+@router.get("/billing/status", response_model=BillingStatusOut)
+async def get_billing_status(
+    current_user: UserOut = Depends(require_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> BillingStatusOut:
+    try:
+        return BillingStatusOut(**await repo.get_billing_status(str(current_user.org_id)))
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="get_billing_status") from exc
+
+
+@router.get("/billing/dashboard", response_model=BillingDashboardOut)
+async def get_billing_dashboard(
+    recent_invoice_limit: int = Query(default=5, ge=1, le=20),
+    current_user: UserOut = Depends(require_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> BillingDashboardOut:
+    try:
+        return BillingDashboardOut(
+            **await repo.get_billing_dashboard(
+                str(current_user.org_id),
+                recent_invoice_limit=recent_invoice_limit,
+            )
+        )
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="get_billing_dashboard") from exc
+
+
+@router.get("/invoices/summaries", response_model=list[InvoiceSummaryOut])
+async def list_invoice_summaries(
+    limit: int = Query(default=5, ge=1, le=20),
+    current_user: UserOut = Depends(require_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> list[InvoiceSummaryOut]:
+    try:
+        rows = await repo.list_invoice_summaries(str(current_user.org_id), limit=limit)
+        return [InvoiceSummaryOut(**row) for row in rows]
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="list_invoice_summaries") from exc
 
 
 @router.get("/notes/{note_id}/billing-suggestions", response_model=BillingSuggestionsResponse)

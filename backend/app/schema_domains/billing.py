@@ -153,6 +153,28 @@ class InvoiceOut(BaseModel):
     items: list[InvoiceItemOut]
 
 
+class InvoiceSummaryOut(BaseModel):
+    id: UUID
+    patient_id: UUID
+    patient_name: str | None = None
+    item_count: int = Field(ge=0)
+    total: float
+    payment_status: PaymentStatus
+    amount_paid: float = 0
+    balance_due: float = 0
+    created_at: datetime
+
+
+class BillingStatusOut(BaseModel):
+    billable_patients_revision: str
+    billable_patient_count: int = Field(ge=0)
+    invoices_revision: str
+
+
+class BillingDashboardOut(BillingStatusOut):
+    recent_invoices: list[InvoiceSummaryOut]
+
+
 class SendInvoiceRequest(BaseModel):
     invoice_id: UUID
     recipient_email: str = Field(min_length=5, max_length=200)

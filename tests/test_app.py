@@ -1157,6 +1157,69 @@ class FakeRepo:
             "pending_check_in_count": check_ins["pending_count"],
         }
 
+    async def get_billing_status(self, org_id: str) -> dict:
+        billable = [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "status": row["status"],
+                "billed": row["billed"],
+                "last_visit_at": row["last_visit_at"],
+            }
+            for row in self.patients.values()
+            if row["org_id"] == org_id and row["status"] == "done" and not row["billed"]
+        ]
+        invoices = [
+            {
+                "id": row["id"],
+                "patient_id": row["patient_id"],
+                "total": row["total"],
+                "amount_paid": row.get("amount_paid", 0),
+                "payment_status": row["payment_status"],
+                "items": [item.get("id") for item in row.get("items", [])],
+            }
+            for row in self.invoices.values()
+            if row["org_id"] == org_id
+        ]
+        return {
+            "billable_patients_revision": hashlib.sha256(
+                json.dumps(billable, sort_keys=True, default=str).encode("utf-8")
+            ).hexdigest(),
+            "billable_patient_count": len(billable),
+            "invoices_revision": hashlib.sha256(
+                json.dumps(invoices, sort_keys=True, default=str).encode("utf-8")
+            ).hexdigest(),
+        }
+
+    async def list_invoice_summaries(self, org_id: str, limit: int = 5) -> list[dict]:
+        rows = []
+        for invoice in self.invoices.values():
+            if invoice["org_id"] != org_id:
+                continue
+            patient = self.patients.get(invoice["patient_id"])
+            rows.append({
+                "id": invoice["id"],
+                "patient_id": invoice["patient_id"],
+                "patient_name": patient["name"] if patient else None,
+                "item_count": len(invoice.get("items", [])),
+                "total": invoice["total"],
+                "payment_status": invoice["payment_status"],
+                "amount_paid": invoice.get("amount_paid", 0),
+                "balance_due": round(
+                    max(float(invoice.get("total") or 0) - float(invoice.get("amount_paid") or 0), 0),
+                    2,
+                ),
+                "created_at": invoice["created_at"],
+            })
+        rows.sort(key=lambda row: row["created_at"], reverse=True)
+        return rows[:limit]
+
+    async def get_billing_dashboard(self, org_id: str, recent_invoice_limit: int = 5) -> dict:
+        return {
+            **await self.get_billing_status(org_id),
+            "recent_invoices": await self.list_invoice_summaries(org_id, recent_invoice_limit),
+        }
+
     async def list_public_check_in_requests(self, org_id: str) -> list[dict]:
         rows = []
         for request in self.public_check_in_requests.values():

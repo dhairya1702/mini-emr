@@ -550,6 +550,21 @@ export async function mockClinicBootstrap(
   await page.route(`${API_ORIGIN}/appointments*`, async (route) => {
     await fulfillJson(route, []);
   });
+  await page.route(`${API_ORIGIN}/billing/dashboard*`, async (route) => {
+    await fulfillJson(route, {
+      billable_patients_revision: "billing-patients-1",
+      billable_patient_count: patients.filter((patient) => patient.status === "done" && !patient.billed).length,
+      invoices_revision: "billing-invoices-1",
+      recent_invoices: [],
+    });
+  });
+  await page.route(`${API_ORIGIN}/billing/status`, async (route) => {
+    await fulfillJson(route, {
+      billable_patients_revision: "billing-patients-1",
+      billable_patient_count: patients.filter((patient) => patient.status === "done" && !patient.billed).length,
+      invoices_revision: "billing-invoices-1",
+    });
+  });
   await page.route(`${API_ORIGIN}/invoices*`, async (route) => {
     await fulfillJson(route, []);
   });

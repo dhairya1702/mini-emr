@@ -179,6 +179,79 @@ def test_invoice_adds_catalog_gst_and_snapshots_the_tax_details(client):
     assert stored_invoice["total"] == 1620
 
 
+def test_billing_dashboard_returns_revisioned_compact_invoice_summaries(client):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="billing-dashboard@clinic.com",
+        clinic_name="Billing Dashboard Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = test_client.post(
+        "/patients",
+        headers=headers,
+        json={
+            "name": "Ready To Bill",
+            "phone": "5550102099",
+            "reason": "Consultation",
+            "age": 42,
+        },
+    ).json()
+    repo.patients[patient["id"]]["status"] = "done"
+    repo.patients[patient["id"]]["billed"] = False
+
+    before = test_client.get("/billing/status", headers=headers)
+    assert before.status_code == 200
+    assert before.json()["billable_patient_count"] == 1
+
+    created = test_client.post(
+        "/invoices",
+        headers=headers,
+        json={
+            "patient_id": patient["id"],
+            "payment_status": "partial",
+            "amount_paid": 100,
+            "items": [
+                {
+                    "item_type": "service",
+                    "label": "Consultation",
+                    "quantity": 1,
+                    "unit_price": 500,
+                },
+                {
+                    "item_type": "service",
+                    "label": "Imaging",
+                    "quantity": 1,
+                    "unit_price": 300,
+                },
+            ],
+        },
+    )
+    assert created.status_code == 201
+
+    dashboard = test_client.get("/billing/dashboard?recent_invoice_limit=5", headers=headers)
+    assert dashboard.status_code == 200
+    payload = dashboard.json()
+    assert payload["billable_patient_count"] == 1
+    assert isinstance(payload["billable_patients_revision"], str)
+    assert isinstance(payload["invoices_revision"], str)
+    assert len(payload["recent_invoices"]) == 1
+    summary = payload["recent_invoices"][0]
+    assert summary == {
+        "id": created.json()["id"],
+        "patient_id": patient["id"],
+        "patient_name": "Ready To Bill",
+        "item_count": 2,
+        "total": 800.0,
+        "payment_status": "partial",
+        "amount_paid": 100.0,
+        "balance_due": 700.0,
+        "created_at": created.json()["created_at"],
+    }
+    assert "items" not in summary
+    assert "completed_by_name" not in summary
+
+
 def test_invoice_payment_update_writes_its_audit_event_through_atomic_repository_contract(client):
     test_client, repo = client
     session = register_test_clinic(

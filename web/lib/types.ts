@@ -1133,6 +1133,28 @@ export interface Invoice {
   items: InvoiceItem[];
 }
 
+export interface InvoiceSummary {
+  id: string;
+  patient_id: string;
+  patient_name?: string | null;
+  item_count: number;
+  total: number;
+  payment_status: PaymentStatus;
+  amount_paid: number;
+  balance_due: number;
+  created_at: string;
+}
+
+export interface BillingStatus {
+  billable_patients_revision: string;
+  billable_patient_count: number;
+  invoices_revision: string;
+}
+
+export interface BillingDashboard extends BillingStatus {
+  recent_invoices: InvoiceSummary[];
+}
+
 export interface ClinicSettings {
   id: string;
   org_id: string;
