@@ -136,7 +136,7 @@ export default function PatientsPage() {
   if (isRedirectingToLogin) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Redirecting to login...
         </div>
       </main>
@@ -146,7 +146,7 @@ export default function PatientsPage() {
   if (!isAuthReady) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Loading ClinicOS...
         </div>
       </main>
@@ -180,13 +180,9 @@ export default function PatientsPage() {
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="Search by name, phone fragment, or visit reason"
-                    className="w-full bg-transparent text-base text-slate-800 outline-none placeholder:text-slate-400"
+                    className="w-full bg-transparent text-base text-black outline-none placeholder:text-black"
                   />
                 </div>
-              </div>
-              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/60 px-4 py-2.5 text-sm text-slate-600 lg:min-w-[140px]">
-                <span className="text-lg font-semibold text-slate-900">{patients.length}</span>{" "}
-                <span className="font-medium text-slate-500">Loaded</span>
               </div>
             </div>
 
@@ -198,7 +194,7 @@ export default function PatientsPage() {
                   disabled={isExporting}
                   aria-label={isExporting ? "Preparing patient export" : "Export patients"}
                   title={isExporting ? "Preparing export" : "Export patients"}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
                 >
                   <Download className="h-4 w-4" />
                 </button>
@@ -207,7 +203,7 @@ export default function PatientsPage() {
                   onClick={reloadPatients}
                   aria-label="Retry loading patients"
                   title="Retry loading patients"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-slate-800 transition hover:bg-[#f3f8fb]"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-black transition hover:bg-[#f3f8fb]"
                 >
                   <RefreshCw className="h-4 w-4" />
                 </button>
@@ -217,7 +213,7 @@ export default function PatientsPage() {
 
           {recentPatients.length ? (
             <div className="mt-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recent Patients</p>
+              <p className="text-sm font-semibold text-black">Recent patients</p>
               <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
                 {recentPatients.map((patient) => (
                   <button
@@ -226,8 +222,8 @@ export default function PatientsPage() {
                     onClick={() => openPatientChart(patient)}
                     className="min-w-[180px] rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-3.5 py-2.5 text-left transition hover:border-[#bfd7e8] hover:bg-white"
                   >
-                    <p className="text-sm font-semibold text-slate-900">{patient.name}</p>
-                    <p className="mt-1 truncate text-xs text-slate-500">
+                    <p className="text-sm font-semibold text-black">{patient.name}</p>
+                    <p className="mt-1 truncate text-xs text-black">
                       {patient.reason || "No reason"} · {formatVisitDate(patient.last_visit_at)}
                     </p>
                   </button>
@@ -253,17 +249,17 @@ export default function PatientsPage() {
                 <table className="min-w-full border-separate border-spacing-0">
                   <thead className="sticky top-0 z-10 bg-[#f3f8fb]/95 backdrop-blur">
                     <tr className="text-left">
-                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-sm font-semibold text-black">
                         Patient
                       </th>
-                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-sm font-semibold text-black">
                         Phone
                       </th>
-                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        Last Reason
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-sm font-semibold text-black">
+                        Last reason
                       </th>
-                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        Last Visit
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-sm font-semibold text-black">
+                        Last visit
                       </th>
                     </tr>
                   </thead>
@@ -274,19 +270,19 @@ export default function PatientsPage() {
                         onClick={() => openPatientChart(patient)}
                         className="cursor-pointer transition hover:bg-[#f3f8fb]/70"
                       >
-                        <td className="border-b border-[#dbe7ef] px-5 py-4 text-sm text-slate-800">
-                          <div className="font-semibold text-slate-900">{patient.name}</div>
-                          <div className="mt-1 text-xs text-slate-500">
+                        <td className="border-b border-[#dbe7ef] px-5 py-4 text-sm text-black">
+                          <div className="font-semibold text-black">{patient.name}</div>
+                          <div className="mt-1 text-xs text-black">
                             ID {patient.id.slice(0, 8).toUpperCase()}
                           </div>
                         </td>
-                        <td className="border-b border-[#dbe7ef] px-5 py-4 text-sm text-slate-600">
+                        <td className="border-b border-[#dbe7ef] px-5 py-4 text-sm text-black">
                           {patient.phone}
                         </td>
-                        <td className="border-b border-[#dbe7ef] px-5 py-4 text-sm text-slate-600">
+                        <td className="border-b border-[#dbe7ef] px-5 py-4 text-sm text-black">
                           <div className="max-w-md truncate">{patient.reason}</div>
                         </td>
-                        <td className="border-b border-[#dbe7ef] px-5 py-4 text-sm text-slate-500">
+                        <td className="border-b border-[#dbe7ef] px-5 py-4 text-sm text-black">
                           {formatVisitDate(patient.last_visit_at)}
                         </td>
                       </tr>
@@ -299,7 +295,7 @@ export default function PatientsPage() {
               </div>
             ) : (
               <div className="px-6 py-16 text-center">
-                <p className="text-sm font-medium text-slate-700">
+                <p className="text-sm font-medium text-black">
                   {isPatientsLoading
                     ? "Loading patients..."
                     : patients.length
@@ -308,7 +304,7 @@ export default function PatientsPage() {
                       ? "The backend is unavailable right now."
                       : "No patients have been recorded yet."}
                 </p>
-                <p className="mt-2 text-sm text-slate-500">
+                <p className="mt-2 text-sm text-black">
                   {isPatientsLoading
                     ? ""
                     : patients.length

@@ -276,9 +276,9 @@ export default function InventoryPage() {
     }
   }
 
-  if (isRedirectingToLogin) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to login...</div></main>;
-  if (!isAuthReady) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Loading ClinicOS...</div></main>;
-  if (currentUser?.role === "staff") return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to queue...</div></main>;
+  if (isRedirectingToLogin) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to login...</div></main>;
+  if (!isAuthReady) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Loading ClinicOS...</div></main>;
+  if (currentUser?.role === "staff") return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to queue...</div></main>;
 
   return (
     <main className="clinic-page">
@@ -294,12 +294,12 @@ export default function InventoryPage() {
             <div>
               <div className="flex items-center gap-3">
                 <Boxes className="h-5 w-5 text-[#2a6fa8]" />
-                <h1 className="text-xl font-semibold text-slate-900">Inventory</h1>
+                <h1 className="text-xl font-semibold text-black">Inventory</h1>
               </div>
               <div className="mt-4 flex flex-wrap gap-2 text-sm">
-                <span className="rounded-xl bg-[#f3f8fb] px-3 py-1 text-slate-600">{serviceCount} services</span>
-                <span className="rounded-xl bg-[#f3f8fb] px-3 py-1 text-slate-600">{medicineCount} medicines</span>
-                <span className="rounded-xl bg-[#f3f8fb] px-3 py-1 text-slate-600">{programCount} programs</span>
+                <span className="rounded-xl bg-[#f3f8fb] px-3 py-1 text-black">{serviceCount} services</span>
+                <span className="rounded-xl bg-[#f3f8fb] px-3 py-1 text-black">{medicineCount} medicines</span>
+                <span className="rounded-xl bg-[#f3f8fb] px-3 py-1 text-black">{programCount} programs</span>
                 {lowStockCount ? (
                   <span className="rounded-xl bg-amber-50 px-3 py-1 text-amber-700">{lowStockCount} low stock</span>
                 ) : null}
@@ -310,12 +310,12 @@ export default function InventoryPage() {
           <div className="mt-6 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex w-full gap-2 xl:max-w-[480px]">
               <label className="relative block min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black" />
                 <input
                   value={inventorySearch}
                   onChange={(event) => setInventorySearch(event.target.value)}
                   placeholder="Search item, unit, or type"
-                  className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/70 pl-10 pr-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#9fc7e1] focus:bg-white"
+                  className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/70 pl-10 pr-4 text-sm text-black outline-none transition placeholder:text-black focus:border-[#9fc7e1] focus:bg-white"
                 />
               </label>
               <button
@@ -337,7 +337,7 @@ export default function InventoryPage() {
                   className={`rounded-xl border px-3.5 py-2 text-sm font-medium transition ${
                     inventoryFilter === option.value
                       ? "border-[#9fc7e1] bg-[#2f8fd3] text-white"
-                      : "border-[#bfd7e8] bg-[#f3f8fb]/70 text-slate-700 hover:bg-[#dbeaf4]"
+                      : "border-[#bfd7e8] bg-[#f3f8fb]/70 text-black hover:bg-[#dbeaf4]"
                   }`}
                 >
                   {option.label}
@@ -349,7 +349,7 @@ export default function InventoryPage() {
           <div className="mt-5 overflow-x-auto rounded-[18px] border border-[#dbe7ef]">
             {filteredCatalogItems.length ? (
               <div>
-                <div className="grid min-w-[900px] grid-cols-[minmax(0,1.5fr)_120px_120px_120px_120px] gap-4 bg-[#f3f8fb]/80 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <div className="grid min-w-[900px] grid-cols-[minmax(0,1.5fr)_120px_120px_120px_120px] gap-4 bg-[#f3f8fb]/80 px-5 py-3 text-sm font-semibold text-black">
                   <p>Name</p>
                   <p>Type</p>
                   <p>Unit</p>
@@ -372,7 +372,7 @@ export default function InventoryPage() {
                     className="grid min-w-[900px] cursor-pointer grid-cols-[minmax(0,1.5fr)_120px_120px_120px_120px] items-center gap-4 border-t border-[#dbe7ef] px-5 py-3.5 text-left transition hover:bg-[#f3f8fb]/80 focus:bg-[#f3f8fb]/80 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#9fc7e1]"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-900">{item.name}</p>
+                      <p className="truncate text-sm font-semibold text-black">{item.name}</p>
                       {isLowStock(item) ? (
                         <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-amber-700">
                           <AlertTriangle className="h-3 w-3" />
@@ -380,27 +380,27 @@ export default function InventoryPage() {
                         </p>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-slate-700">
+                    <div className="flex items-center gap-2 text-sm text-black">
                       {item.item_type === "service" ? <Stethoscope className="h-4 w-4 text-[#2a6fa8]" /> : item.item_type === "program" ? <ClipboardList className="h-4 w-4 text-[#2a6fa8]" /> : <Pill className="h-4 w-4 text-[#2a6fa8]" />}
                       {itemTypeLabel(item.item_type)}
                     </div>
-                    <p className="truncate text-sm text-slate-600">{item.unit || "per entry"}</p>
-                    <p className="text-right text-sm font-semibold tabular-nums text-slate-900">{item.default_price.toFixed(2)}</p>
-                    <p className={`text-sm tabular-nums ${isLowStock(item) ? "font-semibold text-amber-700" : "text-slate-700"}`}>
+                    <p className="truncate text-sm text-black">{item.unit || "per entry"}</p>
+                    <p className="text-right text-sm font-semibold tabular-nums text-black">{item.default_price.toFixed(2)}</p>
+                    <p className={`text-sm tabular-nums ${isLowStock(item) ? "font-semibold text-amber-700" : "text-black"}`}>
                       {stockLabel(item)}
                     </p>
                   </div>
                 ))}
               </div>
             ) : catalogItems.length ? (
-              <div className="rounded-[18px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/20 px-6 py-16 text-center text-sm text-slate-500">
+              <div className="rounded-[18px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/20 px-6 py-16 text-center text-sm text-black">
                 No inventory items match the current search or filter.
               </div>
             ) : (
               <div className="rounded-[18px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/20 px-6 py-16 text-center">
                 <PackagePlus className="mx-auto h-8 w-8 text-[#2a6fa8]" />
-                <p className="mt-3 text-sm font-semibold text-slate-900">No inventory items yet</p>
-                <p className="mt-1 text-sm text-slate-500">Add services and medicines so staff can bill from the catalog.</p>
+                <p className="mt-3 text-sm font-semibold text-black">No inventory items yet</p>
+                <p className="mt-1 text-sm text-black">Add services and medicines so staff can bill from the catalog.</p>
                 <button
                   type="button"
                   onClick={openAddCatalogItem}
@@ -424,14 +424,14 @@ export default function InventoryPage() {
           <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col overflow-hidden bg-white shadow-[0_35px_90px_rgba(15,23,42,0.22)]">
             <div className="flex items-start justify-between gap-4 border-b border-[#dbe7ef] px-6 py-5">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Inventory item</p>
-                <h2 className="mt-2 text-xl font-semibold text-slate-900">{editingCatalogItem ? "Edit item" : "Add item"}</h2>
+                <p className="text-sm font-semibold text-black">Inventory item</p>
+                <h2 className="mt-2 text-xl font-semibold text-black">{editingCatalogItem ? "Edit item" : "Add item"}</h2>
               </div>
               <button
                 type="button"
                 onClick={closeCatalogDrawer}
                 aria-label="Close"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#dbe7ef] text-slate-500 transition hover:bg-[#f3f8fb] hover:text-slate-900"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#dbe7ef] text-black transition hover:bg-[#f3f8fb] hover:text-black"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -444,18 +444,18 @@ export default function InventoryPage() {
                   </div>
                 ) : null}
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Name</span>
+                  <span className="mb-2 block text-sm font-medium text-black">Name</span>
                   <input
                     value={catalogForm.name}
                     onChange={(event) => setCatalogForm((current) => ({ ...current, name: event.target.value }))}
                     placeholder="Consultation, Injection, Paracetamol"
-                    className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
+                    className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-black outline-none transition placeholder:text-black focus:border-[#6daed8]"
                   />
                 </label>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">Type</span>
+                    <span className="mb-2 block text-sm font-medium text-black">Type</span>
                     <select
                       value={catalogForm.item_type}
                       onChange={(event) => {
@@ -467,7 +467,7 @@ export default function InventoryPage() {
                         }));
                       }}
                       disabled={editingCatalogItem?.item_type === "program"}
-                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition focus:border-[#6daed8] disabled:cursor-not-allowed disabled:opacity-60"
+                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-black outline-none transition focus:border-[#6daed8] disabled:cursor-not-allowed disabled:opacity-100"
                     >
                       <option value="service">Service</option>
                       <option value="medicine">Medicine</option>
@@ -475,45 +475,45 @@ export default function InventoryPage() {
                     </select>
                   </label>
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">Default price</span>
+                    <span className="mb-2 block text-sm font-medium text-black">Default price</span>
                     <input
                       value={catalogForm.default_price}
                       inputMode="decimal"
                       onChange={(event) => setCatalogForm((current) => ({ ...current, default_price: event.target.value }))}
                       placeholder="500"
-                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
+                      className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-black outline-none transition placeholder:text-black focus:border-[#6daed8]"
                     />
                   </label>
                 </div>
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Unit</span>
+                  <span className="mb-2 block text-sm font-medium text-black">Unit</span>
                   <input
                     value={catalogForm.unit}
                     onChange={(event) => setCatalogForm((current) => ({ ...current, unit: event.target.value }))}
                     placeholder="per visit, each, strip, bottle"
-                    className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
+                    className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-black outline-none transition placeholder:text-black focus:border-[#6daed8]"
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Matching aliases</span>
+                  <span className="mb-2 block text-sm font-medium text-black">Matching aliases</span>
                   <input
                     value={catalogForm.aliases}
                     onChange={(event) => setCatalogForm((current) => ({ ...current, aliases: event.target.value }))}
                     placeholder="strep test, rapid antigen test"
-                    className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
+                    className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-black outline-none transition placeholder:text-black focus:border-[#6daed8]"
                   />
                 </label>
 
                 <div className="rounded-xl border border-[#dbe7ef] bg-[#f8fbfd] p-4">
-                  <p className="text-sm text-slate-800">
+                  <p className="text-sm text-black">
                     <span className="font-semibold">GST</span>{" "}
                     <span className="font-normal">(leave blank to keep the item untaxed)</span>
                   </p>
                   <div className="mt-3 grid gap-4 sm:grid-cols-2">
                     <label className="block">
-                      <span className="mb-2 block text-sm font-medium text-slate-700">
+                      <span className="mb-2 block text-sm font-medium text-black">
                         {catalogForm.item_type === "medicine" ? "HSN code" : "SAC code"}
                       </span>
                       <input
@@ -521,15 +521,15 @@ export default function InventoryPage() {
                         inputMode="numeric"
                         onChange={(event) => setCatalogForm((current) => ({ ...current, hsn_sac_code: event.target.value.replace(/\D/g, "").slice(0, 8) }))}
                         placeholder="4, 6, or 8 digits"
-                        className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-white px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                        className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-white px-4 text-black outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                     <label className="block">
-                      <span className="mb-2 block text-sm font-medium text-slate-700">GST rate</span>
+                      <span className="mb-2 block text-sm font-medium text-black">GST rate</span>
                       <select
                         value={catalogForm.gst_rate}
                         onChange={(event) => setCatalogForm((current) => ({ ...current, gst_rate: event.target.value }))}
-                        className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-white px-4 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                        className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-white px-4 text-black outline-none transition focus:border-[#6daed8]"
                       >
                         <option value="">No GST</option>
                         <option value="5">5%</option>
@@ -541,7 +541,7 @@ export default function InventoryPage() {
                   </div>
                 </div>
 
-                <label className="flex items-center gap-3 rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-700">
+                <label className="flex items-center gap-3 rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-black">
                   <input
                     type="checkbox"
                     checked={catalogForm.track_inventory}
@@ -555,42 +555,42 @@ export default function InventoryPage() {
                   <div className="grid gap-4 sm:grid-cols-2">
                     {editingCatalogItem ? (
                       <div className="block">
-                        <span className="mb-2 block text-sm font-medium text-slate-700">Current stock</span>
-                        <div className="flex h-11 items-center rounded-xl border border-[#dbe7ef] bg-[#f3f8fb] px-4 text-sm font-semibold tabular-nums text-slate-800">
+                        <span className="mb-2 block text-sm font-medium text-black">Current stock</span>
+                        <div className="flex h-11 items-center rounded-xl border border-[#dbe7ef] bg-[#f3f8fb] px-4 text-sm font-semibold tabular-nums text-black">
                           {editingCatalogItem.stock_quantity}
                         </div>
                       </div>
                     ) : (
                       <label className="block">
-                        <span className="mb-2 block text-sm font-medium text-slate-700">Opening stock</span>
+                        <span className="mb-2 block text-sm font-medium text-black">Opening stock</span>
                         <input
                           value={catalogForm.stock_quantity}
                           inputMode="decimal"
                           onChange={(event) => setCatalogForm((current) => ({ ...current, stock_quantity: event.target.value }))}
                           placeholder="100"
-                          className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
+                          className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-black outline-none transition placeholder:text-black focus:border-[#6daed8]"
                         />
                       </label>
                     )}
                     <label className="block">
-                      <span className="mb-2 block text-sm font-medium text-slate-700">Low stock alert</span>
+                      <span className="mb-2 block text-sm font-medium text-black">Low stock alert</span>
                       <input
                         value={catalogForm.low_stock_threshold}
                         inputMode="decimal"
                         onChange={(event) => setCatalogForm((current) => ({ ...current, low_stock_threshold: event.target.value }))}
                         placeholder="10"
-                        className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
+                        className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-black outline-none transition placeholder:text-black focus:border-[#6daed8]"
                       />
                     </label>
                     {editingCatalogItem ? (
                       <label className="block sm:col-span-2">
-                        <span className="mb-2 block text-sm font-medium text-slate-700">Adjust stock</span>
+                        <span className="mb-2 block text-sm font-medium text-black">Adjust stock</span>
                         <input
                           value={stockAdjustment}
                           inputMode="decimal"
                           onChange={(event) => setStockAdjustment(event.target.value)}
                           placeholder="+10 or -2"
-                          className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#6daed8]"
+                          className="h-11 w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 text-black outline-none transition placeholder:text-black focus:border-[#6daed8]"
                         />
                         {stockAdjustment.trim() && Number.isFinite(Number(stockAdjustment)) ? (
                           <span className="mt-2 block text-xs font-medium text-[#2a6fa8]">
@@ -619,7 +619,7 @@ export default function InventoryPage() {
                       type="button"
                       disabled={deletingCatalogId === editingCatalogItem.id || currentUser?.role !== "admin"}
                       onClick={() => void handleDeleteCatalog(editingCatalogItem.id)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                      className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-100"
                     >
                       <Trash2 className="h-4 w-4" />
                       {deletingCatalogId === editingCatalogItem.id ? "Deleting…" : "Delete"}
@@ -630,14 +630,14 @@ export default function InventoryPage() {
                   <button
                     type="button"
                     onClick={closeCatalogDrawer}
-                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
+                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f8fb]"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isSavingCatalog || currentUser?.role !== "admin"}
-                    className="rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+                    className="rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-100"
                   >
                     {isSavingCatalog ? "Saving..." : editingCatalogItem ? "Save changes" : "Save item"}
                   </button>

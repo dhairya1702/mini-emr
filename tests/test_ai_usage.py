@@ -372,9 +372,76 @@ async def test_patient_summary_uses_vertex_json_paragraph_contract(monkeypatch):
     assert "\n" not in result["content"]
     assert not result["content"].startswith("-")
     assert seen_kwargs["response_mime_type"] == "application/json"
-    assert seen_kwargs["max_output_tokens"] == 256
+    assert seen_kwargs["response_schema"] == ai_generation_service.PATIENT_SUMMARY_RESPONSE_SCHEMA
+    assert seen_kwargs["max_output_tokens"] == 1024
     assert seen_kwargs["temperature"] == 0.2
     assert repo.events[0]["metadata"]["rolling_visit_limit"] == 2
+
+
+@pytest.mark.anyio
+async def test_patient_summary_strips_generated_note_labels(monkeypatch):
+    repo = _Repo()
+
+    async def _fake_summary_content(**_kwargs):
+        return {
+            "candidates": [{"content": {"parts": [{"text": '{"summary":"CONSULTATION NOTE: Presenting concern: Progressive distance blur. Examination: Refraction was reviewed. Assessment: Myopia review completed. Plan: Updated correction and follow-up were documented."}' }]}}],
+            "usageMetadata": {"promptTokenCount": 80, "candidatesTokenCount": 32},
+        }
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _fake_summary_content)
+    monkeypatch.setattr(
+        ai_generation_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_cloud_project="project-1",
+            google_cloud_location="global",
+            gemini_model="gemini-test",
+        ),
+    )
+
+    result = await ai_generation_service.generate_patient_summary(
+        repo,
+        "org-1",
+        source_context={"recent_visits": [{"reason": "myopia review"}]},
+    )
+
+    assert result["used_fallback"] is False
+    assert "CONSULTATION NOTE" not in result["content"]
+    assert "Presenting concern:" not in result["content"]
+    assert "Assessment:" not in result["content"]
+    assert "Updated correction" in result["content"]
+
+
+@pytest.mark.anyio
+async def test_patient_summary_empty_or_incomplete_ai_response_returns_no_fallback(monkeypatch):
+    repo = _Repo()
+
+    async def _empty_summary_content(**_kwargs):
+        return {
+            "candidates": [{"finishReason": "MAX_TOKENS", "content": {"parts": [{"text": '{"summary":"Partial'}]}}],
+            "usageMetadata": {"promptTokenCount": 80, "candidatesTokenCount": 8},
+        }
+
+    monkeypatch.setattr(ai_generation_service, "_generate_vertex_content", _empty_summary_content)
+    monkeypatch.setattr(
+        ai_generation_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_cloud_project="project-1",
+            google_cloud_location="global",
+            gemini_model="gemini-test",
+        ),
+    )
+
+    result = await ai_generation_service.generate_patient_summary(
+        repo,
+        "org-1",
+        source_context={"recent_visits": [{"reason": "fever", "consultation_note": "Hydration."}]},
+    )
+
+    assert result["content"] == ""
+    assert result["used_fallback"] is True
+    assert "previous summary was preserved" in str(result["warning"])
 
 
 def test_normalized_note_strips_pipe_tables_from_generated_content():

@@ -37,7 +37,7 @@ test("solo consultation billing keeps custom items after the old polling interva
   await page.goto("/");
 
   await page.getByRole("button", { name: "Open chart for Reset Check" }).click();
-  await page.getByRole("button", { name: "Continue consultation" }).click();
+  await page.getByRole("button", { name: "Continue Consultation" }).click();
 
   await expect(page.getByRole("complementary").getByText("Consultation", { exact: true })).toBeVisible();
   await page.getByLabel("Symptoms").fill("Review symptoms");
@@ -97,7 +97,7 @@ test("consultation follow-up failure keeps the drawer open and shows the error",
   await page.goto("/");
 
   await page.getByRole("button", { name: "Open chart for Follow Up Check" }).click();
-  await page.getByRole("button", { name: "Continue consultation" }).click();
+  await page.getByRole("button", { name: "Continue Consultation" }).click();
 
   await page.getByLabel("Symptoms").fill("Review symptoms");
   await page.getByLabel("Diagnosis").fill("Routine review");

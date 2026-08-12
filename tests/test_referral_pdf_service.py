@@ -60,6 +60,7 @@ def _clinic() -> dict:
         "custom_header": "Specialist Eye Clinic",
         "custom_footer": "Fika Eye Care | Confidential clinical correspondence",
         "timezone": "UTC",
+        "document_template_letters_enabled": True,
     }
 
 
@@ -102,8 +103,10 @@ def test_referral_pdf_orders_letter_consultation_appendix_and_external_attachmen
     note_pdf = _blank_pdf(400, 500)
     external_pdf = _blank_pdf(300, 350)
     rendered_sections: list[str] = []
+    rendered_contexts: list[dict] = []
 
-    def fake_letter_pdf(_clinic, content, _generated_on, **_kwargs):
+    def fake_letter_pdf(render_clinic, content, _generated_on, **_kwargs):
+        rendered_contexts.append(render_clinic)
         rendered_sections.append(content)
         return _blank_pdf(595, 842)
 
@@ -117,8 +120,10 @@ def test_referral_pdf_orders_letter_consultation_appendix_and_external_attachmen
     )
     assert page_count == 4
     assert "Referral of Lalwani for Check up" in rendered_sections[0]
+    assert rendered_contexts[0]["document_template_letters_enabled"] is True
     assert "Saved chart summary exactly as reviewed." in rendered_sections[0]
     assert "Clinical Appendix - Low Vision" in rendered_sections[1]
+    assert rendered_contexts[1]["document_template_letters_enabled"] is False
     assert "Reduced visual function" in rendered_sections[1]
     assert "Distance Va - Right: 6/60" in rendered_sections[1]
     assert "hidden" not in rendered_sections[1]

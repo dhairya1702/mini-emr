@@ -714,9 +714,9 @@ export default function BillingPage() {
     }
   }
 
-  if (isRedirectingToLogin) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to login...</div></main>;
-  if (!isAuthReady) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Loading ClinicOS...</div></main>;
-  if (currentUser?.role === "staff") return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to queue...</div></main>;
+  if (isRedirectingToLogin) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to login...</div></main>;
+  if (!isAuthReady) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Loading ClinicOS...</div></main>;
+  if (currentUser?.role === "staff") return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to queue...</div></main>;
 
   return (
     <main className="clinic-page">
@@ -796,7 +796,7 @@ export default function BillingPage() {
         />
         <section className="mt-4 rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_10px_28px_rgba(64,131,181,0.08)]">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900">Recent invoices</h2>
+            <h2 className="text-xl font-semibold text-black">Recent invoices</h2>
           </div>
           <div className="mt-5 overflow-hidden rounded-[18px] border border-[#bfd7e8] bg-white">
             {invoices.length ? (
@@ -804,11 +804,11 @@ export default function BillingPage() {
                 <table className="min-w-full border-separate border-spacing-0">
                   <thead className="bg-[#f3f8fb]/95">
                     <tr className="text-left">
-                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Patient</th>
-                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Items</th>
-                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Status</th>
-                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Created</th>
-                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-right text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Amount</th>
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-sm font-semibold text-black">Patient</th>
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-sm font-semibold text-black">Items</th>
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-sm font-semibold text-black">Status</th>
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-sm font-semibold text-black">Created</th>
+                      <th className="border-b border-[#dbe7ef] px-5 py-4 text-right text-sm font-semibold text-black">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -817,15 +817,15 @@ export default function BillingPage() {
                       const statusLabel = invoice.payment_status.charAt(0).toUpperCase() + invoice.payment_status.slice(1);
                       return (
                         <tr key={invoice.id} className="transition hover:bg-[#f3f8fb]/60">
-                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm font-semibold text-slate-900">{patientName}</td>
-                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-600">
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm font-semibold text-black">{patientName}</td>
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-black">
                             {invoice.item_count} item{invoice.item_count === 1 ? "" : "s"}
                           </td>
-                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-600">{statusLabel}</td>
-                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-500">
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-black">{statusLabel}</td>
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-black">
                             {new Date(invoice.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                           </td>
-                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-right text-sm font-semibold tabular-nums text-slate-900">
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-right text-sm font-semibold tabular-nums text-black">
                             {invoice.total.toFixed(2)}
                             {invoice.balance_due > 0 ? (
                               <div className="mt-1 text-xs font-medium text-amber-700">Due {invoice.balance_due.toFixed(2)}</div>
@@ -838,7 +838,7 @@ export default function BillingPage() {
                 </table>
               </div>
             ) : (
-              <div className="rounded-[18px] border border-dashed border-[#bfd7e8] bg-[#f3f8fb]/20 px-6 py-12 text-center text-sm text-slate-500">No recent invoices.</div>
+              <div className="rounded-[18px] border border-dashed border-[#bfd7e8] bg-[#f3f8fb]/20 px-6 py-12 text-center text-sm text-black">No recent invoices.</div>
             )}
           </div>
         </section>

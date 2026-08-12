@@ -447,12 +447,12 @@ function ConsultationExpandableCard({
         className="flex w-full items-start justify-between gap-4 text-left"
       >
         <div>
-          <p className="text-sm font-medium text-slate-900">{title}</p>
-          {description ? <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p> : null}
+          <p className="text-sm font-medium text-black">{title}</p>
+          {description ? <p className="mt-1 text-xs leading-5 text-black">{description}</p> : null}
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {badge}
-          <span className={`flex h-10 w-10 items-center justify-center rounded-xl border text-slate-900 transition ${toneClasses.icon}`}>
+          <span className={`flex h-10 w-10 items-center justify-center rounded-xl border text-black transition ${toneClasses.icon}`}>
             <Plus className={`h-6 w-6 transition-transform ${open ? "rotate-45" : ""}`} />
           </span>
         </div>
@@ -484,8 +484,8 @@ function ConsultationModuleRailItem({
           active ? "bg-[#f3f8fb]/70" : "bg-white hover:bg-[#f3f8fb]/60"
         }`}
       >
-        <span className="block text-base font-semibold leading-tight text-slate-900">{title}</span>
-        <span className="mt-1 block text-sm leading-5 text-slate-500">{description}</span>
+        <span className="block text-base font-semibold leading-tight text-black">{title}</span>
+        <span className="mt-1 block text-sm leading-5 text-black">{description}</span>
       </button>
       {active && children ? <div className="bg-[#f3f8fb]/30 px-3 pb-3">{children}</div> : null}
     </div>
@@ -501,7 +501,7 @@ function ConsultationModuleDetail({
 }) {
   return (
     <section className="rounded-[18px] border border-[#bfd7e8] bg-white/90 p-4">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</p>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-black">{title}</p>
       {children}
     </section>
   );
@@ -529,11 +529,11 @@ function SpecialtyModuleModal({
       <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[20px] border border-[#bfd7e8] bg-white p-6 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Specialty Module</p>
-            <h3 className="mt-2 text-2xl font-semibold text-slate-900">{title}</h3>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{description}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-black">Specialty Module</p>
+            <h3 className="mt-2 text-2xl font-semibold text-black">{title}</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-black">{description}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-[#f3f8fb]">
+          <button type="button" onClick={onClose} className="rounded-xl border border-[#bfd7e8] p-2 text-black transition hover:bg-[#f3f8fb]">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -630,6 +630,7 @@ export function ConsultationDrawer({
   const currentUserId = currentUser?.id ?? "";
   const currentOrgId = currentUser?.org_id ?? "";
   const hydrationPatientRef = useRef(patient);
+  const hydratedWorkspaceKeyRef = useRef("");
   hydrationPatientRef.current = patient;
   const consultationHydrationKey = patientId
     ? [currentOrgId, currentUserId, patientId, patientVisitId, clinicSpecialty ?? "", isTrainingMode ? "training" : "live"].join(":")
@@ -647,17 +648,59 @@ export function ConsultationDrawer({
     scope: { orgId: string; userId: string; patientId: string; visitId: string };
     snapshot: ConsultationWorkspaceSnapshot;
   } | null>(null);
+  const formRef = useRef(form);
+  formRef.current = form;
   const optometryHistory = useOptometryHistory(
     patientId,
     patient?.current_visit?.id,
     Boolean(patientId && isOptometryClinic && !isTrainingMode),
   );
 
+  function buildWorkspaceSnapshot(
+    overrides: Partial<ConsultationWorkspaceSnapshot> = {},
+  ): ConsultationWorkspaceSnapshot {
+    return {
+      form: formRef.current,
+      openSections,
+      selectedMedicineIds,
+      medicineSearch,
+      currentNoteId,
+      noteStatus,
+      isEmailSent,
+      isWhatsAppSent,
+      recipientEmail,
+      recipientPhone,
+      hasGeneratedNote,
+      isFollowUpOpen,
+      isDraftDirty,
+      clinicalExtractions,
+      currentConsultationModules,
+      activeOptometryStep,
+      activeEyeExamPage,
+      ...overrides,
+    };
+  }
+
+  function persistWorkspaceNow(overrides: Partial<ConsultationWorkspaceSnapshot> = {}) {
+    if (!workspaceScope) return;
+    writeConsultationWorkspace(workspaceScope, buildWorkspaceSnapshot(overrides));
+    pendingWorkspaceWriteRef.current = null;
+  }
+
+  function handleCloseConsultation() {
+    persistWorkspaceNow();
+    onClose();
+  }
+
   useEffect(() => {
     const hydrationPatient = hydrationPatientRef.current;
     if (!hydrationPatient || !consultationHydrationKey) {
       return;
     }
+    if (hydratedWorkspaceKeyRef.current === consultationHydrationKey) {
+      return;
+    }
+    hydratedWorkspaceKeyRef.current = consultationHydrationKey;
 
     let active = true;
     const cachedWorkspace = workspaceScope
@@ -873,6 +916,27 @@ export function ConsultationDrawer({
   }, [consultationHydrationKey]);
 
   useEffect(() => {
+    function flushPendingWorkspace() {
+      const pending = pendingWorkspaceWriteRef.current;
+      if (!pending) return;
+      writeConsultationWorkspace(pending.scope, pending.snapshot);
+      pendingWorkspaceWriteRef.current = null;
+    }
+
+    function flushWhenHidden() {
+      if (document.visibilityState === "hidden") flushPendingWorkspace();
+    }
+
+    window.addEventListener("pagehide", flushPendingWorkspace);
+    document.addEventListener("visibilitychange", flushWhenHidden);
+    return () => {
+      window.removeEventListener("pagehide", flushPendingWorkspace);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+      flushPendingWorkspace();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!patientId || !isOptometryClinic || !hydratedConsultationKey) {
       return;
     }
@@ -1009,8 +1073,8 @@ export function ConsultationDrawer({
     return (
       <aside className="fixed inset-0 z-30 flex w-screen items-center justify-center border-l-2 border-[#9fc7e1] bg-white p-6">
         <div role="status" className="rounded-2xl border border-[#bfd7e8] bg-[#f7fbfd] px-6 py-5 text-center shadow-sm">
-          <p className="text-sm font-semibold text-slate-900">Restoring consultation…</p>
-          <p className="mt-1 text-xs text-slate-500">Your examination entries are stored locally and will appear momentarily.</p>
+          <p className="text-sm font-semibold text-black">Restoring consultation…</p>
+          <p className="mt-1 text-xs text-black">Your examination entries are stored locally and will appear momentarily.</p>
         </div>
       </aside>
     );
@@ -1120,14 +1184,28 @@ export function ConsultationDrawer({
     try {
       const refreshingDraft = Boolean(currentNoteId && noteStatus === "draft");
       const generated = await onGenerate(buildConsultationPayload({ includeNoteId: true }));
-      setForm((current) => ({ ...current, generatedNote: generated.content }));
+      const generatedForm = { ...formRef.current, generatedNote: generated.content };
+      formRef.current = generatedForm;
+      setForm(generatedForm);
       setHasGeneratedNote(true);
       setCurrentNoteId(generated.noteId || "");
-      setClinicalExtractions(generated.extractions ?? { services_performed: [], medications_prescribed: [] });
-      setNoteStatus(generated.status || "draft");
+      const generatedExtractions = generated.extractions ?? { services_performed: [], medications_prescribed: [] };
+      const generatedStatus = generated.status || "draft";
+      setClinicalExtractions(generatedExtractions);
+      setNoteStatus(generatedStatus);
       setIsDraftDirty(false);
       setIsEmailSent(false);
       setIsWhatsAppSent(false);
+      persistWorkspaceNow({
+        form: generatedForm,
+        hasGeneratedNote: true,
+        currentNoteId: generated.noteId || "",
+        noteStatus: generatedStatus,
+        clinicalExtractions: generatedExtractions,
+        isDraftDirty: false,
+        isEmailSent: false,
+        isWhatsAppSent: false,
+      });
       const baseMessage = refreshingDraft ? "Draft note refreshed." : "Draft SOAP note generated.";
       setStatusMessage(generated.usedFallback ? `${baseMessage} ${generated.warning || "AI unavailable, used fallback template."}` : baseMessage);
     } catch (error) {
@@ -1327,9 +1405,6 @@ export function ConsultationDrawer({
       setNoteStatus("sent");
       setIsEmailSent(true);
       setStatusMessage(message);
-      if (workspaceScope) {
-        clearConsultationWorkspace(workspaceScope);
-      }
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to send email.");
     } finally {
@@ -1442,6 +1517,7 @@ export function ConsultationDrawer({
           : undefined;
       await onDone(currentPatient, followUp);
       if (workspaceScope) {
+        pendingWorkspaceWriteRef.current = null;
         clearConsultationWorkspace(workspaceScope);
       }
       onClose();
@@ -1532,7 +1608,7 @@ export function ConsultationDrawer({
     return (
       <div>
         <div className="flex items-center justify-between gap-2">
-          <h4 className="text-sm font-semibold text-slate-900">Previous Evaluations</h4>
+          <h4 className="text-sm font-semibold text-black">Previous Evaluations</h4>
           <button
             type="button"
             onClick={() => {
@@ -1546,14 +1622,14 @@ export function ConsultationDrawer({
                 setForm((current) => ({ ...current, lowVision: createEmptyLowVision() }));
               }
             }}
-            className="rounded-lg border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-[#f3f8fb]"
+            className="rounded-lg border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-[#f3f8fb]"
           >
             New
           </button>
         </div>
         <div className="mt-3 space-y-2">
           {isModuleEntriesLoading ? (
-            <p role="status" className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-5 text-center text-sm text-slate-500">
+            <p role="status" className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-5 text-center text-sm text-black">
               Loading previous evaluations…
             </p>
           ) : entries.length ? entries.map((entry) => (
@@ -1563,13 +1639,13 @@ export function ConsultationDrawer({
               onClick={() => onSelectEntry(entry)}
               className="block w-full rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:border-[#bfd7e8]"
             >
-              <p className="text-sm font-medium text-slate-900">
+              <p className="text-sm font-medium text-black">
                 {new Date(entry.measured_at).toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
               </p>
-              <p className="mt-1 line-clamp-2 text-xs text-slate-500">{formatModuleSummary(entry)}</p>
+              <p className="mt-1 line-clamp-2 text-xs text-black">{formatModuleSummary(entry)}</p>
             </button>
           )) : (
-            <p className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-5 text-center text-sm text-slate-500">
+            <p className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-5 text-center text-sm text-black">
               No evaluations yet.
             </p>
           )}
@@ -2139,7 +2215,7 @@ export function ConsultationDrawer({
               className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
                 value === option
                   ? "border-[#6daed8] bg-[#e8f2fa] text-[#235f8e]"
-                  : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"
+                  : "border-[#bfd7e8] bg-white text-black hover:bg-[#f3f8fb]"
               }`}
             >
               {option}
@@ -2160,7 +2236,7 @@ export function ConsultationDrawer({
               className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
                 selected.includes(option)
                   ? "border-[#6daed8] bg-[#e8f2fa] text-[#235f8e]"
-                  : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"
+                  : "border-[#bfd7e8] bg-white text-black hover:bg-[#f3f8fb]"
               }`}
             >
               {option}
@@ -2175,7 +2251,7 @@ export function ConsultationDrawer({
         inputMode={question.type === "number" ? "decimal" : "text"}
         onChange={(event) => setAssistantAnswer(question, event.target.value)}
         placeholder={question.type === "duration" ? "e.g. 2 days" : "Answer"}
-        className="mt-3 w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+        className="mt-3 w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-black outline-none transition focus:border-[#6daed8]"
       />
     );
   }
@@ -2190,7 +2266,7 @@ export function ConsultationDrawer({
         className={`min-w-[140px] flex-1 shrink-0 border-r border-[#bfd7e8] px-5 py-3 text-center text-sm font-semibold transition last:border-r-0 ${
           active
             ? "bg-[#376f9f] text-white"
-            : "bg-white text-slate-700 hover:bg-[#f3f8fb] hover:text-slate-950"
+            : "bg-white text-black hover:bg-[#f3f8fb] hover:text-black"
         }`}
       >
         {label}
@@ -2202,7 +2278,7 @@ export function ConsultationDrawer({
     return (
       <section className="rounded-[18px] border border-[#bfd7e8] bg-white/80 p-4">
         <div className="flex items-center justify-between gap-4">
-          <p className="text-sm font-medium text-slate-900">Attachments</p>
+          <p className="text-sm font-medium text-black">Attachments</p>
           <div className="flex shrink-0 items-center gap-3">
             {attachmentAssets.length ? (
               <span className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[#2a6fa8]">
@@ -2210,7 +2286,7 @@ export function ConsultationDrawer({
               </span>
             ) : null}
             <label
-              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] text-slate-900 transition hover:bg-[#dbeaf4]"
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] text-black transition hover:bg-[#dbeaf4]"
               aria-label="Add attachment"
               title="Add attachment"
             >
@@ -2242,19 +2318,19 @@ export function ConsultationDrawer({
                       className="h-12 w-12 rounded-xl border border-[#dbe7ef] object-cover"
                     />
                   ) : (
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#dbe7ef] bg-white text-slate-500">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#dbe7ef] bg-white text-black">
                       <Paperclip className="h-4 w-4" />
                     </div>
                   )}
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-900">{asset.name}</p>
-                    <p className="text-xs text-slate-500">{asset.content_type}</p>
+                    <p className="truncate text-sm font-medium text-black">{asset.name}</p>
+                    <p className="text-xs text-black">{asset.content_type}</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => removeAsset(asset.id)}
-                  className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-white"
+                  className="rounded-xl border border-[#bfd7e8] p-2 text-black transition hover:bg-white"
                   aria-label={`Remove ${asset.name}`}
                 >
                   <X className="h-3 w-3" />
@@ -2330,13 +2406,13 @@ export function ConsultationDrawer({
               ["Blood Sugar", "bloodSugar", "110", "decimal"],
             ].map(([label, key, placeholder, inputMode]) => (
               <label key={key} className="block">
-                <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">{label}</span>
+                <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">{label}</span>
                 <input
                   value={String(form[key as keyof typeof form] || "")}
                   inputMode={inputMode as "numeric" | "decimal"}
                   onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}
                   placeholder={placeholder}
-                  className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                  className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-black outline-none transition focus:border-[#6daed8]"
                 />
               </label>
             ))}
@@ -2351,7 +2427,7 @@ export function ConsultationDrawer({
             value={medicineSearch}
             onChange={(event) => setMedicineSearch(event.target.value)}
             placeholder="Search medicines by name or unit"
-            className="w-full rounded-xl border border-emerald-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
+            className="w-full rounded-xl border border-emerald-100 bg-white px-4 py-3 text-black outline-none transition focus:border-emerald-400"
           />
           {form.prescriptions.length ? (
             <div className="mt-3 grid gap-3 lg:grid-cols-2">
@@ -2359,13 +2435,13 @@ export function ConsultationDrawer({
                 <div key={entry.itemId} className="rounded-[20px] border border-emerald-100 bg-white p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-slate-900">{entry.name}</p>
-                      <p className="mt-1 text-xs text-slate-500">{entry.unit || "unit not set"}</p>
+                      <p className="text-sm font-medium text-black">{entry.name}</p>
+                      <p className="mt-1 text-xs text-black">{entry.unit || "unit not set"}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => removePrescription(entry.itemId)}
-                      className="rounded-xl border border-emerald-200 p-2 text-slate-600 transition hover:bg-emerald-50"
+                      className="rounded-xl border border-emerald-200 p-2 text-black transition hover:bg-emerald-50"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -2376,13 +2452,13 @@ export function ConsultationDrawer({
                       inputMode="decimal"
                       onChange={(event) => updatePrescription(entry.itemId, { quantity: event.target.value })}
                       placeholder="Quantity"
-                      className="w-full rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                      className="w-full rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-black outline-none transition focus:border-emerald-400"
                     />
                     <input
                       value={entry.duration}
                       onChange={(event) => updatePrescription(entry.itemId, { duration: event.target.value })}
                       placeholder="Duration"
-                      className="w-full rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                      className="w-full rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-black outline-none transition focus:border-emerald-400"
                     />
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -2394,7 +2470,7 @@ export function ConsultationDrawer({
                         className={`rounded-xl border px-3 py-1.5 text-xs font-medium capitalize transition ${
                           entry[slot]
                             ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                            : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
+                            : "border-emerald-200 bg-white text-black hover:bg-emerald-50"
                         }`}
                       >
                         {slot}
@@ -2412,7 +2488,7 @@ export function ConsultationDrawer({
                           className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
                             active
                               ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                              : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
+                              : "border-emerald-200 bg-white text-black hover:bg-emerald-50"
                           }`}
                         >
                           {option}
@@ -2425,7 +2501,7 @@ export function ConsultationDrawer({
             </div>
           ) : null}
           {!medicineItems.length && isActiveMedicinesLoading ? (
-            <p className="mt-3 rounded-[18px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">Loading medicines…</p>
+            <p className="mt-3 rounded-[18px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-black">Loading medicines…</p>
           ) : null}
           {!medicineItems.length && activeMedicinesError && !isActiveMedicinesLoading ? (
             <div className="mt-3 rounded-[18px] border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
@@ -2447,12 +2523,12 @@ export function ConsultationDrawer({
                     className={`flex items-center justify-between gap-3 rounded-[18px] border px-4 py-3 text-left transition ${
                       active
                         ? "border-emerald-300 bg-emerald-100 text-emerald-900"
-                        : "border-emerald-100 bg-white text-slate-700 hover:bg-emerald-50"
-                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                        : "border-emerald-100 bg-white text-black hover:bg-emerald-50"
+                    } disabled:cursor-not-allowed disabled:opacity-100`}
                   >
                     <span>
-                      <span className="block text-sm font-medium text-slate-900">{item.name}</span>
-                      <span className="mt-1 block text-xs text-slate-500">
+                      <span className="block text-sm font-medium text-black">{item.name}</span>
+                      <span className="mt-1 block text-xs text-black">
                         {item.default_price.toFixed(2)}{item.unit ? ` · ${item.unit}` : ""}
                       </span>
                     </span>
@@ -2463,7 +2539,7 @@ export function ConsultationDrawer({
                 );
               })
             ) : !isActiveMedicinesLoading && !activeMedicinesError ? (
-              <p className="rounded-[18px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">
+              <p className="rounded-[18px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-black">
                 No medicines match this search.
               </p>
             ) : null}
@@ -2495,7 +2571,7 @@ export function ConsultationDrawer({
       <section className="rounded-[18px] border border-[#bfd7e8] bg-white/90 p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-600">AI Assistant</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-black">AI Assistant</p>
           </div>
           <Sparkles className="h-5 w-5 text-[#2f8fd3]" />
         </div>
@@ -2504,7 +2580,7 @@ export function ConsultationDrawer({
               type="button"
               onClick={() => void handleAskClinicalQuestions()}
               disabled={isLoadingAssistantQuestions}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-100"
             >
               <Sparkles className="h-4 w-4" />
               {isLoadingAssistantQuestions ? "Building questions..." : assistantQuestions ? "New Questions" : "Ask AI Questions"}
@@ -2520,29 +2596,29 @@ export function ConsultationDrawer({
                 {currentQuestion ? (
                   <div className="rounded-[16px] border border-[#dbe7ef] bg-white p-3">
                     <div className="mb-3 flex items-center justify-between gap-3 border-b border-[#edf3f7] pb-3">
-                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-black">
                         Question {safeQuestionIndex + 1} of {questions.length}
                       </span>
-                      <span className="rounded-full border border-[#dbe7ef] bg-[#f3f8fb] px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                      <span className="rounded-full border border-[#dbe7ef] bg-[#f3f8fb] px-2.5 py-1 text-[11px] font-medium text-black">
                         {answeredCount}/{questions.length} answered
                       </span>
                     </div>
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-medium leading-5 text-slate-900">{currentQuestion.label}</p>
+                      <p className="text-sm font-medium leading-5 text-black">{currentQuestion.label}</p>
                       <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                        currentQuestion.priority === "high" ? "bg-rose-50 text-rose-700" : currentQuestion.priority === "medium" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"
+                        currentQuestion.priority === "high" ? "bg-rose-50 text-rose-700" : currentQuestion.priority === "medium" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-black"
                       }`}>
                         {currentQuestion.priority}
                       </span>
                     </div>
-                    {currentQuestion.rationale ? <p className="mt-2 text-xs leading-5 text-slate-500">{currentQuestion.rationale}</p> : null}
+                    {currentQuestion.rationale ? <p className="mt-2 text-xs leading-5 text-black">{currentQuestion.rationale}</p> : null}
                     {renderAssistantQuestionControl(currentQuestion)}
                     <div className="mt-4 flex items-center justify-between gap-3">
                       <button
                         type="button"
                         onClick={() => setAssistantQuestionIndex((current) => Math.max(0, current - 1))}
                         disabled={safeQuestionIndex === 0}
-                        className="inline-flex items-center justify-center rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-50"
+                        className="inline-flex items-center justify-center rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
                       >
                         ← Previous
                       </button>
@@ -2567,7 +2643,7 @@ export function ConsultationDrawer({
                         type="button"
                         onClick={() => setAssistantQuestionIndex((current) => Math.min(questions.length - 1, current + 1))}
                         disabled={safeQuestionIndex >= questions.length - 1}
-                        className="inline-flex items-center justify-center rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-50"
+                        className="inline-flex items-center justify-center rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
                       >
                         Next →
                       </button>
@@ -2578,7 +2654,7 @@ export function ConsultationDrawer({
                   type="button"
                   onClick={() => void handleAnalyzeClinicalAnswers()}
                   disabled={isAnalyzingAssistant}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2.5 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
                 >
                   {isAnalyzingAssistant ? "Analyzing..." : "Analyze Answers"}
                 </button>
@@ -2588,8 +2664,8 @@ export function ConsultationDrawer({
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3 rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/50 p-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">Recommendations</p>
-                    <p className="mt-1 text-xs text-slate-500">{answeredCount}/{questions.length} answers used</p>
+                    <p className="text-sm font-semibold text-black">Recommendations</p>
+                    <p className="mt-1 text-xs text-black">{answeredCount}/{questions.length} answers used</p>
                   </div>
                   <button
                     type="button"
@@ -2603,10 +2679,10 @@ export function ConsultationDrawer({
                   <div key={possibility.label} className="rounded-[16px] border border-[#dbe7ef] bg-[#f3f8fb]/40 p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">{possibility.label}</p>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">{possibility.why}</p>
+                        <p className="text-sm font-semibold text-black">{possibility.label}</p>
+                        <p className="mt-1 text-xs leading-5 text-black">{possibility.why}</p>
                         {possibility.what_to_check ? (
-                          <p className="mt-1 text-xs leading-5 text-slate-500">Check: {possibility.what_to_check}</p>
+                          <p className="mt-1 text-xs leading-5 text-black">Check: {possibility.what_to_check}</p>
                         ) : null}
                       </div>
                       <button
@@ -2634,7 +2710,7 @@ export function ConsultationDrawer({
                 {assistantAnalysis.suggested_tests.length ? (
                   <div className="flex flex-wrap gap-2">
                     {assistantAnalysis.suggested_tests.map((test) => (
-                      <span key={test} className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-slate-700">
+                      <span key={test} className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-black">
                         {test}
                       </span>
                     ))}
@@ -2655,13 +2731,13 @@ export function ConsultationDrawer({
   }
 
   return (
-    <aside className="fixed inset-0 z-30 w-screen overflow-y-auto border-l-2 border-[#9fc7e1] bg-white p-5 shadow-[0_20px_60px_rgba(64,131,181,0.10)] sm:p-6">
+    <aside className="fixed inset-0 z-30 w-screen overflow-y-auto border-l-2 border-[#9fc7e1] bg-white p-5 text-black shadow-[0_20px_60px_rgba(64,131,181,0.10)] [&_input]:placeholder:text-black [&_textarea]:placeholder:text-black sm:p-6">
       <div className="flex min-h-full flex-col">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <p className="text-sm uppercase tracking-[0.24em] text-slate-600">Consultation</p>
-            <h2 className="mt-2 text-3xl font-semibold text-slate-900">{currentPatient.name}</h2>
-            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-700">
+            <p className="text-sm uppercase tracking-[0.24em] text-black">Consultation</p>
+            <h2 className="mt-2 text-3xl font-semibold text-black">{currentPatient.name}</h2>
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-black">
               <span>{currentPatient.phone}</span>
               <span aria-hidden="true">·</span>
               <span>{currentPatient.reason}</span>
@@ -2675,9 +2751,9 @@ export function ConsultationDrawer({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCloseConsultation}
             aria-label="Close consultation"
-            className="rounded-xl border border-[#bfd7e8] p-2 text-slate-700 transition hover:text-slate-900"
+            className="rounded-xl border border-[#bfd7e8] p-2 text-black transition hover:text-black"
           >
             <X className="h-4 w-4" />
           </button>
@@ -2720,7 +2796,7 @@ export function ConsultationDrawer({
                   } ${
                     active
                       ? "bg-[#e2f0fa] font-semibold text-[#174f78]"
-                      : "bg-white text-slate-600 hover:bg-[#f3f8fb] hover:text-slate-900"
+                      : "bg-white text-black hover:bg-[#f3f8fb] hover:text-black"
                   }`}
                 >
                   <span className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-white ${
@@ -2774,13 +2850,13 @@ export function ConsultationDrawer({
               <section className="rounded-[18px] border border-[#bfd7e8] bg-[#f7fbfd] px-4 py-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Examinations completed</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-black">Examinations completed</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {completedExaminations.length ? completedExaminations.map((label) => (
                         <span key={label} className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                           {label}
                         </span>
-                      )) : <span className="text-sm text-slate-500">No examination findings saved yet.</span>}
+                      )) : <span className="text-sm text-black">No examination findings saved yet.</span>}
                     </div>
                   </div>
                   <button
@@ -2794,32 +2870,32 @@ export function ConsultationDrawer({
               </section>
             ) : null}
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Symptoms</span>
+              <span className="mb-2 block text-sm font-medium text-black">Symptoms</span>
               <textarea
                 rows={3}
                 value={form.symptoms}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, symptoms: event.target.value }))
                 }
-                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-black outline-none transition focus:border-[#6daed8]"
                 placeholder="Chief complaints, duration, key context"
               />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Diagnosis</span>
+              <span className="mb-2 block text-sm font-medium text-black">Diagnosis</span>
               <input
                 value={form.diagnosis}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, diagnosis: event.target.value }))
                 }
-                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-black outline-none transition focus:border-[#6daed8]"
                 placeholder="Provisional or confirmed diagnosis"
               />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">
+              <span className="mb-2 block text-sm font-medium text-black">
                 {isOptometryClinic ? "Medications prescribed" : "Medications"}
               </span>
               <textarea
@@ -2828,31 +2904,31 @@ export function ConsultationDrawer({
                 onChange={(event) =>
                   setForm((current) => ({ ...current, medications: event.target.value }))
                 }
-                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-black outline-none transition focus:border-[#6daed8]"
                 placeholder="Prescriptions, dosage, duration"
               />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Treatment</span>
+              <span className="mb-2 block text-sm font-medium text-black">Treatment</span>
               <textarea
                 rows={3}
                 value={form.treatment}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, treatment: event.target.value }))
                 }
-                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-black outline-none transition focus:border-[#6daed8]"
                 placeholder="Advice, procedures, therapy plan, lifestyle instructions"
               />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Clinical Notes</span>
+              <span className="mb-2 block text-sm font-medium text-black">Clinical Notes</span>
               <textarea
                 rows={3}
                 value={form.notes}
                 onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/50 px-4 py-3 text-black outline-none transition focus:border-[#6daed8]"
                 placeholder="Exam findings, vitals, advice, follow-up"
               />
             </label>
@@ -2883,18 +2959,18 @@ export function ConsultationDrawer({
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <FileText className="h-4 w-4 text-[#2f8fd3]" />
-                  <span className="text-sm font-medium text-slate-900">Generated Note</span>
+                  <span className="text-sm font-medium text-black">Generated Note</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {lifecycleLabel ? (
-                    <span className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-600">
+                    <span className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-black">
                       {lifecycleLabel}
                     </span>
                   ) : null}
                   <button
                     type="submit"
                     disabled={isGenerating}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-100"
                   >
                     <Sparkles className="h-4 w-4" />
                     {isGenerating ? "Generating..." : noteStatus === "draft" ? "Refresh Draft" : "Generate Note"}
@@ -2904,7 +2980,7 @@ export function ConsultationDrawer({
                       type="button"
                       onClick={() => void handleSaveDraft()}
                       disabled={isSavingDraft || !isDraftDirty || !form.generatedNote.trim()}
-                      className="inline-flex items-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-50"
+                      className="inline-flex items-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
                     >
                       <PenLine className="h-4 w-4" />
                       {isSavingDraft ? "Saving..." : isDraftDirty ? "Save Draft" : "Saved"}
@@ -2923,14 +2999,14 @@ export function ConsultationDrawer({
                   setForm((current) => ({ ...current, generatedNote: event.target.value }));
                   setIsDraftDirty(true);
                 }}
-                className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-sm leading-6 text-black outline-none transition focus:border-[#6daed8]"
                 placeholder="Saved SOAP note will appear here"
               />
               {hasGeneratedNote && (clinicalExtractions.services_performed.length || clinicalExtractions.medications_prescribed.length) ? (
                 <div className="mt-4 space-y-4 rounded-xl border border-[#dbe7ef] bg-white p-4">
                   {clinicalExtractions.services_performed.length ? (
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Performed services</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black">Performed services</p>
                       <div className="mt-2 space-y-2">
                         {clinicalExtractions.services_performed.map((service, index) => (
                           <div key={`${service.name}-${index}`} className="grid gap-2 sm:grid-cols-[1fr_110px_auto]">
@@ -2961,7 +3037,7 @@ export function ConsultationDrawer({
                   ) : null}
                   {clinicalExtractions.medications_prescribed.length ? (
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Prescribed medicines</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black">Prescribed medicines</p>
                       <div className="mt-2 space-y-3">
                         {clinicalExtractions.medications_prescribed.map((medicine, index) => (
                           <div key={`${medicine.name}-${index}`} className="rounded-lg border border-[#dbe7ef] p-3">
@@ -2977,7 +3053,7 @@ export function ConsultationDrawer({
                                 ["instructions", "Instructions"],
                               ] as const).map(([field, label]) => (
                                 <label key={field} className="block">
-                                  <span className="mb-1 block text-xs text-slate-500">{label}</span>
+                                  <span className="mb-1 block text-xs text-black">{label}</span>
                                   <input
                                     value={medicine[field] ?? ""}
                                     readOnly={noteStatus !== "draft"}
@@ -2997,7 +3073,7 @@ export function ConsultationDrawer({
                   ) : null}
                 </div>
               ) : null}
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="mt-2 text-xs text-black">
                 {noteStatus === "draft" ? "Edit the note prose here and use the structured fields in this card to change services or the medicine table, then save or finalize." : "Finalized notes are read-only."}
                 {noteStatus === "sent" ? " This note has been sent and is locked." : ""}
               </p>
@@ -3007,7 +3083,7 @@ export function ConsultationDrawer({
             {renderAssistantPanel()}
             <section className="hidden overflow-hidden rounded-[18px] border border-[#bfd7e8] bg-white/90">
               <div className="border-b border-[#dbe7ef] px-4 py-4">
-                <p className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-600">Modules</p>
+                <p className="text-sm font-semibold uppercase tracking-[0.28em] text-black">Modules</p>
               </div>
               <ConsultationModuleRailItem
                 title="Vitals"
@@ -3018,53 +3094,53 @@ export function ConsultationDrawer({
                 <ConsultationModuleDetail title="Vitals">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block">
-                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">BP Systolic</span>
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">BP Systolic</span>
                       <input
                         value={form.bloodPressureSystolic}
                         inputMode="numeric"
                         onChange={(event) => setForm((current) => ({ ...current, bloodPressureSystolic: event.target.value }))}
                         placeholder="120"
-                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-black outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                     <label className="block">
-                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">BP Diastolic</span>
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">BP Diastolic</span>
                       <input
                         value={form.bloodPressureDiastolic}
                         inputMode="numeric"
                         onChange={(event) => setForm((current) => ({ ...current, bloodPressureDiastolic: event.target.value }))}
                         placeholder="80"
-                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-black outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                     <label className="block">
-                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Pulse</span>
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">Pulse</span>
                       <input
                         value={form.pulse}
                         inputMode="numeric"
                         onChange={(event) => setForm((current) => ({ ...current, pulse: event.target.value }))}
                         placeholder="72"
-                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-black outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                     <label className="block">
-                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">SpO2</span>
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">SpO2</span>
                       <input
                         value={form.spo2}
                         inputMode="numeric"
                         onChange={(event) => setForm((current) => ({ ...current, spo2: event.target.value }))}
                         placeholder="98"
-                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-black outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                     <label className="block sm:col-span-2">
-                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Blood Sugar</span>
+                      <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">Blood Sugar</span>
                       <input
                         value={form.bloodSugar}
                         inputMode="decimal"
                         onChange={(event) => setForm((current) => ({ ...current, bloodSugar: event.target.value }))}
                         placeholder="110"
-                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-black outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                   </div>
@@ -3081,7 +3157,7 @@ export function ConsultationDrawer({
                     value={medicineSearch}
                     onChange={(event) => setMedicineSearch(event.target.value)}
                     placeholder="Search medicines by name or unit"
-                    className="w-full rounded-xl border border-emerald-100 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
+                    className="w-full rounded-xl border border-emerald-100 bg-white px-4 py-3 text-black outline-none transition focus:border-emerald-400"
                   />
                   {form.prescriptions.length ? (
                     <div className="mt-3 space-y-3">
@@ -3089,40 +3165,40 @@ export function ConsultationDrawer({
                         <div key={entry.itemId} className="rounded-[22px] border border-emerald-100 bg-white p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="text-sm font-medium text-slate-900">{entry.name}</p>
-                              <p className="mt-1 text-xs text-slate-500">{entry.unit || "unit not set"}</p>
+                              <p className="text-sm font-medium text-black">{entry.name}</p>
+                              <p className="mt-1 text-xs text-black">{entry.unit || "unit not set"}</p>
                             </div>
                             <button
                               type="button"
                               onClick={() => removePrescription(entry.itemId)}
-                              className="rounded-xl border border-emerald-200 p-2 text-slate-600 transition hover:bg-emerald-50"
+                              className="rounded-xl border border-emerald-200 p-2 text-black transition hover:bg-emerald-50"
                             >
                               <X className="h-3 w-3" />
                             </button>
                           </div>
                           <div className="mt-3 grid gap-3 sm:grid-cols-2">
                             <label className="block">
-                              <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Quantity</span>
+                              <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">Quantity</span>
                               <input
                                 value={entry.quantity}
                                 inputMode="decimal"
                                 onChange={(event) => updatePrescription(entry.itemId, { quantity: event.target.value })}
                                 placeholder="10"
-                                className="w-full rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                                className="w-full rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-black outline-none transition focus:border-emerald-400"
                               />
                             </label>
                             <label className="block">
-                              <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Duration</span>
+                              <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">Duration</span>
                               <input
                                 value={entry.duration}
                                 onChange={(event) => updatePrescription(entry.itemId, { duration: event.target.value })}
                                 placeholder="5 days"
-                                className="w-full rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                                className="w-full rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm text-black outline-none transition focus:border-emerald-400"
                               />
                             </label>
                           </div>
                           <div className="mt-3">
-                            <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Notes</p>
+                            <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-black">Notes</p>
                             <div className="flex flex-wrap gap-2">
                               {PRESCRIPTION_NOTE_OPTIONS.map((option) => {
                                 const active = normalizePrescriptionNotes(entry.notes).includes(option);
@@ -3138,7 +3214,7 @@ export function ConsultationDrawer({
                                     className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
                                       active
                                         ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                                        : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
+                                        : "border-emerald-200 bg-white text-black hover:bg-emerald-50"
                                     }`}
                                   >
                                     {option}
@@ -3148,7 +3224,7 @@ export function ConsultationDrawer({
                             </div>
                           </div>
                           <div className="mt-3">
-                            <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Schedule</p>
+                            <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-black">Schedule</p>
                             <div className="flex flex-wrap gap-2">
                               {[
                                 { key: "morning" as const, label: "Morning" },
@@ -3162,7 +3238,7 @@ export function ConsultationDrawer({
                                   className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
                                     entry[slot.key]
                                       ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                                      : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
+                                      : "border-emerald-200 bg-white text-black hover:bg-emerald-50"
                                   }`}
                                 >
                                   {slot.label}
@@ -3175,7 +3251,7 @@ export function ConsultationDrawer({
                     </div>
                   ) : null}
                   {!medicineItems.length && isActiveMedicinesLoading ? (
-                    <p className="mt-3 rounded-[22px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">Loading medicines…</p>
+                    <p className="mt-3 rounded-[22px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-black">Loading medicines…</p>
                   ) : null}
                   {!medicineItems.length && activeMedicinesError && !isActiveMedicinesLoading ? (
                     <div className="mt-3 rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
@@ -3197,12 +3273,12 @@ export function ConsultationDrawer({
                             className={`flex w-full items-center justify-between gap-3 rounded-[22px] border px-4 py-3 text-left transition ${
                               active
                                 ? "border-emerald-300 bg-emerald-100 text-emerald-900"
-                                : "border-emerald-100 bg-white text-slate-700 hover:bg-emerald-50"
-                            } disabled:cursor-not-allowed disabled:opacity-50`}
+                                : "border-emerald-100 bg-white text-black hover:bg-emerald-50"
+                            } disabled:cursor-not-allowed disabled:opacity-100`}
                           >
                             <div>
-                              <p className="text-sm font-medium text-slate-900">{item.name}</p>
-                              <p className="mt-1 text-xs text-slate-500">
+                              <p className="text-sm font-medium text-black">{item.name}</p>
+                              <p className="mt-1 text-xs text-black">
                                 {item.default_price.toFixed(2)}{item.unit ? ` · ${item.unit}` : ""}
                                 {item.track_inventory ? ` · Stock ${item.stock_quantity}` : ""}
                               </p>
@@ -3214,7 +3290,7 @@ export function ConsultationDrawer({
                         );
                       })
                     ) : !isActiveMedicinesLoading && !activeMedicinesError ? (
-                      <p className="rounded-[22px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">
+                      <p className="rounded-[22px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-black">
                         No medicines match this search.
                       </p>
                     ) : null}
@@ -3249,11 +3325,11 @@ export function ConsultationDrawer({
 
             <div className="border-t border-[#bfd7e8] pt-4">
               <div className="flex flex-col gap-4">
-                <p className="text-sm text-slate-700">{statusMessage || "Ready to generate and send."}</p>
+                <p className="text-sm text-black">{statusMessage || "Ready to generate and send."}</p>
                 <div className="flex flex-col gap-3">
                   <div className="rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/40 p-4">
                     <label className="block">
-                      <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+                      <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">
                         Recipient email
                       </span>
                       <input
@@ -3261,11 +3337,11 @@ export function ConsultationDrawer({
                         value={recipientEmail}
                         onChange={(event) => setRecipientEmail(event.target.value)}
                         placeholder="patient@example.com"
-                        className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-black outline-none transition focus:border-[#6daed8]"
                       />
                     </label>
                     <label className="mt-3 block">
-                      <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+                      <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">
                         WhatsApp number
                       </span>
                       <input
@@ -3273,10 +3349,10 @@ export function ConsultationDrawer({
                         value={recipientPhone}
                         onChange={(event) => setRecipientPhone(event.target.value)}
                         placeholder="+91 98765 43210"
-                        className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                        className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-black outline-none transition focus:border-[#6daed8]"
                       />
                       {whatsappDeliveryStatus ? (
-                        <span className="mt-2 block text-xs font-medium text-slate-600">
+                        <span className="mt-2 block text-xs font-medium text-black">
                           WhatsApp: {whatsappDeliveryStatus === "accepted" ? "Accepted" : whatsappDeliveryStatus.charAt(0).toUpperCase() + whatsappDeliveryStatus.slice(1)}
                         </span>
                       ) : null}
@@ -3287,7 +3363,7 @@ export function ConsultationDrawer({
                       type="button"
                       disabled={isFinalizing || !currentNoteId || !form.generatedNote.trim() || noteStatus !== "draft"}
                       onClick={handleFinalize}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
                     >
                       <PenLine className="h-4 w-4" />
                       {isFinalizing ? "Finalizing..." : noteStatus === "draft" ? "Finalize Note" : "Note Finalized"}
@@ -3296,7 +3372,7 @@ export function ConsultationDrawer({
                       type="button"
                       disabled={isSending || isSendingWhatsApp || !currentNoteId || !recipientEmail.trim()}
                       onClick={handleSend}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
                     >
                       <Mail className="h-4 w-4" />
                       {isSending ? "Sending..." : isEmailSent ? "Send Email Again" : "Send Email"}
@@ -3305,7 +3381,7 @@ export function ConsultationDrawer({
                       type="button"
                       disabled={isSending || isSendingWhatsApp || !currentNoteId || !recipientPhone.trim()}
                       onClick={handleSendWhatsApp}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1f9d68] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#18885a] disabled:opacity-60"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1f9d68] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#18885a] disabled:opacity-100"
                     >
                       <MessageCircle className="h-4 w-4" />
                       {isSendingWhatsApp ? "Sending..." : isWhatsAppSent ? "Send WhatsApp Again" : "Send WhatsApp"}
@@ -3316,7 +3392,7 @@ export function ConsultationDrawer({
                           type="button"
                           disabled={isGeneratingPdf || !currentNoteId}
                           onClick={() => handlePdf("preview")}
-                          className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                          className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
                         >
                           <Eye className="h-4 w-4" />
                           {isGeneratingPdf ? "Preparing..." : "Preview"}
@@ -3325,7 +3401,7 @@ export function ConsultationDrawer({
                           type="button"
                           disabled={isGeneratingPdf || !currentNoteId}
                           onClick={() => handlePdf("print")}
-                          className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                          className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
                         >
                           <Printer className="h-4 w-4" />
                           Print
@@ -3335,10 +3411,10 @@ export function ConsultationDrawer({
                         <button
                           type="button"
                           onClick={() => setIsFollowUpOpen((current) => !current)}
-                          className={`inline-flex w-full min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl border px-5 py-2.5 text-sm font-medium transition disabled:opacity-60 ${
+                          className={`inline-flex w-full min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl border px-5 py-2.5 text-sm font-medium transition disabled:opacity-100 ${
                             isFollowUpOpen
-                              ? "border-[#2b60c6] bg-white text-slate-900 shadow-sm shadow-blue-900/10"
-                              : "border-[#9fc7e1] bg-white text-slate-800 hover:bg-[#f3f8fb]"
+                              ? "border-[#2b60c6] bg-white text-black shadow-sm shadow-blue-900/10"
+                              : "border-[#9fc7e1] bg-white text-black hover:bg-[#f3f8fb]"
                           }`}
                         >
                           <CalendarPlus2 className="h-4 w-4" />
@@ -3348,25 +3424,25 @@ export function ConsultationDrawer({
                           <div className="mt-3 rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/40 p-4">
                             <div className="grid gap-3">
                               <label className="block">
-                                <span className="mb-2 block text-sm font-medium text-slate-700">Date</span>
+                                <span className="mb-2 block text-sm font-medium text-black">Date</span>
                                 <input
                                   type="date"
                                   value={form.followUpDate}
                                   onChange={(event) =>
                                     setForm((current) => ({ ...current, followUpDate: event.target.value }))
                                   }
-                                  className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                                  className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-black outline-none transition focus:border-[#6daed8]"
                                 />
                               </label>
                               <label className="block">
-                                <span className="mb-2 block text-sm font-medium text-slate-700">Notes</span>
+                                <span className="mb-2 block text-sm font-medium text-black">Notes</span>
                                 <input
                                   value={form.followUpNotes}
                                   onChange={(event) =>
                                     setForm((current) => ({ ...current, followUpNotes: event.target.value }))
                                   }
                                   placeholder="Review symptoms, BP check, lab result review"
-                                  className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                                  className="w-full rounded-xl border border-[#dbe7ef] bg-white px-4 py-3 text-black outline-none transition focus:border-[#6daed8]"
                                 />
                               </label>
                             </div>
@@ -3377,7 +3453,7 @@ export function ConsultationDrawer({
                         type="button"
                         disabled={isCompleting || noteStatus === "draft" || !currentNoteId}
                         onClick={handleDone}
-                        className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+                        className="inline-flex min-w-[160px] items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-100"
                       >
                         {isCompleting ? "Moving..." : "Done"}
                       </button>
@@ -3398,31 +3474,31 @@ export function ConsultationDrawer({
       >
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
-            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Measured At</span>
-            <input type="datetime-local" value={form.growthMeasurement.measured_at} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, measured_at: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">Measured At</span>
+            <input type="datetime-local" value={form.growthMeasurement.measured_at} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, measured_at: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-amber-400" />
           </label>
           <label className="block">
-            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Height (cm)</span>
-            <input value={form.growthMeasurement.height_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, height_cm: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">Height (cm)</span>
+            <input value={form.growthMeasurement.height_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, height_cm: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-amber-400" />
           </label>
           <label className="block">
-            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Weight (kg)</span>
-            <input value={form.growthMeasurement.weight_kg} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, weight_kg: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">Weight (kg)</span>
+            <input value={form.growthMeasurement.weight_kg} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, weight_kg: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-amber-400" />
           </label>
           <label className="block">
-            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Head Circumference (cm)</span>
-            <input value={form.growthMeasurement.head_circumference_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, head_circumference_cm: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+            <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">Head Circumference (cm)</span>
+            <input value={form.growthMeasurement.head_circumference_cm} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, head_circumference_cm: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-amber-400" />
           </label>
         </div>
         <label className="mt-3 block">
-          <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Visit Notes</span>
-          <textarea rows={3} value={form.growthMeasurement.visit_notes} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, visit_notes: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">Visit Notes</span>
+          <textarea rows={3} value={form.growthMeasurement.visit_notes} onChange={(event) => setForm((current) => ({ ...current, growthMeasurement: { ...current.growthMeasurement, visit_notes: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-amber-400" />
         </label>
         <div className="mt-4 flex items-center justify-between gap-3">
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-black">
             {form.growthMeasurement.savedRecord ? `Latest BMI ${form.growthMeasurement.savedRecord.bmi.toFixed(2)}` : "Save to add the growth record to the patient timeline."}
           </p>
-          <button type="button" onClick={() => void saveGrowthMeasurement()} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
+          <button type="button" onClick={() => void saveGrowthMeasurement()} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-amber-50">
             Save Growth
           </button>
         </div>
@@ -3435,7 +3511,7 @@ export function ConsultationDrawer({
         onClose={() => setActivePediatricModule(null)}
       >
         <div className="grid gap-3">
-          <select value={form.wellChildVisit.visit_band} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, visit_band: event.target.value } }))} className="rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
+          <select value={form.wellChildVisit.visit_band} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, visit_band: event.target.value } }))} className="rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-black outline-none transition focus:border-amber-400">
             <option value="infant">Infant</option>
             <option value="toddler">Toddler</option>
             <option value="preschool">Preschool</option>
@@ -3451,8 +3527,8 @@ export function ConsultationDrawer({
             ["assessment_summary", "Review Summary"],
           ].map(([field, label]) => (
             <label key={field} className="block">
-              <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">{label}</span>
-              <textarea rows={2} value={form.wellChildVisit[field as keyof WellChildVisitPayload] as string} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, [field]: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+              <span className="mb-2 block text-[11px] font-medium uppercase tracking-[0.16em] text-black">{label}</span>
+              <textarea rows={2} value={form.wellChildVisit[field as keyof WellChildVisitPayload] as string} onChange={(event) => setForm((current) => ({ ...current, wellChildVisit: { ...current.wellChildVisit, [field]: event.target.value } }))} className="w-full rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-black outline-none transition focus:border-amber-400" />
             </label>
           ))}
         </div>
@@ -3465,30 +3541,30 @@ export function ConsultationDrawer({
         onClose={() => setActivePediatricModule(null)}
       >
         <div className="grid gap-3">
-          <select value={form.parentHandoutRequest.template_key} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, template_key: event.target.value, generated_title: "", generated_content: "" } }))} className="rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
+          <select value={form.parentHandoutRequest.template_key} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, template_key: event.target.value, generated_title: "", generated_content: "" } }))} className="rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-black outline-none transition focus:border-amber-400">
             <option value="fever_home_care">Fever home care</option>
             <option value="nutrition_guidance">Nutrition guidance</option>
             <option value="well_visit_summary">Well-visit summary</option>
             <option value="hydration_uri_home_care">Hydration / URI home care</option>
           </select>
-          <textarea rows={3} value={form.parentHandoutRequest.instructions} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, instructions: event.target.value, generated_title: "", generated_content: "" } }))} placeholder="Optional context for the handout" className="w-full rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          <textarea rows={3} value={form.parentHandoutRequest.instructions} onChange={(event) => setForm((current) => ({ ...current, parentHandoutRequest: { ...current.parentHandoutRequest, instructions: event.target.value, generated_title: "", generated_content: "" } }))} placeholder="Optional context for the handout" className="w-full rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-black outline-none transition focus:border-amber-400" />
           <div className="flex flex-wrap gap-3">
-            <button type="button" onClick={() => void handleGenerateParentHandout()} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
+            <button type="button" onClick={() => void handleGenerateParentHandout()} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-amber-50">
               {isGeneratingHandout ? "Generating..." : "Generate Handout"}
             </button>
-            <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("preview")} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50 disabled:opacity-60">
+            <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("preview")} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-amber-50 disabled:opacity-100">
               {isGeneratingHandoutPdf ? "Preparing..." : "Preview PDF"}
             </button>
-            <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("download")} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50 disabled:opacity-60">
+            <button type="button" disabled={!form.parentHandoutRequest.generated_content.trim() || isGeneratingHandoutPdf} onClick={() => void handleParentHandoutPdf("download")} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-amber-50 disabled:opacity-100">
               Download PDF
             </button>
           </div>
           {form.parentHandoutRequest.generated_content.trim() ? (
             <div className="rounded-[22px] border border-amber-100 bg-amber-50/30 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black">
                 {form.parentHandoutRequest.generated_title || "Generated handout"}
               </p>
-              <pre className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{form.parentHandoutRequest.generated_content}</pre>
+              <pre className="mt-3 whitespace-pre-wrap text-sm leading-6 text-black">{form.parentHandoutRequest.generated_content}</pre>
             </div>
           ) : null}
         </div>
@@ -3501,19 +3577,19 @@ export function ConsultationDrawer({
         onClose={() => setActivePediatricModule(null)}
       >
         <div className="grid gap-3">
-          <select value={form.pediatricFollowUpPlan.preset_key} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, preset_key: event.target.value } }))} className="rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400">
+          <select value={form.pediatricFollowUpPlan.preset_key} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, preset_key: event.target.value } }))} className="rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-black outline-none transition focus:border-amber-400">
             <option value="routine_review">Routine review</option>
             <option value="growth_recheck">Growth recheck</option>
             <option value="symptom_follow_up">Symptom follow-up</option>
             <option value="counseling_review">Counseling review</option>
           </select>
-          <input value={form.pediatricFollowUpPlan.suggested_interval} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, suggested_interval: event.target.value } }))} placeholder="Suggested interval, e.g. 3 months" className="w-full rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
-          <input value={form.pediatricFollowUpPlan.notes} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, notes: event.target.value } }))} placeholder="Scheduling notes" className="w-full rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-400" />
+          <input value={form.pediatricFollowUpPlan.suggested_interval} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, suggested_interval: event.target.value } }))} placeholder="Suggested interval, e.g. 3 months" className="w-full rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-black outline-none transition focus:border-amber-400" />
+          <input value={form.pediatricFollowUpPlan.notes} onChange={(event) => setForm((current) => ({ ...current, pediatricFollowUpPlan: { ...current.pediatricFollowUpPlan, notes: event.target.value } }))} placeholder="Scheduling notes" className="w-full rounded-xl border border-amber-100 bg-amber-50/30 px-4 py-3 text-sm text-black outline-none transition focus:border-amber-400" />
           <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-black">
               Apply this preset to the real follow-up section below. Marking the consultation done will create the follow-up record.
             </p>
-            <button type="button" onClick={applyPediatricFollowUpPreset} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-amber-50">
+            <button type="button" onClick={applyPediatricFollowUpPreset} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-amber-50">
               Apply to Follow-up
             </button>
           </div>

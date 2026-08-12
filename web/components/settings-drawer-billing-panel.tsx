@@ -152,14 +152,14 @@ export function SettingsDrawerBillingPanel({
   return (
     <div className={`grid gap-4 ${showPatientSelector ? "xl:grid-cols-[300px_1fr]" : "h-full"}`}>
       {showPatientSelector ? (
-        <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
-          <div className="mb-4 flex items-center gap-2">
+        <div className="rounded-[18px] border border-[#bfd7e8] bg-white py-5">
+          <div className="mb-4 flex items-center gap-2 px-5">
             <ReceiptIndianRupee className="h-4 w-4 text-[#2a6fa8]" />
             <div>
-              <h3 className="text-base font-semibold text-slate-900">Patients</h3>
+              <h3 className="text-base font-semibold text-black">Patients</h3>
             </div>
           </div>
-          <div className="space-y-3">
+          <div className="overflow-hidden border-y border-[#dbe7ef] bg-white">
             {patients.length ? patients.map((patient) => {
               const active = patient.id === selectedBillingPatientId;
               return (
@@ -167,15 +167,15 @@ export function SettingsDrawerBillingPanel({
                   key={patient.id}
                   type="button"
                   onClick={() => onSelectPatient(patient.id)}
-                  className={`w-full rounded-[16px] border px-4 py-3 text-left transition ${
-                    active ? "border-[#9fc7e1] bg-[#f3f8fb]" : "border-[#dbe7ef] bg-white hover:bg-[#f3f8fb]/50"
+                  className={`w-full border-b border-[#dbe7ef] px-4 py-3 text-left transition last:border-b-0 ${
+                    active ? "border-l-4 border-l-[#2f8fd3] bg-[#f3f8fb]" : "border-l-4 border-l-transparent bg-white hover:bg-[#f3f8fb]/50"
                   }`}
                 >
-                  <p className="text-sm font-semibold text-slate-900">{patient.name}</p>
-                  <p className="mt-1 text-xs text-slate-600">{patient.reason}</p>
+                  <p className="text-sm font-semibold text-black">{patient.name}</p>
+                  <p className="mt-1 text-xs leading-5 text-black">{patient.reason}</p>
                 </button>
               );
-            }) : <p className="text-sm text-slate-600">No done patients yet.</p>}
+            }) : <p className="px-4 py-3 text-sm text-black">No done patients yet.</p>}
             {patientListFooter}
           </div>
         </div>
@@ -183,25 +183,20 @@ export function SettingsDrawerBillingPanel({
 
       <div className={showPatientSelector ? "space-y-4" : "min-h-0"}>
         <div className={`bg-white ${showPatientSelector ? "rounded-[18px] border border-[#bfd7e8] p-5" : "flex h-full min-h-0 flex-col p-1"}`}>
-          <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              {selectedBillingPatient ? (
-                <h3 className="text-base font-semibold text-slate-900">{selectedBillingPatient.name} Invoice</h3>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
+          {onClose ? (
+            <div className="mb-3 flex justify-end">
               {onClose ? (
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#dbe7ef] bg-white text-slate-500 shadow-sm transition hover:text-slate-800"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#dbe7ef] bg-white text-black shadow-sm transition hover:bg-[#f3f8fb]"
                   aria-label="Close billing"
                 >
                   <X className="h-4 w-4" />
                 </button>
               ) : null}
             </div>
-          </div>
+          ) : null}
 
           <div className="flex min-h-[480px] flex-1 flex-col overflow-hidden rounded-[14px] border border-[#dbe7ef] bg-white">
             {setupWarnings.length ? (
@@ -211,7 +206,7 @@ export function SettingsDrawerBillingPanel({
                 ))}
               </div>
             ) : null}
-            <div className="grid grid-cols-[minmax(0,1fr)_88px_120px_36px] border-b border-[#dbe7ef] bg-[#f3f8fb]/70 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            <div className="grid grid-cols-[minmax(0,1fr)_88px_120px_36px] border-b border-[#dbe7ef] bg-[#f3f8fb]/70 px-3 py-2 text-sm font-semibold text-black">
               <span>Item</span>
               <span>Qty</span>
               <span>Amount</span>
@@ -221,7 +216,7 @@ export function SettingsDrawerBillingPanel({
               {invoiceItems.length ? invoiceItems.map((item) => (
                 <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_88px_120px_36px] items-center gap-3 border-b border-[#edf3f7] px-3 py-2">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-900">{item.label}</p>
+                    <p className="truncate text-sm font-medium text-black">{item.label}</p>
                     {item.catalog_item_id && catalogById.get(item.catalog_item_id)?.hsn_sac_code ? (
                       <p className="truncate text-[11px] text-[#2a6fa8]">
                         {item.item_type === "service" ? "SAC" : "HSN"} {catalogById.get(item.catalog_item_id)?.hsn_sac_code}
@@ -235,26 +230,26 @@ export function SettingsDrawerBillingPanel({
                     inputMode="decimal"
                     aria-label={`${item.label} quantity`}
                     onChange={(event) => onUpdateInvoiceItem(item.id, { quantity: item.item_type === "program" ? 1 : Number(event.target.value) || 0 })}
-                    className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-slate-800 outline-none transition hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
+                    className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-black outline-none transition hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
                   />
                   <input
                     value={lineAmount(item)}
                     inputMode="decimal"
                     aria-label={`${item.label} amount`}
                     onChange={(event) => updateLineAmount(item, event.target.value)}
-                    className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-slate-800 outline-none transition hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
+                    className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-black outline-none transition hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
                   />
                   <button
                     type="button"
                     onClick={() => onRemoveInvoiceItem(item.id)}
-                    className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-slate-500 transition hover:border-[#dbe7ef] hover:bg-[#f3f8fb] hover:text-slate-800"
+                    className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-black transition hover:border-[#dbe7ef] hover:bg-[#f3f8fb]"
                     aria-label={`Remove ${item.label}`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               )) : (
-                <p className="border-b border-[#edf3f7] px-3 py-4 text-sm text-slate-600">Add services or medicines from the inventory to start billing.</p>
+                <p className="border-b border-[#edf3f7] px-3 py-4 text-sm text-black">Add services or medicines from the inventory to start billing.</p>
               )}
             </div>
             <div className="min-h-[220px] flex-1 border-b border-[#edf3f7]" aria-hidden="true" />
@@ -262,15 +257,15 @@ export function SettingsDrawerBillingPanel({
               <input
                 value={customItemLabel}
                 onChange={(event) => onCustomItemLabelChange(event.target.value)}
-                placeholder="Manual item"
-                className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
+                placeholder="Enter item"
+                className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-black outline-none transition placeholder:text-black hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
               />
               <input
                 value={customItemQuantity}
                 inputMode="decimal"
                 aria-label="Manual item quantity"
                 onChange={(event) => onCustomItemQuantityChange(event.target.value)}
-                className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-slate-800 outline-none transition hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
+                className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-black outline-none transition hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
               />
               <input
                 value={customItemUnitPrice}
@@ -278,7 +273,7 @@ export function SettingsDrawerBillingPanel({
                 aria-label="Manual item amount"
                 onChange={(event) => onCustomItemUnitPriceChange(event.target.value)}
                 placeholder="Amount"
-                className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
+                className="h-8 rounded-md border border-transparent bg-transparent px-2 text-sm text-black outline-none transition placeholder:text-black hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
               />
               <button
                 type="button"
@@ -296,7 +291,7 @@ export function SettingsDrawerBillingPanel({
                 <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#2f8fd3]/10 text-[#2f8fd3]">
                   <Sparkles className="h-3.5 w-3.5" />
                 </span>
-                <p className="text-sm font-semibold text-[#1d4d72]">Recommendation</p>
+                <p className="text-sm font-semibold text-black">Recommendation</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {recommendationItems.map((item) => (
@@ -304,9 +299,9 @@ export function SettingsDrawerBillingPanel({
                     key={item.id}
                     type="button"
                     onClick={() => onAddCatalogItem(item)}
-                    className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 shadow-sm shadow-[#2f8fd3]/5 transition hover:bg-[#f8fcff]"
+                    className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2 text-left text-sm font-medium text-black shadow-sm shadow-[#2f8fd3]/5 transition hover:bg-[#f8fcff]"
                   >
-                    Add {item.name}
+                    + {item.name}
                   </button>
                 ))}
               </div>
@@ -315,7 +310,7 @@ export function SettingsDrawerBillingPanel({
 
           <div className="mt-4 grid gap-6 px-3 lg:grid-cols-[minmax(0,360px)_minmax(260px,360px)_minmax(280px,380px)] lg:justify-between">
             <div className="w-full border-t border-[#dbe7ef] pt-3">
-              <div className="flex items-center justify-between gap-4 text-sm text-slate-700">
+              <div className="flex items-center justify-between gap-4 text-sm text-black">
                 <span>Email</span>
                 {onRecipientEmailChange ? (
                   <input
@@ -323,24 +318,24 @@ export function SettingsDrawerBillingPanel({
                     onChange={(event) => onRecipientEmailChange(event.target.value)}
                     placeholder="-"
                     aria-label="Recipient email"
-                    className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-right text-sm text-slate-700 outline-none transition placeholder:text-slate-500 hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
+                    className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-right text-sm text-black outline-none transition placeholder:text-black hover:border-[#dbe7ef] hover:bg-[#f8fbfd] focus:border-[#9fc7e1] focus:bg-white"
                   />
                 ) : (
-                  <span className={`truncate text-right ${displayedRecipientEmail ? "text-slate-700" : "text-slate-500"}`}>
+                  <span className="truncate text-right text-black">
                     {displayedRecipientEmail || "-"}
                   </span>
                 )}
               </div>
-              <div className="mt-2 flex items-center justify-between gap-4 text-sm text-slate-700">
+              <div className="mt-2 flex items-center justify-between gap-4 text-sm text-black">
                 <span>Number</span>
-                <span className={`truncate text-right ${selectedBillingPatient?.phone ? "text-slate-700" : "text-slate-500"}`}>
+                <span className="truncate text-right text-black">
                   {selectedBillingPatient?.phone || "-"}
                 </span>
               </div>
             </div>
 
             <div className="w-full border-t border-[#dbe7ef] pt-3">
-              <div className="flex items-center justify-between gap-4 text-sm text-slate-700">
+              <div className="flex items-center justify-between gap-4 text-sm text-black">
                 <span>Payment</span>
                 <div className="flex items-center justify-end gap-2">
                   {(["paid", "partial", "unpaid"] as PaymentStatus[]).map((status) => (
@@ -351,7 +346,7 @@ export function SettingsDrawerBillingPanel({
                       className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
                         paymentStatus === status
                           ? "border-[#9fc7e1] bg-[#dbeaf4] text-[#235f8e]"
-                          : "border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#f3f8fb]"
+                          : "border-[#bfd7e8] bg-white text-black hover:bg-[#f3f8fb]"
                       }`}
                     >
                       {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -362,35 +357,35 @@ export function SettingsDrawerBillingPanel({
             </div>
 
             <div className="w-full border-t border-[#dbe7ef] pt-3">
-              <div className="flex items-center justify-between text-sm text-slate-700">
+              <div className="flex items-center justify-between text-sm text-black">
                 <span>Subtotal</span>
                 <span>{invoiceSubtotal.toFixed(2)}</span>
               </div>
               {invoiceTaxTotal > 0 ? (
                 <>
-                  <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
+                  <div className="mt-2 flex items-center justify-between text-sm text-black">
                     <span>CGST</span>
                     <span>{invoiceCgstTotal.toFixed(2)}</span>
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
+                  <div className="mt-2 flex items-center justify-between text-sm text-black">
                     <span>SGST</span>
                     <span>{invoiceSgstTotal.toFixed(2)}</span>
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
+                  <div className="mt-2 flex items-center justify-between text-sm text-black">
                     <span>Total GST</span>
                     <span>{invoiceTaxTotal.toFixed(2)}</span>
                   </div>
                 </>
               ) : null}
-              <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
+              <div className="mt-2 flex items-center justify-between text-sm text-black">
                 <span>Amount Paid</span>
                 <span>{amountPaid.toFixed(2)}</span>
               </div>
-              <div className="mt-2 flex items-center justify-between text-sm text-slate-700">
+              <div className="mt-2 flex items-center justify-between text-sm text-black">
                 <span>Balance Due</span>
                 <span>{balanceDue.toFixed(2)}</span>
               </div>
-              <div className="mt-2 flex items-center justify-between text-base font-semibold text-slate-900">
+              <div className="mt-2 flex items-center justify-between text-base font-semibold text-black">
                 <span>Total</span>
                 <span>{invoiceTotal.toFixed(2)}</span>
               </div>
@@ -400,13 +395,13 @@ export function SettingsDrawerBillingPanel({
           {paymentStatus === "partial" ? (
             <div className="mt-4 rounded-[16px] border border-amber-200 bg-amber-50/70 p-4">
               <label className="block">
-                <span className="text-sm font-medium text-slate-700">Amount Received</span>
+                <span className="text-sm font-medium text-black">Amount Received</span>
                 <input
                   value={amountPaidInput}
                   inputMode="decimal"
                   onChange={(event) => onAmountPaidChange(event.target.value)}
                   placeholder="Enter amount received"
-                  className="mt-2 w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                  className="mt-2 w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm text-black outline-none placeholder:text-black"
                 />
               </label>
             </div>
@@ -419,7 +414,7 @@ export function SettingsDrawerBillingPanel({
               type="button"
               onClick={onCreateBill}
               disabled={isSavingInvoice}
-              className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+              className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
             >
               {isSavingInvoice ? "Saving..." : savedInvoice ? "Save Changes" : "Create Invoice"}
             </button>
@@ -427,7 +422,7 @@ export function SettingsDrawerBillingPanel({
               type="button"
               onClick={onFinalizeInvoice}
               disabled={isFinalizingInvoice || isSavingInvoice}
-              className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+              className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
             >
               {isFinalizingInvoice ? "Completing..." : "Done"}
             </button>
@@ -435,7 +430,7 @@ export function SettingsDrawerBillingPanel({
               type="button"
               onClick={onPreviewPdf}
               disabled={isPreparingInvoicePdf}
-              className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+              className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
             >
               Preview
             </button>
@@ -443,7 +438,7 @@ export function SettingsDrawerBillingPanel({
               type="button"
               onClick={onPrintInvoice}
               disabled={isPreparingInvoicePdf}
-              className="inline-flex items-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
             >
               <Printer className="h-4 w-4" />
               Print

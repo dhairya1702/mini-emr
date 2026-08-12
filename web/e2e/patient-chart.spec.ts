@@ -35,7 +35,7 @@ test("patient chart smoke opens biodata and timeline details", async ({ page }) 
 
   await page.getByRole("button", { name: "Open chart for Jordan Miles" }).click();
 
-  await expect(page.getByText("Patient Chart", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close patient chart" })).toBeVisible();
   await expect(page).toHaveURL(/\?workspace=chart&patient=patient-chart-1$/);
   await expect(page.getByRole("button", { name: "Visits" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Visit 1" })).toBeVisible();
@@ -46,7 +46,7 @@ test("patient chart smoke opens biodata and timeline details", async ({ page }) 
   await expect(page.getByText("Review visit visit recorded.")).toBeVisible();
 
   await page.goBack();
-  await expect(page.getByText("Patient Chart", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Close patient chart" })).toHaveCount(0);
   await expect(page).toHaveURL(/\/$/);
 });
 

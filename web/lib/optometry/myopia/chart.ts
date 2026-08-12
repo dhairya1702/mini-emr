@@ -20,6 +20,23 @@ function buildPath(values: Array<{ x: number; y: number }>) {
   return values.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
 }
 
+function referenceBandAtAge(age: number) {
+  const first = MYOPIA_REFERENCE_BAND[0]!;
+  const last = MYOPIA_REFERENCE_BAND[MYOPIA_REFERENCE_BAND.length - 1]!;
+  if (age <= first.age) return { age, lower_mm: first.lower_mm, upper_mm: first.upper_mm };
+  if (age >= last.age) return { age, lower_mm: last.lower_mm, upper_mm: last.upper_mm };
+
+  const upperIndex = MYOPIA_REFERENCE_BAND.findIndex((entry) => entry.age >= age);
+  const upper = MYOPIA_REFERENCE_BAND[upperIndex]!;
+  const lower = MYOPIA_REFERENCE_BAND[upperIndex - 1]!;
+  const ratio = (age - lower.age) / (upper.age - lower.age);
+  return {
+    age,
+    lower_mm: lower.lower_mm + (upper.lower_mm - lower.lower_mm) * ratio,
+    upper_mm: lower.upper_mm + (upper.upper_mm - lower.upper_mm) * ratio,
+  };
+}
+
 function buildModeledPoints(records: MyopiaMeasurementRecord[], ages: number[], treated: boolean) {
   const baselineRecord = records[0] ?? null;
   if (!baselineRecord) {
@@ -111,8 +128,6 @@ export function buildMyopiaChartModel(history: MyopiaHistory | null): MyopiaChar
 
   const ages = myopiaRecords.map((record) => record.age_years);
   const mmValues = myopiaRecords.flatMap((record) => [record.axial_length_right_mm, record.axial_length_left_mm]);
-  const referenceLower = MYOPIA_REFERENCE_BAND.map((entry) => entry.lower_mm);
-  const referenceUpper = MYOPIA_REFERENCE_BAND.map((entry) => entry.upper_mm);
   const projectedAges = latestRecord && history?.annualized_growth
     ? [latestRecord.age_years + 0.5, latestRecord.age_years + 1.0]
     : [];
@@ -131,23 +146,30 @@ export function buildMyopiaChartModel(history: MyopiaHistory | null): MyopiaChar
     ...modeledUntreatedPoints.flatMap((point) => [point.right, point.left]),
     ...modeledTreatedPoints.flatMap((point) => [point.right, point.left]),
   ].filter((value): value is number => value !== null);
-  const minAge = Math.min(...ages, MYOPIA_REFERENCE_BAND[0]!.age);
-  const maxAge = Math.max(
-    ...ages,
-    ...projectedAges,
-    MYOPIA_REFERENCE_BAND[MYOPIA_REFERENCE_BAND.length - 1]!.age,
-  );
+  const visibleMinAge = Math.min(...ages);
+  const visibleMaxAge = Math.max(...ages, ...projectedAges);
+  const visibleAgeSpan = Math.max(visibleMaxAge - visibleMinAge, 1);
+  const agePadding = Math.max(visibleAgeSpan * 0.08, 0.2);
+  const minAge = visibleMinAge - agePadding;
+  const maxAge = visibleMaxAge + agePadding;
+  const referenceBand = [
+    referenceBandAtAge(minAge),
+    ...MYOPIA_REFERENCE_BAND.filter((entry) => entry.age > minAge && entry.age < maxAge),
+    referenceBandAtAge(maxAge),
+  ];
+  const referenceLower = referenceBand.map((entry) => entry.lower_mm);
+  const referenceUpper = referenceBand.map((entry) => entry.upper_mm);
   const minMm = Math.floor((Math.min(...mmValues, ...referenceLower) - 0.2) * 10) / 10;
   const maxMm = Math.ceil((Math.max(...mmValues, ...referenceUpper, ...projectedValues) + 0.2) * 10) / 10;
   const plotWidth = CHART_WIDTH - CHART_PADDING.left - CHART_PADDING.right;
   const plotHeight = CHART_HEIGHT - CHART_PADDING.top - CHART_PADDING.bottom;
   const xForAge = (age: number) => CHART_PADDING.left + ((age - minAge) / Math.max(maxAge - minAge, 1)) * plotWidth;
   const yForMm = (mm: number) => CHART_PADDING.top + (1 - (mm - minMm) / Math.max(maxMm - minMm, 0.001)) * plotHeight;
-  const referenceBandPathTop = buildPath(MYOPIA_REFERENCE_BAND.map((entry) => ({
+  const referenceBandPathTop = buildPath(referenceBand.map((entry) => ({
     x: xForAge(entry.age),
     y: yForMm(entry.upper_mm),
   })));
-  const referenceBandPathBottom = [...MYOPIA_REFERENCE_BAND]
+  const referenceBandPathBottom = [...referenceBand]
     .reverse()
     .map((entry) => `L ${xForAge(entry.age)} ${yForMm(entry.lower_mm)}`)
     .join(" ");

@@ -1275,7 +1275,12 @@ export default function MobilePatientPage() {
                     ) : summaryError ? (
                       <p className="text-[12.5px] text-rose-600">{summaryError}</p>
                     ) : aiSummary?.summary ? (
-                      <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-[#33587a]">{aiSummary.summary}</p>
+                      <div className="space-y-1.5">
+                        <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-[#33587a]">{aiSummary.summary}</p>
+                        {aiSummary.stale ? (
+                          <p className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#6d8191]">Summary needs refresh</p>
+                        ) : null}
+                      </div>
                     ) : (
                       <p className="text-[12.5px] text-[#5b6b80]">No summary available yet.</p>
                     )}

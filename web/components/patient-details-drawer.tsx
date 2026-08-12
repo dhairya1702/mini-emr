@@ -432,12 +432,12 @@ function ChartTabButton({
       className={`inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-medium transition ${
         active
           ? "bg-[#2f8fd3] text-white shadow-[0_10px_22px_rgba(47,143,211,0.18)]"
-          : "border border-[#bfd7e8] bg-white text-slate-700 hover:bg-[#edf5fa]"
+          : "border border-[#bfd7e8] bg-white text-black hover:bg-[#edf5fa]"
       }`}
     >
       {label}
       {typeof count === "number" ? (
-        <span className={`rounded-lg px-2 py-0.5 text-xs ${active ? "bg-white/20 text-white" : "bg-[#edf5fa] text-slate-500"}`}>
+        <span className={`rounded-lg px-2 py-0.5 text-xs ${active ? "bg-white/20 text-white" : "bg-[#edf5fa] text-black"}`}>
           {count}
         </span>
       ) : null}
@@ -462,16 +462,16 @@ function SummaryField({
 }) {
   return (
     <label className="block min-w-0">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</span>
+      <span className="text-sm font-semibold text-black">{label}</span>
       {readOnly ? (
-        <p className="mt-1 truncate text-sm font-medium text-slate-900">{value || "—"}</p>
+        <p className="mt-1 truncate text-sm font-medium text-black">{value || "—"}</p>
       ) : (
         <input
           value={value}
           type={type}
           inputMode={inputMode}
           onChange={(event) => onChange(event.target.value)}
-          className="mt-1 h-9 w-full rounded-lg border border-[#bfd7e8] bg-[#f7fbfd] px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-[#6daed8] focus:bg-white"
+          className="mt-1 h-9 w-full rounded-lg border border-[#bfd7e8] bg-[#f7fbfd] px-3 text-sm font-medium text-black outline-none transition focus:border-[#6daed8] focus:bg-white"
         />
       )}
     </label>
@@ -487,10 +487,10 @@ function EventSummaryCard({ event }: { event: PatientTimelineEvent }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-slate-900">{getEventTitle(event)}</p>
-            <p className="text-xs text-slate-500">{formatDateTime(event.timestamp)}</p>
+            <p className="text-sm font-semibold text-black">{getEventTitle(event)}</p>
+            <p className="text-xs text-black">{formatDateTime(event.timestamp)}</p>
           </div>
-          <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{timelineDescription(event)}</p>
+          <p className="mt-2 line-clamp-2 text-sm leading-6 text-black">{timelineDescription(event)}</p>
         </div>
       </div>
     </article>
@@ -519,15 +519,15 @@ function CollapsibleSection({
       >
         <div className="min-w-0">
           <div className="flex items-center gap-3">
-            <h4 className="text-lg font-semibold text-slate-900">{description}</h4>
+            <h4 className="text-lg font-semibold text-black">{description}</h4>
             {typeof count === "number" ? (
-              <span className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-3 py-1 text-xs font-medium text-slate-600">
+              <span className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb] px-3 py-1 text-xs font-medium text-black">
                 {count}
               </span>
             ) : null}
           </div>
         </div>
-        <div className="shrink-0 text-slate-500">
+        <div className="shrink-0 text-black">
           {isOpen ? <ChevronDown className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
         </div>
       </button>
@@ -557,7 +557,7 @@ function VisitDetailPanel({
   const [isOpeningNotePreview, setIsOpeningNotePreview] = useState(false);
   if (!selectedVisit) {
     return (
-      <section className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-6 py-10 text-center text-sm text-slate-500">
+      <section className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-6 py-10 text-center text-sm text-black">
         No visits recorded yet.
       </section>
     );
@@ -594,8 +594,7 @@ function VisitDetailPanel({
     <div className="space-y-4">
       <section className="rounded-xl border border-[#dbe7ef] bg-white p-4">
         <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Reason</p>
-          <h4 className="mt-1 text-lg font-semibold text-slate-900">{reason}</h4>
+          <h4 className="text-lg font-semibold text-black">Reason: {reason}</h4>
           {detailError ? <p className="mt-2 text-sm text-rose-600">{detailError}</p> : null}
         </div>
       </section>
@@ -605,15 +604,10 @@ function VisitDetailPanel({
           type="button"
           disabled={isLoadingDetail || !detail?.consultation_note?.note_id || isOpeningNotePreview}
           onClick={() => void openNotePreview()}
-          className="flex w-full items-center justify-between gap-4 px-6 py-4 text-left transition hover:bg-[#f7fbfd] disabled:cursor-default disabled:opacity-70"
+          className="flex w-full items-center justify-between gap-4 px-6 py-4 text-left transition hover:bg-[#f7fbfd] disabled:cursor-default"
         >
-          <div>
-            <h4 className="text-lg font-semibold text-slate-900">Consultation note</h4>
-            <p className="mt-1 text-sm text-slate-500">
-              {isLoadingDetail ? "Loading..." : detail?.consultation_note ? (isOpeningNotePreview ? "Opening letterhead preview..." : "Open letterhead preview") : "No consultation note on this visit yet."}
-            </p>
-          </div>
-          <ChevronRight className="h-5 w-5 text-slate-500" />
+          <h4 className="text-lg font-semibold text-black">Consultation note</h4>
+          <ChevronRight className="h-5 w-5 text-black" />
         </button>
         {notePreviewError ? <p className="border-t border-[#dbe7ef] px-6 py-3 text-sm text-rose-600">{notePreviewError}</p> : null}
       </section>
@@ -636,7 +630,7 @@ function VisitDetailPanel({
       >
         <div className="grid gap-3 sm:grid-cols-2">
           {isLoadingDetail ? (
-            <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-4 py-8 text-center text-sm text-slate-500 sm:col-span-2">
+            <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-4 py-8 text-center text-sm text-black sm:col-span-2">
               Loading attachments...
             </div>
           ) : null}
@@ -647,17 +641,17 @@ function VisitDetailPanel({
               onClick={() => onOpenVisitAttachment(attachment)}
               className="flex items-center gap-3 rounded-xl border border-[#dbe7ef] bg-[#f7fbfd] p-3 text-left transition hover:border-[#9fc7e1] hover:bg-white"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#dbe7ef] bg-white text-slate-500">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#dbe7ef] bg-white text-black">
                 {attachment.content_type.startsWith("image/") ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
               </div>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">{attachment.label}</p>
-                <p className="text-xs text-slate-500">{formatDateTime(attachment.timestamp)}</p>
+                <p className="truncate text-sm font-semibold text-black">{attachment.label}</p>
+                <p className="text-xs text-black">{formatDateTime(attachment.timestamp)}</p>
               </div>
             </button>
           )) : null}
           {!isLoadingDetail && !attachments.length ? (
-            <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-4 py-8 text-center text-sm text-slate-500 sm:col-span-2">
+            <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-4 py-8 text-center text-sm text-black sm:col-span-2">
               No attachments on this visit yet.
             </div>
           ) : null}
@@ -680,7 +674,7 @@ function TimelinePanel({
 }) {
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-4 py-10 text-center text-sm text-slate-500">
+      <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-4 py-10 text-center text-sm text-black">
         Loading timeline...
       </div>
     );
@@ -696,7 +690,7 @@ function TimelinePanel({
 
   if (!timeline.length) {
     return (
-      <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-white px-4 py-10 text-center text-sm text-slate-500">
+      <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-white px-4 py-10 text-center text-sm text-black">
         No timeline records yet.
       </div>
     );
@@ -716,12 +710,12 @@ function TimelinePanel({
               </div>
               <div className="min-w-0 flex-1 pb-2">
                 <div className="rounded-[14px] border border-[#dbe7ef] bg-white p-3 shadow-[0_6px_16px_rgba(64,131,181,0.07)]">
-                  <span className={`mb-1 block text-[10px] font-bold uppercase tracking-[0.08em] ${meta.kind}`}>{meta.label}</span>
+                  <span className="mb-1 block text-xs font-semibold text-black">{meta.label}</span>
                   <div className="flex items-start justify-between gap-2">
-                    <span className="text-sm font-bold text-slate-900">{getEventTitle(event)}</span>
-                    <span className="shrink-0 whitespace-nowrap text-[11px] text-slate-400">{formatDateTime(event.timestamp)}</span>
+                    <span className="text-sm font-bold text-black">{getEventTitle(event)}</span>
+                    <span className="shrink-0 whitespace-nowrap text-[11px] text-black">{formatDateTime(event.timestamp)}</span>
                   </div>
-                  <p className="mt-1 line-clamp-2 text-[12.5px] leading-relaxed text-slate-500">{timelineDescription(event)}</p>
+                  <p className="mt-1 line-clamp-2 text-[12.5px] leading-relaxed text-black">{timelineDescription(event)}</p>
                 </div>
               </div>
             </div>
@@ -1004,7 +998,7 @@ function TestsPanel({
   if (fullScreen) {
     if (!rows.length) {
       return (
-        <div className="rounded-[16px] border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-6 py-10 text-center text-sm text-slate-500">
+        <div className="rounded-[16px] border border-dashed border-[#bfd7e8] bg-[#f7fbfd] px-6 py-10 text-center text-sm text-black">
           No tests available for this specialty yet.
         </div>
       );
@@ -1039,11 +1033,11 @@ function TestsPanel({
                   <Icon className="h-4 w-4" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-slate-900">{row.label}</span>
-                  <span className={`mt-0.5 block text-xs ${row.error ? "text-rose-600" : "text-slate-400"}`}>{subline}</span>
+                  <span className="block text-sm font-semibold text-black">{row.label}</span>
+                  <span className={`mt-0.5 block text-xs ${row.error ? "text-rose-600" : "text-black"}`}>{subline}</span>
                 </span>
-                <span className="shrink-0 text-xs font-semibold text-slate-500">{row.date}</span>
-                <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                <span className="shrink-0 text-xs font-semibold text-black">{row.date}</span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-black" />
               </button>
             );
           })}
@@ -1064,8 +1058,8 @@ function TestsPanel({
           <table className="min-w-full border-separate border-spacing-0">
             <thead className="bg-[#f3f8fb]/80">
               <tr className="text-left">
-                <th className="border-b border-[#dbe7ef] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Type</th>
-                <th className="border-b border-[#dbe7ef] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Date</th>
+                <th className="border-b border-[#dbe7ef] px-4 py-3 text-sm font-semibold text-black">Type</th>
+                <th className="border-b border-[#dbe7ef] px-4 py-3 text-sm font-semibold text-black">Date</th>
               </tr>
             </thead>
             <tbody>
@@ -1075,18 +1069,18 @@ function TestsPanel({
                   onClick={() => handleOpen(row)}
                   className="cursor-pointer transition hover:bg-[#f3f8fb]/70"
                 >
-                  <td className="border-b border-[#dbe7ef] px-4 py-3.5 text-sm font-semibold text-slate-900">
+                  <td className="border-b border-[#dbe7ef] px-4 py-3.5 text-sm font-semibold text-black">
                     {row.label}
                     {row.error ? <p className="mt-1 text-xs font-medium text-rose-600">{row.error}</p> : null}
                   </td>
-                  <td className="border-b border-[#dbe7ef] px-4 py-3.5 text-sm text-slate-600">{row.date}</td>
+                  <td className="border-b border-[#dbe7ef] px-4 py-3.5 text-sm text-black">{row.date}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <div className="px-6 py-10 text-center text-sm text-slate-500">
+        <div className="px-6 py-10 text-center text-sm text-black">
           No tests available for this specialty yet.
         </div>
       )}
@@ -1162,9 +1156,9 @@ function AttachmentsPanel({
     <section className="rounded-[18px] border border-[#dbe7ef] bg-white p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-slate-900">Attachments</p>
+          <p className="text-sm font-medium text-black">Attachments</p>
         </div>
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb]">
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f8fb]">
           <Upload className="h-4 w-4" />
           {isUploadingAttachment ? "Uploading..." : "Upload"}
           <input
@@ -1181,7 +1175,7 @@ function AttachmentsPanel({
           />
         </label>
       </div>
-      {isLoading ? <div className="flex justify-end"><span className="text-xs text-slate-500">Loading...</span></div> : null}
+      {isLoading ? <div className="flex justify-end"><span className="text-xs text-black">Loading...</span></div> : null}
       {attachmentError ? <p className="mt-3 text-sm text-rose-600">{attachmentError}</p> : null}
       <div className={`${attachmentError || isLoading ? "mt-4" : ""} divide-y divide-[#edf3f8]`}>
         {rows.length ? (
@@ -1192,8 +1186,8 @@ function AttachmentsPanel({
                 onClick={row.open}
                 className="min-w-0 flex-1 text-left transition hover:text-[#2f8fd3]"
               >
-                <p className="truncate text-sm font-medium text-slate-900">{row.label}</p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="truncate text-sm font-medium text-black">{row.label}</p>
+                <p className="mt-1 text-xs text-black">
                   {formatDateTime(row.timestamp)}
                   {isAttachmentPanelPatientRow(row) ? ` · ${formatFileSize(row.fileSize)}` : ""}
                 </p>
@@ -1232,7 +1226,7 @@ function AttachmentsPanel({
             </div>
           ))
         ) : (
-          <div className="py-8 text-center text-sm text-slate-500">No attachments yet.</div>
+          <div className="py-8 text-center text-sm text-black">No attachments yet.</div>
         )}
       </div>
     </section>
@@ -2390,12 +2384,12 @@ export function PatientDetailsDrawer({
               <button
                 type="button"
                 onClick={() => { setError(""); onClose(); }}
-                className="inline-flex h-9 items-center gap-2 rounded-[10px] border border-[#bfd7e8] bg-white px-3 text-sm font-semibold text-slate-600 transition hover:bg-[#edf5fa]"
+                className="inline-flex h-9 items-center gap-2 rounded-[10px] border border-[#bfd7e8] bg-white px-3 text-sm font-semibold text-black transition hover:bg-[#edf5fa]"
               >
                 <ArrowLeft className="h-4 w-4" /> Back
               </button>
-              <span className="truncate text-sm text-slate-400">
-                {fullScreenBackLabel}&nbsp;/&nbsp;<span className="font-semibold text-slate-700">{currentPatient.name}</span>
+              <span className="truncate text-sm text-black">
+                {fullScreenBackLabel}&nbsp;/&nbsp;<span className="font-semibold text-black">{currentPatient.name}</span>
               </span>
             </div>
 
@@ -2422,8 +2416,7 @@ export function PatientDetailsDrawer({
                     </button>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">Patient Chart</p>
-                    <h2 className="mt-0.5 truncate text-2xl font-bold text-slate-900">{currentPatient.name}</h2>
+                    <h2 className="truncate text-2xl font-bold text-slate-900">{currentPatient.name}</h2>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {(() => {
                         const sexLabel = currentPatient.sex_at_birth
@@ -2441,7 +2434,7 @@ export function PatientDetailsDrawer({
                           <span
                             key={index}
                             className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                              chip.key ? "border-[#bfe0f5] bg-[#ecf6fd] text-[#2a6fa8]" : "border-[#dbe7ef] bg-[#f3f8fb] text-slate-600"
+                              chip.key ? "border-[#bfe0f5] bg-[#ecf6fd] text-[#2a6fa8]" : "border-[#dbe7ef] bg-[#f3f8fb] text-black"
                             }`}
                           >
                             {chip.text}
@@ -2458,7 +2451,7 @@ export function PatientDetailsDrawer({
                       onClick={() => setIsReferralPackageOpen(true)}
                       className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#2f8fd3] bg-white px-4 text-sm font-semibold text-[#287fc0] transition hover:bg-[#edf5fa]"
                     >
-                      <Mail className="h-4 w-4" /> Refer patient
+                      <Mail className="h-4 w-4" /> Refer
                     </button>
                   ) : null}
                   {!readOnly ? (
@@ -2466,7 +2459,7 @@ export function PatientDetailsDrawer({
                       type="button"
                       onClick={() => setIsEditingPatient((current) => !current)}
                       className={`inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition ${
-                        isEditingPatient ? "border-[#9fc7e1] bg-[#edf5fa] text-[#2a6fa8]" : "border-[#bfd7e8] bg-white text-slate-600 hover:bg-[#edf5fa]"
+                        isEditingPatient ? "border-[#9fc7e1] bg-[#edf5fa] text-[#2a6fa8]" : "border-[#bfd7e8] bg-white text-black hover:bg-[#edf5fa]"
                       }`}
                     >
                       <Pencil className="h-4 w-4" /> Edit
@@ -2500,12 +2493,12 @@ export function PatientDetailsDrawer({
                     <SummaryField label="Temp" value={form.temperature} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, temperature: value })); }} />
                   </div>
                   <div className="mt-3 max-w-xs">
-                    <label className="block text-xs font-medium text-slate-500">
+                    <label className="block text-xs font-medium text-black">
                       Sex
                       <select
                         value={form.sexAtBirth}
                         onChange={(event) => { setError(""); setForm((current) => ({ ...current, sexAtBirth: event.target.value as "" | SexAtBirth })); }}
-                        className="mt-1 w-full rounded-lg border border-[#dbe7ef] bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#6daed8]"
+                        className="mt-1 w-full rounded-lg border border-[#dbe7ef] bg-white px-3 py-2 text-sm text-black outline-none focus:border-[#6daed8]"
                       >
                         <option value="">Not recorded</option>
                         <option value="female">Female</option>
@@ -2538,9 +2531,14 @@ export function PatientDetailsDrawer({
                     ) : summaryError ? (
                       <p className="text-sm text-rose-600">{summaryError}</p>
                     ) : aiSummary?.summary ? (
-                      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-[#33587a]">{aiSummary.summary}</p>
+                      <div className="space-y-1.5">
+                        <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-black">{aiSummary.summary}</p>
+                        {aiSummary.stale ? (
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6d8191]">Summary needs refresh</p>
+                        ) : null}
+                      </div>
                     ) : (
-                      <p className="text-[13px] text-[#5b6b80]">No summary available yet.</p>
+                      <p className="text-[13px] text-black">No summary available yet.</p>
                     )}
                   </div>
                 ) : null}
@@ -2561,7 +2559,7 @@ export function PatientDetailsDrawer({
                     key={tab.key}
                     type="button"
                     onClick={() => setActiveTab(tab.key)}
-                    className={`relative py-3.5 text-sm font-semibold transition ${isActive ? "text-[#287fc0]" : "text-slate-400 hover:text-slate-600"}`}
+                    className={`relative py-3.5 text-sm font-semibold text-black transition ${isActive ? "text-[#287fc0]" : "hover:text-[#287fc0]"}`}
                   >
                     {tab.label}
                     {isActive ? <span className="absolute inset-x-0 -bottom-px h-[3px] rounded bg-[#2f8fd3]" /> : null}
@@ -2597,9 +2595,8 @@ export function PatientDetailsDrawer({
                 </button>
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Patient Chart</p>
                 <h2 className="mt-2 truncate text-3xl font-semibold text-slate-900">{currentPatient.name}</h2>
-                <p className="mt-2 text-sm text-slate-500">{patientMetadataLine(currentPatient)}</p>
+                <p className="mt-2 text-sm text-slate-950">{patientMetadataLine(currentPatient)}</p>
               </div>
             </div>
             <div className="flex shrink-0 flex-col gap-2">
@@ -2609,7 +2606,7 @@ export function PatientDetailsDrawer({
                   setError("");
                   onClose();
                 }}
-                className="rounded-xl border border-[#dbe7ef] p-2 text-slate-500 transition hover:text-slate-800"
+                className="rounded-xl border border-[#dbe7ef] p-2 text-black transition hover:text-[#287fc0]"
                 aria-label="Close patient chart"
               >
                 <X className="h-4 w-4" />
@@ -2621,7 +2618,7 @@ export function PatientDetailsDrawer({
                   className={`rounded-xl border p-2 transition ${
                     isEditingPatient
                       ? "border-[#9fc7e1] bg-[#edf5fa] text-[#2a6fa8]"
-                      : "border-[#dbe7ef] text-slate-500 hover:text-slate-800"
+                      : "border-[#dbe7ef] text-black hover:text-[#287fc0]"
                   }`}
                   aria-label="Edit patient details"
                   title="Edit patient details"
@@ -2647,12 +2644,12 @@ export function PatientDetailsDrawer({
                 <SummaryField label="Temp" value={form.temperature} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, temperature: value })); }} />
               </div>
               <div className="mt-3 max-w-xs">
-                <label className="block text-xs font-medium text-slate-500">
+                <label className="block text-xs font-medium text-black">
                   Sex
                   <select
                     value={form.sexAtBirth}
                     onChange={(event) => { setError(""); setForm((current) => ({ ...current, sexAtBirth: event.target.value as "" | SexAtBirth })); }}
-                    className="mt-1 w-full rounded-lg border border-[#dbe7ef] bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#6daed8]"
+                    className="mt-1 w-full rounded-lg border border-[#dbe7ef] bg-white px-3 py-2 text-sm text-black outline-none focus:border-[#6daed8]"
                   >
                     <option value="">Not recorded</option>
                     <option value="female">Female</option>
@@ -2688,7 +2685,7 @@ export function PatientDetailsDrawer({
                 onClick={() => setIsReferralPackageOpen(true)}
                 className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#2f8fd3] bg-white px-4 text-sm font-semibold text-[#287fc0] transition hover:bg-[#edf5fa] sm:ml-auto sm:w-auto"
               >
-                <Mail className="h-4 w-4" /> Refer patient
+                <Mail className="h-4 w-4" /> Refer
               </button>
             ) : null}
             {workflowActionLabel && onWorkflowAction ? (
@@ -2699,7 +2696,7 @@ export function PatientDetailsDrawer({
                   void onWorkflowAction();
                 }}
                 disabled={workflowActionDisabled}
-                className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#14a38b] px-4 text-sm font-medium text-white shadow-sm shadow-teal-900/10 transition hover:bg-[#108873] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#14a38b]/30 disabled:opacity-60 sm:ml-auto sm:w-auto"
+                className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#14a38b] px-4 text-sm font-medium text-white shadow-sm shadow-teal-900/10 transition hover:bg-[#108873] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#14a38b]/30 disabled:opacity-60 sm:w-auto"
               >
                 {workflowActionLabel}
               </button>
@@ -2711,7 +2708,7 @@ export function PatientDetailsDrawer({
         <section className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7">
           <div className="w-full">
             {!fullScreen && !isTrainingMode ? (
-              <div className="mb-5 rounded-xl border border-[#cfe3f3] bg-gradient-to-br from-[#f3f9fe] to-[#eaf4fc] p-4 sm:p-5">
+              <div className="-mx-5 -mt-5 mb-4 border-b border-[#cfe3f3] bg-gradient-to-br from-[#f3f9fe] to-[#eaf4fc] px-5 py-4 sm:-mx-7 sm:px-7 sm:py-5">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#2f8fd3]/10 text-[#2f8fd3]">
@@ -2731,11 +2728,16 @@ export function PatientDetailsDrawer({
                   ) : summaryError ? (
                     <p className="text-sm text-rose-600">{summaryError}</p>
                   ) : aiSummary?.summary ? (
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                      {aiSummary.summary}
-                    </p>
+                    <div className="space-y-1.5">
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-black">
+                        {aiSummary.summary}
+                      </p>
+                      {aiSummary.stale ? (
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6d8191]">Summary needs refresh</p>
+                      ) : null}
+                    </div>
                   ) : (
-                    <p className="text-sm text-slate-500">No summary available yet.</p>
+                    <p className="text-sm text-black">No summary available yet.</p>
                   )}
                 </div>
               </div>
@@ -2762,14 +2764,14 @@ export function PatientDetailsDrawer({
                               <div className="rounded-lg bg-[#f3f8fb] p-1.5 ring-1 ring-[#dbe7ef]">
                                 <UserRound className="h-4 w-4 text-[#2f8fd3]" />
                               </div>
-                              <p className="truncate text-sm font-semibold text-slate-900">Visit {visit.visit_number}</p>
+                              <p className="truncate text-sm font-semibold text-black">Visit {visit.visit_number}</p>
                             </div>
-                            <p className="shrink-0 text-xs text-slate-500">{formatDateTime(visit.created_at)}</p>
+                            <p className="shrink-0 text-xs text-black">{formatDateTime(visit.created_at)}</p>
                           </div>
                         </button>
                       ))
                     ) : !isVisitsLoading ? (
-                      <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-white px-4 py-8 text-center text-sm text-slate-500">
+                      <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-white px-4 py-8 text-center text-sm text-black">
                         No visits recorded yet.
                       </div>
                     ) : null}

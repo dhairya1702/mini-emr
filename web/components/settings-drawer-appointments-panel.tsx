@@ -82,11 +82,6 @@ export function SettingsDrawerAppointmentsPanel({
 }: SettingsDrawerAppointmentsPanelProps) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
-  const [followUpCounts, setFollowUpCounts] = useState<Record<FollowUpFilter, number>>({
-    needs_action: 0,
-    delivery_issues: 0,
-    history: 0,
-  });
   const [followUpNextCursor, setFollowUpNextCursor] = useState<string | null>(null);
   const [hasMoreFollowUps, setHasMoreFollowUps] = useState(false);
   const [isLoadingMoreFollowUps, setIsLoadingMoreFollowUps] = useState(false);
@@ -251,7 +246,6 @@ export function SettingsDrawerAppointmentsPanel({
       setIsLoadingMoreFollowUps(false);
       if (cachedFollowUp && !forceRefresh) {
         setFollowUps(cachedFollowUp.items);
-        setFollowUpCounts(cachedFollowUp.counts);
         setFollowUpNextCursor(cachedFollowUp.nextCursor);
         setHasMoreFollowUps(cachedFollowUp.hasMore);
         followUpPageKeyRef.current = followUpKey;
@@ -342,7 +336,6 @@ export function SettingsDrawerAppointmentsPanel({
       void request.then((entry) => {
         if (!active) return;
         setFollowUps(entry.items);
-        setFollowUpCounts(entry.counts);
         setFollowUpNextCursor(entry.nextCursor);
         setHasMoreFollowUps(entry.hasMore);
         followUpPageKeyRef.current = followUpKey;
@@ -390,7 +383,6 @@ export function SettingsDrawerAppointmentsPanel({
         });
         return items;
       });
-      setFollowUpCounts(page.counts);
       setFollowUpNextCursor(page.next_cursor);
       setHasMoreFollowUps(page.has_more);
     } catch (error) {
@@ -423,13 +415,42 @@ export function SettingsDrawerAppointmentsPanel({
   }
 
   function formatStatusLabel(value: string) {
-    return value.replace("_", " ");
+    const label = value.replaceAll("_", " ");
+    return label.charAt(0).toUpperCase() + label.slice(1);
   }
 
   function statusChipClasses(status: string) {
     if (status === "scheduled") return "border-[#bfd7e8] bg-[#f3f8fb] text-[#2a6fa8]";
     if (status === "checked_in" || status === "completed") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-    return "border-slate-200 bg-slate-50 text-slate-600";
+    if (status === "cancelled") return "border-rose-200 bg-rose-50 text-rose-700";
+    return "border-amber-200 bg-amber-50 text-amber-800";
+  }
+
+  function appointmentFilterClasses(filter: AppointmentFilter, active: boolean) {
+    if (filter === "scheduled") return active
+      ? "border-amber-500 bg-amber-500 text-white"
+      : "border-amber-200 bg-amber-50 text-amber-900";
+    if (filter === "checked_in") return active
+      ? "border-emerald-600 bg-emerald-600 text-white"
+      : "border-emerald-200 bg-emerald-50 text-emerald-900";
+    if (filter === "cancelled") return active
+      ? "border-rose-600 bg-rose-600 text-white"
+      : "border-rose-200 bg-rose-50 text-rose-900";
+    return active
+      ? "border-[#2f8fd3] bg-[#2f8fd3] text-white"
+      : "border-blue-200 bg-blue-50 text-blue-900";
+  }
+
+  function followUpFilterClasses(filter: FollowUpFilter, active: boolean) {
+    if (filter === "needs_action") return active
+      ? "border-amber-500 bg-amber-500 text-white"
+      : "border-amber-200 bg-amber-50 text-amber-900";
+    if (filter === "delivery_issues") return active
+      ? "border-rose-600 bg-rose-600 text-white"
+      : "border-rose-200 bg-rose-50 text-rose-900";
+    return active
+      ? "border-violet-600 bg-violet-600 text-white"
+      : "border-violet-200 bg-violet-50 text-violet-900";
   }
 
   async function handleCheckIn(
@@ -772,7 +793,7 @@ export function SettingsDrawerAppointmentsPanel({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 text-black [&_input]:placeholder:text-black">
       <div className="rounded-[18px] border border-[#bfd7e8] bg-white p-5">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <CalendarClock className="h-5 w-5 shrink-0 text-[#2a6fa8]" />
@@ -791,7 +812,7 @@ export function SettingsDrawerAppointmentsPanel({
                   className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
                     isActive
                       ? "bg-white text-[#2a6fa8] shadow-sm"
-                      : "text-slate-600 hover:text-slate-900"
+                      : "text-black hover:text-black"
                   }`}
                 >
                   {view.label}
@@ -814,7 +835,7 @@ export function SettingsDrawerAppointmentsPanel({
             </button>
           ) : null}
           {isRefreshing ? (
-            <span className="inline-flex items-center gap-2 text-xs font-medium text-slate-500" role="status">
+            <span className="inline-flex items-center gap-2 text-xs font-medium text-black" role="status">
               <LoaderCircle className="h-4 w-4 animate-spin" />
               Refreshing
             </span>
@@ -824,13 +845,13 @@ export function SettingsDrawerAppointmentsPanel({
         {isCreateOpen ? (
           <div className="mb-4 rounded-[16px] border border-[#bfd7e8] bg-[#f3f8fb]/50 px-4 py-4">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-slate-900">
+              <p className="text-sm font-semibold text-black">
                 Add {activeView === "appointments" ? "appointment" : "follow-up"}
               </p>
               <button
                 type="button"
                 onClick={() => setIsCreateOpen(false)}
-                className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-slate-600"
+                className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-black"
               >
                 Close
               </button>
@@ -844,7 +865,7 @@ export function SettingsDrawerAppointmentsPanel({
                   <input type="date" min={todayIsoDate} value={newAppointment.date} onChange={(event) => setNewAppointment((current) => ({ ...current, date: event.target.value }))} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none" />
                   <input type="time" value={newAppointment.time} onChange={(event) => setNewAppointment((current) => ({ ...current, time: event.target.value }))} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none" />
                 </div>
-                <button type="button" disabled={isCreating} onClick={() => void handleCreateAppointment()} className="rounded-xl bg-[#2f8fd3] px-4 py-3 text-sm font-medium text-white disabled:opacity-60">
+                <button type="button" disabled={isCreating} onClick={() => void handleCreateAppointment()} className="rounded-xl bg-[#2f8fd3] px-4 py-3 text-sm font-medium text-white disabled:opacity-100">
                   {isCreating ? "Adding..." : "Add appointment"}
                 </button>
               </div>
@@ -867,7 +888,7 @@ export function SettingsDrawerAppointmentsPanel({
                   <input type="time" value={newFollowUp.time} onChange={(event) => setNewFollowUp((current) => ({ ...current, time: event.target.value }))} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none" />
                 </div>
                 <input value={newFollowUp.notes} onChange={(event) => setNewFollowUp((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes" className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm outline-none" />
-                <button type="button" disabled={isCreating || !patients.length} onClick={() => void handleCreateFollowUp()} className="rounded-xl bg-[#2f8fd3] px-4 py-3 text-sm font-medium text-white disabled:opacity-60">
+                <button type="button" disabled={isCreating || !patients.length} onClick={() => void handleCreateFollowUp()} className="rounded-xl bg-[#2f8fd3] px-4 py-3 text-sm font-medium text-white disabled:opacity-100">
                   {isCreating ? "Adding..." : "Add follow-up"}
                 </button>
               </div>
@@ -905,8 +926,8 @@ export function SettingsDrawerAppointmentsPanel({
                 <div key={match.id} className="rounded-[20px] border border-amber-200 bg-white px-4 py-3">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">{match.name}</p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="text-sm font-semibold text-black">{match.name}</p>
+                      <p className="mt-1 text-xs text-black">
                         {match.phone} · {formatStatusLabel(match.status)} · {new Date(match.created_at).toLocaleString([], {
                           month: "short",
                           day: "numeric",
@@ -914,13 +935,13 @@ export function SettingsDrawerAppointmentsPanel({
                           minute: "2-digit",
                         })}
                       </p>
-                      <p className="mt-1 text-sm text-slate-600">{match.reason}</p>
+                      <p className="mt-1 text-sm text-black">{match.reason}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleCheckIn(duplicateCheckIn.appointmentId, { existingPatientId: match.id })}
                       disabled={checkingInId === duplicateCheckIn.appointmentId}
-                      className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600 disabled:opacity-60"
+                      className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600 disabled:opacity-100"
                     >
                       Use Existing Patient
                     </button>
@@ -933,7 +954,7 @@ export function SettingsDrawerAppointmentsPanel({
                 type="button"
                 onClick={() => handleCheckIn(duplicateCheckIn.appointmentId, { forceNew: true })}
                 disabled={checkingInId === duplicateCheckIn.appointmentId}
-                className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
               >
                 Create New Queue Entry Anyway
               </button>
@@ -942,7 +963,7 @@ export function SettingsDrawerAppointmentsPanel({
         ) : null}
 
         {isLoading ? (
-          <div className="rounded-[16px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/30 px-6 py-16 text-center text-sm text-slate-500">
+          <div className="rounded-[16px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/30 px-6 py-16 text-center text-sm text-black">
             Loading {activeView === "appointments" ? "appointments" : "follow-ups"}...
           </div>
         ) : activeView === "appointments" ? (
@@ -952,18 +973,14 @@ export function SettingsDrawerAppointmentsPanel({
                 value={appointmentQuery}
                 onChange={(event) => setAppointmentQuery(event.target.value)}
                 placeholder="Search patient, phone, or reason"
-                className="min-w-[260px] rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                className="min-w-[260px] rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-black outline-none transition focus:border-[#6daed8]"
               />
               {(["all", "scheduled", "checked_in", "cancelled"] as AppointmentFilter[]).map((filter) => (
                 <button
                   key={filter}
                   type="button"
                   onClick={() => setAppointmentFilter(filter)}
-                  className={`rounded-xl px-3 py-1.5 text-xs font-medium uppercase tracking-[0.14em] transition ${
-                    appointmentFilter === filter
-                      ? "bg-[#2f8fd3] text-white"
-                      : "border border-[#bfd7e8] bg-white text-slate-600 hover:bg-[#f3f8fb]"
-                  }`}
+                  className={`rounded-lg border px-3 py-2 text-sm font-medium leading-none transition ${appointmentFilterClasses(filter, appointmentFilter === filter)}`}
                 >
                   {formatStatusLabel(filter)}
                 </button>
@@ -973,18 +990,18 @@ export function SettingsDrawerAppointmentsPanel({
                 aria-label="Filter appointments by date"
                 value={selectedDate}
                 onChange={(event) => setSelectedDate(event.target.value)}
-                className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-black outline-none transition focus:border-[#6daed8]"
               />
               {selectedDate ? (
                 <button
                   type="button"
                   onClick={() => setSelectedDate("")}
-                  className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-2.5 text-xs font-medium text-[#2a6fa8] transition hover:bg-[#f3f8fb]"
+                  className="rounded-lg border border-[#bfd7e8] bg-white px-3 py-2 text-sm font-medium leading-none text-[#2a6fa8] transition hover:bg-[#f3f8fb]"
                 >
                   Show all upcoming
                 </button>
               ) : (
-                <span className="inline-flex items-center rounded-xl bg-[#edf5fa] px-3 py-2.5 text-xs font-medium text-[#2a6fa8]">
+                <span className="inline-flex items-center rounded-lg bg-[#edf5fa] px-3 py-2 text-sm font-medium leading-none text-[#2a6fa8]">
                   All upcoming
                 </span>
               )}
@@ -992,7 +1009,7 @@ export function SettingsDrawerAppointmentsPanel({
             {appointments.length ? (
               <div className="overflow-hidden rounded-[22px] border border-[#bfd7e8]">
                 <table className="w-full border-collapse text-sm">
-                  <thead className="bg-[#f3f8fb]/80 text-slate-600">
+                  <thead className="bg-[#f3f8fb]/80 text-black">
                     <tr>
                       <th className="px-4 py-3 text-left font-semibold">Patient</th>
                       <th className="px-4 py-3 text-left font-semibold">Appointment For</th>
@@ -1023,16 +1040,16 @@ export function SettingsDrawerAppointmentsPanel({
                               : ""
                           }`}
                         >
-                          <td className="px-4 py-3 text-slate-800">
+                          <td className="px-4 py-3 text-black">
                             <div className="font-medium">{appointment.name}</div>
-                            <div className="mt-1 text-xs text-slate-500">{appointment.phone}</div>
+                            <div className="mt-1 text-xs text-black">{appointment.phone}</div>
                           </td>
-                          <td className="px-4 py-3 text-slate-600">
+                          <td className="px-4 py-3 text-black">
                             {formatDateTime(appointment.scheduled_for)}
                           </td>
-                          <td className="px-4 py-3 text-slate-600">{appointment.reason}</td>
+                          <td className="px-4 py-3 text-black">{appointment.reason}</td>
                           <td className="px-4 py-3">
-                            <span className={`inline-flex rounded-xl border px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] ${statusChipClasses(appointment.status)}`}>
+                            <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-medium ${statusChipClasses(appointment.status)}`}>
                               {formatStatusLabel(appointment.status)}
                             </span>
                           </td>
@@ -1048,7 +1065,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     void handleStartCheckIn(appointment);
                                   }}
                                   disabled={checkingInId === appointment.id || savingAppointmentId === appointment.id}
-                                  className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-[#2a6fa8] transition hover:bg-[#dbeaf4] disabled:opacity-60"
+                                  className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-[#2a6fa8] transition hover:bg-[#dbeaf4] disabled:opacity-100"
                                 >
                                   <Plus className="h-4 w-4" />
                                   Move to Queue
@@ -1060,7 +1077,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     startReschedule(appointment);
                                   }}
                                   disabled={savingAppointmentId === appointment.id}
-                                  className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                                  className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
                                 >
                                   Reschedule
                                 </button>
@@ -1071,7 +1088,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     void handleCancelAppointment(appointment.id);
                                   }}
                                   disabled={savingAppointmentId === appointment.id}
-                                  className="rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                                  className="rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-100"
                                 >
                                   Cancel
                                 </button>
@@ -1084,21 +1101,21 @@ export function SettingsDrawerAppointmentsPanel({
                             <td colSpan={4} className="px-4 py-4">
                               <div className="flex flex-col gap-3 md:flex-row md:items-end">
                                 <label className="block">
-                                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-slate-500">New Date</span>
+                                  <span className="mb-2 block text-xs font-medium text-black">New Date</span>
                                   <input
                                     type="date"
                                     value={rescheduleDate}
                                     onChange={(event) => setRescheduleDate(event.target.value)}
-                                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-black outline-none"
                                   />
                                 </label>
                                 <label className="block">
-                                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-slate-500">New Time</span>
+                                  <span className="mb-2 block text-xs font-medium text-black">New Time</span>
                                   <input
                                     type="time"
                                     value={rescheduleTime}
                                     onChange={(event) => setRescheduleTime(event.target.value)}
-                                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-black outline-none"
                                   />
                                 </label>
                                 <div className="flex gap-2">
@@ -1106,7 +1123,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     type="button"
                                     onClick={() => handleSaveReschedule(appointment.id)}
                                     disabled={savingAppointmentId === appointment.id}
-                                    className="rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+                                    className="rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-100"
                                   >
                                     {savingAppointmentId === appointment.id ? "Saving..." : "Save"}
                                   </button>
@@ -1114,7 +1131,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     type="button"
                                     onClick={() => setEditingAppointmentId("")}
                                     disabled={savingAppointmentId === appointment.id}
-                                    className="rounded-xl border border-[#bfd7e8] px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white disabled:opacity-60"
+                                    className="rounded-xl border border-[#bfd7e8] px-4 py-2.5 text-sm font-medium text-black transition hover:bg-white disabled:opacity-100"
                                   >
                                     Hide
                                   </button>
@@ -1129,7 +1146,7 @@ export function SettingsDrawerAppointmentsPanel({
                 </table>
               </div>
             ) : (
-              <div className="rounded-[16px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/30 px-6 py-16 text-center text-sm text-slate-500">
+              <div className="rounded-[16px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/30 px-6 py-16 text-center text-sm text-black">
                 No appointments matched this view.
               </div>
             )}
@@ -1141,31 +1158,27 @@ export function SettingsDrawerAppointmentsPanel({
                 value={followUpQuery}
                 onChange={(event) => setFollowUpQuery(event.target.value)}
                 placeholder="Search patient or reason"
-                className="min-w-[260px] rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                className="min-w-[260px] rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-black outline-none transition focus:border-[#6daed8]"
               />
               {([
-                { id: "needs_action", label: "Needs Action", count: followUpCounts.needs_action },
-                { id: "delivery_issues", label: "Delivery Issues", count: followUpCounts.delivery_issues },
-                { id: "history", label: "History", count: followUpCounts.history },
-              ] as Array<{ id: FollowUpFilter; label: string; count: number }>).map((filter) => (
+                { id: "needs_action", label: "Action" },
+                { id: "delivery_issues", label: "Errors" },
+                { id: "history", label: "History" },
+              ] as Array<{ id: FollowUpFilter; label: string }>).map((filter) => (
                 <button
                   key={filter.id}
                   type="button"
                   onClick={() => setFollowUpFilter(filter.id)}
-                  className={`rounded-xl px-3 py-1.5 text-xs font-medium uppercase tracking-[0.14em] transition ${
-                    followUpFilter === filter.id
-                      ? "bg-[#2f8fd3] text-white"
-                      : "border border-[#bfd7e8] bg-white text-slate-600 hover:bg-[#f3f8fb]"
-                  }`}
+                  className={`rounded-lg border px-3 py-2 text-sm font-medium leading-none transition ${followUpFilterClasses(filter.id, followUpFilter === filter.id)}`}
                 >
-                  {filter.label} <span className="ml-1 opacity-75">{filter.count}</span>
+                  {filter.label}
                 </button>
               ))}
             </div>
             {visibleFollowUps.length ? (
               <div className="overflow-hidden rounded-[22px] border border-[#bfd7e8]">
                 <table className="w-full border-collapse text-sm">
-                  <thead className="bg-[#f3f8fb]/80 text-slate-600">
+                  <thead className="bg-[#f3f8fb]/80 text-black">
                     <tr>
                       <th className="px-4 py-3 text-left font-semibold">Patient</th>
                       <th className="px-4 py-3 text-left font-semibold">Due</th>
@@ -1189,15 +1202,15 @@ export function SettingsDrawerAppointmentsPanel({
                           }}
                           className="cursor-pointer border-t border-[#dbe7ef] first:border-t-0 transition hover:bg-[#f3f8fb]/60 focus:outline-none focus-visible:bg-[#f3f8fb]/60"
                         >
-                          <td className="px-4 py-3 text-slate-800">
+                          <td className="px-4 py-3 text-black">
                             <p className="font-medium">{followUp.patient_name || "Patient"}</p>
-                            <p className="mt-1 max-w-[280px] truncate text-xs text-slate-500">{followUp.notes || "Follow-up"}</p>
+                            <p className="mt-1 max-w-[280px] truncate text-xs text-black">{followUp.notes || "Follow-up"}</p>
                           </td>
-                          <td className="px-4 py-3 text-slate-600">{formatDateTime(followUp.scheduled_for)}</td>
-                          <td className="px-4 py-3 text-slate-600">{waitingLabel(followUp)}</td>
-                          <td className="px-4 py-3 text-slate-600">
+                          <td className="px-4 py-3 text-black">{formatDateTime(followUp.scheduled_for)}</td>
+                          <td className="px-4 py-3 text-black">{waitingLabel(followUp)}</td>
+                          <td className="px-4 py-3 text-black">
                             {followUp.last_contacted_at ? formatDateTime(followUp.last_contacted_at) : "Not delivered"}
-                            {followUp.last_contact_channels?.length ? <p className="mt-1 text-xs capitalize text-slate-400">{followUp.last_contact_channels.join(" + ")}</p> : null}
+                            {followUp.last_contact_channels?.length ? <p className="mt-1 text-xs capitalize text-black">{followUp.last_contact_channels.join(" + ")}</p> : null}
                           </td>
                         </tr>
                         {expandedFollowUpId === followUp.id ? (
@@ -1205,52 +1218,52 @@ export function SettingsDrawerAppointmentsPanel({
                             <td colSpan={4} className="px-4 py-4">
                               {followUp.status === "scheduled" ? <div className="space-y-4">
                                 <div className="space-y-3 rounded-xl border border-[#dbe7ef] bg-white p-4">
-                                  <div className="flex items-center gap-10 text-sm text-slate-700">
-                                    <p><span className="font-medium text-slate-950">Email:</span> {followUp.patient_email || "Not available"}</p>
-                                    <p><span className="font-medium text-slate-950">Phone:</span> {followUp.patient_phone || "Not available"}</p>
+                                  <div className="flex items-center gap-10 text-sm text-black">
+                                    <p><span className="font-medium text-black">Email:</span> {followUp.patient_email || "Not available"}</p>
+                                    <p><span className="font-medium text-black">Phone:</span> {followUp.patient_phone || "Not available"}</p>
                                   </div>
                                   {followUp.last_delivery_error ? <p className="text-sm text-rose-700"><AlertCircle className="mr-1 inline h-4 w-4" />{followUp.last_delivery_error}</p> : null}
                                 </div>
                                 <div className="flex flex-wrap items-center gap-3">
-                                  {followUp.patient_email ? <label className="inline-flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={reminderChannels.includes("email")} onChange={() => setReminderChannels((current) => current.includes("email") ? current.filter((channel) => channel !== "email") : [...current, "email"])} /><Mail className="h-4 w-4" />Email</label> : null}
-                                  {followUp.patient_phone ? <label className="inline-flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={reminderChannels.includes("whatsapp")} onChange={() => setReminderChannels((current) => current.includes("whatsapp") ? current.filter((channel) => channel !== "whatsapp") : [...current, "whatsapp"])} /><MessageCircle className="h-4 w-4" />WhatsApp</label> : null}
-                                  <button type="button" onClick={() => void handleRemindPatient(followUp)} disabled={remindingFollowUpId === followUp.id || !reminderChannels.length || Boolean(reminderAvailableAt(followUp) && reminderAvailableAt(followUp)! > new Date())} className="rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
+                                  {followUp.patient_email ? <label className="inline-flex items-center gap-2 text-sm text-black"><input type="checkbox" checked={reminderChannels.includes("email")} onChange={() => setReminderChannels((current) => current.includes("email") ? current.filter((channel) => channel !== "email") : [...current, "email"])} /><Mail className="h-4 w-4" />Email</label> : null}
+                                  {followUp.patient_phone ? <label className="inline-flex items-center gap-2 text-sm text-black"><input type="checkbox" checked={reminderChannels.includes("whatsapp")} onChange={() => setReminderChannels((current) => current.includes("whatsapp") ? current.filter((channel) => channel !== "whatsapp") : [...current, "whatsapp"])} /><MessageCircle className="h-4 w-4" />WhatsApp</label> : null}
+                                  <button type="button" onClick={() => void handleRemindPatient(followUp)} disabled={remindingFollowUpId === followUp.id || !reminderChannels.length || Boolean(reminderAvailableAt(followUp) && reminderAvailableAt(followUp)! > new Date())} className="rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-100">
                                     {remindingFollowUpId === followUp.id ? "Sending..." : "Remind Patient"}
                                   </button>
-                                  {reminderAvailableAt(followUp) && reminderAvailableAt(followUp)! > new Date() ? <span className="text-xs text-slate-500">Available after {formatDateTime(reminderAvailableAt(followUp)!.toISOString())}</span> : null}
-                                  <button type="button" onClick={() => startFollowUpEdit(followUp)} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-slate-700">Change due date</button>
+                                  {reminderAvailableAt(followUp) && reminderAvailableAt(followUp)! > new Date() ? <span className="text-xs text-black">Available after {formatDateTime(reminderAvailableAt(followUp)!.toISOString())}</span> : null}
+                                  <button type="button" onClick={() => startFollowUpEdit(followUp)} className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-black">Change due date</button>
                                   <button type="button" onClick={() => void handleUpdateFollowUpStatus(followUp.id, "completed")} className="rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700">Mark resolved</button>
                                   <button type="button" onClick={() => void handleUpdateFollowUpStatus(followUp.id, "cancelled")} className="rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700">Cancel</button>
                                 </div>
-                              </div> : <div className="text-sm text-slate-600">
+                              </div> : <div className="text-sm text-black">
                                 {isBookedFollowUp(followUp) && followUp.appointment_scheduled_for ? <>Appointment booked for <strong>{formatDateTime(followUp.appointment_scheduled_for)}</strong>. It is now managed in Appointments.</> : <>This follow-up is in history as {followUpStateLabel(followUp).toLowerCase()}.</>}
                               </div>}
                               {editingFollowUpId === followUp.id && followUp.status === "scheduled" ?
                               <div className="grid gap-3 md:grid-cols-[220px_180px_1fr_auto] md:items-end">
                                 <label className="block">
-                                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-slate-500">New Date</span>
+                                  <span className="mb-2 block text-xs font-medium text-black">New Date</span>
                                   <input
                                     type="date"
                                     value={followUpDate}
                                     onChange={(event) => setFollowUpDate(event.target.value)}
-                                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-black outline-none"
                                   />
                                 </label>
                                 <label className="block">
-                                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-slate-500">New Time</span>
+                                  <span className="mb-2 block text-xs font-medium text-black">New Time</span>
                                   <input
                                     type="time"
                                     value={followUpTime}
                                     onChange={(event) => setFollowUpTime(event.target.value)}
-                                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                                    className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-black outline-none"
                                   />
                                 </label>
                                 <label className="block">
-                                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Notes</span>
+                                  <span className="mb-2 block text-xs font-medium text-black">Notes</span>
                                   <input
                                     value={followUpNotes}
                                     onChange={(event) => setFollowUpNotes(event.target.value)}
-                                    className="w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-slate-800 outline-none"
+                                    className="w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-sm text-black outline-none"
                                   />
                                 </label>
                                 <div className="flex gap-2">
@@ -1258,7 +1271,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     type="button"
                                     onClick={() => handleSaveFollowUp(followUp.id)}
                                     disabled={savingAppointmentId === followUp.id}
-                                    className="rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+                                    className="rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-100"
                                   >
                                     {savingAppointmentId === followUp.id ? "Saving..." : "Save"}
                                   </button>
@@ -1266,7 +1279,7 @@ export function SettingsDrawerAppointmentsPanel({
                                     type="button"
                                     onClick={() => setEditingFollowUpId("")}
                                     disabled={savingAppointmentId === followUp.id}
-                                    className="rounded-xl border border-[#bfd7e8] px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white disabled:opacity-60"
+                                    className="rounded-xl border border-[#bfd7e8] px-4 py-2.5 text-sm font-medium text-black transition hover:bg-white disabled:opacity-100"
                                   >
                                     Hide
                                   </button>
@@ -1281,7 +1294,7 @@ export function SettingsDrawerAppointmentsPanel({
                 </table>
                 <div ref={followUpLoadMoreRef} className="border-t border-[#dbe7ef] bg-white px-4 py-4 text-center">
                   {isLoadingMoreFollowUps ? (
-                    <span className="inline-flex items-center gap-2 text-sm text-slate-500">
+                    <span className="inline-flex items-center gap-2 text-sm text-black">
                       <LoaderCircle className="h-4 w-4 animate-spin" /> Loading more follow-ups...
                     </span>
                   ) : hasMoreFollowUps ? (
@@ -1293,12 +1306,12 @@ export function SettingsDrawerAppointmentsPanel({
                       Load more
                     </button>
                   ) : (
-                    <span className="text-xs text-slate-400">All follow-ups loaded</span>
+                    <span className="text-xs text-black">All follow-ups loaded</span>
                   )}
                 </div>
               </div>
             ) : (
-              <div className="rounded-[16px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/30 px-6 py-16 text-center text-sm text-slate-500">
+              <div className="rounded-[16px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/30 px-6 py-16 text-center text-sm text-black">
                 {followUpFilter === "needs_action" ? "No patients are waiting to schedule a follow-up." : followUpFilter === "delivery_issues" ? "No follow-up delivery issues." : "No follow-up history yet."}
               </div>
             )}
@@ -1306,7 +1319,7 @@ export function SettingsDrawerAppointmentsPanel({
         )}
 
         {statusMessage ? (
-          <p className="mt-4 text-sm font-medium text-slate-700">{statusMessage}</p>
+          <p className="mt-4 text-sm font-medium text-black">{statusMessage}</p>
         ) : null}
       </div>
     </div>

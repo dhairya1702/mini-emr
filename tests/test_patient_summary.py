@@ -247,7 +247,7 @@ def test_summary_generation_failure_never_fails_note_finalization_or_regenerates
     assert calls == 1
 
 
-def test_regenerate_summary_endpoint(client):
+def test_regenerate_summary_endpoint(client, monkeypatch):
     test_client, repo = client
     session = register_test_clinic(
         test_client, identifier="summary-regen@clinic.com", clinic_name="Regen Clinic"
@@ -255,12 +255,90 @@ def test_regenerate_summary_endpoint(client):
     headers = auth_headers_for_token(session["token"])
     patient = _create_patient(test_client, headers, phone="5550109999")
 
+    async def fake_generate_summary(*_args, **_kwargs):
+        return {"content": "Generated summary", "used_fallback": False, "warning": None}
+
+    monkeypatch.setattr(
+        patient_summary_workflow,
+        "generate_patient_summary",
+        fake_generate_summary,
+    )
     response = test_client.post(
         f"/patients/{patient['id']}/summary/regenerate", headers=headers
     )
+
     assert response.status_code == 200
-    assert response.json()["summary"]
+    assert response.json()["summary"] == "Generated summary"
     assert repo.patients[patient["id"]]["ai_summary_stale"] is False
+
+
+def test_summary_fallback_preserves_existing_summary_and_marks_stale(client, monkeypatch):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client, identifier="summary-preserve@clinic.com", clinic_name="Preserve Clinic"
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = _create_patient(test_client, headers, phone="5550103434")
+    repo.patients[patient["id"]].update(
+        ai_summary="Previously good summary",
+        ai_summary_updated_at=datetime.now(UTC),
+        ai_summary_stale=False,
+    )
+
+    async def fake_generate_summary(*_args, **_kwargs):
+        return {
+            "content": "",
+            "used_fallback": True,
+            "warning": "AI returned no content; previous summary was preserved.",
+        }
+
+    monkeypatch.setattr(
+        patient_summary_workflow,
+        "generate_patient_summary",
+        fake_generate_summary,
+    )
+
+    response = test_client.post(
+        f"/patients/{patient['id']}/summary/regenerate", headers=headers
+    )
+
+    assert response.status_code == 200
+    assert response.json()["summary"] == "Previously good summary"
+    assert response.json()["stale"] is True
+    assert response.json()["used_fallback"] is True
+    assert repo.patients[patient["id"]]["ai_summary"] == "Previously good summary"
+    assert repo.patients[patient["id"]]["ai_summary_stale"] is True
+
+
+def test_summary_fallback_without_existing_summary_returns_blank_stale(client, monkeypatch):
+    test_client, _repo = client
+    session = register_test_clinic(
+        test_client, identifier="summary-blank@clinic.com", clinic_name="Blank Clinic"
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = _create_patient(test_client, headers, phone="5550103535")
+
+    async def fake_generate_summary(*_args, **_kwargs):
+        return {
+            "content": "",
+            "used_fallback": True,
+            "warning": "AI returned no content; previous summary was preserved.",
+        }
+
+    monkeypatch.setattr(
+        patient_summary_workflow,
+        "generate_patient_summary",
+        fake_generate_summary,
+    )
+
+    response = test_client.post(
+        f"/patients/{patient['id']}/summary/regenerate", headers=headers
+    )
+
+    assert response.status_code == 200
+    assert response.json()["summary"] == ""
+    assert response.json()["stale"] is True
+    assert response.json()["used_fallback"] is True
 
 
 def test_summary_generation_does_not_overwrite_a_newer_patient_revision(client, monkeypatch):
@@ -355,3 +433,24 @@ def test_summary_source_hash_ignores_changes_outside_rolling_window():
     visits[2]["reason"] = "changed old reason"
     second = patient_summary_workflow.build_patient_summary_source(patient, visits, [])
     assert first["source_hash"] == second["source_hash"]
+
+
+def test_summary_source_allows_longer_note_context():
+    now = datetime.now(UTC)
+    long_note = "A" * 5000
+    source = patient_summary_workflow.build_patient_summary_source(
+        {"age": 40, "sex_at_birth": "male"},
+        [{"id": "visit-1", "created_at": now, "reason": "review"}],
+        [
+            {
+                "id": "note-1",
+                "visit_id": "visit-1",
+                "status": "final",
+                "snapshot_content": long_note,
+                "created_at": now,
+                "finalized_at": now,
+            }
+        ],
+    )
+
+    assert source["context"]["recent_visits"][0]["consultation_note"] == long_note

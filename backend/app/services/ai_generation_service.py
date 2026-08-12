@@ -1450,6 +1450,13 @@ def _extract_json_object(text: str) -> dict[str, Any]:
 
 def _clean_patient_summary(value: str) -> str:
     text = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", str(value or "").strip(), flags=re.MULTILINE)
+    text = re.sub(
+        r"\b(?:consultation note|presenting (?:concern|complaint)|examination|clinical notes|"
+        r"assessment|diagnosis|plan|treatment|follow[- ]?up advice)\s*:\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
     text = re.sub(r"\s*\n+\s*", " ", text)
     text = re.sub(r"\s{2,}", " ", text).strip()
     prohibited = (
@@ -1496,6 +1503,15 @@ def build_fallback_patient_summary(source_context: dict[str, Any]) -> str:
     return _clean_patient_summary(" ".join(sentences[:3]))
 
 
+PATIENT_SUMMARY_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "OBJECT",
+    "required": ["summary"],
+    "properties": {
+        "summary": {"type": "STRING"},
+    },
+}
+
+
 async def generate_patient_summary(
     repo: AppRepository,
     org_id: str,
@@ -1507,10 +1523,10 @@ async def generate_patient_summary(
     prompt = f"""
 Create a clinically useful patient overview from the JSON record below.
 Return JSON with exactly one string property named "summary".
-The summary must be one natural paragraph of 2 to 3 complete sentences, normally 60 to 120 words.
+The summary must be one natural paragraph of 3 to 5 complete sentences, normally 120 to 180 words.
 Prioritize the current/recurrent complaint, material findings, diagnoses, treatment or medication,
 and follow-up advice actually documented across the two visits. Make the newest visit clearest.
-Do not use bullets, headings, labels, markdown, or line breaks.
+Do not use bullets, headings, section labels, markdown, or line breaks.
 Do not mention missing information, absent notes, the summarization process, AI, or system state.
 Do not infer or invent diagnoses, medications, vitals, findings, history, or outcomes.
 
@@ -1520,9 +1536,9 @@ Clinical record JSON:
 
     if not str(settings.gemini_model or "").strip():
         return {
-            "content": build_fallback_patient_summary(source),
+            "content": "",
             "used_fallback": True,
-            "warning": "AI unavailable, used fallback summary.",
+            "warning": "AI unavailable; previous summary was preserved.",
             "error_message": "GEMINI_MODEL is not configured.",
         }
 
@@ -1531,10 +1547,11 @@ Clinical record JSON:
             project_id=settings.google_cloud_project,
             location=settings.google_cloud_location,
             model=settings.gemini_model,
-            max_output_tokens=256,
+            max_output_tokens=1024,
             temperature=0.2,
             thinking_budget=0,
             response_mime_type="application/json",
+            response_schema=PATIENT_SUMMARY_RESPONSE_SCHEMA,
             system_instruction=(
                 "You write concise, factual patient overviews for clinicians. "
                 "Use only the supplied clinical JSON and return valid JSON only."
@@ -1544,9 +1561,9 @@ Clinical record JSON:
     except Exception as exc:
         logger.exception("Vertex AI patient summary generation failed")
         return {
-            "content": build_fallback_patient_summary(source),
+            "content": "",
             "used_fallback": True,
-            "warning": "AI unavailable, used fallback summary.",
+            "warning": "AI unavailable; previous summary was preserved.",
             "error_message": str(exc),
         }
 
@@ -1566,9 +1583,9 @@ Clinical record JSON:
     generated_text = _extract_text_from_vertex_response(response)
     if _has_max_tokens_finish(response) or not generated_text:
         warning = (
-            "AI returned incomplete content, used fallback summary."
+            "AI returned incomplete content; previous summary was preserved."
             if generated_text
-            else "AI returned no content, used fallback summary."
+            else "AI returned no content; previous summary was preserved."
         )
         error_message = (
             "Vertex AI returned MAX_TOKENS."
@@ -1576,7 +1593,7 @@ Clinical record JSON:
             else "Vertex AI returned an empty response."
         )
         return {
-            "content": build_fallback_patient_summary(source),
+            "content": "",
             "used_fallback": True,
             "warning": warning,
             "error_message": error_message,
@@ -1588,9 +1605,9 @@ Clinical record JSON:
     except (ValueError, json.JSONDecodeError, TypeError) as exc:
         logger.warning("Vertex AI patient summary output failed validation: %s", exc)
         return {
-            "content": build_fallback_patient_summary(source),
+            "content": "",
             "used_fallback": True,
-            "warning": "AI returned invalid summary content, used deterministic summary.",
+            "warning": "AI returned invalid summary content; previous summary was preserved.",
             "error_message": str(exc),
         }
 

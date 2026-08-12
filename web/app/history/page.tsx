@@ -184,7 +184,7 @@ export default function HistoryPage() {
   if (isRedirectingToLogin) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Redirecting to login...
         </div>
       </main>
@@ -194,7 +194,7 @@ export default function HistoryPage() {
   if (!isAuthReady) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
+        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
           Loading ClinicOS...
         </div>
       </main>
@@ -222,18 +222,18 @@ export default function HistoryPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-col gap-3 sm:flex-row">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-black" />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search name, phone, or reason"
-                  className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/50 py-3 pl-11 pr-4 text-sm text-slate-800 outline-none transition focus:border-[#6daed8] sm:w-80"
+                  className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/50 py-3 pl-11 pr-4 text-sm text-black outline-none transition focus:border-[#6daed8] sm:w-80"
                 />
               </div>
               <select
                 value={filter}
                 onChange={(event) => setFilter(event.target.value as HistoryFilter)}
-                className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                className="rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/50 px-4 py-3 text-sm text-black outline-none transition focus:border-[#6daed8]"
               >
                 <option value="all">All visits</option>
                 <option value="waiting">Waiting</option>
@@ -251,7 +251,7 @@ export default function HistoryPage() {
                   disabled={isExporting}
                   aria-label={isExporting ? "Preparing visit export" : "Export visits"}
                   title={isExporting ? "Preparing export" : "Export visits"}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-slate-800 transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-black transition hover:bg-[#f3f8fb] disabled:opacity-100"
                 >
                   <Download className="h-4 w-4" />
                 </button>
@@ -268,7 +268,7 @@ export default function HistoryPage() {
                         key={option.value}
                         type="button"
                         onClick={() => void handleExport(option.value as HistoryExportRange)}
-                        className="flex w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-[#f3f8fb]"
+                        className="flex w-full rounded-xl px-3 py-2 text-left text-sm text-black transition hover:bg-[#f3f8fb]"
                       >
                         {option.label}
                       </button>
@@ -281,7 +281,7 @@ export default function HistoryPage() {
                   onClick={() => window.location.reload()}
                   aria-label="Retry loading history"
                   title="Retry loading history"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-slate-800 transition hover:bg-[#f3f8fb]"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#9fc7e1] bg-white text-black transition hover:bg-[#f3f8fb]"
                 >
                   <RefreshCw className="h-4 w-4" />
                 </button>
@@ -307,19 +307,19 @@ export default function HistoryPage() {
                   <table className="min-w-full border-separate border-spacing-0">
                     <thead className="sticky top-0 z-10 bg-[#f3f8fb]/95 backdrop-blur">
                       <tr className="text-left">
-                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-sm font-semibold text-black">
                           Patient
                         </th>
-                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-sm font-semibold text-black">
                           Phone
                         </th>
-                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-sm font-semibold text-black">
                           Reason
                         </th>
-                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-sm font-semibold text-black">
                           Status
                         </th>
-                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        <th className="border-b border-[#dbe7ef] px-5 py-4 text-sm font-semibold text-black">
                           Visit Time
                         </th>
                       </tr>
@@ -331,19 +331,19 @@ export default function HistoryPage() {
                         onClick={() => openPatientChart(visit.patient_id)}
                           className="cursor-pointer transition hover:bg-[#f3f8fb]/70"
                         >
-                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-800">
-                            <div className="font-semibold text-slate-900">{visit.name}</div>
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-black">
+                            <div className="font-semibold text-black">{visit.name}</div>
                           </td>
-                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-600">
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-black">
                             {visit.phone}
                           </td>
-                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-600">
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-black">
                             <div className="max-w-sm truncate">{visit.reason}</div>
                           </td>
-                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-600">
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-black">
                             {formatHistoryStatus(visit)}
                           </td>
-                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-slate-500">
+                          <td className="border-b border-[#dbe7ef] px-5 py-3.5 text-sm text-black">
                             <div className="inline-flex items-center gap-2">
                               <Clock3 className="h-3.5 w-3.5" />
                               {new Date(visit.created_at).toLocaleString([], {
@@ -360,7 +360,7 @@ export default function HistoryPage() {
                   </table>
                 </div>
               ) : (
-                <div className="px-6 py-16 text-center text-sm text-slate-500">
+                <div className="px-6 py-16 text-center text-sm text-black">
                   No patients matched this history view.
                 </div>
               )}

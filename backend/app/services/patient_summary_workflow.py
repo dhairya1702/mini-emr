@@ -13,7 +13,7 @@ from app.schema_domains.patients import calculate_age_from_dob
 from app.services.ai_generation_service import generate_patient_summary
 
 MAX_SUMMARY_VISITS = 2
-MAX_SUMMARY_NOTE_CHARS = 3000
+MAX_SUMMARY_NOTE_CHARS = 12000
 logger = logging.getLogger(__name__)
 
 
@@ -178,6 +178,18 @@ async def generate_patient_summary_workflow(
 
     updated_at = datetime.now(UTC)
     summary = generation["content"]
+    if generation["used_fallback"] or not summary.strip():
+        if not patient.get("ai_summary_stale"):
+            await repo.mark_patient_summary_stale(org_id, patient_id)
+        cached_summary = str(patient.get("ai_summary") or "").strip()
+        return {
+            "summary": cached_summary,
+            "updated_at": patient.get("ai_summary_updated_at"),
+            "used_fallback": True,
+            "warning": generation.get("warning"),
+            "stale": bool(cached_summary or source["context"].get("recent_visits")),
+        }
+
     saved = await repo.save_patient_summary(
         org_id,
         patient_id,

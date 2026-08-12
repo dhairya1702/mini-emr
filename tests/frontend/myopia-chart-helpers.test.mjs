@@ -81,5 +81,6 @@ test("buildMyopiaChartModel computes projections and modeled overlays", () => {
   assert.notEqual(model.efficacyRight, null);
   assert.notEqual(model.efficacyLeft, null);
   assert.ok(model.xForAge(11.0) < model.xForAge(12.0));
+  assert.ok(model.xForAge(11.5) - model.xForAge(11.0) > 100);
   assert.ok(model.yForMm(24.8) < model.yForMm(24.1));
 });

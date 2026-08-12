@@ -41,10 +41,35 @@ test("consultation workspace keys are namespaced by org, user, patient, and visi
     sessionStorage.getItem("consultation-workspace:v3:org-1:user-1:patient-1:visit-1") !== null,
     true,
   );
+  assert.equal(
+    localStorage.getItem("consultation-workspace:v3:org-1:user-1:patient-1:visit-1") !== null,
+    true,
+  );
   assert.deepEqual(
     workspace.readConsultationWorkspace(scope),
     { form: { symptoms: "Blurred vision" } },
   );
+});
+
+test("consultation workspace survives a new browser session in local storage", async () => {
+  const localStorage = createStorage();
+  let sessionStorage = createStorage();
+  globalThis.window = { localStorage, sessionStorage };
+
+  const workspace = await importWebModule("lib/consultation-workspace.ts");
+  const scope = { orgId: "org-4", userId: "user-4", patientId: "patient-4", visitId: "visit-4" };
+  const snapshot = {
+    form: { symptoms: "Persistent symptoms", generatedNote: "Saved draft note" },
+    currentNoteId: "note-4",
+  };
+  workspace.writeConsultationWorkspace(scope, snapshot);
+
+  sessionStorage = createStorage();
+  globalThis.window = { localStorage, sessionStorage };
+
+  assert.deepEqual(workspace.readConsultationWorkspace(scope), snapshot);
+  assert.equal(sessionStorage.getItem(workspace.consultationWorkspaceKey(scope)) !== null, true);
+  assert.equal(localStorage.getItem(workspace.consultationWorkspaceKey(scope)) !== null, true);
 });
 
 test("consultation workspace drops malformed snapshots", async () => {

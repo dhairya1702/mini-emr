@@ -332,7 +332,7 @@ function YesNoField({
 }) {
   return (
     <div>
-      <p className="mb-2 text-xs font-medium text-slate-900">{label}</p>
+      <p className="mb-2 text-xs font-medium text-black">{label}</p>
       <div className="flex flex-wrap gap-2">
         {([
           { value: true, label: "Yes" },
@@ -346,7 +346,7 @@ function YesNoField({
             className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
               value === option.value
                 ? "border-[#2f8fd3] bg-[#edf5fa] text-[#2a6fa8]"
-                : "border-[#dbe7ef] bg-white text-slate-600 hover:bg-[#f3f8fb]"
+                : "border-[#dbe7ef] bg-white text-black hover:bg-[#f3f8fb]"
             }`}
           >
             {option.label}
@@ -468,7 +468,7 @@ function HistoryForm({
     <div className="space-y-5">
       {chiefComplaints && onChiefComplaintsChange ? (
         <section className="pb-6">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-900">Chief complaints</h3>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-black">Chief complaints</h3>
           <div className="flex flex-wrap gap-2">
             {OPTOMETRY_CHIEF_COMPLAINTS.map((complaint) => {
               const selected = chiefComplaints.some((entry) => entry.complaint === complaint);
@@ -481,7 +481,7 @@ function HistoryForm({
                   className={`border px-3 py-2 text-xs font-medium transition ${
                     selected
                       ? "border-[#2f8fd3] bg-[#e2f0fa] text-[#174f78]"
-                      : "border-[#dbe7ef] bg-white text-slate-700 hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
+                      : "border-[#dbe7ef] bg-white text-black hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
                   }`}
                 >
                   {complaint}
@@ -493,13 +493,13 @@ function HistoryForm({
             <div className="mt-4 space-y-3 border-l-2 border-[#9fc7e1] pl-4">
               {chiefComplaints.map((entry) => (
                 <label key={entry.complaint} className="grid gap-2 md:grid-cols-[250px_minmax(0,1fr)] md:items-center">
-                  <span className="text-xs font-semibold text-slate-900">{entry.complaint}</span>
+                  <span className="text-xs font-semibold text-black">{entry.complaint}</span>
                   <input
                     aria-label={`${entry.complaint} details`}
                     value={entry.comment}
                     onChange={(event) => updateChiefComplaintComment(entry.complaint, event.target.value)}
                     placeholder="Eye, duration, severity and relevant details"
-                    className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#6daed8]"
+                    className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-black outline-none focus:border-[#6daed8]"
                   />
                 </label>
               ))}
@@ -517,7 +517,7 @@ function HistoryForm({
                 : ""
             } pb-6`}
           >
-            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-900">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-black">
               {field.label}
             </span>
             {field.key === "ocular" ? (
@@ -534,7 +534,7 @@ function HistoryForm({
                         className={`border px-3 py-2 text-xs font-medium transition ${
                           selected
                             ? "border-[#2f8fd3] bg-[#e2f0fa] text-[#174f78]"
-                            : "border-[#dbe7ef] bg-white text-slate-700 hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
+                            : "border-[#dbe7ef] bg-white text-black hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
                         }`}
                       >
                         {condition}
@@ -546,13 +546,13 @@ function HistoryForm({
                   <div className="space-y-3 border-l-2 border-[#9fc7e1] pl-4">
                     {draft.ocular_conditions.map((entry) => (
                       <label key={entry.condition} className="grid gap-2 md:grid-cols-[250px_minmax(0,1fr)] md:items-center">
-                        <span className="text-xs font-semibold text-slate-900">{entry.condition}</span>
+                        <span className="text-xs font-semibold text-black">{entry.condition}</span>
                         <input
                           aria-label={`${entry.condition} details`}
                           value={entry.comment}
                           onChange={(event) => updateOcularComment(entry.condition, event.target.value)}
                           placeholder="Diagnosis, date, treatment or relevant details"
-                          className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#6daed8]"
+                          className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-black outline-none focus:border-[#6daed8]"
                         />
                       </label>
                     ))}
@@ -573,7 +573,7 @@ function HistoryForm({
                         className={`border px-3 py-2 text-xs font-medium transition ${
                           selected
                             ? "border-[#2f8fd3] bg-[#e2f0fa] text-[#174f78]"
-                            : "border-[#dbe7ef] bg-white text-slate-700 hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
+                            : "border-[#dbe7ef] bg-white text-black hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
                         }`}
                       >
                         {condition}
@@ -585,13 +585,13 @@ function HistoryForm({
                   <div className="space-y-3 border-l-2 border-[#9fc7e1] pl-4">
                     {draft.systemic_conditions.map((entry) => (
                       <label key={entry.condition} className="grid gap-2 md:grid-cols-[250px_minmax(0,1fr)] md:items-center">
-                        <span className="text-xs font-semibold text-slate-900">{entry.condition}</span>
+                        <span className="text-xs font-semibold text-black">{entry.condition}</span>
                         <input
                           aria-label={`${entry.condition} details`}
                           value={entry.comment}
                           onChange={(event) => updateSystemicComment(entry.condition, event.target.value)}
                           placeholder="Duration, control, medication or relevant details"
-                          className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#6daed8]"
+                          className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-black outline-none focus:border-[#6daed8]"
                         />
                       </label>
                     ))}
@@ -600,7 +600,7 @@ function HistoryForm({
               </div>
             ) : field.key === "allergies" ? (
               <div className="space-y-5">
-                <label className="flex items-center gap-2 text-xs text-slate-900">
+                <label className="flex items-center gap-2 text-xs text-black">
                   <input
                     type="checkbox"
                     checked={draft.no_known_allergies}
@@ -621,7 +621,7 @@ function HistoryForm({
                   ["food_allergy_entries", "Food allergies", FOOD_ALLERGIES],
                 ] as const).map(([key, label, options]) => (
                   <div key={key} className="space-y-3">
-                    <p className="text-xs font-semibold text-slate-900">{label}</p>
+                    <p className="text-xs font-semibold text-black">{label}</p>
                     <div className="flex flex-wrap gap-2">
                       {options.map((condition) => {
                         const selected = draft[key].some((entry) => entry.condition === condition);
@@ -632,10 +632,10 @@ function HistoryForm({
                             disabled={draft.no_known_allergies}
                             aria-pressed={selected}
                             onClick={() => toggleAllergyEntry(key, condition)}
-                            className={`border px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                            className={`border px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-100 ${
                               selected
                                 ? "border-[#2f8fd3] bg-[#e2f0fa] text-[#174f78]"
-                                : "border-[#dbe7ef] bg-white text-slate-700 hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
+                                : "border-[#dbe7ef] bg-white text-black hover:border-[#9fc7e1] hover:bg-[#f3f8fb]"
                             }`}
                           >
                             {condition}
@@ -647,13 +647,13 @@ function HistoryForm({
                       <div className="space-y-3 border-l-2 border-[#9fc7e1] pl-4">
                         {draft[key].map((entry) => (
                           <label key={entry.condition} className="grid gap-2 md:grid-cols-[250px_minmax(0,1fr)] md:items-center">
-                            <span className="text-xs font-semibold text-slate-900">{entry.condition}</span>
+                            <span className="text-xs font-semibold text-black">{entry.condition}</span>
                             <input
                               aria-label={`${label} ${entry.condition} details`}
                               value={entry.comment}
                               onChange={(event) => updateAllergyComment(key, entry.condition, event.target.value)}
                               placeholder="Allergen, reaction and relevant details"
-                              className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#6daed8]"
+                              className="w-full rounded-xl border border-[#dbe7ef] bg-white px-3 py-2.5 text-sm text-black outline-none focus:border-[#6daed8]"
                             />
                           </label>
                         ))}
@@ -669,7 +669,7 @@ function HistoryForm({
                 value={draft[field.key]}
                 onChange={(event) => update(field.key, event.target.value)}
                 placeholder={field.placeholder}
-                className="w-full resize-y rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
+                className="w-full resize-y rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-3 py-2.5 text-sm text-black outline-none transition focus:border-[#6daed8]"
               />
             )}
           </div>
@@ -677,7 +677,7 @@ function HistoryForm({
       </div>
 
       <div className="space-y-4 border-t border-[#dbe7ef] pt-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-900">Glasses & contacts</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-black">Glasses & contacts</p>
         <YesNoField label="Wears glasses" value={draft.wears_glasses} onChange={(value) => update("wears_glasses", value)} />
         {draft.wears_glasses ? (
           <>
@@ -690,7 +690,7 @@ function HistoryForm({
                 ["pd", "PD"],
               ] as const).map(([key, label]) => (
                 <label key={key} className="block">
-                  <span className="mb-1 block text-[11px] font-medium text-slate-900">{label}</span>
+                  <span className="mb-1 block text-[11px] font-medium text-black">{label}</span>
                   <input
                     value={draft[key]}
                     onChange={(event) => update(key, event.target.value)}
@@ -701,7 +701,7 @@ function HistoryForm({
             </div>
             <div className="overflow-x-auto rounded-xl border border-[#dbe7ef]">
               <table className="w-full min-w-[540px] text-xs">
-                <thead className="bg-[#f3f8fb] text-slate-900">
+                <thead className="bg-[#f3f8fb] text-black">
                   <tr>
                     <th className="px-3 py-2 text-left">Eye</th>
                     <th className="px-2 py-2 text-left">SPH</th>
@@ -716,7 +716,7 @@ function HistoryForm({
                     ["left_power", "OS"],
                   ] as const).map(([eye, label]) => (
                     <tr key={eye} className="border-t border-[#dbe7ef]">
-                      <td className="px-3 py-2 font-semibold text-slate-700">{label}</td>
+                      <td className="px-3 py-2 font-semibold text-black">{label}</td>
                       {(["sphere", "cylinder", "axis", "add"] as const).map((field) => (
                         <td key={field} className="px-1 py-2">
                           <input
@@ -750,7 +750,7 @@ function HistoryForm({
         {draft.wears_contact_lenses ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
-              <span className="mb-1 block text-[11px] font-medium text-slate-900">Since when</span>
+              <span className="mb-1 block text-[11px] font-medium text-black">Since when</span>
               <input
                 aria-label="Contacts since"
                 value={draft.contacts_since}
@@ -759,7 +759,7 @@ function HistoryForm({
               />
             </label>
             <label className="block">
-              <span className="mb-1 block text-[11px] font-medium text-slate-900">Type</span>
+              <span className="mb-1 block text-[11px] font-medium text-black">Type</span>
               <input
                 aria-label="Contact lens type"
                 value={draft.contact_lens_type}
@@ -768,10 +768,10 @@ function HistoryForm({
               />
             </label>
             <div className="sm:col-span-2">
-              <p className="mb-2 text-[11px] font-medium text-slate-900">Current contact lens power</p>
+              <p className="mb-2 text-[11px] font-medium text-black">Current contact lens power</p>
               <div className="overflow-x-auto rounded-xl border border-[#dbe7ef]">
                 <table className="w-full min-w-[540px] text-xs">
-                  <thead className="bg-[#f3f8fb] text-slate-900">
+                  <thead className="bg-[#f3f8fb] text-black">
                     <tr>
                       <th className="px-3 py-2 text-left">Eye</th>
                       <th className="px-2 py-2 text-left">SPH</th>
@@ -786,7 +786,7 @@ function HistoryForm({
                       ["left_contact_power", "OS"],
                     ] as const).map(([eye, label]) => (
                       <tr key={eye} className="border-t border-[#dbe7ef]">
-                        <td className="px-3 py-2 font-semibold text-slate-900">{label}</td>
+                        <td className="px-3 py-2 font-semibold text-black">{label}</td>
                         {(["sphere", "cylinder", "axis", "add"] as const).map((field) => (
                           <td key={field} className="px-1 py-2">
                             <input
@@ -818,63 +818,65 @@ function HistoryForm({
   );
 }
 
-function HistoryRow({ label, value }: { label: string; value: string }) {
+function HistoryRow({ label, value, plain = false }: { label: string; value: string; plain?: boolean }) {
   if (!value.trim()) return null;
   return (
     <div className="border-t border-[#dbe7ef] py-3 first:border-t-0 first:pt-0">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-900">{label}</p>
-      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">{value}</p>
+      <p className={plain ? "text-sm font-semibold text-black" : "text-[11px] font-semibold uppercase tracking-[0.16em] text-black"}>{label}</p>
+      <p className={`mt-1 whitespace-pre-wrap text-sm leading-6 ${plain ? "text-black" : "text-black"}`}>{value}</p>
     </div>
   );
 }
 
-function HistoryPayloadRows({ saved }: { saved: OptometryHistoryPayload }) {
-  if (!hasOptometryHistoryDetails(saved)) return <p className="py-6 text-center text-sm text-slate-500">No history recorded.</p>;
+function HistoryPayloadRows({ saved, plain = false }: { saved: OptometryHistoryPayload; plain?: boolean }) {
+  if (!hasOptometryHistoryDetails(saved)) return <p className={`py-6 text-center text-sm ${plain ? "text-black" : "text-black"}`}>No history recorded.</p>;
   return (
     <div>
       <HistoryRow
+        plain={plain}
         label="Ocular conditions"
         value={saved.ocular_conditions.map((entry) => (
           entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition
         )).join("\n")}
       />
       <HistoryRow
+        plain={plain}
         label="Systemic conditions"
         value={saved.systemic_conditions.map((entry) => (
           entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition
         )).join("\n")}
       />
-      {saved.no_known_allergies ? <HistoryRow label="Allergies" value="No known allergies" /> : (
+      {saved.no_known_allergies ? <HistoryRow plain={plain} label="Allergies" value="No known allergies" /> : (
         <>
-          <HistoryRow label="Drug allergies" value={saved.drug_allergy_entries.map((entry) => entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition).join("\n")} />
-          <HistoryRow label="Contact allergies" value={saved.contact_allergy_entries.map((entry) => entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition).join("\n")} />
-          <HistoryRow label="Food allergies" value={saved.food_allergy_entries.map((entry) => entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition).join("\n")} />
+          <HistoryRow plain={plain} label="Drug allergies" value={saved.drug_allergy_entries.map((entry) => entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition).join("\n")} />
+          <HistoryRow plain={plain} label="Contact allergies" value={saved.contact_allergy_entries.map((entry) => entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition).join("\n")} />
+          <HistoryRow plain={plain} label="Food allergies" value={saved.food_allergy_entries.map((entry) => entry.comment ? `${entry.condition}: ${entry.comment}` : entry.condition).join("\n")} />
         </>
       )}
-      <HistoryRow label="Current medications" value={saved.current_medications} />
-      <HistoryRow label="Family" value={saved.family} />
-      {saved.wears_glasses !== null ? <HistoryRow label="Wears glasses" value={booleanLabel(saved.wears_glasses)} /> : null}
-      <HistoryRow label="Glasses & contacts" value={[saved.glasses_since ? `Since ${saved.glasses_since}` : "", saved.glasses_usage, saved.lens_type, saved.prescription_age ? `Rx ${saved.prescription_age}` : "", saved.pd ? `PD ${saved.pd}` : ""].filter(Boolean).join(" · ")} />
-      <HistoryRow label="Current power OD" value={formatPower(saved.right_power)} />
-      <HistoryRow label="Current power OS" value={formatPower(saved.left_power)} />
-      <HistoryRow label="Glasses notes" value={saved.glasses_notes} />
-      {saved.wears_contact_lenses !== null ? <HistoryRow label="Wears contact lenses" value={booleanLabel(saved.wears_contact_lenses)} /> : null}
-      <HistoryRow label="Contact lenses" value={[saved.contacts_since ? `Since ${saved.contacts_since}` : "", saved.contact_lens_type, saved.contact_lens_notes].filter(Boolean).join(" · ")} />
-      <HistoryRow label="Contact power OD" value={formatPower(saved.right_contact_power)} />
-      <HistoryRow label="Contact power OS" value={formatPower(saved.left_contact_power)} />
+      <HistoryRow plain={plain} label="Current medications" value={saved.current_medications} />
+      <HistoryRow plain={plain} label="Family" value={saved.family} />
+      {saved.wears_glasses !== null ? <HistoryRow plain={plain} label="Wears glasses" value={booleanLabel(saved.wears_glasses)} /> : null}
+      <HistoryRow plain={plain} label="Glasses & contacts" value={[saved.glasses_since ? `Since ${saved.glasses_since}` : "", saved.glasses_usage, saved.lens_type, saved.prescription_age ? `Rx ${saved.prescription_age}` : "", saved.pd ? `PD ${saved.pd}` : ""].filter(Boolean).join(" · ")} />
+      <HistoryRow plain={plain} label="Current power OD" value={formatPower(saved.right_power)} />
+      <HistoryRow plain={plain} label="Current power OS" value={formatPower(saved.left_power)} />
+      <HistoryRow plain={plain} label="Glasses notes" value={saved.glasses_notes} />
+      {saved.wears_contact_lenses !== null ? <HistoryRow plain={plain} label="Wears contact lenses" value={booleanLabel(saved.wears_contact_lenses)} /> : null}
+      <HistoryRow plain={plain} label="Contact lenses" value={[saved.contacts_since ? `Since ${saved.contacts_since}` : "", saved.contact_lens_type, saved.contact_lens_notes].filter(Boolean).join(" · ")} />
+      <HistoryRow plain={plain} label="Contact power OD" value={formatPower(saved.right_contact_power)} />
+      <HistoryRow plain={plain} label="Contact power OS" value={formatPower(saved.left_contact_power)} />
     </div>
   );
 }
 
 function HistorySummaryRows({ controller }: { controller: OptometryHistoryController }) {
-  if (controller.isLoading) return <p className="py-6 text-center text-sm text-slate-500">Loading...</p>;
-  if (!controller.hasDetails) return <p className="py-6 text-center text-sm text-slate-500">No history recorded.</p>;
+  if (controller.isLoading) return <p className="py-6 text-center text-sm text-black">Loading...</p>;
+  if (!controller.hasDetails) return <p className="py-6 text-center text-sm text-black">No history recorded.</p>;
   return <HistoryPayloadRows saved={controller.savedPayload} />;
 }
 
 export function OptometryHistoryReadOnly({ payload }: { payload: OptometryHistoryPayload | null | undefined }) {
   const saved = normalizeHistoryPayload(payload ?? createEmptyOptometryHistory());
-  return <HistoryPayloadRows saved={saved} />;
+  return <HistoryPayloadRows saved={saved} plain />;
 }
 
 export function OptometryHistoryEditor({
@@ -889,7 +891,7 @@ export function OptometryHistoryEditor({
   onContinue: () => Promise<void>;
 }) {
   if (controller.isLoading) {
-    return <div className="py-20 text-center text-sm text-slate-500">Loading patient history...</div>;
+    return <div className="py-20 text-center text-sm text-black">Loading patient history...</div>;
   }
   return (
     <section aria-label="Optometry history">
@@ -905,7 +907,7 @@ export function OptometryHistoryEditor({
             type="button"
             disabled={controller.isSaving}
             onClick={() => void onContinue()}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-100"
           >
             {controller.isSaving ? "Saving..." : "Continue to Examination"}
           </button>
@@ -934,10 +936,10 @@ export function OptometryHistorySummary({
           onClick={() => setIsExpanded((current) => !current)}
           className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
         >
-          <span className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-slate-700">
+          <span className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-black">
             {controller.hasDetails ? <Check className="h-4 w-4 text-emerald-600" /> : null} History
           </span>
-          <ChevronDown className={`h-4 w-4 text-slate-500 transition ${isExpanded ? "rotate-180" : ""}`} />
+          <ChevronDown className={`h-4 w-4 text-black transition ${isExpanded ? "rotate-180" : ""}`} />
         </button>
         {isExpanded ? (
           <div className="border-t border-[#dbe7ef] p-4">
@@ -953,7 +955,7 @@ export function OptometryHistorySummary({
   return (
     <section className="hidden rounded-[18px] border border-[#bfd7e8] bg-white/95 shadow-sm xl:block">
       <div className="flex items-center justify-between gap-3 border-b border-[#dbe7ef] px-4 py-4">
-        <span className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-700">History</span>
+        <span className="text-sm font-semibold uppercase tracking-[0.24em] text-black">History</span>
         <button type="button" onClick={onEdit} className="inline-flex items-center gap-2 text-xs font-medium text-[#2a6fa8]">
           <Edit3 className="h-3.5 w-3.5" /> Edit history
         </button>
@@ -991,7 +993,7 @@ export function OptometryHistoryPanel({
           onClick={() => collapsible && setIsExpanded((current) => !current)}
           className="flex items-center gap-2 text-left"
         >
-          <span className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-700">History</span>
+          <span className="text-sm font-semibold uppercase tracking-[0.24em] text-black">History</span>
           {collapsible ? <ChevronDown className={`h-4 w-4 transition ${isExpanded ? "rotate-180" : ""}`} /> : null}
         </button>
         {isExpanded && !isEditing ? (
@@ -1015,7 +1017,7 @@ export function OptometryHistoryPanel({
                   type="button"
                   disabled={controller.isSaving}
                   onClick={() => void saveAndClose()}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white disabled:opacity-100"
                 >
                   <Save className="h-4 w-4" /> {controller.isSaving ? "Saving..." : "Save"}
                 </button>
@@ -1026,7 +1028,7 @@ export function OptometryHistoryPanel({
                     controller.reset();
                     setIsEditing(false);
                   }}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[#dbe7ef] px-4 py-2 text-sm text-slate-700"
+                  className="inline-flex items-center gap-2 rounded-xl border border-[#dbe7ef] px-4 py-2 text-sm text-black"
                 >
                   <X className="h-4 w-4" /> Cancel
                 </button>

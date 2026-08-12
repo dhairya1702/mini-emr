@@ -248,14 +248,23 @@ def build_referral_package_pdf(
     ]
 
     patient_name = str((snapshot.get("patient") or {}).get("name") or "Patient")
+    # Test appendices are supporting clinical records, not clinic correspondence.
+    # Keep the uploaded letterhead for the referral letter (and the separately
+    # rendered consultation notes), but render each test on a clean PDF page.
+    test_pdf_context = {
+        **clinic,
+        "document_template_letters_enabled": False,
+    }
     for record in snapshot.get("records") or []:
         if str(record.get("record_type") or "") != "test":
             continue
         sources.append(
             build_letter_pdf(
-                clinic,
+                test_pdf_context,
                 _test_appendix_content(record, patient_name=patient_name, clinic=clinic),
                 generated_on,
+                document_title=f"{str(record.get('title') or 'Clinical Test').strip()} Results",
+                show_generated_date=False,
             )
         )
 

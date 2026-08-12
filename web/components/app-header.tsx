@@ -162,10 +162,10 @@ export function AppHeader({
               key={item.key}
               href={item.href}
               replace
-              className={`shrink-0 rounded-xl px-3.5 py-2 text-sm font-semibold transition active:scale-[0.98] ${
+              className={`shrink-0 rounded-xl px-3.5 py-2 text-sm font-medium transition active:scale-[0.98] ${
                 isActive
                   ? "bg-[#2f8fd3] text-white shadow-[0_8px_18px_rgba(47,143,211,0.22)]"
-                  : "text-[#5b6b80] hover:bg-[#edf5fa] hover:text-[#1f2b3d]"
+                  : "text-black hover:bg-[#edf5fa] hover:text-black"
               }`}
             >
               {item.label}

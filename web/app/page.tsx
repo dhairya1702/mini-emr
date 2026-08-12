@@ -1778,7 +1778,7 @@ export default function HomePage() {
     ? selectedPatient.status === "waiting"
       ? "Start consultation"
       : selectedPatient.status === "consultation"
-        ? "Continue consultation"
+        ? "Continue Consultation"
         : !selectedPatient.billed && currentUser?.role === "admin"
           ? "Open billing"
           : null

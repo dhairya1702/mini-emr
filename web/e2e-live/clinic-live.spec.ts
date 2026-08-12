@@ -417,7 +417,7 @@ test("live patient chart attachments upload and open from the browser", async ({
   const patientRow = page.getByRole("row", { name: /Attachment Patient.*5550105555.*Follow-up setup/ });
   await expect(patientRow).toBeVisible();
   await patientRow.click();
-  await expect(page.getByText("Patient Chart", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close patient chart" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Visits" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Visit 1/ })).toBeVisible();
 

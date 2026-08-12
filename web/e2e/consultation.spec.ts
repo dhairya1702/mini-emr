@@ -94,6 +94,46 @@ test("consultation smoke generates a note and completes the patient flow", async
   ).toBeVisible();
 });
 
+test("consultation draft survives closing, reopening, and refreshing the shell", async ({ page }) => {
+  const user = buildUser({ doctor_signature_name: "Dr. Rivera" });
+  const patient = buildPatient({
+    id: "patient-consult-recovery-1",
+    name: "Jordan Reed",
+    reason: "Persistent headache",
+    status: "waiting",
+  });
+
+  await seedSession(page, { user });
+  await mockClinicBootstrap(page, {
+    user,
+    clinicSettings: buildClinicSettings({ clinic_specialty: "general_physician" }),
+    patients: [patient],
+  });
+  await mockConsultationFlow(page);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open chart for Jordan Reed" }).click();
+  await page.getByRole("button", { name: "Start consultation" }).click();
+  await page.getByLabel("Symptoms").fill("Headache for five days");
+  await page.getByLabel("Diagnosis").fill("Tension headache");
+  await page.getByLabel("Clinical Notes").fill("Hydration and sleep reviewed.");
+  await page.getByRole("button", { name: "Generate Note" }).click();
+  await expect(page.getByText("Plan: Hydration and observation.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Close consultation" }).click();
+  await expect(page.getByRole("button", { name: "Close patient chart" })).toBeVisible();
+  await page.getByRole("button", { name: "Continue Consultation" }).click();
+  await expect(page.getByLabel("Symptoms")).toHaveValue("Headache for five days");
+  await expect(page.getByLabel("Diagnosis")).toHaveValue("Tension headache");
+  await expect(page.getByLabel("Clinical Notes")).toHaveValue("Hydration and sleep reviewed.");
+  await expect(page.getByText("Plan: Hydration and observation.")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByLabel("Symptoms")).toHaveValue("Headache for five days");
+  await expect(page.getByLabel("Diagnosis")).toHaveValue("Tension headache");
+  await expect(page.getByText("Plan: Hydration and observation.")).toBeVisible();
+});
+
 test("closing a consultation cancels pending WhatsApp delivery polling", async ({ page }) => {
   const user = buildUser();
   const patient = buildPatient({
@@ -161,7 +201,7 @@ test("closing a consultation cancels pending WhatsApp delivery polling", async (
   await expect(page.getByText("WhatsApp: Accepted")).toBeVisible();
 
   await page.getByRole("complementary").locator("button").first().click();
-  await expect(page.getByText("Patient Chart", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close patient chart" })).toBeVisible();
   await expect(page.getByLabel("Symptoms")).toHaveCount(0);
   await page.waitForTimeout(3500);
 
@@ -196,8 +236,8 @@ test("optometry consultation separates History, Examination, and Consultation", 
   await expect(steps.getByRole("button", { name: /History/ })).toHaveAttribute("aria-current", "step");
   await expect(page).toHaveURL(/workspace=consultation.*consultationStep=history/);
   await page.goBack();
-  await expect(page.getByText("Patient Chart", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Continue consultation" }).click();
+  await expect(page.getByRole("button", { name: "Close patient chart" })).toBeVisible();
+  await page.getByRole("button", { name: "Continue Consultation" }).click();
   await expect(steps.getByRole("button", { name: /History/ })).toHaveAttribute("aria-current", "step");
   await page.getByLabel("Add attachment").setInputFiles({
     name: "history-scan.png",
@@ -268,6 +308,17 @@ test("optometry consultation separates History, Examination, and Consultation", 
   const lowVisionFooterBottomGap = await lowVisionFooter.evaluate((element) => window.innerHeight - element.getBoundingClientRect().bottom);
   expect(Math.abs(lowVisionFooterBottomGap)).toBeLessThanOrEqual(1);
   await page.goBack();
+  await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
+
+  await clinicalModules.getByRole("button", { name: "Myopia", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Myopia Management", exact: true })).toBeVisible();
+  await expect(page.getByText("Visit details", { exact: true })).toBeVisible();
+  await expect(page.getByText("Clinical measurements", { exact: true })).toBeVisible();
+  await expect(page.getByText("Clinical notes", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save", exact: true }).last()).toBeVisible();
+  await expect(page.getByText(/historical|backfill/i)).toHaveCount(0);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Visual Acuity" })).toBeVisible();
 
   await page.getByLabel("UCVA distance").first().fill("6/6");

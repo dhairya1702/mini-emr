@@ -107,7 +107,6 @@ export function readConsultationWorkspace<TSnapshot>(
       }
       if (!sessionRaw && localPrimaryRaw) {
         writeConsultationWorkspace(scope, parsed.snapshot);
-        window.localStorage.removeItem(primaryKey);
       }
       return parsed.snapshot;
     }
@@ -136,7 +135,14 @@ export function writeConsultationWorkspace<TSnapshot>(
     saved_at: new Date().toISOString(),
     snapshot,
   };
-  window.sessionStorage.setItem(consultationWorkspaceKey(scope), JSON.stringify(persisted));
+  const key = consultationWorkspaceKey(scope);
+  const serialized = JSON.stringify(persisted);
+  window.sessionStorage.setItem(key, serialized);
+  try {
+    window.localStorage.setItem(key, serialized);
+  } catch {
+    // Session recovery remains available if persistent browser storage is full.
+  }
 }
 
 export function clearConsultationWorkspace(scope: WorkspaceScope) {

@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 type OptometryModalShellProps = {
   open: boolean;
   title: string;
-  description: string;
+  description?: string;
   saveLabel: string;
   onClose: () => void;
   onSave: () => void | Promise<void>;
@@ -72,7 +72,7 @@ export function OptometryModalShell({
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#dbe7ef] px-3 py-3 sm:gap-4 sm:border-b-0 sm:px-6 sm:pt-6">
           <div className="min-w-0">
             <h3 className="truncate text-xl font-semibold text-slate-900 sm:text-2xl">{title}</h3>
-            <p className="mt-1 line-clamp-2 max-w-3xl text-xs leading-5 text-slate-600 sm:mt-2 sm:text-sm sm:leading-6">{description}</p>
+            {description ? <p className="mt-1 line-clamp-2 max-w-3xl text-xs leading-5 text-slate-600 sm:mt-2 sm:text-sm sm:leading-6">{description}</p> : null}
           </div>
           <button type="button" onClick={onClose} className="shrink-0 rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-[#f3f8fb]">
             <X className="h-4 w-4" />

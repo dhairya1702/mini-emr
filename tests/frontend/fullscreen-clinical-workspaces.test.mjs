@@ -29,9 +29,62 @@ test("binocular, neurovision and myopia workspaces are full screen", async () =>
     "components/optometry/binocular-vision-modal.tsx",
     "components/optometry/tbi-evaluation-modal.tsx",
     "components/optometry/myopia/myopia-management-modal.tsx",
-    "components/optometry/myopia/historical-myopia-modal.tsx",
   ]) {
     const contents = await source(path);
     assert.ok(contents.includes("h-[100dvh] w-full"), `${path} is not full viewport`);
   }
+  const myopiaEntry = await source("components/optometry/myopia/historical-myopia-modal.tsx");
+  assert.ok(myopiaEntry.includes("OptometryModalShell"));
+});
+
+test("myopia history uses the compact clinical dashboard layout", async () => {
+  const workspace = await source("components/optometry/myopia/myopia-management-modal.tsx");
+  const chart = await source("components/optometry/myopia/myopia-progression-chart.tsx");
+
+  assert.equal(
+    workspace.includes("Review axial-length progression, treatment changes, and backfilled records in one place."),
+    false,
+  );
+  assert.equal(workspace.includes("View reading history"), false);
+  assert.equal(workspace.includes("Projection uses the recorded annualized growth trend"), false);
+  for (const label of [
+    "Since baseline",
+    "Since last visit",
+    "Annualized growth",
+    "Treatment effect",
+    "Projection",
+    "Current treatment",
+    "Readings &amp; treatment timeline",
+  ]) {
+    assert.ok(workspace.includes(label), `missing compact dashboard section: ${label}`);
+  }
+  assert.ok(workspace.includes("timelineDelta(myopiaRecords, chronologicalIndex)"));
+  assert.ok(workspace.includes("record.refraction_right"));
+  assert.ok(workspace.includes("record.treatment_notes"));
+  assert.ok(workspace.includes("record.visit_notes"));
+  assert.ok(chart.includes('aria-label="Chart date range"'));
+  assert.equal(workspace.includes("text-slate-500"), false);
+  assert.equal(workspace.includes("text-slate-600"), false);
+  assert.equal(chart.includes("text-slate-500"), false);
+  assert.equal(chart.includes("text-slate-600"), false);
+});
+
+test("both myopia entry points share one neutral compact form", async () => {
+  const examination = await source("components/optometry/myopia-management-modal.tsx");
+  const backfill = await source("components/optometry/myopia/historical-myopia-modal.tsx");
+  const sharedForm = await source("components/optometry/myopia/myopia-measurement-form.tsx");
+
+  for (const entryPoint of [examination, backfill]) {
+    assert.ok(entryPoint.includes("MyopiaMeasurementForm"));
+    assert.ok(entryPoint.includes('title="Myopia Management"'));
+    assert.ok(entryPoint.includes('saveLabel="Save"'));
+    assert.equal(entryPoint.includes('title="Add Historical Measurement"'), false);
+    assert.equal(entryPoint.includes("Myopia Backfill"), false);
+    assert.equal(entryPoint.includes("Save Myopia Measurement"), false);
+  }
+  for (const section of ["Visit details", "Clinical measurements", "Clinical notes"]) {
+    assert.ok(sharedForm.includes(section), `missing shared Myopia section: ${section}`);
+  }
+  assert.equal(sharedForm.includes("text-slate-500"), false);
+  assert.equal(sharedForm.includes("text-slate-600"), false);
 });
