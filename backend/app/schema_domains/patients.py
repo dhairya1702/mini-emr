@@ -405,3 +405,8 @@ class FollowUpBookingRequest(BaseModel):
 
 class FollowUpBookingCancelRequest(BaseModel):
     token: str = Field(min_length=20)
+
+
+class QueueSnapshotOut(BaseModel):
+    revision: str
+    patients: list[PatientOut] = Field(default_factory=list)

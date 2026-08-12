@@ -33,7 +33,7 @@ export default function MobileQueuePage() {
         api.listQueuePatients(),
         api.listCheckInRequests(),
       ]);
-      setPatients(patientRows);
+      setPatients(patientRows.patients);
       setCheckInRequests(checkInRows);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load queue.");

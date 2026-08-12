@@ -3,6 +3,7 @@
 import { Search, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 
+import { useClinicShell } from "@/components/clinic-shell-provider";
 import { api } from "@/lib/api";
 import type {
   AuthUser,
@@ -40,6 +41,8 @@ export function CareProgramEnrollmentModal({
   onClose: () => void;
   onComplete: (enrollment: ProgramEnrollment, message: string) => void | Promise<void>;
 }) {
+  const { users: clinicUsers, loadUsers } = useClinicShell();
+  const users = clinicUsers.filter((user) => user.role === "admin");
   const activeOfferings = offerings.filter((offering) => offering.is_active && offering.catalog_item_id);
   const initialOffering = activeOfferings[0] || null;
   const [mode, setMode] = useState<"existing" | "new">("existing");
@@ -48,7 +51,6 @@ export function CareProgramEnrollmentModal({
   const [patientMatches, setPatientMatches] = useState<Patient[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [newPatient, setNewPatient] = useState<PatientInput>(emptyPatient);
-  const [users, setUsers] = useState<AuthUser[]>([]);
   const [doctorId, setDoctorId] = useState(currentUser.id);
   const [price, setPrice] = useState(initialOffering?.default_price ? String(initialOffering.default_price) : "");
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("paid");
@@ -60,10 +62,9 @@ export function CareProgramEnrollmentModal({
   const selectedOffering = activeOfferings.find((offering) => offering.program_key === programKey) || null;
 
   useEffect(() => {
-    api.listUsers()
-      .then((rows) => setUsers(rows.filter((user) => user.role === "admin")))
+    void loadUsers()
       .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Failed to load doctors."));
-  }, []);
+  }, [loadUsers]);
 
   async function searchPatients() {
     const query = patientQuery.trim();

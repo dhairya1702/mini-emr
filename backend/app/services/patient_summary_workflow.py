@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any, TypedDict
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -13,6 +14,7 @@ from app.services.ai_generation_service import generate_patient_summary
 
 MAX_SUMMARY_VISITS = 2
 MAX_SUMMARY_NOTE_CHARS = 3000
+logger = logging.getLogger(__name__)
 
 
 class PatientSummaryResult(TypedDict):
@@ -26,11 +28,6 @@ class PatientSummaryResult(TypedDict):
 class PatientSummarySource(TypedDict):
     context: dict[str, Any]
     source_hash: str
-
-
-def _source_has_finalized_note(source: PatientSummarySource) -> bool:
-    visits = source["context"].get("recent_visits") or []
-    return any(str(visit.get("consultation_note") or "").strip() for visit in visits if isinstance(visit, dict))
 
 
 def _truncate(value: Any, limit: int) -> str:
@@ -208,52 +205,34 @@ async def generate_patient_summary_workflow(
     }
 
 
-async def load_or_generate_patient_summary_workflow(
+async def load_cached_patient_summary_workflow(
     repo: AppRepository,
     org_id: str,
     patient_id: str,
 ) -> PatientSummaryResult:
     patient = await repo.get_patient(org_id, patient_id)
     cached = str(patient.get("ai_summary") or "").strip()
-    source = await load_patient_summary_source(repo, org_id, patient_id, patient=patient)
-    if not _source_has_finalized_note(source):
-        return {
-            "summary": "",
-            "updated_at": None,
-            "used_fallback": False,
-            "warning": None,
-            "stale": False,
-        }
+    return {
+        "summary": cached,
+        "updated_at": patient.get("ai_summary_updated_at"),
+        "used_fallback": False,
+        "warning": None,
+        "stale": bool(cached and patient.get("ai_summary_stale")),
+    }
 
-    if cached and str(patient.get("ai_summary_source_hash") or "") == source["source_hash"]:
-        return {
-            "summary": cached,
-            "updated_at": patient.get("ai_summary_updated_at") or datetime.now(UTC),
-            "used_fallback": False,
-            "warning": None,
-            "stale": False,
-        }
 
+async def regenerate_patient_summary_after_finalization(
+    repo: AppRepository,
+    org_id: str,
+    patient_id: str,
+) -> None:
+    """Refresh the stored summary without ever jeopardizing a finalized note."""
     try:
-        generated = await generate_patient_summary_workflow(repo, org_id, patient_id)
+        await repo.mark_patient_summary_stale(org_id, patient_id)
+        await generate_patient_summary_workflow(repo, org_id, patient_id)
     except Exception:
-        if cached:
-            return {
-                "summary": cached,
-                "updated_at": patient.get("ai_summary_updated_at") or datetime.now(UTC),
-                "used_fallback": False,
-                "warning": None,
-                "stale": False,
-            }
-        raise
-
-    if generated["stale"] and cached:
-        latest = await repo.get_patient(org_id, patient_id)
-        return {
-            "summary": str(latest.get("ai_summary") or cached),
-            "updated_at": latest.get("ai_summary_updated_at") or patient.get("ai_summary_updated_at") or datetime.now(UTC),
-            "used_fallback": generated["used_fallback"],
-            "warning": generated.get("warning"),
-            "stale": False,
-        }
-    return generated
+        logger.exception(
+            "Patient summary regeneration failed after note finalization for org=%s patient=%s",
+            org_id,
+            patient_id,
+        )

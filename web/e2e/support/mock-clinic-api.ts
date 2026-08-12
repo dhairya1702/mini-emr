@@ -349,8 +349,16 @@ export async function mockClinicBootstrap(
     };
     await fulfillJson(route, clinicSettings);
   });
-  await page.route(`${API_ORIGIN}/check-in/requests/status`, async (route) => {
-    await fulfillJson(route, { pending_count: 0, revision: "empty" });
+  await page.route(`${API_ORIGIN}/dashboard/status`, async (route) => {
+    await fulfillJson(route, {
+      queue_revision: "queue-1",
+      active_patient_count: patients.length,
+      check_in_revision: "empty:0",
+      pending_check_in_count: 0,
+    });
+  });
+  await page.route(`${API_ORIGIN}/patients/queue`, async (route) => {
+    await fulfillJson(route, { revision: "queue-1", patients });
   });
   await page.route(`${API_ORIGIN}/patients/queue/order`, async (route) => {
     const payload = JSON.parse(route.request().postData() || "{}");
@@ -379,7 +387,7 @@ export async function mockClinicBootstrap(
   await page.route(new RegExp(`${API_ORIGIN}/patients(?:\\?.*)?$`), async (route) => {
     await fulfillJson(route, patients);
   });
-  await page.route(new RegExp(`${API_ORIGIN}/patients/[^/]+$`), async (route) => {
+  await page.route(new RegExp(`${API_ORIGIN}/patients/(?!queue(?:/|$))[^/]+$`), async (route) => {
     const patientId = route.request().url().split("/").pop() || "";
     const patient = patients.find((entry) => entry.id === patientId);
     if (route.request().method() === "PATCH") {
@@ -515,7 +523,13 @@ export async function mockClinicBootstrap(
   await page.route(`${API_ORIGIN}/catalog`, async (route) => {
     await fulfillJson(route, []);
   });
+  await page.route(`${API_ORIGIN}/catalog/medicines`, async (route) => {
+    await fulfillJson(route, []);
+  });
   await page.route(`${API_ORIGIN}/appointments*`, async (route) => {
+    await fulfillJson(route, []);
+  });
+  await page.route(`${API_ORIGIN}/invoices*`, async (route) => {
     await fulfillJson(route, []);
   });
   await page.route(`${API_ORIGIN}/follow-ups*`, async (route) => {

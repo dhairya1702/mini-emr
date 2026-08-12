@@ -31,6 +31,7 @@ from app.schema_domains.patients import (
     PatientMatchOut,
     PatientOut,
     QueueOrderUpdate,
+    QueueSnapshotOut,
     PatientSummaryOut,
     PatientTimelineEvent,
     PatientUpdate,
@@ -49,7 +50,7 @@ from app.schema_domains.specialty import (
     TbiEvaluationOut,
 )
 from app.services.case_study_workflow import build_case_study_source_view
-from app.services.patient_summary_workflow import generate_patient_summary_workflow, load_or_generate_patient_summary_workflow
+from app.services.patient_summary_workflow import generate_patient_summary_workflow, load_cached_patient_summary_workflow
 from app.services.patient_views import (
     build_patient_visit_detail_view,
     build_patient_growth_history_view,
@@ -213,6 +214,30 @@ async def get_patients(
         return [PatientOut(**row) for row in rows]
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="get_patients") from exc
+
+
+@router.get("/patients/queue", response_model=QueueSnapshotOut)
+async def get_patient_queue(
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> QueueSnapshotOut:
+    try:
+        org_id = str(current_user.org_id)
+        # Read the revision first. If a mutation commits while the patient query
+        # runs, this response is conservatively old and the next heartbeat reloads it.
+        revision = await repo.get_dashboard_queue_revision(org_id)
+        rows = await repo.list_patients(
+            org_id,
+            active_only=True,
+            limit=500,
+            include_queue_context=True,
+        )
+        return QueueSnapshotOut(
+            revision=revision,
+            patients=[PatientOut(**row) for row in rows],
+        )
+    except Exception as exc:  # pragma: no cover
+        raise internal_server_error(exc, context="get_patient_queue") from exc
 
 
 @router.get("/visits", response_model=list[PatientVisitOut])
@@ -525,11 +550,11 @@ async def get_patient_summary(
 ) -> PatientSummaryOut:
     try:
         org_id = str(current_user.org_id)
-        result = await load_or_generate_patient_summary_workflow(repo, org_id, patient_id)
+        result = await load_cached_patient_summary_workflow(repo, org_id, patient_id)
         return PatientSummaryOut(
             summary=result["summary"],
             updated_at=result["updated_at"],
-            stale=False,
+            stale=result["stale"],
             used_fallback=result["used_fallback"],
         )
     except ValueError as exc:

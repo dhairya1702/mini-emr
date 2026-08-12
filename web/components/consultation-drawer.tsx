@@ -5,6 +5,7 @@ import { CalendarPlus2, Eye, FileText, Mail, MessageCircle, Paperclip, PenLine, 
 import NextImage from "next/image";
 import type { ReactNode } from "react";
 
+import { useClinicShell } from "@/components/clinic-shell-provider";
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { getSpecialtyModules, specialtyHasModule, type SpecialtyModuleKey } from "@/lib/specialty";
 import { clearConsultationWorkspace, readConsultationWorkspace, writeConsultationWorkspace } from "@/lib/consultation-workspace";
@@ -15,7 +16,6 @@ import {
   BinocularVisionEvaluationCreatePayload,
   BinocularVisionEvaluationRecord,
   BinocularVisionPayload,
-  CatalogItem,
   ClinicalAnalysisResponse,
   ClinicalExtractions,
   ClinicalAssistantAnswer,
@@ -556,6 +556,12 @@ export function ConsultationDrawer({
   onSend,
   onSendWhatsApp,
 }: ConsultationDrawerProps) {
+  const {
+    activeMedicines: medicineItems,
+    activeMedicinesError,
+    isActiveMedicinesLoading,
+    loadActiveMedicines,
+  } = useClinicShell();
   const isOptometryClinic = specialtyHasModule(clinicSpecialty, "eye_exam");
   const isPediatricsClinic = specialtyHasModule(clinicSpecialty, "pediatric_growth_measurement");
   const specialtyModules = getSpecialtyModules(clinicSpecialty);
@@ -568,7 +574,6 @@ export function ConsultationDrawer({
   const [openSections, setOpenSections] = useState(createClosedConsultationSections);
   const [activeInlineModule, setActiveInlineModule] = useState<InlineModuleKey | null>(null);
   const [activePediatricModule, setActivePediatricModule] = useState<PediatricModuleKey | null>(null);
-  const [medicineItems, setMedicineItems] = useState<CatalogItem[]>([]);
   const [medicineSearch, setMedicineSearch] = useState("");
   const [selectedMedicineIds, setSelectedMedicineIds] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState("");
@@ -768,13 +773,9 @@ export function ConsultationDrawer({
     setWhatsAppDeliveryStatus("");
     setHydratedConsultationKey(consultationHydrationKey);
 
-    void api.listCatalogItems()
-      .then((items) => {
-        if (active) setMedicineItems(items.filter((item) => item.item_type === "medicine"));
-      })
+    void loadActiveMedicines()
       .catch((loadError) => {
         if (!active) return;
-        setMedicineItems([]);
         setStatusMessage(loadError instanceof Error ? loadError.message : "Failed to load inventory medicines.");
       });
 
@@ -802,7 +803,7 @@ export function ConsultationDrawer({
       cancelWhatsAppDeliveryTrackingRef.current?.();
       cancelWhatsAppDeliveryTrackingRef.current = null;
     };
-  }, [consultationHydrationKey, specialtyModules.length, workspaceScope]);
+  }, [consultationHydrationKey, loadActiveMedicines, specialtyModules.length, workspaceScope]);
 
   useEffect(() => {
     if (
@@ -2423,6 +2424,15 @@ export function ConsultationDrawer({
               ))}
             </div>
           ) : null}
+          {!medicineItems.length && isActiveMedicinesLoading ? (
+            <p className="mt-3 rounded-[18px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">Loading medicines…</p>
+          ) : null}
+          {!medicineItems.length && activeMedicinesError && !isActiveMedicinesLoading ? (
+            <div className="mt-3 rounded-[18px] border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+              <p>{activeMedicinesError}</p>
+              <button type="button" onClick={() => void loadActiveMedicines(true).catch(() => undefined)} className="mt-3 font-semibold">Try again</button>
+            </div>
+          ) : null}
           <div className="mt-3 grid max-h-72 gap-2 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
             {filteredMedicineItems.length ? (
               filteredMedicineItems.slice(0, 12).map((item) => {
@@ -2452,11 +2462,11 @@ export function ConsultationDrawer({
                   </button>
                 );
               })
-            ) : (
+            ) : !isActiveMedicinesLoading && !activeMedicinesError ? (
               <p className="rounded-[18px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">
                 No medicines match this search.
               </p>
-            )}
+            ) : null}
           </div>
         </ConsultationModuleDetail>
       );
@@ -2666,6 +2676,7 @@ export function ConsultationDrawer({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close consultation"
             className="rounded-xl border border-[#bfd7e8] p-2 text-slate-700 transition hover:text-slate-900"
           >
             <X className="h-4 w-4" />
@@ -3163,6 +3174,15 @@ export function ConsultationDrawer({
                       ))}
                     </div>
                   ) : null}
+                  {!medicineItems.length && isActiveMedicinesLoading ? (
+                    <p className="mt-3 rounded-[22px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">Loading medicines…</p>
+                  ) : null}
+                  {!medicineItems.length && activeMedicinesError && !isActiveMedicinesLoading ? (
+                    <div className="mt-3 rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+                      <p>{activeMedicinesError}</p>
+                      <button type="button" onClick={() => void loadActiveMedicines(true).catch(() => undefined)} className="mt-3 font-semibold">Try again</button>
+                    </div>
+                  ) : null}
                   <div className="mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1">
                     {filteredMedicineItems.length ? (
                       filteredMedicineItems.slice(0, 12).map((item) => {
@@ -3193,11 +3213,11 @@ export function ConsultationDrawer({
                           </button>
                         );
                       })
-                    ) : (
+                    ) : !isActiveMedicinesLoading && !activeMedicinesError ? (
                       <p className="rounded-[22px] border border-dashed border-emerald-200 bg-white px-4 py-6 text-sm text-slate-500">
                         No medicines match this search.
                       </p>
-                    )}
+                    ) : null}
                   </div>
                 </ConsultationModuleDetail>
               </ConsultationModuleRailItem>

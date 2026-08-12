@@ -13,6 +13,7 @@ from app.repositories.postgres.ai_usage import AI_USAGE_COLUMNS, PostgresAIUsage
 from app.repositories.postgres.attachments import PATIENT_ATTACHMENT_COLUMNS, PostgresAttachmentsRepository
 from app.repositories.postgres.audit import AUDIT_EVENT_COLUMNS, PostgresAuditRepository
 from app.repositories.postgres.auth_settings import (
+    CLINIC_FRONTEND_SETTINGS_RESULT_COLUMNS,
     CLINIC_RUNTIME_SETTINGS_COLUMNS,
     CLINIC_SETTINGS_COLUMNS,
     SUPERUSER_ORG_SUMMARY_COLUMNS,
@@ -23,6 +24,7 @@ from app.repositories.postgres.auth_settings import (
 from app.repositories.postgres.billing import CATALOG_ITEM_COLUMNS, INVOICE_COLUMNS, INVOICE_ITEM_COLUMNS, PostgresBillingRepository
 from app.repositories.postgres.case_studies import CASE_STUDY_COLUMNS, PostgresCaseStudiesRepository
 from app.repositories.postgres.checkins import CHECK_IN_REQUEST_COLUMNS, PostgresCheckInsRepository
+from app.repositories.postgres.dashboard import PostgresDashboardRepository
 from app.repositories.postgres.myopia import MYOPIA_MEASUREMENT_COLUMNS, PostgresMyopiaRepository
 from app.repositories.postgres.patient_flow import (
     APPOINTMENT_COLUMNS,
@@ -32,6 +34,7 @@ from app.repositories.postgres.patient_flow import (
     PostgresPatientFlowRepository,
 )
 from app.repositories.postgres.platform_errors import PLATFORM_ERROR_COLUMNS, PostgresPlatformErrorsRepository
+from app.repositories.postgres.platform_email import PostgresPlatformEmailRepository
 from app.repositories.postgres.records import FOLLOW_UP_COLUMNS, NOTE_COLUMNS, PostgresRecordsRepository
 from app.repositories.postgres.specialty_tracks import LONGITUDINAL_TRACK_COLUMNS, PostgresSpecialtyTracksRepository
 from app.schema_domains.auth_settings import ClinicSettingsUpdate, UserAccountUpdate, UserRoleUpdate
@@ -661,6 +664,29 @@ class ScriptedManager:
         self.pool = ScriptedPool(cursor)
 
 
+def test_postgres_dashboard_status_uses_one_read_only_statement_and_expiry_aware_token():
+    cursor = ScriptedCursor(
+        descriptions=[["queue_revision", "active_patient_count", "check_in_revision", "pending_check_in_count"]],
+        fetchone_rows=[("184", 7, "41", 2)],
+    )
+    repo = PostgresDashboardRepository()
+    repo.connection_manager = ScriptedManager(cursor)  # type: ignore[attr-defined]
+
+    status = asyncio.run(repo.get_dashboard_status("org-1"))
+
+    assert status == {
+        "queue_revision": "184",
+        "active_patient_count": 7,
+        "check_in_revision": "41:2",
+        "pending_check_in_count": 2,
+    }
+    assert len(cursor.executed) == 1
+    statement, params = cursor.executed[0]
+    assert statement.lstrip().lower().startswith("select")
+    assert "update " not in statement.lower()
+    assert params == ("org-1", "org-1", "org-1")
+
+
 def test_postgres_platform_errors_repository_creates_trimmed_error():
     cursor = ScriptedCursor(
         descriptions=[PLATFORM_ERROR_COLUMNS],
@@ -832,6 +858,59 @@ def test_postgres_auth_settings_repository_runtime_settings_exclude_large_and_se
     assert "sender_email_app_password" not in statement
     assert "timezone" in statement
     assert params == ("org-1",)
+
+
+def test_postgres_auth_settings_repository_frontend_settings_return_presence_flags_without_values(monkeypatch):
+    cursor = ScriptedCursor(
+        descriptions=[CLINIC_FRONTEND_SETTINGS_RESULT_COLUMNS],
+        fetchone_rows=[tuple(
+            True if column in {"document_template_configured", "clinic_email_password_configured"} else None
+            for column in CLINIC_FRONTEND_SETTINGS_RESULT_COLUMNS
+        )],
+    )
+    repo = PostgresAuthSettingsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+    monkeypatch.setattr(
+        "app.repositories.postgres.auth_settings.decrypt_stored_secret",
+        lambda _value: (_ for _ in ()).throw(AssertionError("frontend settings must not decrypt secrets")),
+    )
+
+    settings = asyncio.run(repo.get_clinic_frontend_settings("org-1"))
+
+    statement, params = cursor.executed[0]
+    assert "document_template_data_base64" not in CLINIC_FRONTEND_SETTINGS_RESULT_COLUMNS
+    assert "sender_email_app_password" not in CLINIC_FRONTEND_SETTINGS_RESULT_COLUMNS
+    assert "as document_template_configured" in statement
+    assert "as clinic_email_password_configured" in statement
+    assert settings["document_template_configured"] is True
+    assert settings["clinic_email_password_configured"] is True
+    assert "document_template_data_base64" not in settings
+    assert "sender_email_app_password" not in settings
+    assert params == ("org-1",)
+
+
+def test_postgres_platform_email_availability_does_not_read_or_decrypt_credential(monkeypatch):
+    cursor = ScriptedCursor(
+        descriptions=[["sender_email", "is_enabled", "credential_configured"]],
+        fetchone_rows=[("platform@example.com", True, True)],
+    )
+    repo = PostgresPlatformEmailRepository()
+    repo.connection_manager = ScriptedManager(cursor)  # type: ignore[assignment]
+    monkeypatch.setattr(
+        "app.repositories.postgres.platform_email.decrypt_stored_secret",
+        lambda _value: (_ for _ in ()).throw(AssertionError("availability must not decrypt secrets")),
+    )
+
+    availability = asyncio.run(repo.get_platform_email_availability())
+
+    statement, params = cursor.executed[0]
+    assert "select sender_email, is_enabled" in statement
+    assert "as credential_configured" in statement
+    assert availability == {
+        "sender_email": "platform@example.com",
+        "is_enabled": True,
+        "credential_configured": True,
+    }
+    assert params == ()
 
 
 def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
@@ -1945,6 +2024,32 @@ def _case_study_row() -> tuple:
         "2026-06-11T20:40:00+00:00",
         "2026-06-11T20:41:00+00:00",
     )
+
+
+def test_postgres_active_medicines_uses_a_single_minimal_filtered_query():
+    cursor = ScriptedCursor(
+        descriptions=[["id", "name", "unit", "default_price", "track_inventory", "stock_quantity"]],
+        fetchall_rows=[[('medicine-1', 'Amoxicillin', 'tablet', 12.5, True, 24)]],
+    )
+    repo = PostgresBillingRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    medicines = asyncio.run(repo.list_active_medicines("org-1"))
+
+    assert len(cursor.executed) == 1
+    statement, params = cursor.executed[0]
+    assert "item_type = 'medicine'" in statement
+    assert "is_active = true" in statement
+    assert "order by name asc" in statement
+    assert "org_id, name" not in statement
+    assert params == ("org-1",)
+    assert medicines == [{
+        "id": "medicine-1",
+        "name": "Amoxicillin",
+        "unit": "tablet",
+        "default_price": 12.5,
+        "track_inventory": True,
+        "stock_quantity": 24,
+    }]
 
 
 def test_postgres_billing_repository_catalog_and_stock_flow():

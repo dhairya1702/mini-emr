@@ -12,6 +12,24 @@ from app.secret_crypto import decrypt_stored_secret, encrypt_stored_secret
 class PostgresPlatformEmailRepository:
     connection_manager: PostgresConnectionManager
 
+    async def get_platform_email_availability(self) -> dict[str, Any]:
+        def _get() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select sender_email, is_enabled,
+                          sender_email_app_password is not null as credential_configured
+                        from public.platform_email_settings
+                        where id = 'default'
+                        limit 1
+                        """
+                    )
+                    row = cursor.fetchone()
+                    return _row_to_dict(row, cursor) if row else {}
+
+        return await asyncio.to_thread(_get)
+
     async def get_platform_email_settings(self) -> dict[str, Any]:
         def _get() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:

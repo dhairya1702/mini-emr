@@ -22,6 +22,7 @@ import {
   CheckInConfig,
   CheckInRequest,
   CheckInRequestsStatus,
+  DashboardStatus,
   PublicAppointmentBooking,
   PublicAppointmentSlots,
   PublicCheckInContext,
@@ -61,6 +62,7 @@ import {
   GenerateNoteResponse,
   LongitudinalTrackCreatePayload,
   LongitudinalTrackRecord,
+  MedicineCatalogItem,
   BinocularVisionEvaluationCreatePayload,
   BinocularVisionEvaluationRecord,
   MobileFinalizeConsultationPayload,
@@ -75,6 +77,7 @@ import {
   PediatricGrowthSummary,
   OperationResult,
   Patient,
+  QueueSnapshot,
   PatientAttachment,
   PatientChartVisit,
   PatientInput,
@@ -569,6 +572,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   listCatalogItems: () => request<CatalogItem[]>("/catalog"),
+  listActiveMedicines: () => request<MedicineCatalogItem[]>("/catalog/medicines"),
   createCatalogItem: (payload: CatalogItemCreatePayload) =>
     request<CatalogItem>("/catalog", {
       method: "POST",
@@ -825,12 +829,8 @@ export const api = {
       if (page.length < 500) return rows;
     }
   },
-  listQueuePatients: () =>
-    request<Patient[]>(withQuery("/patients", {
-      active_only: "true",
-      include_queue_context: "true",
-      limit: 500,
-    })),
+  listQueuePatients: () => request<QueueSnapshot>("/patients/queue"),
+  getDashboardStatus: () => request<DashboardStatus>("/dashboard/status"),
   getPatient: (patientId: string) => request<Patient>(`/patients/${patientId}`),
   getPatientOptometryHistory: (patientId: string) =>
     request<OptometryHistory>(`/patients/${patientId}/optometry-history`),

@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api_errors import bad_request_error
-from app.auth import require_admin
+from app.auth import get_current_user, require_admin
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
-from app.schema_domains.billing import CatalogItemCreate, CatalogItemOut, CatalogItemUpdate, CatalogStockUpdate
+from app.schema_domains.billing import CatalogItemCreate, CatalogItemOut, CatalogItemUpdate, CatalogStockUpdate, MedicineCatalogItemOut
 from app.services.catalog_workflow import (
     create_catalog_item_workflow,
     delete_catalog_item_workflow,
@@ -14,6 +14,15 @@ from app.services.catalog_workflow import (
 
 
 router = APIRouter()
+
+
+@router.get("/catalog/medicines", response_model=list[MedicineCatalogItemOut])
+async def list_active_medicines(
+    current_user: UserOut = Depends(get_current_user),
+    repo: AppRepository = Depends(get_repository),
+) -> list[MedicineCatalogItemOut]:
+    items = await repo.list_active_medicines(str(current_user.org_id))
+    return [MedicineCatalogItemOut(**item) for item in items]
 
 
 @router.get("/catalog", response_model=list[CatalogItemOut])

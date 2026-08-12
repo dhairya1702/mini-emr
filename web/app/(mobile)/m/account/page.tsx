@@ -13,7 +13,7 @@ function normalizeDateInput(value: string | null | undefined) {
 }
 
 export default function MobileAccountPage() {
-  const { currentUser, isAuthReady, isRedirectingToLogin } = useClinicShell();
+  const { currentUser, isAuthReady, isRedirectingToLogin, applyCurrentUser } = useClinicShell();
   const [accountUser, setAccountUser] = useState<AuthUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [profileForm, setProfileForm] = useState({
@@ -82,6 +82,7 @@ export default function MobileAccountPage() {
         doctor_address: profileForm.doctor_address.trim(),
       });
       setAccountUser(updated);
+      applyCurrentUser(updated);
       setProfileMessage("Account details saved.");
       setIsEditing(false);
     } catch (saveError) {
@@ -98,6 +99,7 @@ export default function MobileAccountPage() {
     try {
       const updated = await api.uploadMySignature(file);
       setAccountUser(updated);
+      applyCurrentUser(updated);
       setSignatureMessage("Signature saved.");
     } catch (saveError) {
       setSignatureError(saveError instanceof Error ? saveError.message : "Failed to upload signature.");
@@ -113,6 +115,7 @@ export default function MobileAccountPage() {
     try {
       const updated = await api.removeMySignature();
       setAccountUser(updated);
+      applyCurrentUser(updated);
       setSignatureMessage("Signature removed.");
     } catch (saveError) {
       setSignatureError(saveError instanceof Error ? saveError.message : "Failed to remove signature.");

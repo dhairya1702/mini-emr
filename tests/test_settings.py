@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from base64 import b64encode
 from io import BytesIO
@@ -10,6 +11,11 @@ from test_app import auth_headers_for_token, client, register_test_clinic, signa
 from app.services.pdf_service import _page_size_for_template
 from app.services import note_workflow, whatsapp_document_workflow
 from app.services.whatsapp_client import WhatsAppSendResult
+from app.routes.settings import (
+    _frontend_clinic_settings,
+    _platform_email_availability,
+    _serialize_clinic_settings,
+)
 
 
 class FakeWhatsAppDocumentClient:
@@ -24,6 +30,50 @@ class FakeWhatsAppDocumentClient:
     def send_document(self, *, to: str, media_id: str, filename: str, caption: str = "") -> WhatsAppSendResult:
         self.documents.append({"to": to, "media_id": media_id, "filename": filename, "caption": caption})
         return WhatsAppSendResult(message_id="wamid.letter", raw={"messages": [{"id": "wamid.letter"}]})
+
+
+def test_frontend_settings_presence_flags_preserve_public_response_contract():
+    settings = _serialize_clinic_settings(
+        {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "org_id": "00000000-0000-0000-0000-000000000002",
+            "document_template_name": "letterhead.pdf",
+            "document_template_configured": True,
+            "sender_email": "clinic@example.com",
+            "clinic_email_password_configured": True,
+            "email_sender_mode": "clinic",
+        },
+        {
+            "sender_email": "platform@example.com",
+            "is_enabled": True,
+            "credential_configured": True,
+        },
+    )
+
+    assert settings.document_template_url == "/settings/clinic/document-template/file"
+    assert settings.clinic_email_configured is True
+    assert settings.clinicos_email_available is True
+    assert settings.email_configured is True
+
+
+def test_settings_bootstrap_prefers_safe_repository_projections():
+    class ProjectionRepo:
+        async def get_clinic_frontend_settings(self, org_id: str):
+            return {"org_id": org_id, "document_template_configured": False}
+
+        async def get_platform_email_availability(self):
+            return {"is_enabled": False, "credential_configured": False}
+
+        async def get_clinic_settings(self, _org_id: str):
+            raise AssertionError("bootstrap must not use full clinic settings")
+
+        async def get_platform_email_settings(self):
+            raise AssertionError("bootstrap must not use decrypted platform settings")
+
+    repo = ProjectionRepo()
+
+    assert asyncio.run(_frontend_clinic_settings(repo, "org-1"))["org_id"] == "org-1"
+    assert asyncio.run(_platform_email_availability(repo))["credential_configured"] is False
 
 
 def test_clinic_settings_document_template_upload_download_and_remove(client):

@@ -30,6 +30,7 @@ export default function UsersPage() {
     users,
     auditEvents,
     loadUsers,
+    usersError,
     loadAuditEvents,
     catalogItems,
     loadCatalogItems,
@@ -68,7 +69,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     if (isAuthReady && currentUser?.role === "admin") {
-      void loadUsers();
+      void loadUsers().catch(() => undefined);
     }
   }, [currentUser, isAuthReady, loadUsers]);
 
@@ -132,7 +133,7 @@ export default function UsersPage() {
     <main className="clinic-page">
       <div className="clinic-container">
         <AppHeader clinicName={clinicName} currentUser={currentUser} active="users" onOpenSettings={() => setIsSettingsOpen(true)} onLogout={handleLogout} />
-        {error ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+        {error || usersError ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error || usersError}</div> : null}
         <SettingsDrawerUsersPanel
           currentUser={currentUser}
           users={users}

@@ -1252,6 +1252,18 @@ export interface CheckInRequestsStatus {
   revision: string;
 }
 
+export interface DashboardStatus {
+  queue_revision: string;
+  active_patient_count: number;
+  check_in_revision: string;
+  pending_check_in_count: number;
+}
+
+export interface QueueSnapshot {
+  revision: string;
+  patients: Patient[];
+}
+
 export type UserRole = "admin" | "staff";
 
 export interface UserRoleUpdatePayload {
@@ -1602,6 +1614,15 @@ export interface CatalogItemCreatePayload {
   program_key?: string | null;
   program_definition?: MyopiaProgramDefinition | null;
   is_active?: boolean;
+}
+
+export interface MedicineCatalogItem {
+  id: string;
+  name: string;
+  unit: string;
+  default_price: number;
+  track_inventory: boolean;
+  stock_quantity: number;
 }
 
 export interface CatalogItemUpdatePayload {

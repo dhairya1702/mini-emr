@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { api } from "@/lib/api";
-import { AuditEvent, AuthUser, CatalogItem, ClinicSettings, ClinicSettingsUpdatePayload, Invoice, InvoiceActionResult } from "@/lib/types";
+import { AuditEvent, AuthUser, ClinicSettings, ClinicSettingsUpdatePayload, Invoice, InvoiceActionResult } from "@/lib/types";
 
 const PAGE_LOAD_RETRY_DELAY_MS = 400;
 const PAGE_LOAD_MAX_ATTEMPTS = 2;
@@ -62,6 +62,26 @@ export function useClinicShellPage<T>({
     isAuthReady,
     isRedirectingToLogin,
     isTrainingMode,
+    users,
+    catalogItems,
+    loadUsers,
+    loadCatalogItems,
+    isUsersLoaded,
+    isUsersLoading,
+    usersError,
+    isCatalogLoaded,
+    isCatalogLoading,
+    catalogError,
+    createStaffUser,
+    updateUserRole,
+    deleteUser,
+    uploadUserSignature,
+    removeUserSignature,
+    createCatalogItem,
+    updateCatalogItem,
+    adjustCatalogStock,
+    deleteCatalogItem,
+    invalidateCatalog,
     refreshShell,
     redirectToLogin,
     trainingScope,
@@ -69,21 +89,9 @@ export function useClinicShellPage<T>({
   const canLoadPageDataRef = useRef(canLoadPageData);
   const loadPageDataRef = useRef(loadPageData);
   const onPageDataRef = useRef(onPageData);
-  const [users, setUsers] = useState<AuthUser[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
-  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [pageError, setPageError] = useState("");
   const [isPageDataLoaded, setIsPageDataLoaded] = useState(false);
-  const [isUsersLoaded, setIsUsersLoaded] = useState(false);
-  const [isUsersLoading, setIsUsersLoading] = useState(false);
-  const [isCatalogLoaded, setIsCatalogLoaded] = useState(false);
-  const [isCatalogLoading, setIsCatalogLoading] = useState(false);
-  const usersRef = useRef<AuthUser[]>([]);
-  const catalogItemsRef = useRef<CatalogItem[]>([]);
-  const isUsersLoadedRef = useRef(false);
-  const isCatalogLoadedRef = useRef(false);
-  const usersLoadPromiseRef = useRef<Promise<AuthUser[]> | null>(null);
-  const catalogLoadPromiseRef = useRef<Promise<CatalogItem[]> | null>(null);
 
   useEffect(() => {
     canLoadPageDataRef.current = canLoadPageData;
@@ -190,31 +198,6 @@ export function useClinicShellPage<T>({
     applyShellCurrentUser(user);
   }, [applyShellCurrentUser]);
 
-  const loadUsers = useCallback(() => {
-    if (isUsersLoadedRef.current) {
-      return Promise.resolve(usersRef.current);
-    }
-    if (usersLoadPromiseRef.current) {
-      return usersLoadPromiseRef.current;
-    }
-
-    setIsUsersLoading(true);
-    const request = api.listUsers()
-      .then((loadedUsers) => {
-        usersRef.current = loadedUsers;
-        isUsersLoadedRef.current = true;
-        setUsers(loadedUsers);
-        setIsUsersLoaded(true);
-        return loadedUsers;
-      })
-      .finally(() => {
-        usersLoadPromiseRef.current = null;
-        setIsUsersLoading(false);
-      });
-    usersLoadPromiseRef.current = request;
-    return request;
-  }, []);
-
   const loadAuditEvents = useCallback(async () => {
     const loadedAuditEvents = await api.listAuditEvents();
     setAuditEvents(loadedAuditEvents);
@@ -222,141 +205,55 @@ export function useClinicShellPage<T>({
   }, []);
 
   const handleAddStaffUser = useCallback(async (payload: { identifier: string; password: string }) => {
-    const created = await api.createStaffUser(payload);
-    setUsers((current) => {
-      const nextUsers = [...current, created];
-      usersRef.current = nextUsers;
-      return nextUsers;
-    });
-    isUsersLoadedRef.current = true;
-    setIsUsersLoaded(true);
+    await createStaffUser(payload);
     const refreshedSettings = await api.getClinicSettings();
     applyShellClinicSettings(refreshedSettings);
-  }, [applyShellClinicSettings]);
+  }, [applyShellClinicSettings, createStaffUser]);
 
   const handleUpdateUserRole = useCallback(async (userId: string, role: "admin" | "staff") => {
-    const updated = await api.updateUserRole(userId, { role });
-    setUsers((current) => {
-      const nextUsers = current.map((user) => (user.id === userId ? updated : user));
-      usersRef.current = nextUsers;
-      return nextUsers;
-    });
-    isUsersLoadedRef.current = true;
-    setIsUsersLoaded(true);
-    return updated;
-  }, []);
+    return updateUserRole(userId, role);
+  }, [updateUserRole]);
 
   const handleDeleteUser = useCallback(async (userId: string) => {
-    await api.deleteUser(userId);
-    setUsers((current) => {
-      const nextUsers = current.filter((user) => user.id !== userId);
-      usersRef.current = nextUsers;
-      return nextUsers;
-    });
-    isUsersLoadedRef.current = true;
-    setIsUsersLoaded(true);
-  }, []);
+    await deleteUser(userId);
+  }, [deleteUser]);
 
   const handleUploadUserSignature = useCallback(async (userId: string, file: File) => {
-    const updated = await api.uploadUserSignature(userId, file);
-    setUsers((current) => {
-      const nextUsers = current.map((user) => (user.id === userId ? updated : user));
-      usersRef.current = nextUsers;
-      return nextUsers;
-    });
-    isUsersLoadedRef.current = true;
-    setIsUsersLoaded(true);
-    return updated;
-  }, []);
+    return uploadUserSignature(userId, file);
+  }, [uploadUserSignature]);
 
   const handleRemoveUserSignature = useCallback(async (userId: string) => {
-    const updated = await api.removeUserSignature(userId);
-    setUsers((current) => {
-      const nextUsers = current.map((user) => (user.id === userId ? updated : user));
-      usersRef.current = nextUsers;
-      return nextUsers;
-    });
-    isUsersLoadedRef.current = true;
-    setIsUsersLoaded(true);
-    return updated;
-  }, []);
-
-  const loadCatalogItems = useCallback(() => {
-    if (isCatalogLoadedRef.current) {
-      return Promise.resolve(catalogItemsRef.current);
-    }
-    if (catalogLoadPromiseRef.current) {
-      return catalogLoadPromiseRef.current;
-    }
-
-    setIsCatalogLoading(true);
-    const request = api.listCatalogItems()
-      .then((loadedCatalogItems) => {
-        catalogItemsRef.current = loadedCatalogItems;
-        isCatalogLoadedRef.current = true;
-        setCatalogItems(loadedCatalogItems);
-        setIsCatalogLoaded(true);
-        return loadedCatalogItems;
-      })
-      .finally(() => {
-        catalogLoadPromiseRef.current = null;
-        setIsCatalogLoading(false);
-      });
-    catalogLoadPromiseRef.current = request;
-    return request;
-  }, []);
+    return removeUserSignature(userId);
+  }, [removeUserSignature]);
 
   const handleCreateCatalogItem = useCallback(async (payload: ClinicCatalogItemPayload) => {
-    const created = await api.createCatalogItem(payload);
-    setCatalogItems((current) => {
-      const nextItems = [...current, created].sort((left, right) => left.name.localeCompare(right.name));
-      catalogItemsRef.current = nextItems;
-      return nextItems;
-    });
-    isCatalogLoadedRef.current = true;
-    setIsCatalogLoaded(true);
-  }, []);
+    await createCatalogItem(payload);
+  }, [createCatalogItem]);
 
   const handleAdjustCatalogStock = useCallback(async (itemId: string, delta: number) => {
-    const updated = await api.updateCatalogStock(itemId, { delta });
-    setCatalogItems((current) => {
-      const nextItems = current.map((item) => (item.id === itemId ? updated : item));
-      catalogItemsRef.current = nextItems;
-      return nextItems;
-    });
-  }, []);
+    await adjustCatalogStock(itemId, delta);
+  }, [adjustCatalogStock]);
 
   const handleUpdateCatalogItem = useCallback(async (
     itemId: string,
     payload: Omit<ClinicCatalogItemPayload, "stock_quantity">,
   ) => {
-    const updated = await api.updateCatalogItem(itemId, payload);
-    setCatalogItems((current) => {
-      const nextItems = current
-        .map((item) => (item.id === itemId ? updated : item))
-        .sort((left, right) => left.name.localeCompare(right.name));
-      catalogItemsRef.current = nextItems;
-      return nextItems;
-    });
-    return updated;
-  }, []);
+    return updateCatalogItem(itemId, payload);
+  }, [updateCatalogItem]);
 
   const handleDeleteCatalogItem = useCallback(async (itemId: string) => {
-    await api.deleteCatalogItem(itemId);
-    setCatalogItems((current) => {
-      const nextItems = current.filter((item) => item.id !== itemId);
-      catalogItemsRef.current = nextItems;
-      return nextItems;
-    });
-  }, []);
+    await deleteCatalogItem(itemId);
+  }, [deleteCatalogItem]);
 
   const handleCreateInvoice = useCallback(async (payload: ClinicInvoicePayload): Promise<Invoice> => {
     return api.createInvoice(payload);
   }, []);
 
   const handleFinalizeInvoice = useCallback(async (payload: { invoice_id: string }): Promise<InvoiceActionResult> => {
-    return api.finalizeInvoice(payload);
-  }, []);
+    const result = await api.finalizeInvoice(payload);
+    invalidateCatalog(true);
+    return result;
+  }, [invalidateCatalog]);
 
   const handleGenerateLetter = useCallback(async (payload: {
     to: string;
@@ -412,8 +309,10 @@ export function useClinicShellPage<T>({
     isPageDataLoaded,
     isUsersLoaded,
     isUsersLoading,
+    usersError,
     isCatalogLoaded,
     isCatalogLoading,
+    catalogError,
     isTrainingMode,
     trainingScope,
     enterTrainingMode: shell.enterTrainingMode,

@@ -16,7 +16,15 @@ import { api } from "@/lib/api";
 import { authStorage, SESSION_EXPIRED_MESSAGE } from "@/lib/auth";
 import { requiresOnboarding } from "@/lib/onboarding";
 import { createTrainingScope, readTrainingMode, resetTrainingData, writeTrainingMode } from "@/lib/training-mode";
-import { AuthUser, ClinicSettings } from "@/lib/types";
+import {
+  AuthUser,
+  CatalogItem,
+  CatalogItemCreatePayload,
+  CatalogItemUpdatePayload,
+  ClinicSettings,
+  MedicineCatalogItem,
+  StaffUserCreatePayload,
+} from "@/lib/types";
 
 const SESSION_EXPIRED_REDIRECT = "/login?reason=session-expired";
 const PUBLIC_PATHS = new Set(["/login", "/follow-up", "/check-in"]);
@@ -24,6 +32,7 @@ const SETUP_ONBOARDING_PATH = "/onboarding/setup";
 const MOBILE_SETUP_ONBOARDING_PATH = "/m/onboarding/setup";
 const SHELL_LOAD_MAX_ATTEMPTS = 2;
 const SHELL_LOAD_RETRY_DELAY_MS = 350;
+const SHARED_RESOURCE_TTL_MS = 5 * 60 * 1000;
 
 type ClinicShellContextValue = {
   currentUser: AuthUser | null;
@@ -41,6 +50,31 @@ type ClinicShellContextValue = {
   enterTrainingMode: () => void;
   exitTrainingMode: () => void;
   resetTrainingMode: () => void;
+  users: AuthUser[];
+  catalogItems: CatalogItem[];
+  activeMedicines: MedicineCatalogItem[];
+  isUsersLoaded: boolean;
+  isUsersLoading: boolean;
+  usersError: string;
+  isCatalogLoaded: boolean;
+  isCatalogLoading: boolean;
+  catalogError: string;
+  isActiveMedicinesLoaded: boolean;
+  isActiveMedicinesLoading: boolean;
+  activeMedicinesError: string;
+  loadUsers: (force?: boolean) => Promise<AuthUser[]>;
+  loadCatalogItems: (force?: boolean) => Promise<CatalogItem[]>;
+  loadActiveMedicines: (force?: boolean) => Promise<MedicineCatalogItem[]>;
+  createStaffUser: (payload: StaffUserCreatePayload) => Promise<AuthUser>;
+  updateUserRole: (userId: string, role: "admin" | "staff") => Promise<AuthUser>;
+  deleteUser: (userId: string) => Promise<void>;
+  uploadUserSignature: (userId: string, file: File) => Promise<AuthUser>;
+  removeUserSignature: (userId: string) => Promise<AuthUser>;
+  createCatalogItem: (payload: CatalogItemCreatePayload) => Promise<CatalogItem>;
+  updateCatalogItem: (itemId: string, payload: CatalogItemUpdatePayload) => Promise<CatalogItem>;
+  adjustCatalogStock: (itemId: string, delta: number) => Promise<CatalogItem>;
+  deleteCatalogItem: (itemId: string) => Promise<void>;
+  invalidateCatalog: (refresh?: boolean) => void;
 };
 
 const ClinicShellContext = createContext<ClinicShellContextValue | null>(null);
@@ -55,6 +89,18 @@ function isSessionErrorMessage(message: string) {
   );
 }
 
+function toActiveMedicine(item: CatalogItem): MedicineCatalogItem | null {
+  if (item.item_type !== "medicine" || item.is_active === false) return null;
+  return {
+    id: item.id,
+    name: item.name,
+    unit: item.unit,
+    default_price: item.default_price,
+    track_inventory: item.track_inventory,
+    stock_quantity: item.stock_quantity,
+  };
+}
+
 export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -64,9 +110,67 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isRedirectingToLogin, setIsRedirectingToLogin] = useState(false);
   const [isTrainingMode, setIsTrainingMode] = useState(false);
+  const [users, setUsers] = useState<AuthUser[]>([]);
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [activeMedicines, setActiveMedicines] = useState<MedicineCatalogItem[]>([]);
+  const [isUsersLoaded, setIsUsersLoaded] = useState(false);
+  const [isUsersLoading, setIsUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState("");
+  const [isCatalogLoaded, setIsCatalogLoaded] = useState(false);
+  const [isCatalogLoading, setIsCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
+  const [isActiveMedicinesLoaded, setIsActiveMedicinesLoaded] = useState(false);
+  const [isActiveMedicinesLoading, setIsActiveMedicinesLoading] = useState(false);
+  const [activeMedicinesError, setActiveMedicinesError] = useState("");
   const hasBootstrappedRef = useRef(false);
   const bootstrapPromiseRef = useRef<Promise<void> | null>(null);
+  const usersRef = useRef<AuthUser[]>([]);
+  const catalogItemsRef = useRef<CatalogItem[]>([]);
+  const activeMedicinesRef = useRef<MedicineCatalogItem[]>([]);
+  const usersLoadedAtRef = useRef(0);
+  const catalogLoadedAtRef = useRef(0);
+  const activeMedicinesLoadedAtRef = useRef(0);
+  const usersLoadPromiseRef = useRef<Promise<AuthUser[]> | null>(null);
+  const catalogLoadPromiseRef = useRef<Promise<CatalogItem[]> | null>(null);
+  const activeMedicinesLoadPromiseRef = useRef<Promise<MedicineCatalogItem[]> | null>(null);
+  const resourceGenerationRef = useRef(0);
+  const resourceOrgIdRef = useRef(currentUser?.org_id ?? "");
+  const currentUserRef = useRef(currentUser);
   const trainingScope = useMemo(() => createTrainingScope(currentUser), [currentUser]);
+
+  const clearSharedResources = useCallback(() => {
+    resourceGenerationRef.current += 1;
+    usersRef.current = [];
+    catalogItemsRef.current = [];
+    activeMedicinesRef.current = [];
+    usersLoadedAtRef.current = 0;
+    catalogLoadedAtRef.current = 0;
+    activeMedicinesLoadedAtRef.current = 0;
+    usersLoadPromiseRef.current = null;
+    catalogLoadPromiseRef.current = null;
+    activeMedicinesLoadPromiseRef.current = null;
+    setUsers([]);
+    setCatalogItems([]);
+    setActiveMedicines([]);
+    setIsUsersLoaded(false);
+    setIsCatalogLoaded(false);
+    setIsActiveMedicinesLoaded(false);
+    setIsUsersLoading(false);
+    setIsCatalogLoading(false);
+    setIsActiveMedicinesLoading(false);
+    setUsersError("");
+    setCatalogError("");
+    setActiveMedicinesError("");
+  }, []);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+    const orgId = currentUser?.org_id ?? "";
+    if (resourceOrgIdRef.current !== orgId) {
+      resourceOrgIdRef.current = orgId;
+      clearSharedResources();
+    }
+  }, [clearSharedResources, currentUser]);
 
   const delay = useCallback(async (ms: number) => {
     await new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -74,6 +178,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
 
   const redirectToLogin = useCallback((message: string) => {
     authStorage.clear();
+    clearSharedResources();
     setCurrentUser(null);
     setClinicSettings(null);
     setIsTrainingMode(false);
@@ -91,7 +196,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
         ? SESSION_EXPIRED_REDIRECT
         : "/login",
     );
-  }, [router]);
+  }, [clearSharedResources, router]);
 
   useEffect(() => {
     setIsTrainingMode(readTrainingMode(trainingScope));
@@ -204,6 +309,228 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
     await loadShell(true);
   }, [loadShell]);
 
+  const loadUsers = useCallback((force = false) => {
+    if (!force && usersLoadedAtRef.current && Date.now() - usersLoadedAtRef.current < SHARED_RESOURCE_TTL_MS) {
+      return Promise.resolve(usersRef.current);
+    }
+    if (usersLoadPromiseRef.current) return usersLoadPromiseRef.current;
+
+    const generation = resourceGenerationRef.current;
+    setIsUsersLoading(true);
+    setUsersError("");
+    const request = api.listUsers()
+      .then((rows) => {
+        if (generation === resourceGenerationRef.current) {
+          usersRef.current = rows;
+          usersLoadedAtRef.current = Date.now();
+          setUsers(rows);
+          setIsUsersLoaded(true);
+        }
+        return rows;
+      })
+      .catch((loadError) => {
+        if (generation === resourceGenerationRef.current) {
+          setUsersError(loadError instanceof Error ? loadError.message : "Failed to load users.");
+        }
+        throw loadError;
+      })
+      .finally(() => {
+        if (generation === resourceGenerationRef.current) setIsUsersLoading(false);
+        if (usersLoadPromiseRef.current === request) usersLoadPromiseRef.current = null;
+      });
+    usersLoadPromiseRef.current = request;
+    return request;
+  }, []);
+
+  const loadCatalogItems = useCallback((force = false) => {
+    if (!force && catalogLoadedAtRef.current && Date.now() - catalogLoadedAtRef.current < SHARED_RESOURCE_TTL_MS) {
+      return Promise.resolve(catalogItemsRef.current);
+    }
+    if (catalogLoadPromiseRef.current) return catalogLoadPromiseRef.current;
+
+    const generation = resourceGenerationRef.current;
+    setIsCatalogLoading(true);
+    setCatalogError("");
+    const request = api.listCatalogItems()
+      .then((rows) => {
+        if (generation === resourceGenerationRef.current) {
+          const medicines = rows.map(toActiveMedicine).filter((item): item is MedicineCatalogItem => item !== null);
+          const now = Date.now();
+          catalogItemsRef.current = rows;
+          activeMedicinesRef.current = medicines;
+          catalogLoadedAtRef.current = now;
+          activeMedicinesLoadedAtRef.current = now;
+          setCatalogItems(rows);
+          setActiveMedicines(medicines);
+          setIsCatalogLoaded(true);
+          setIsActiveMedicinesLoaded(true);
+          setActiveMedicinesError("");
+        }
+        return rows;
+      })
+      .catch((loadError) => {
+        if (generation === resourceGenerationRef.current) {
+          setCatalogError(loadError instanceof Error ? loadError.message : "Failed to load catalog.");
+        }
+        throw loadError;
+      })
+      .finally(() => {
+        if (generation === resourceGenerationRef.current) setIsCatalogLoading(false);
+        if (catalogLoadPromiseRef.current === request) catalogLoadPromiseRef.current = null;
+      });
+    catalogLoadPromiseRef.current = request;
+    return request;
+  }, []);
+
+  const loadActiveMedicines = useCallback((force = false) => {
+    const now = Date.now();
+    if (!force && catalogLoadedAtRef.current && now - catalogLoadedAtRef.current < SHARED_RESOURCE_TTL_MS) {
+      return Promise.resolve(activeMedicinesRef.current);
+    }
+    if (!force && activeMedicinesLoadedAtRef.current && now - activeMedicinesLoadedAtRef.current < SHARED_RESOURCE_TTL_MS) {
+      return Promise.resolve(activeMedicinesRef.current);
+    }
+    if (activeMedicinesLoadPromiseRef.current) return activeMedicinesLoadPromiseRef.current;
+
+    const generation = resourceGenerationRef.current;
+    setIsActiveMedicinesLoading(true);
+    setActiveMedicinesError("");
+    const request = api.listActiveMedicines()
+      .then((rows) => {
+        if (generation === resourceGenerationRef.current) {
+          activeMedicinesRef.current = rows;
+          activeMedicinesLoadedAtRef.current = Date.now();
+          setActiveMedicines(rows);
+          setIsActiveMedicinesLoaded(true);
+        }
+        return rows;
+      })
+      .catch((loadError) => {
+        if (generation === resourceGenerationRef.current) {
+          setActiveMedicinesError(loadError instanceof Error ? loadError.message : "Failed to load medicines.");
+        }
+        throw loadError;
+      })
+      .finally(() => {
+        if (generation === resourceGenerationRef.current) setIsActiveMedicinesLoading(false);
+        if (activeMedicinesLoadPromiseRef.current === request) activeMedicinesLoadPromiseRef.current = null;
+      });
+    activeMedicinesLoadPromiseRef.current = request;
+    return request;
+  }, []);
+
+  const patchLoadedUser = useCallback((updated: AuthUser) => {
+    if (currentUserRef.current?.id === updated.id) {
+      currentUserRef.current = updated;
+      authStorage.setUser(updated);
+      setCurrentUser(updated);
+    }
+    if (!usersLoadedAtRef.current) return;
+    const next = usersRef.current.some((user) => user.id === updated.id)
+      ? usersRef.current.map((user) => (user.id === updated.id ? updated : user))
+      : [...usersRef.current, updated];
+    usersRef.current = next;
+    usersLoadedAtRef.current = Date.now();
+    setUsers(next);
+  }, []);
+
+  const patchLoadedCatalogItem = useCallback((updated: CatalogItem) => {
+    const now = Date.now();
+    if (catalogLoadedAtRef.current) {
+      const next = catalogItemsRef.current.some((item) => item.id === updated.id)
+        ? catalogItemsRef.current.map((item) => (item.id === updated.id ? updated : item))
+        : [...catalogItemsRef.current, updated];
+      next.sort((left, right) => left.item_type.localeCompare(right.item_type) || left.name.localeCompare(right.name));
+      catalogItemsRef.current = next;
+      catalogLoadedAtRef.current = now;
+      setCatalogItems(next);
+    }
+    if (activeMedicinesLoadedAtRef.current) {
+      const medicine = toActiveMedicine(updated);
+      const withoutUpdated = activeMedicinesRef.current.filter((item) => item.id !== updated.id);
+      const next = medicine ? [...withoutUpdated, medicine].sort((left, right) => left.name.localeCompare(right.name)) : withoutUpdated;
+      activeMedicinesRef.current = next;
+      activeMedicinesLoadedAtRef.current = now;
+      setActiveMedicines(next);
+    }
+  }, []);
+
+  const createStaffUser = useCallback(async (payload: StaffUserCreatePayload) => {
+    const created = await api.createStaffUser(payload);
+    patchLoadedUser(created);
+    return created;
+  }, [patchLoadedUser]);
+
+  const updateUserRole = useCallback(async (userId: string, role: "admin" | "staff") => {
+    const updated = await api.updateUserRole(userId, { role });
+    patchLoadedUser(updated);
+    return updated;
+  }, [patchLoadedUser]);
+
+  const deleteUser = useCallback(async (userId: string) => {
+    await api.deleteUser(userId);
+    if (usersLoadedAtRef.current) {
+      const next = usersRef.current.filter((user) => user.id !== userId);
+      usersRef.current = next;
+      usersLoadedAtRef.current = Date.now();
+      setUsers(next);
+    }
+  }, []);
+
+  const uploadUserSignature = useCallback(async (userId: string, file: File) => {
+    const updated = await api.uploadUserSignature(userId, file);
+    patchLoadedUser(updated);
+    return updated;
+  }, [patchLoadedUser]);
+
+  const removeUserSignature = useCallback(async (userId: string) => {
+    const updated = await api.removeUserSignature(userId);
+    patchLoadedUser(updated);
+    return updated;
+  }, [patchLoadedUser]);
+
+  const createCatalogItem = useCallback(async (payload: CatalogItemCreatePayload) => {
+    const created = await api.createCatalogItem(payload);
+    patchLoadedCatalogItem(created);
+    return created;
+  }, [patchLoadedCatalogItem]);
+
+  const updateCatalogItem = useCallback(async (itemId: string, payload: CatalogItemUpdatePayload) => {
+    const updated = await api.updateCatalogItem(itemId, payload);
+    patchLoadedCatalogItem(updated);
+    return updated;
+  }, [patchLoadedCatalogItem]);
+
+  const adjustCatalogStock = useCallback(async (itemId: string, delta: number) => {
+    const updated = await api.updateCatalogStock(itemId, { delta });
+    patchLoadedCatalogItem(updated);
+    return updated;
+  }, [patchLoadedCatalogItem]);
+
+  const deleteCatalogItem = useCallback(async (itemId: string) => {
+    await api.deleteCatalogItem(itemId);
+    const now = Date.now();
+    if (catalogLoadedAtRef.current) {
+      const next = catalogItemsRef.current.filter((item) => item.id !== itemId);
+      catalogItemsRef.current = next;
+      catalogLoadedAtRef.current = now;
+      setCatalogItems(next);
+    }
+    if (activeMedicinesLoadedAtRef.current) {
+      const next = activeMedicinesRef.current.filter((item) => item.id !== itemId);
+      activeMedicinesRef.current = next;
+      activeMedicinesLoadedAtRef.current = now;
+      setActiveMedicines(next);
+    }
+  }, []);
+
+  const invalidateCatalog = useCallback((refresh = false) => {
+    const hadFullCatalog = Boolean(catalogLoadedAtRef.current);
+    catalogLoadedAtRef.current = 0;
+    activeMedicinesLoadedAtRef.current = 0;
+    if (refresh && hadFullCatalog) void loadCatalogItems(true).catch(() => undefined);
+  }, [loadCatalogItems]);
+
   const applyClinicSettings = useCallback((settings: ClinicSettings) => {
     if (settings.clinic_specialty) {
       authStorage.setSpecialtyOnboardingPending(false);
@@ -214,7 +541,8 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const applyCurrentUser = useCallback((user: AuthUser | null) => {
     authStorage.setUser(user);
     setCurrentUser(user);
-  }, []);
+    if (user) patchLoadedUser(user);
+  }, [patchLoadedUser]);
 
   const handleLogout = useCallback(() => {
     setIsRedirectingToLogin(true);
@@ -223,13 +551,14 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
       .catch(() => undefined)
       .finally(() => {
         authStorage.clear();
+        clearSharedResources();
         setCurrentUser(null);
         setClinicSettings(null);
         setIsTrainingMode(false);
         hasBootstrappedRef.current = false;
         router.replace(loginPath);
       });
-  }, [pathname, router]);
+  }, [clearSharedResources, pathname, router]);
 
   const enterTrainingMode = useCallback(() => {
     writeTrainingMode(trainingScope, true);
@@ -262,22 +591,72 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
     enterTrainingMode,
     exitTrainingMode,
     resetTrainingMode,
+    users,
+    catalogItems,
+    activeMedicines,
+    isUsersLoaded,
+    isUsersLoading,
+    usersError,
+    isCatalogLoaded,
+    isCatalogLoading,
+    catalogError,
+    isActiveMedicinesLoaded,
+    isActiveMedicinesLoading,
+    activeMedicinesError,
+    loadUsers,
+    loadCatalogItems,
+    loadActiveMedicines,
+    createStaffUser,
+    updateUserRole,
+    deleteUser,
+    uploadUserSignature,
+    removeUserSignature,
+    createCatalogItem,
+    updateCatalogItem,
+    adjustCatalogStock,
+    deleteCatalogItem,
+    invalidateCatalog,
   }), [
+    activeMedicines,
+    activeMedicinesError,
+    adjustCatalogStock,
     applyClinicSettings,
     applyCurrentUser,
+    catalogError,
+    catalogItems,
     clinicSettings,
+    createCatalogItem,
+    createStaffUser,
     currentUser,
+    deleteCatalogItem,
+    deleteUser,
     error,
     enterTrainingMode,
     exitTrainingMode,
     handleLogout,
     isAuthReady,
+    isActiveMedicinesLoaded,
+    isActiveMedicinesLoading,
+    isCatalogLoaded,
+    isCatalogLoading,
     isRedirectingToLogin,
     isTrainingMode,
+    isUsersLoaded,
+    isUsersLoading,
+    invalidateCatalog,
+    loadActiveMedicines,
+    loadCatalogItems,
+    loadUsers,
+    removeUserSignature,
     redirectToLogin,
     refreshShell,
     resetTrainingMode,
     trainingScope,
+    updateCatalogItem,
+    updateUserRole,
+    uploadUserSignature,
+    users,
+    usersError,
   ]);
 
   return (

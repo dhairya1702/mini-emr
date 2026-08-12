@@ -117,8 +117,8 @@ function MobileBillingContent({
   redirecting?: boolean;
   userRole?: string;
 }) {
+  const { catalogItems, loadCatalogItems, invalidateCatalog } = useClinicShell();
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [selectedBillingPatientId, setSelectedBillingPatientId] = useState("");
   const [invoiceItems, setInvoiceItems] = useState<DraftInvoiceItem[]>([]);
   const [billingError, setBillingError] = useState("");
@@ -173,12 +173,11 @@ function MobileBillingContent({
     setIsLoading(true);
     Promise.all([
       api.listPatients({ status: "done", billed: false, limit: BILLABLE_PATIENT_LIMIT }),
-      api.listCatalogItems(),
+      loadCatalogItems(),
     ])
-      .then(([patientRows, catalogRows]) => {
+      .then(([patientRows]) => {
         if (!active) return;
         setPatients(patientRows);
-        setCatalogItems(catalogRows);
         setBillingError("");
       })
       .catch((loadError) => {
@@ -190,7 +189,7 @@ function MobileBillingContent({
     return () => {
       active = false;
     };
-  }, [authReady, redirecting, userRole]);
+  }, [authReady, loadCatalogItems, redirecting, userRole]);
 
   useEffect(() => {
     if (!selectedBillingPatientId && billablePatients[0]) {
@@ -404,6 +403,7 @@ function MobileBillingContent({
     try {
       const invoice = await ensureSavedInvoice();
       const result = await api.finalizeInvoice({ invoice_id: invoice.id });
+      invalidateCatalog(true);
       setSavedInvoice(result.invoice);
       setPatients((current) => current.map((patient) => patient.id === result.invoice.patient_id ? { ...patient, billed: true } : patient));
       setBillingStatus(result.message);

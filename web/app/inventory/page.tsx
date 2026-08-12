@@ -83,6 +83,7 @@ export default function InventoryPage() {
     loadAuditEvents,
     catalogItems,
     loadCatalogItems,
+    catalogError: sharedCatalogError,
     clinicSettings,
     error,
     isAuthReady,
@@ -188,7 +189,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     if (isAuthReady && currentUser?.role === "admin") {
-      void loadCatalogItems();
+      void loadCatalogItems().catch(() => undefined);
     }
   }, [currentUser, isAuthReady, loadCatalogItems]);
 
@@ -287,7 +288,7 @@ export default function InventoryPage() {
     <main className="clinic-page">
       <div className="clinic-container">
         <AppHeader clinicName={clinicName} currentUser={currentUser} active="inventory" onOpenSettings={() => setIsSettingsOpen(true)} onLogout={handleLogout} />
-        {error ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+        {error || sharedCatalogError ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error || sharedCatalogError}</div> : null}
 
         {catalogError ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{catalogError}</div> : null}
         {catalogStatus ? <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{catalogStatus}</div> : null}

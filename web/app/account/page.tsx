@@ -59,6 +59,7 @@ export default function AccountPage() {
     handleLogout,
     handleSaveClinicSettings,
     applyClinicSettings,
+    applyCurrentUser,
     handleAddStaffUser,
     handleUpdateUserRole,
     handleDeleteUser,
@@ -139,6 +140,7 @@ export default function AccountPage() {
         doctor_address: profileForm.doctor_address.trim(),
       });
       setAccountUser(updated);
+      applyCurrentUser(updated);
       setProfileStatus("Account details saved.");
       setIsEditingDetails(false);
     } catch (saveError) {
@@ -188,6 +190,7 @@ export default function AccountPage() {
     try {
       const updated = await api.uploadMySignature(file);
       setAccountUser(updated);
+      applyCurrentUser(updated);
       setSignatureStatus("Signature saved.");
     } catch (saveError) {
       setSignatureError(saveError instanceof Error ? saveError.message : "Failed to upload signature.");
@@ -203,6 +206,7 @@ export default function AccountPage() {
     try {
       const updated = await api.removeMySignature();
       setAccountUser(updated);
+      applyCurrentUser(updated);
       setSignatureStatus("Signature removed.");
     } catch (saveError) {
       setSignatureError(saveError instanceof Error ? saveError.message : "Failed to remove signature.");

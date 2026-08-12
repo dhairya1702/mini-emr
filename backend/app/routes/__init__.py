@@ -9,6 +9,7 @@ from app.routes.checkins import router as checkins_router
 from app.routes.catalog import router as catalog_router
 from app.routes.clinical_assistant import router as clinical_assistant_router
 from app.routes.controlroom import router as controlroom_router
+from app.routes.dashboard import router as dashboard_router
 from app.routes.exports import router as exports_router
 from app.routes.followups import router as followups_router
 from app.routes.health import router as health_router
@@ -34,6 +35,7 @@ __all__ = [
     "catalog_router",
     "clinical_assistant_router",
     "controlroom_router",
+    "dashboard_router",
     "exports_router",
     "followups_router",
     "health_router",

@@ -46,7 +46,7 @@ import {
   writeTrainingPatients,
 } from "@/lib/training-mode";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { BillingSuggestionsResponse, CatalogItem, CheckInRequest, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientTimelineEvent, PatientVisitDetail, PaymentStatus, SexAtBirth } from "@/lib/types";
+import { BillingSuggestionsResponse, CatalogItem, CheckInRequest, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientTimelineEvent, PatientVisitDetail, PaymentStatus, QueueSnapshot, SexAtBirth } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
 const QUEUE_REFRESH_INTERVAL_MS = 15000;
@@ -274,11 +274,17 @@ export default function HomePage() {
   const queueRefreshInFlightRef = useRef(false);
   const queueRefreshFailureCountRef = useRef(0);
   const nextQueueRefreshAllowedAtRef = useRef(0);
-  const lastQueueRefreshAtRef = useRef(Date.now());
+  const latestQueueRevisionRef = useRef("");
+  const loadedQueueRevisionRef = useRef("");
+  const queueRefreshQueuedRef = useRef(false);
+  const refreshQueueSnapshotRef = useRef<() => void>(() => undefined);
+  const isQueueMutationPendingRef = useRef(false);
+  const isDraggingPatientRef = useRef(false);
+  const isSoloWorkspaceRef = useRef(false);
   const isCheckInDrawerOpenRef = useRef(false);
   const checkInStatusInFlightRef = useRef(false);
-  const checkInStatusInFlightGenerationRef = useRef(0);
   const checkInRequestsInFlightRef = useRef(false);
+  const checkInRequestsRefreshQueuedRef = useRef(false);
   const checkInStatusRefreshQueuedRef = useRef(false);
   const checkInStatusFailureCountRef = useRef(0);
   const nextCheckInStatusAllowedAtRef = useRef(0);
@@ -288,7 +294,7 @@ export default function HomePage() {
   const hasLoadedCheckInStatusRef = useRef(false);
   const hasLoadedCheckInRequestsRef = useRef(false);
   const checkInStatusGenerationRef = useRef(0);
-  const refreshCheckInStatusRef = useRef<(force?: boolean) => void>(() => undefined);
+  const refreshDashboardStatusRef = useRef<(force?: boolean) => void>(() => undefined);
   const billingCatalogLoadRequestedRef = useRef(false);
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -311,13 +317,19 @@ export default function HomePage() {
     trainingScope: string | null;
   }) => {
     if (context.isTrainingMode) {
-      return Promise.resolve(readTrainingPatients(context.trainingScope));
+      return Promise.resolve({ revision: "training", patients: readTrainingPatients(context.trainingScope) });
     }
     return api.listQueuePatients();
   }, []);
-  const onPageData = useCallback((data: Patient[]) => {
-    setPatients(data);
-    lastQueueRefreshAtRef.current = Date.now();
+  const onPageData = useCallback((data: QueueSnapshot) => {
+    setPatients(data.patients);
+    loadedQueueRevisionRef.current = data.revision;
+    if (
+      latestQueueRevisionRef.current
+      && latestQueueRevisionRef.current !== data.revision
+    ) {
+      window.setTimeout(() => refreshQueueSnapshotRef.current(), 0);
+    }
   }, []);
   const {
     currentUser,
@@ -365,6 +377,9 @@ export default function HomePage() {
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
   const workspaceMode = clinicSettings?.workspace_mode ?? "team";
   const isSoloWorkspace = workspaceMode === "solo";
+  isQueueMutationPendingRef.current = isQueueMutationPending;
+  isDraggingPatientRef.current = Boolean(draggedPatient);
+  isSoloWorkspaceRef.current = isSoloWorkspace;
 
   useEffect(() => {
     function syncWorkspaceFromLocation() {
@@ -451,9 +466,15 @@ export default function HomePage() {
   }, []);
 
   const refreshCheckInRequests = useCallback(async (revision = checkInStatusRevisionRef.current) => {
-    if (checkInRequestsInFlightRef.current) return;
+    if (checkInRequestsInFlightRef.current) {
+      checkInRequestsRefreshQueuedRef.current = true;
+      return;
+    }
     checkInRequestsInFlightRef.current = true;
+    checkInRequestsRefreshQueuedRef.current = false;
     const generation = checkInStatusGenerationRef.current;
+    const requestedRevision = revision;
+    let succeeded = false;
     setIsCheckInRequestsLoading(true);
     setCheckInRequestsError("");
     try {
@@ -462,7 +483,8 @@ export default function HomePage() {
       setCheckInRequests(rows);
       if (!hasLoadedCheckInStatusRef.current) setCheckInCount(rows.length);
       hasLoadedCheckInRequestsRef.current = true;
-      loadedCheckInRequestsRevisionRef.current = checkInStatusRevisionRef.current || revision;
+      loadedCheckInRequestsRevisionRef.current = requestedRevision;
+      succeeded = true;
     } catch (requestError) {
       setCheckInRequestsError(
         requestError instanceof Error ? requestError.message : "Failed to load check-in requests.",
@@ -470,18 +492,72 @@ export default function HomePage() {
     } finally {
       checkInRequestsInFlightRef.current = false;
       setIsCheckInRequestsLoading(false);
+      const stillStale = Boolean(
+        checkInStatusRevisionRef.current
+        && loadedCheckInRequestsRevisionRef.current !== checkInStatusRevisionRef.current
+      );
+      if (
+        succeeded
+        && isCheckInDrawerOpenRef.current
+        && (checkInRequestsRefreshQueuedRef.current || stillStale)
+      ) {
+        checkInRequestsRefreshQueuedRef.current = false;
+        window.setTimeout(
+          () => void refreshCheckInRequests(checkInStatusRevisionRef.current),
+          0,
+        );
+      }
     }
   }, []);
 
-  const refreshCheckInStatus = useCallback(async (force = false) => {
+  const refreshQueueSnapshot = useCallback(async () => {
+    if (
+      isSoloWorkspaceRef.current
+      || isQueueMutationPendingRef.current
+      || isDraggingPatientRef.current
+    ) {
+      queueRefreshQueuedRef.current = true;
+      return;
+    }
+    if (queueRefreshInFlightRef.current) {
+      queueRefreshQueuedRef.current = true;
+      return;
+    }
+    if (Date.now() < nextQueueRefreshAllowedAtRef.current) return;
+
+    queueRefreshInFlightRef.current = true;
+    try {
+      const snapshot = await api.listQueuePatients();
+      setPatients(snapshot.patients);
+      loadedQueueRevisionRef.current = snapshot.revision;
+      queueRefreshFailureCountRef.current = 0;
+      nextQueueRefreshAllowedAtRef.current = 0;
+    } catch {
+      queueRefreshFailureCountRef.current += 1;
+      nextQueueRefreshAllowedAtRef.current = Date.now() + Math.min(
+        QUEUE_REFRESH_INTERVAL_MS * (2 ** (queueRefreshFailureCountRef.current - 1)),
+        QUEUE_REFRESH_MAX_BACKOFF_MS,
+      );
+    } finally {
+      queueRefreshInFlightRef.current = false;
+      const stillStale = Boolean(
+        latestQueueRevisionRef.current
+        && loadedQueueRevisionRef.current !== latestQueueRevisionRef.current
+      );
+      if (queueRefreshQueuedRef.current || stillStale) {
+        queueRefreshQueuedRef.current = false;
+        if (Date.now() >= nextQueueRefreshAllowedAtRef.current) {
+          window.setTimeout(() => refreshQueueSnapshotRef.current(), 0);
+        }
+      }
+    }
+  }, []);
+  refreshQueueSnapshotRef.current = refreshQueueSnapshot;
+
+  const refreshDashboardStatus = useCallback(async (force = false) => {
     if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
     if (checkInStatusInFlightRef.current) {
-      if (
-        force
-        && checkInStatusInFlightGenerationRef.current !== checkInStatusGenerationRef.current
-      ) {
-        checkInStatusRefreshQueuedRef.current = true;
-      }
+      if (force) checkInStatusRefreshQueuedRef.current = true;
       return;
     }
 
@@ -499,22 +575,30 @@ export default function HomePage() {
     checkInStatusInFlightRef.current = true;
     lastCheckInStatusAttemptAtRef.current = now;
     const generation = checkInStatusGenerationRef.current;
-    checkInStatusInFlightGenerationRef.current = generation;
     try {
-      const status = await api.getCheckInRequestsStatus();
+      const status = await api.getDashboardStatus();
       if (generation !== checkInStatusGenerationRef.current) return;
 
       const previousRevision = checkInStatusRevisionRef.current;
       const isFirstStatus = !hasLoadedCheckInStatusRef.current;
-      checkInStatusRevisionRef.current = status.revision;
+      latestQueueRevisionRef.current = status.queue_revision;
+      checkInStatusRevisionRef.current = status.check_in_revision;
       hasLoadedCheckInStatusRef.current = true;
       checkInStatusFailureCountRef.current = 0;
       nextCheckInStatusAllowedAtRef.current = 0;
-      setCheckInCount(status.pending_count);
+      setCheckInCount(status.pending_check_in_count);
 
       if (
-        status.pending_count > 0
-        && (isFirstStatus || previousRevision !== status.revision)
+        !isSoloWorkspaceRef.current
+        && loadedQueueRevisionRef.current
+        && loadedQueueRevisionRef.current !== status.queue_revision
+      ) {
+        void refreshQueueSnapshotRef.current();
+      }
+
+      if (
+        status.pending_check_in_count > 0
+        && (isFirstStatus || previousRevision !== status.check_in_revision)
         && !isCheckInDrawerOpenRef.current
       ) {
         setHasUnseenCheckIns(true);
@@ -524,10 +608,10 @@ export default function HomePage() {
         isCheckInDrawerOpenRef.current
         && (
           !hasLoadedCheckInRequestsRef.current
-          || loadedCheckInRequestsRevisionRef.current !== status.revision
+          || loadedCheckInRequestsRevisionRef.current !== status.check_in_revision
         )
       ) {
-        void refreshCheckInRequests(status.revision);
+        void refreshCheckInRequests(status.check_in_revision);
       }
     } catch {
       checkInStatusFailureCountRef.current += 1;
@@ -539,11 +623,11 @@ export default function HomePage() {
       checkInStatusInFlightRef.current = false;
       if (checkInStatusRefreshQueuedRef.current) {
         checkInStatusRefreshQueuedRef.current = false;
-        window.setTimeout(() => refreshCheckInStatusRef.current(true), 0);
+        window.setTimeout(() => refreshDashboardStatusRef.current(true), 0);
       }
     }
   }, [refreshCheckInRequests]);
-  refreshCheckInStatusRef.current = refreshCheckInStatus;
+  refreshDashboardStatusRef.current = refreshDashboardStatus;
 
   const openCheckInDrawer = useCallback(() => {
     isCheckInDrawerOpenRef.current = true;
@@ -555,8 +639,8 @@ export default function HomePage() {
     ) {
       void refreshCheckInRequests();
     }
-    void refreshCheckInStatus(true);
-  }, [refreshCheckInRequests, refreshCheckInStatus]);
+    void refreshDashboardStatus(true);
+  }, [refreshCheckInRequests, refreshDashboardStatus]);
 
   const closeCheckInDrawer = useCallback(() => {
     isCheckInDrawerOpenRef.current = false;
@@ -575,20 +659,26 @@ export default function HomePage() {
       loadedCheckInRequestsRevisionRef.current = "";
       hasLoadedCheckInStatusRef.current = false;
       hasLoadedCheckInRequestsRef.current = false;
+      checkInRequestsRefreshQueuedRef.current = false;
       lastCheckInStatusAttemptAtRef.current = 0;
       nextCheckInStatusAllowedAtRef.current = 0;
+      latestQueueRevisionRef.current = "";
+      loadedQueueRevisionRef.current = "";
+      queueRefreshQueuedRef.current = false;
+      queueRefreshFailureCountRef.current = 0;
+      nextQueueRefreshAllowedAtRef.current = 0;
       return;
     }
-    void refreshCheckInStatus(true);
+    void refreshDashboardStatus(true);
     const intervalId = window.setInterval(
-      () => void refreshCheckInStatus(),
+      () => void refreshDashboardStatus(),
       QUEUE_REFRESH_INTERVAL_MS,
     );
     function handleVisibilityChange() {
-      if (document.visibilityState === "visible") void refreshCheckInStatus();
+      if (document.visibilityState === "visible") void refreshDashboardStatus();
     }
     function handleFocus() {
-      void refreshCheckInStatus();
+      void refreshDashboardStatus();
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", handleFocus);
@@ -597,7 +687,7 @@ export default function HomePage() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [currentUser, isAuthReady, isRedirectingToLogin, isTrainingMode, refreshCheckInStatus]);
+  }, [currentUser, isAuthReady, isRedirectingToLogin, isTrainingMode, refreshDashboardStatus]);
 
   async function approveCheckIn(requestId: string, existingPatientId?: string) {
     setPendingCheckInRequestId(requestId);
@@ -612,11 +702,11 @@ export default function HomePage() {
       setCheckInCount((current) => Math.max(0, current - 1));
       checkInStatusGenerationRef.current += 1;
       loadedCheckInRequestsRevisionRef.current = "";
-      void refreshCheckInStatus(true);
+      void refreshDashboardStatus(true);
     } catch (approvalError) {
       setError(approvalError instanceof Error ? approvalError.message : "Failed to approve check-in.");
       void refreshCheckInRequests();
-      void refreshCheckInStatus(true);
+      void refreshDashboardStatus(true);
     } finally {
       setPendingCheckInRequestId("");
     }
@@ -631,86 +721,29 @@ export default function HomePage() {
       setCheckInCount((current) => Math.max(0, current - 1));
       checkInStatusGenerationRef.current += 1;
       loadedCheckInRequestsRevisionRef.current = "";
-      void refreshCheckInStatus(true);
+      void refreshDashboardStatus(true);
     } catch (rejectionError) {
       setError(rejectionError instanceof Error ? rejectionError.message : "Failed to reject check-in.");
       void refreshCheckInRequests();
-      void refreshCheckInStatus(true);
+      void refreshDashboardStatus(true);
     } finally {
       setPendingCheckInRequestId("");
     }
   }
 
   useEffect(() => {
-    if (!isAuthReady || isRedirectingToLogin || isTrainingMode || isQueueMutationPending || draggedPatient) {
-      return;
+    if (
+      isAuthReady
+      && !isRedirectingToLogin
+      && !isTrainingMode
+      && !isSoloWorkspace
+      && !isQueueMutationPending
+      && !draggedPatient
+      && queueRefreshQueuedRef.current
+    ) {
+      void refreshQueueSnapshot();
     }
-
-    let active = true;
-
-    async function refreshPatients() {
-      const now = Date.now();
-      if (
-        !active
-        || document.visibilityState !== "visible"
-        || queueRefreshInFlightRef.current
-        || now < nextQueueRefreshAllowedAtRef.current
-      ) {
-        return;
-      }
-      queueRefreshInFlightRef.current = true;
-      try {
-        const nextPatients = await api.listQueuePatients();
-        if (active) {
-          setPatients(nextPatients);
-          lastQueueRefreshAtRef.current = Date.now();
-          queueRefreshFailureCountRef.current = 0;
-          nextQueueRefreshAllowedAtRef.current = 0;
-        }
-      } catch {
-        queueRefreshFailureCountRef.current += 1;
-        nextQueueRefreshAllowedAtRef.current = Date.now() + Math.min(
-          QUEUE_REFRESH_INTERVAL_MS * (2 ** (queueRefreshFailureCountRef.current - 1)),
-          QUEUE_REFRESH_MAX_BACKOFF_MS,
-        );
-      } finally {
-        queueRefreshInFlightRef.current = false;
-      }
-    }
-
-    const intervalId = isSoloWorkspace
-      ? null
-      : window.setInterval(() => {
-        void refreshPatients();
-      }, QUEUE_REFRESH_INTERVAL_MS);
-
-    const handleVisibilityChange = () => {
-      if (
-        document.visibilityState === "visible"
-        && Date.now() - lastQueueRefreshAtRef.current >= QUEUE_REFRESH_INTERVAL_MS
-      ) {
-        void refreshPatients();
-      }
-    };
-
-    const handleFocus = () => {
-      if (Date.now() - lastQueueRefreshAtRef.current >= QUEUE_REFRESH_INTERVAL_MS) {
-        void refreshPatients();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", handleFocus);
-
-    return () => {
-      active = false;
-      if (intervalId !== null) {
-        window.clearInterval(intervalId);
-      }
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", handleFocus);
-    };
-  }, [draggedPatient, isAuthReady, isQueueMutationPending, isRedirectingToLogin, isSoloWorkspace, isTrainingMode]);
+  }, [draggedPatient, isAuthReady, isQueueMutationPending, isRedirectingToLogin, isSoloWorkspace, isTrainingMode, refreshQueueSnapshot]);
 
   const groupedPatients = useMemo(() => {
     return statusOrder.reduce<Record<PatientStatus, Patient[]>>(
@@ -1075,6 +1108,7 @@ export default function HomePage() {
       setPatients((current) =>
         current.map((patient) => (patient.id === optimisticPatient.id ? created : patient)),
       );
+      void refreshDashboardStatus(true);
       if (!payload.photo) setError("");
     } catch (createError) {
       setPatients((current) => current.filter((patient) => patient.id !== optimisticPatient.id));
@@ -1120,6 +1154,7 @@ export default function HomePage() {
       setPatients((current) => current.map((entry) => (entry.id === patient.id ? saved : entry)));
       if (selectedPatient?.id === patient.id) setSelectedPatient(saved);
       setError("");
+      void refreshDashboardStatus(true);
       return saved;
     } catch (updateError) {
       setPatients((current) =>
@@ -1164,6 +1199,7 @@ export default function HomePage() {
       setPatients((current) => current.map((entry) => entry.id === patient.id ? saved : entry));
       if (selectedPatient?.id === patient.id) setSelectedPatient(saved);
       setError("");
+      void refreshDashboardStatus(true);
     } catch (priorityError) {
       setPatients(previousPatients);
       setError(priorityError instanceof Error ? priorityError.message : "Failed to update queue priority.");
@@ -1228,6 +1264,7 @@ export default function HomePage() {
         const saved = await api.updateQueueOrder(nextQueueOrder);
         setPatients(saved);
         setError("");
+        void refreshDashboardStatus(true);
       } catch (updateError) {
         setPatients(previousPatients);
         setError(updateError instanceof Error ? updateError.message : "Failed to save queue order.");
@@ -1271,6 +1308,7 @@ export default function HomePage() {
       const savedPatient = saved.find((entry) => entry.id === patient.id);
       if (savedPatient && selectedPatient?.id === patient.id) setSelectedPatient(savedPatient);
       setError("");
+      void refreshDashboardStatus(true);
     } catch (updateError) {
       setPatients(previousPatients);
       if (selectedPatient?.id === patient.id) {
@@ -1299,6 +1337,7 @@ export default function HomePage() {
         setSelectedPatient(removedPatient);
       }
       setError("");
+      void refreshDashboardStatus(true);
       return;
     }
 
@@ -1326,6 +1365,7 @@ export default function HomePage() {
         setSelectedPatient(saved);
       }
       setError("");
+      void refreshDashboardStatus(true);
     } catch (removeError) {
       setPatients(previousPatients);
       if (previousSelectedPatient?.id === patient.id) {
@@ -1642,6 +1682,7 @@ export default function HomePage() {
       setSavedInvoice(result.invoice);
       setBillingStatus(result.message);
       await completeBillingWorkflow(true);
+      void refreshDashboardStatus(true);
     } catch (finalizeError) {
       setBillingError(finalizeError instanceof Error ? finalizeError.message : "Failed to complete invoice.");
     } finally {

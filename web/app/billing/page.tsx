@@ -224,6 +224,7 @@ export default function BillingPage() {
     loadAuditEvents,
     catalogItems,
     loadCatalogItems,
+    catalogError,
     clinicSettings,
     error,
     isAuthReady,
@@ -274,7 +275,7 @@ export default function BillingPage() {
 
   useEffect(() => {
     if (isAuthReady && currentUser?.role === "admin") {
-      void loadCatalogItems();
+      void loadCatalogItems().catch(() => undefined);
     }
   }, [currentUser, isAuthReady, loadCatalogItems]);
 
@@ -650,7 +651,7 @@ export default function BillingPage() {
     <main className="clinic-page">
       <div className="clinic-container">
         <AppHeader clinicName={clinicName} currentUser={currentUser} active="billing" onOpenSettings={() => setIsSettingsOpen(true)} onLogout={handleLogout} />
-        {error ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+        {error || catalogError ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error || catalogError}</div> : null}
         <SettingsDrawerBillingPanel
           patients={billablePatients}
           selectedBillingPatientId={selectedBillingPatientId}

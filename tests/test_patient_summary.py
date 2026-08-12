@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, date, datetime, timedelta
 
 from test_app import auth_headers_for_token, client, register_test_clinic
@@ -44,6 +45,36 @@ def _finalize_note(test_client, headers, patient_id: str, *, diagnosis: str):
     return finalized.json()
 
 
+def test_cached_summary_workflow_performs_only_one_patient_read():
+    class CachedOnlyRepo:
+        calls = 0
+
+        async def get_patient(self, org_id: str, patient_id: str):
+            self.calls += 1
+            assert (org_id, patient_id) == ("org-1", "patient-1")
+            return {
+                "ai_summary": "Stored database summary",
+                "ai_summary_updated_at": datetime(2026, 8, 12, tzinfo=UTC),
+                "ai_summary_stale": False,
+            }
+
+        def __getattr__(self, name: str):
+            raise AssertionError(f"cached summary read unexpectedly accessed {name}")
+
+    repo = CachedOnlyRepo()
+    result = asyncio.run(
+        patient_summary_workflow.load_cached_patient_summary_workflow(
+            repo,  # type: ignore[arg-type]
+            "org-1",
+            "patient-1",
+        )
+    )
+
+    assert result["summary"] == "Stored database summary"
+    assert result["stale"] is False
+    assert repo.calls == 1
+
+
 def test_patient_summary_get_returns_blank_without_finalized_note_and_does_not_generate(client, monkeypatch):
     test_client, repo = client
     session = register_test_clinic(
@@ -73,14 +104,13 @@ def test_patient_summary_get_returns_blank_without_finalized_note_and_does_not_g
     assert not repo.patients[patient["id"]].get("ai_summary")
 
 
-def test_patient_summary_get_generates_once_after_finalized_note_and_reuses_cache(client, monkeypatch):
+def test_finalizing_note_generates_summary_and_get_only_reuses_cache(client, monkeypatch):
     test_client, repo = client
     session = register_test_clinic(
         test_client, identifier="summary-lazy@clinic.com", clinic_name="Lazy Summary Clinic"
     )
     headers = auth_headers_for_token(session["token"])
     patient = _create_patient(test_client, headers, phone="5550107878")
-    _finalize_note(test_client, headers, patient["id"], diagnosis="Bronchitis")
     calls = 0
 
     async def fake_generate_summary(*_args, **_kwargs):
@@ -94,6 +124,7 @@ def test_patient_summary_get_generates_once_after_finalized_note_and_reuses_cach
         fake_generate_summary,
     )
 
+    _finalize_note(test_client, headers, patient["id"], diagnosis="Bronchitis")
     first = test_client.get(f"/patients/{patient['id']}/summary", headers=headers)
     second = test_client.get(f"/patients/{patient['id']}/summary", headers=headers)
 
@@ -107,7 +138,7 @@ def test_patient_summary_get_generates_once_after_finalized_note_and_reuses_cach
     assert repo.patients[patient["id"]]["ai_summary_stale"] is False
 
 
-def test_patient_summary_get_regenerates_once_after_new_finalized_note(client, monkeypatch):
+def test_each_new_finalized_note_regenerates_before_subsequent_cached_reads(client, monkeypatch):
     test_client, _repo = client
     session = register_test_clinic(
         test_client, identifier="summary-new-note@clinic.com", clinic_name="New Note Summary Clinic"
@@ -139,7 +170,7 @@ def test_patient_summary_get_regenerates_once_after_new_finalized_note(client, m
     assert calls == 2
 
 
-def test_finalizing_a_note_marks_summary_stale(client):
+def test_finalizing_a_note_refreshes_summary_and_clears_stale_flag(client, monkeypatch):
     test_client, repo = client
     session = register_test_clinic(
         test_client, identifier="summary-stale@clinic.com", clinic_name="Stale Clinic"
@@ -147,12 +178,14 @@ def test_finalizing_a_note_marks_summary_stale(client):
     headers = auth_headers_for_token(session["token"])
     patient = _create_patient(test_client, headers, phone="5550108888")
 
-    # Prime the cache so the patient is no longer stale.
-    primed = test_client.post(
-        f"/patients/{patient['id']}/summary/regenerate", headers=headers
+    async def fake_generate_summary(*_args, **_kwargs):
+        return {"content": "Updated after finalization", "used_fallback": False, "warning": None}
+
+    monkeypatch.setattr(
+        patient_summary_workflow,
+        "generate_patient_summary",
+        fake_generate_summary,
     )
-    assert primed.status_code == 200
-    assert repo.patients[patient["id"]]["ai_summary_stale"] is False
 
     generated = test_client.post(
         "/generate-note",
@@ -174,8 +207,44 @@ def test_finalizing_a_note_marks_summary_stale(client):
         headers=headers,
     )
     assert finalized.status_code == 200
-    # Finalizing new clinical info should invalidate the cached summary.
-    assert repo.patients[patient["id"]]["ai_summary_stale"] is True
+    assert repo.patients[patient["id"]]["ai_summary"] == "Updated after finalization"
+    assert repo.patients[patient["id"]]["ai_summary_stale"] is False
+
+
+def test_summary_generation_failure_never_fails_note_finalization_or_regenerates_on_get(client, monkeypatch):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client, identifier="summary-failure@clinic.com", clinic_name="Summary Failure Clinic"
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = _create_patient(test_client, headers, phone="5550108989")
+    repo.patients[patient["id"]].update(
+        ai_summary="Previously stored summary",
+        ai_summary_updated_at=datetime.now(UTC),
+        ai_summary_stale=False,
+    )
+    calls = 0
+
+    async def failing_generate_summary(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("AI unavailable")
+
+    monkeypatch.setattr(
+        patient_summary_workflow,
+        "generate_patient_summary",
+        failing_generate_summary,
+    )
+
+    finalized = _finalize_note(test_client, headers, patient["id"], diagnosis="Bronchitis")
+    assert finalized["status"] == "final"
+    assert calls == 1
+
+    cached = test_client.get(f"/patients/{patient['id']}/summary", headers=headers)
+    assert cached.status_code == 200
+    assert cached.json()["summary"] == "Previously stored summary"
+    assert cached.json()["stale"] is True
+    assert calls == 1
 
 
 def test_regenerate_summary_endpoint(client):

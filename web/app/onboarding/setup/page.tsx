@@ -96,6 +96,7 @@ export default function OnboardingSetupPage() {
     isRedirectingToLogin,
     applyClinicSettings,
     applyCurrentUser,
+    createStaffUser,
   } = useClinicShell();
   const [activeIndex, setActiveIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<StepKey>>(() => new Set());
@@ -322,7 +323,7 @@ export default function OnboardingSetupPage() {
     setIsSaving(true);
     setError("");
     try {
-      const created = await api.createStaffUser({ identifier: staff.identifier.trim(), password: staff.password });
+      const created = await createStaffUser({ identifier: staff.identifier.trim(), password: staff.password });
       setCreatedStaffUsers((current) => [...current, created]);
       setStaff({ identifier: "", password: "" });
       markComplete("staff");

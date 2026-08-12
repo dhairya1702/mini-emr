@@ -1118,6 +1118,45 @@ class FakeRepo:
             "revision": hashlib.sha256(",".join(request_ids).encode("utf-8")).hexdigest(),
         }
 
+    async def get_dashboard_queue_revision(self, org_id: str) -> str:
+        queue_state = [
+            {
+                "id": row["id"],
+                "status": row["status"],
+                "billed": row["billed"],
+                "queue_priority": row.get("queue_priority"),
+                "queue_position": row.get("queue_position"),
+                "current_visit_id": row.get("current_visit_id"),
+                "last_visit_at": row.get("last_visit_at"),
+            }
+            for row in self.patients.values()
+            if row["org_id"] == org_id
+            and (
+                row["status"] in {"waiting", "consultation"}
+                or (row["status"] == "done" and not row["billed"])
+            )
+        ]
+        serialized = json.dumps(queue_state, sort_keys=True, default=str)
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    async def get_dashboard_status(self, org_id: str) -> dict:
+        check_ins = await self.get_public_check_in_requests_status(org_id)
+        active_count = sum(
+            1
+            for row in self.patients.values()
+            if row["org_id"] == org_id
+            and (
+                row["status"] in {"waiting", "consultation"}
+                or (row["status"] == "done" and not row["billed"])
+            )
+        )
+        return {
+            "queue_revision": await self.get_dashboard_queue_revision(org_id),
+            "active_patient_count": active_count,
+            "check_in_revision": f"{check_ins['revision']}:{check_ins['pending_count']}",
+            "pending_check_in_count": check_ins["pending_count"],
+        }
+
     async def list_public_check_in_requests(self, org_id: str) -> list[dict]:
         rows = []
         for request in self.public_check_in_requests.values():
@@ -2531,6 +2570,22 @@ class FakeRepo:
     async def list_catalog_items(self, org_id: str) -> list[dict]:
         return [item for item in self.catalog_items.values() if item["org_id"] == org_id]
 
+    async def list_active_medicines(self, org_id: str) -> list[dict]:
+        return [
+            {
+                "id": item["id"],
+                "name": item["name"],
+                "unit": item["unit"],
+                "default_price": item["default_price"],
+                "track_inventory": item["track_inventory"],
+                "stock_quantity": item["stock_quantity"],
+            }
+            for item in sorted(self.catalog_items.values(), key=lambda row: row["name"])
+            if item["org_id"] == org_id
+            and item["item_type"] == "medicine"
+            and item.get("is_active", True)
+        ]
+
     async def get_catalog_item(self, org_id: str, item_id: str) -> dict:
         item = self.catalog_items[item_id]
         if item["org_id"] != org_id:
@@ -3206,6 +3261,102 @@ def auth_headers_for_token(token: str) -> dict[str, str]:
         "Authorization": f"Bearer {token}",
         "Cookie": f"{auth_module.SESSION_COOKIE_NAME}={token}",
     }
+
+
+def test_active_medicine_catalog_is_minimal_and_available_to_staff(client):
+    test_client, _repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="medicine-admin@example.com",
+        clinic_name="Medicine Cache Clinic",
+    )
+    admin_headers = auth_headers_for_token(session["token"])
+    active_medicine = test_client.post(
+        "/catalog",
+        headers=admin_headers,
+        json={
+            "name": "Amoxicillin",
+            "item_type": "medicine",
+            "default_price": 12.5,
+            "track_inventory": True,
+            "stock_quantity": 24,
+            "low_stock_threshold": 5,
+            "unit": "tablet",
+        },
+    )
+    assert active_medicine.status_code == 201
+    assert test_client.post(
+        "/catalog",
+        headers=admin_headers,
+        json={"name": "Consultation", "item_type": "service", "default_price": 500},
+    ).status_code == 201
+    assert test_client.post(
+        "/catalog",
+        headers=admin_headers,
+        json={"name": "Inactive medicine", "item_type": "medicine", "default_price": 5, "is_active": False},
+    ).status_code == 201
+    assert test_client.post(
+        "/users/staff",
+        headers=admin_headers,
+        json={"identifier": "medicine-staff@example.com", "password": "password123!"},
+    ).status_code == 201
+    staff_session = test_client.post(
+        "/auth/login",
+        json={"identifier": "medicine-staff@example.com", "password": "password123!"},
+    )
+    assert staff_session.status_code == 200
+    staff_headers = auth_headers_for_token(staff_session.json()["token"])
+
+    full_catalog = test_client.get("/catalog", headers=staff_headers)
+    assert full_catalog.status_code == 403
+    medicines = test_client.get("/catalog/medicines", headers=staff_headers)
+    assert medicines.status_code == 200
+    assert medicines.json() == [{
+        "id": active_medicine.json()["id"],
+        "name": "Amoxicillin",
+        "unit": "tablet",
+        "default_price": 12.5,
+        "track_inventory": True,
+        "stock_quantity": 24.0,
+    }]
+
+
+def test_dashboard_status_and_queue_snapshot_are_lightweight_and_revisioned(client):
+    test_client, _repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="dashboard-heartbeat@example.com",
+        clinic_name="Heartbeat Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+
+    empty_status = test_client.get("/dashboard/status", headers=headers)
+    assert empty_status.status_code == 200
+    assert empty_status.json()["active_patient_count"] == 0
+    assert empty_status.json()["pending_check_in_count"] == 0
+    assert isinstance(empty_status.json()["queue_revision"], str)
+    assert isinstance(empty_status.json()["check_in_revision"], str)
+
+    created = test_client.post(
+        "/patients",
+        headers=headers,
+        json={
+            "name": "Heartbeat Patient",
+            "phone": "9000000042",
+            "reason": "Routine visit",
+            "date_of_birth": "1990-01-02",
+        },
+    )
+    assert created.status_code == 201
+
+    snapshot = test_client.get("/patients/queue", headers=headers)
+    assert snapshot.status_code == 200
+    assert snapshot.json()["revision"] != empty_status.json()["queue_revision"]
+    assert [row["id"] for row in snapshot.json()["patients"]] == [created.json()["id"]]
+
+    updated_status = test_client.get("/dashboard/status", headers=headers)
+    assert updated_status.json()["active_patient_count"] == 1
+    assert updated_status.json()["queue_revision"] == snapshot.json()["revision"]
 
 
 def test_public_qr_check_in_requires_staff_approval_and_suggests_existing_patient(client):

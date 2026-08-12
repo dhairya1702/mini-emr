@@ -89,6 +89,15 @@ class CatalogItemOut(CatalogItemBase):
     created_at: datetime
 
 
+class MedicineCatalogItemOut(BaseModel):
+    id: UUID
+    name: str
+    unit: str = ""
+    default_price: float = 0
+    track_inventory: bool = False
+    stock_quantity: float = 0
+
+
 class CatalogStockUpdate(BaseModel):
     delta: float = Field(ge=-1000000, le=1000000)
 

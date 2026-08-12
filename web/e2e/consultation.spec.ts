@@ -9,6 +9,42 @@ import {
   seedSession,
 } from "./support/mock-clinic-api";
 
+test("consultations share one lightweight medicine request", async ({ page }) => {
+  const user = buildUser({ doctor_signature_name: "Dr. Rivera" });
+  const patients = [
+    buildPatient({ id: "patient-catalog-1", name: "Avery Stone", status: "waiting" }),
+    buildPatient({ id: "patient-catalog-2", name: "Morgan Lee", status: "waiting", queue_position: 2 }),
+  ];
+  let medicineRequests = 0;
+  let fullCatalogRequests = 0;
+
+  page.on("request", (request) => {
+    if (request.url() === "http://127.0.0.1:8001/catalog/medicines") medicineRequests += 1;
+    if (request.url() === "http://127.0.0.1:8001/catalog") fullCatalogRequests += 1;
+  });
+  await seedSession(page, { user });
+  await mockClinicBootstrap(page, {
+    user,
+    clinicSettings: buildClinicSettings({ clinic_specialty: "general_physician" }),
+    patients,
+  });
+  await mockConsultationFlow(page);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open chart for Avery Stone" }).click();
+  await page.getByRole("button", { name: "Start consultation" }).click();
+  await expect.poll(() => medicineRequests).toBe(1);
+  expect(fullCatalogRequests).toBe(0);
+  await page.getByRole("button", { name: "Close consultation" }).click();
+  await page.getByRole("button", { name: "Close patient chart" }).click();
+
+  await page.getByRole("button", { name: "Open chart for Morgan Lee" }).click();
+  await page.getByRole("button", { name: "Start consultation" }).click();
+  await expect(page.getByRole("complementary").getByRole("heading", { name: "Morgan Lee" })).toBeVisible();
+  expect(medicineRequests).toBe(1);
+  expect(fullCatalogRequests).toBe(0);
+});
+
 test("consultation smoke generates a note and completes the patient flow", async ({ page }) => {
   const user = buildUser({ doctor_signature_name: "Dr. Rivera" });
   const staffUser = buildUser({

@@ -18,6 +18,7 @@ from app.services.audit_service import get_actor_name, write_audit_event
 from app.services.document_helpers import build_document_context_for_user
 from app.services.billing_workflow import _invoice_completion_audit_events
 from app.services.note_workflow import hydrate_note_assets_for_pdf
+from app.services.patient_summary_workflow import regenerate_patient_summary_after_finalization
 from app.services.pdf_service import build_invoice_pdf, build_letter_pdf, build_note_pdf
 from app.storage import PatientAttachmentStorage
 from app.services.whatsapp_client import WhatsAppClient, WhatsAppClientError
@@ -385,7 +386,8 @@ async def send_note_whatsapp_workflow(
         str(payload.note_id),
     )
     if finalized_during_request:
-        await repo.mark_patient_summary_stale(
+        await regenerate_patient_summary_after_finalization(
+            repo,
             str(current_user.org_id),
             str(payload.patient_id),
         )

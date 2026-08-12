@@ -22,6 +22,7 @@ export default function MobileUsersPage() {
   const {
     users,
     loadUsers,
+    usersError,
     error,
     handleAddStaffUser,
     handleUpdateUserRole,
@@ -40,7 +41,7 @@ export default function MobileUsersPage() {
 
   useEffect(() => {
     if (isAuthReady && currentUser?.role === "admin") {
-      void loadUsers();
+      void loadUsers().catch(() => undefined);
     }
   }, [currentUser, isAuthReady, loadUsers]);
 
@@ -90,7 +91,7 @@ export default function MobileUsersPage() {
 
   return (
     <MobileShell title="Users">
-      {error ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+      {error || usersError ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error || usersError}</div> : null}
       <SettingsDrawerUsersPanel
         currentUser={currentUser}
         users={users}

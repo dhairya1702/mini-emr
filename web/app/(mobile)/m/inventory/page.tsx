@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { MobileAdminGate } from "@/components/mobile/mobile-admin-gate";
 import { MobileShell } from "@/components/mobile/mobile-shell";
-import { api } from "@/lib/api";
 import type { CatalogItem } from "@/lib/types";
 
 function itemTypeLabel(item: CatalogItem) {
@@ -15,33 +14,23 @@ function itemTypeLabel(item: CatalogItem) {
 }
 
 export default function MobileInventoryPage() {
-  const { currentUser, isAuthReady, isRedirectingToLogin } = useClinicShell();
-  const [items, setItems] = useState<CatalogItem[]>([]);
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    currentUser,
+    isAuthReady,
+    isRedirectingToLogin,
+    catalogItems: items,
+    catalogError: error,
+    isCatalogLoaded,
+    isCatalogLoading: isLoading,
+    loadCatalogItems,
+  } = useClinicShell();
 
   useEffect(() => {
     if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") {
       return;
     }
-    let active = true;
-    setIsLoading(true);
-    api.listCatalogItems()
-      .then((rows) => {
-        if (!active) return;
-        setItems(rows);
-        setError("");
-      })
-      .catch((loadError) => {
-        if (active) setError(loadError instanceof Error ? loadError.message : "Failed to load inventory.");
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [currentUser, isAuthReady, isRedirectingToLogin]);
+    void loadCatalogItems().catch(() => undefined);
+  }, [currentUser, isAuthReady, isRedirectingToLogin, loadCatalogItems]);
 
   const sortedItems = useMemo(
     () => [...items].sort((left, right) => left.item_type.localeCompare(right.item_type) || left.name.localeCompare(right.name)),
@@ -52,7 +41,7 @@ export default function MobileInventoryPage() {
     <MobileAdminGate title="Inventory">
       <MobileShell title="Inventory">
         {error ? <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
-        {isLoading ? (
+        {isLoading && !isCatalogLoaded ? (
           <p className="clinic-empty-state">Loading inventory...</p>
         ) : (
           <div className="grid gap-3">

@@ -92,6 +92,22 @@ CLINIC_RUNTIME_SETTINGS_COLUMNS = [
     "updated_at",
 ]
 
+CLINIC_FRONTEND_SETTINGS_COLUMNS = [
+    column
+    for column in CLINIC_SETTINGS_COLUMNS
+    if column not in {
+        "sender_email_app_password",
+        "document_template_content_type",
+        "document_template_data_base64",
+    }
+]
+
+CLINIC_FRONTEND_SETTINGS_RESULT_COLUMNS = [
+    *CLINIC_FRONTEND_SETTINGS_COLUMNS,
+    "document_template_configured",
+    "clinic_email_password_configured",
+]
+
 CLINIC_SETTINGS_MUTABLE_COLUMNS = [
     "clinic_name",
     "clinic_address",
@@ -894,6 +910,28 @@ class PostgresAuthSettingsRepository:
 
     async def get_clinic_runtime_settings(self, org_id: str) -> dict[str, Any]:
         return await asyncio.to_thread(lambda: self.get_clinic_runtime_settings_sync(org_id))
+
+    async def get_clinic_frontend_settings(self, org_id: str) -> dict[str, Any]:
+        return await asyncio.to_thread(lambda: self.get_clinic_frontend_settings_sync(org_id))
+
+    def get_clinic_frontend_settings_sync(self, org_id: str) -> dict[str, Any]:
+        with self.connection_manager.pool.connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    select {", ".join(CLINIC_FRONTEND_SETTINGS_COLUMNS)},
+                      document_template_data_base64 is not null
+                        as document_template_configured,
+                      sender_email_app_password is not null
+                        as clinic_email_password_configured
+                    from public.clinic_settings
+                    where org_id = %s
+                    limit 1
+                    """,
+                    (org_id,),
+                )
+                row = cursor.fetchone()
+                return _row_to_dict(row, cursor) if row else {}
 
     def get_clinic_runtime_settings_sync(self, org_id: str) -> dict[str, Any]:
         with self.connection_manager.pool.connection() as connection:

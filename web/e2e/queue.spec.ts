@@ -102,6 +102,31 @@ test("queue defers users and catalog until their workflows need them", async ({ 
   expect(usersRequests).toBe(0);
 });
 
+test("full catalog cache survives Billing to Inventory navigation", async ({ page }) => {
+  const user = buildUser({ doctor_signature_name: "signature.png" });
+  let catalogRequests = 0;
+
+  page.on("request", (request) => {
+    if (request.url() === "http://127.0.0.1:8001/catalog") catalogRequests += 1;
+  });
+  await seedSession(page, { user });
+  await mockClinicBootstrap(page, {
+    user,
+    clinicSettings: buildClinicSettings({ clinic_specialty: "general_physician" }),
+    patients: [],
+  });
+
+  await page.goto("/");
+  expect(catalogRequests).toBe(0);
+  await page.getByRole("link", { name: "Billing" }).click();
+  await expect(page).toHaveURL(/\/billing$/);
+  await expect.poll(() => catalogRequests).toBe(1);
+  await page.getByRole("link", { name: "Inventory" }).click();
+  await expect(page).toHaveURL(/\/inventory$/);
+  await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
+  expect(catalogRequests).toBe(1);
+});
+
 test("queue drag moves a waiting patient into consultation", async ({ page }) => {
   const user = buildUser({ doctor_signature_name: "signature.png" });
   const staffUser = buildUser({ id: "user-staff-1", identifier: "staff@clinic.test", role: "staff" });
@@ -148,14 +173,16 @@ test("queue header reviews and approves a QR check-in request", async ({ page })
     patients: [existingPatient],
   });
   await mockQueueIntake(page, [existingPatient]);
-  await page.route("**/check-in/requests/status", async (route) => {
+  await page.route("**/dashboard/status", async (route) => {
     statusRequests += 1;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        pending_count: pending ? 1 : 0,
-        revision: pending ? "request-qr-1" : "empty",
+        queue_revision: "queue-1",
+        active_patient_count: pending ? 1 : 2,
+        pending_check_in_count: pending ? 1 : 0,
+        check_in_revision: pending ? "request-qr-1:1" : "empty:0",
       }),
     });
   });
@@ -203,4 +230,46 @@ test("queue header reviews and approves a QR check-in request", async ({ page })
   await page.getByRole("button", { name: "Approve and add Jordan QR to queue" }).click();
   await expect(page.getByText("All caught up")).toBeVisible();
   await expect(page.getByLabel("Waiting queue").getByText("Jordan QR", { exact: true })).toBeVisible();
+});
+
+test("idle queue polls only the lightweight dashboard heartbeat", async ({ page }) => {
+  const user = buildUser({ doctor_signature_name: "signature.png" });
+  const patient = buildPatient({ id: "patient-idle-1", name: "Idle Queue Patient" });
+  let heartbeatRequests = 0;
+  let queueSnapshotRequests = 0;
+
+  await seedSession(page, { user });
+  await mockClinicBootstrap(page, {
+    user,
+    clinicSettings: buildClinicSettings({ clinic_specialty: "general_physician" }),
+    patients: [patient],
+  });
+  await page.route("**/dashboard/status", async (route) => {
+    heartbeatRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        queue_revision: "queue-idle",
+        active_patient_count: 1,
+        check_in_revision: "check-ins-idle:0",
+        pending_check_in_count: 0,
+      }),
+    });
+  });
+  await page.route("**/patients/queue", async (route) => {
+    queueSnapshotRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ revision: "queue-idle", patients: [patient] }),
+    });
+  });
+
+  await page.goto("/");
+  await expect(page.getByText("Idle Queue Patient", { exact: true })).toBeVisible();
+  await page.waitForTimeout(16_000);
+
+  expect(heartbeatRequests).toBeGreaterThanOrEqual(2);
+  expect(queueSnapshotRequests).toBe(1);
 });

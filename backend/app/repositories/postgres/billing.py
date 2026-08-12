@@ -135,6 +135,24 @@ class PostgresBillingRepository:
 
         return await asyncio.to_thread(_list)
 
+    async def list_active_medicines(self, org_id: str) -> list[dict[str, Any]]:
+        def _list() -> list[dict[str, Any]]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select id, name, unit, default_price, track_inventory, stock_quantity
+                        from public.catalog_items
+                        where org_id = %s and item_type = 'medicine' and is_active = true
+                        order by name asc
+                        """,
+                        (org_id,),
+                    )
+                    columns = ["id", "name", "unit", "default_price", "track_inventory", "stock_quantity"]
+                    return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+
+        return await asyncio.to_thread(_list)
+
     async def create_catalog_item(self, org_id: str, payload: CatalogItemCreate) -> dict[str, Any]:
         values = payload.model_dump()
 

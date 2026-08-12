@@ -6,6 +6,7 @@ from app.schema_domains.mobile import (
 )
 from app.schema_domains.patients import NoteOut, PatientOut
 from app.services.audit_service import write_audit_event
+from app.services.patient_summary_workflow import regenerate_patient_summary_after_finalization
 
 
 async def finalize_mobile_consultation_workflow(
@@ -22,7 +23,6 @@ async def finalize_mobile_consultation_workflow(
         raise ValueError("Note does not belong to that patient.")
 
     finalized_note = await repo.finalize_note(org_id, note_id)
-    await repo.mark_patient_summary_stale(org_id, patient_id)
     patient = await repo.update_patient(org_id, patient_id, {"status": "done"})
     patient_name = str(patient.get("name") or "").strip() or "Unknown patient"
 
@@ -57,6 +57,7 @@ async def finalize_mobile_consultation_workflow(
             "status": patient.get("status"),
         },
     )
+    await regenerate_patient_summary_after_finalization(repo, org_id, patient_id)
 
     return MobileFinalizeConsultationResponse(
         note=NoteOut(**finalized_note),

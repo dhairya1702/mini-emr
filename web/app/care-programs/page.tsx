@@ -26,7 +26,6 @@ import { useClinicShell } from "@/components/clinic-shell-provider";
 import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-myopia-modal";
 import { api } from "@/lib/api";
 import type {
-  AuthUser,
   CareProgramOffering,
   MyopiaMeasurementPayload,
   MyopiaMeasurementRecord,
@@ -59,11 +58,10 @@ function dueState(row: ProgramEnrollmentSummary) {
 
 export default function CareProgramsPage() {
   const router = useRouter();
-  const { clinicSettings, currentUser, handleLogout, isAuthReady, isRedirectingToLogin } = useClinicShell();
+  const { clinicSettings, currentUser, handleLogout, isAuthReady, isRedirectingToLogin, users, loadUsers } = useClinicShell();
   const [offerings, setOfferings] = useState<CareProgramOffering[]>([]);
   const [enrollments, setEnrollments] = useState<ProgramEnrollmentSummary[]>([]);
   const [selected, setSelected] = useState<ProgramEnrollment | null>(null);
-  const [users, setUsers] = useState<AuthUser[]>([]);
   const [measurements, setMeasurements] = useState<MyopiaMeasurementRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [programFilter, setProgramFilter] = useState("");
@@ -111,6 +109,7 @@ export default function CareProgramsPage() {
     pending: enrollments.filter((row) => row.status === "pending").length,
     unassigned: enrollments.filter((row) => row.status === "active" && !row.responsible_user_id).length,
   }), [enrollments]);
+  const doctorUsers = useMemo(() => users.filter((user) => user.role === "admin"), [users]);
 
   const filteredEnrollments = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -132,13 +131,12 @@ export default function CareProgramsPage() {
     setError("");
     try {
       const detail = await api.getCareProgramEnrollment(enrollmentId);
-      const [history, clinicUsers] = await Promise.all([
+      const [history] = await Promise.all([
         api.getPatientMyopiaHistory(detail.patient_id),
-        users.length ? Promise.resolve(users) : api.listUsers(),
+        loadUsers(),
       ]);
       setSelected(detail);
       setMeasurements(history.records);
-      if (!users.length) setUsers(clinicUsers.filter((user) => user.role === "admin"));
       setPaymentInput("");
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load enrollment.");
@@ -382,7 +380,7 @@ export default function CareProgramsPage() {
               Responsible doctor
               <select value={selected.responsible_user_id || ""} onChange={(event) => void assignDoctor(event.target.value)} className="mt-1.5 w-full rounded-lg border border-[#bfd7e8] bg-white px-3 py-2.5">
                 <option value="" disabled>Assign doctor</option>
-                {users.map((user) => <option key={user.id} value={user.id}>{user.name || user.identifier}</option>)}
+                {doctorUsers.map((user) => <option key={user.id} value={user.id}>{user.name || user.identifier}</option>)}
               </select>
             </label>
 

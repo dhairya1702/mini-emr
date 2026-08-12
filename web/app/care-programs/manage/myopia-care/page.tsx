@@ -13,7 +13,7 @@ import type { CareProgramOffering } from "@/lib/types";
 
 export default function MyopiaCareConfigurationPage() {
   const router = useRouter();
-  const { clinicSettings, currentUser, handleLogout, isAuthReady, isRedirectingToLogin } = useClinicShell();
+  const { clinicSettings, currentUser, handleLogout, invalidateCatalog, isAuthReady, isRedirectingToLogin } = useClinicShell();
   const [offering, setOffering] = useState<CareProgramOffering | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,7 +55,15 @@ export default function MyopiaCareConfigurationPage() {
           <p className="mt-1 text-sm text-slate-500">Set the clinic’s offer, pricing and review schedule.</p>
         </div>
         {error ? <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
-        {offering ? <MyopiaOfferingEditor offering={offering} onSaved={setOffering} /> : null}
+        {offering ? (
+          <MyopiaOfferingEditor
+            offering={offering}
+            onSaved={(saved) => {
+              setOffering(saved);
+              invalidateCatalog();
+            }}
+          />
+        ) : null}
       </div>
       <AppMenuDrawer open={isMenuOpen} currentUser={currentUser} onClose={() => setIsMenuOpen(false)} />
     </main>
