@@ -1355,6 +1355,10 @@ create index if not exists invoice_items_org_invoice_idx on public.invoice_items
 create index if not exists invoice_items_org_catalog_item_idx on public.invoice_items (org_id, catalog_item_id)
   where catalog_item_id is not null;
 create index if not exists audit_events_org_created_idx on public.audit_events (org_id, created_at desc);
+create index if not exists audit_events_follow_up_tracking_idx
+  on public.audit_events (org_id, entity_id, created_at desc)
+  where entity_type = 'follow_up'
+    and action in ('follow_up_invitation_sent', 'follow_up_reminder_sent');
 create index if not exists follow_ups_org_status_scheduled_idx on public.follow_ups (org_id, status, scheduled_for asc);
 create index if not exists follow_ups_patient_idx on public.follow_ups (patient_id, created_at desc);
 create index if not exists follow_ups_org_patient_scheduled_idx on public.follow_ups (org_id, patient_id, scheduled_for desc);

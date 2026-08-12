@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
-import { AlertCircle, CalendarClock, Mail, MessageCircle, Plus } from "lucide-react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { AlertCircle, CalendarClock, LoaderCircle, Mail, MessageCircle, Plus } from "lucide-react";
 
 import { api } from "@/lib/api";
 import {
@@ -61,6 +61,15 @@ export function SettingsDrawerAppointmentsPanel({
 }: SettingsDrawerAppointmentsPanelProps) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [followUpCounts, setFollowUpCounts] = useState<Record<FollowUpFilter, number>>({
+    needs_action: 0,
+    delivery_issues: 0,
+    history: 0,
+  });
+  const [followUpNextCursor, setFollowUpNextCursor] = useState<string | null>(null);
+  const [hasMoreFollowUps, setHasMoreFollowUps] = useState(false);
+  const [isLoadingMoreFollowUps, setIsLoadingMoreFollowUps] = useState(false);
+  const [followUpReloadKey, setFollowUpReloadKey] = useState(0);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [activeView, setActiveView] = useState<AppointmentView>("appointments");
   const [appointmentFilter, setAppointmentFilter] = useState<AppointmentFilter>("all");
@@ -101,6 +110,9 @@ export function SettingsDrawerAppointmentsPanel({
   const [statusMessage, setStatusMessage] = useState("");
   const [loadError, setLoadError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const followUpPageKeyRef = useRef("");
+  const followUpLoadMoreRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreFollowUpsRef = useRef<() => void>(() => undefined);
   const [duplicateCheckIn, setDuplicateCheckIn] = useState<{
     appointmentId: string;
     appointmentName: string;
@@ -160,6 +172,12 @@ export function SettingsDrawerAppointmentsPanel({
     let active = true;
     const activeQuery = activeView === "appointments" ? appointmentQuery : followUpQuery;
     const requestDelayMs = activeQuery.trim() ? 250 : 0;
+    if (activeView === "followUps") {
+      followUpPageKeyRef.current = `${followUpFilter}\u0000${followUpQuery.trim()}`;
+      setFollowUpNextCursor(null);
+      setHasMoreFollowUps(false);
+      setIsLoadingMoreFollowUps(false);
+    }
     const timeoutId = window.setTimeout(() => {
       setIsLoading(true);
       setLoadError("");
@@ -183,10 +201,15 @@ export function SettingsDrawerAppointmentsPanel({
               }
             })
           : api.listFollowUps({
+              view: followUpFilter,
               q: followUpQuery.trim() || undefined,
-            }).then((rows) => {
+              limit: 20,
+            }).then((page) => {
               if (active) {
-                setFollowUps(rows);
+                setFollowUps(page.items);
+                setFollowUpCounts(page.counts);
+                setFollowUpNextCursor(page.next_cursor);
+                setHasMoreFollowUps(page.has_more);
               }
             });
 
@@ -197,7 +220,9 @@ export function SettingsDrawerAppointmentsPanel({
           }
         })
         .finally(() => {
-          setIsLoading(false);
+          if (active) {
+            setIsLoading(false);
+          }
         });
     }, requestDelayMs);
 
@@ -206,7 +231,55 @@ export function SettingsDrawerAppointmentsPanel({
       window.clearTimeout(timeoutId);
       setIsLoading(false);
     };
-  }, [activeView, appointmentFilter, appointmentQuery, clinicTimezone, followUpFilter, followUpQuery, selectedDate, todayIsoDate]);
+  }, [activeView, appointmentFilter, appointmentQuery, clinicTimezone, followUpFilter, followUpQuery, followUpReloadKey, selectedDate, todayIsoDate]);
+
+  async function loadMoreFollowUps() {
+    if (activeView !== "followUps" || !hasMoreFollowUps || !followUpNextCursor || isLoadingMoreFollowUps) {
+      return;
+    }
+    const pageKey = `${followUpFilter}\u0000${followUpQuery.trim()}`;
+    const cursor = followUpNextCursor;
+    setIsLoadingMoreFollowUps(true);
+    setLoadError("");
+    try {
+      const page = await api.listFollowUps({
+        view: followUpFilter,
+        q: followUpQuery.trim() || undefined,
+        limit: 20,
+        cursor,
+      });
+      if (followUpPageKeyRef.current !== pageKey) return;
+      setFollowUps((current) => {
+        const seen = new Set(current.map((row) => row.id));
+        return [...current, ...page.items.filter((row) => !seen.has(row.id))];
+      });
+      setFollowUpCounts(page.counts);
+      setFollowUpNextCursor(page.next_cursor);
+      setHasMoreFollowUps(page.has_more);
+    } catch (error) {
+      if (followUpPageKeyRef.current === pageKey) {
+        setLoadError(error instanceof Error ? error.message : "Failed to load more follow-ups.");
+      }
+    } finally {
+      if (followUpPageKeyRef.current === pageKey) {
+        setIsLoadingMoreFollowUps(false);
+      }
+    }
+  }
+  loadMoreFollowUpsRef.current = () => void loadMoreFollowUps();
+
+  useEffect(() => {
+    const target = followUpLoadMoreRef.current;
+    if (activeView !== "followUps" || !target || !hasMoreFollowUps) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMoreFollowUpsRef.current();
+      },
+      { rootMargin: "160px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [activeView, hasMoreFollowUps, followUpNextCursor, isLoadingMoreFollowUps]);
 
   function formatDateTime(value: string) {
     return formatDateTimeInTimeZone(value, clinicTimezone);
@@ -357,6 +430,9 @@ export function SettingsDrawerAppointmentsPanel({
         last_delivery_error: Object.values(result.errors).join("; ") || null,
         reminder_count: (item.reminder_count || 0) + 1,
       } : item));
+      if (["failed", "partial"].includes(result.delivery_status)) {
+        setFollowUpReloadKey((current) => current + 1);
+      }
       setStatusMessage(
         result.delivery_status === "sent"
           ? "Reminder sent."
@@ -379,16 +455,14 @@ export function SettingsDrawerAppointmentsPanel({
     setSavingAppointmentId(followUpId);
     setStatusMessage("");
     try {
-      const updated = await onUpdateFollowUp(followUpId, {
+      await onUpdateFollowUp(followUpId, {
         scheduled_for: zonedDateTimeInputToUtcIso(`${followUpDate}T${followUpTime}`, clinicTimezone),
         notes: followUpNotes.trim(),
         status: "scheduled",
       });
-      setFollowUps((current) =>
-        current.map((followUp) => (followUp.id === followUpId ? { ...followUp, ...updated } : followUp)),
-      );
       setEditingFollowUpId("");
       setExpandedFollowUpId("");
+      setFollowUpReloadKey((current) => current + 1);
       setStatusMessage("Follow-up updated.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to update follow-up.");
@@ -404,16 +478,14 @@ export function SettingsDrawerAppointmentsPanel({
     setSavingAppointmentId(followUpId);
     setStatusMessage("");
     try {
-      const updated = await onUpdateFollowUp(followUpId, { status });
-      setFollowUps((current) =>
-        current.map((followUp) => (followUp.id === followUpId ? { ...followUp, ...updated } : followUp)),
-      );
+      await onUpdateFollowUp(followUpId, { status });
       if (editingFollowUpId === followUpId) {
         setEditingFollowUpId("");
       }
       if (expandedFollowUpId === followUpId) {
         setExpandedFollowUpId("");
       }
+      setFollowUpReloadKey((current) => current + 1);
       setStatusMessage(
         status === "completed"
           ? "Follow-up marked completed."
@@ -516,12 +588,12 @@ export function SettingsDrawerAppointmentsPanel({
     setIsCreating(true);
     setStatusMessage("");
     try {
-      const created = await onCreateFollowUp(newFollowUp.patientId, {
+      await onCreateFollowUp(newFollowUp.patientId, {
         scheduled_for: zonedDateTimeInputToUtcIso(`${newFollowUp.date}T${newFollowUp.time}`, clinicTimezone),
         notes: newFollowUp.notes.trim(),
       });
-      setFollowUps((current) => [created, ...current]);
       setFollowUpFilter("needs_action");
+      setFollowUpReloadKey((current) => current + 1);
       setIsCreateOpen(false);
       setNewFollowUp((current) => ({
         patientId: current.patientId,
@@ -539,20 +611,7 @@ export function SettingsDrawerAppointmentsPanel({
 
   const isBookedFollowUp = (followUp: FollowUp) =>
     Boolean(followUp.appointment_id && followUp.appointment_status !== "cancelled");
-  const needsActionFollowUps = followUps.filter(
-    (followUp) => followUp.status === "scheduled" && !isBookedFollowUp(followUp) && followUp.last_delivery_status !== "failed",
-  );
-  const deliveryIssueFollowUps = followUps.filter(
-    (followUp) => followUp.status === "scheduled" && !isBookedFollowUp(followUp) && ["failed", "partial"].includes(followUp.last_delivery_status || ""),
-  );
-  const historyFollowUps = followUps.filter(
-    (followUp) => followUp.status !== "scheduled" || isBookedFollowUp(followUp),
-  );
-  const visibleFollowUps = followUpFilter === "needs_action"
-    ? needsActionFollowUps
-    : followUpFilter === "delivery_issues"
-      ? deliveryIssueFollowUps
-      : historyFollowUps;
+  const visibleFollowUps = followUps;
 
   function waitingLabel(followUp: FollowUp) {
     const days = Math.max(0, Math.floor((Date.now() - new Date(followUp.created_at).getTime()) / 86_400_000));
@@ -934,9 +993,9 @@ export function SettingsDrawerAppointmentsPanel({
                 className="min-w-[260px] rounded-xl border border-[#bfd7e8] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
               {([
-                { id: "needs_action", label: "Needs Action", count: needsActionFollowUps.length },
-                { id: "delivery_issues", label: "Delivery Issues", count: deliveryIssueFollowUps.length },
-                { id: "history", label: "History", count: historyFollowUps.length },
+                { id: "needs_action", label: "Needs Action", count: followUpCounts.needs_action },
+                { id: "delivery_issues", label: "Delivery Issues", count: followUpCounts.delivery_issues },
+                { id: "history", label: "History", count: followUpCounts.history },
               ] as Array<{ id: FollowUpFilter; label: string; count: number }>).map((filter) => (
                 <button
                   key={filter.id}
@@ -1069,6 +1128,23 @@ export function SettingsDrawerAppointmentsPanel({
                     ))}
                   </tbody>
                 </table>
+                <div ref={followUpLoadMoreRef} className="border-t border-[#dbe7ef] bg-white px-4 py-4 text-center">
+                  {isLoadingMoreFollowUps ? (
+                    <span className="inline-flex items-center gap-2 text-sm text-slate-500">
+                      <LoaderCircle className="h-4 w-4 animate-spin" /> Loading more follow-ups...
+                    </span>
+                  ) : hasMoreFollowUps ? (
+                    <button
+                      type="button"
+                      onClick={() => void loadMoreFollowUps()}
+                      className="rounded-xl border border-[#bfd7e8] bg-white px-4 py-2 text-sm font-medium text-[#2a6fa8] transition hover:bg-[#f3f8fb]"
+                    >
+                      Load more
+                    </button>
+                  ) : (
+                    <span className="text-xs text-slate-400">All follow-ups loaded</span>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="rounded-[16px] border border-dashed border-[#9fc7e1] bg-[#f3f8fb]/30 px-6 py-16 text-center text-sm text-slate-500">

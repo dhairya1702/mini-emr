@@ -1355,6 +1355,7 @@ export function PatientDetailsDrawer({
   const onLoadVisitsRef = useRef(onLoadVisits);
   const onLoadVisitDetailRef = useRef(onLoadVisitDetail);
   const onLoadTimelineRef = useRef(onLoadTimeline);
+  const initializedPatientIdRef = useRef("");
   const visitsPatientId = patient?.id ?? "";
   onLoadVisitsRef.current = onLoadVisits;
   onLoadVisitDetailRef.current = onLoadVisitDetail;
@@ -1402,11 +1403,16 @@ export function PatientDetailsDrawer({
 
   useEffect(() => {
     if (!patient) {
+      initializedPatientIdRef.current = "";
       setCurrentPatient(null);
       return;
     }
 
     setCurrentPatient(patient);
+    if (initializedPatientIdRef.current === patient.id) {
+      return;
+    }
+    initializedPatientIdRef.current = patient.id;
     setProfilePhotoVersion(0);
     setForm({
       name: patient.name,
@@ -1468,10 +1474,10 @@ export function PatientDetailsDrawer({
   }, [patient]);
 
   useEffect(() => {
-    if (!patient || isTrainingMode) {
+    if (!visitsPatientId || isTrainingMode) {
       return;
     }
-    const patientId = patient.id;
+    const patientId = visitsPatientId;
     let active = true;
     async function loadSummary() {
       setIsSummaryLoading(true);
@@ -1497,7 +1503,7 @@ export function PatientDetailsDrawer({
     return () => {
       active = false;
     };
-  }, [patient, isTrainingMode]);
+  }, [visitsPatientId, isTrainingMode]);
 
   useEffect(() => {
     if (!visitsPatientId) {

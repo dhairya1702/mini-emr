@@ -13,6 +13,7 @@ from app.repositories.postgres.ai_usage import AI_USAGE_COLUMNS, PostgresAIUsage
 from app.repositories.postgres.attachments import PATIENT_ATTACHMENT_COLUMNS, PostgresAttachmentsRepository
 from app.repositories.postgres.audit import AUDIT_EVENT_COLUMNS, PostgresAuditRepository
 from app.repositories.postgres.auth_settings import (
+    CLINIC_RUNTIME_SETTINGS_COLUMNS,
     CLINIC_SETTINGS_COLUMNS,
     SUPERUSER_ORG_SUMMARY_COLUMNS,
     USER_COLUMNS,
@@ -26,6 +27,7 @@ from app.repositories.postgres.myopia import MYOPIA_MEASUREMENT_COLUMNS, Postgre
 from app.repositories.postgres.patient_flow import (
     APPOINTMENT_COLUMNS,
     PATIENT_COLUMNS,
+    PATIENT_LIST_COLUMNS,
     PATIENT_VISIT_COLUMNS,
     PostgresPatientFlowRepository,
 )
@@ -817,6 +819,21 @@ def test_postgres_auth_settings_repository_creates_organization_and_user():
     assert user["doctor_signature_url"] is None
 
 
+def test_postgres_auth_settings_repository_runtime_settings_exclude_large_and_secret_fields():
+    cursor = ScriptedCursor(
+        descriptions=[CLINIC_RUNTIME_SETTINGS_COLUMNS],
+        fetchone_rows=[None],
+    )
+    repo = PostgresAuthSettingsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    assert asyncio.run(repo.get_clinic_runtime_settings("org-1")) == {}
+    statement, params = cursor.executed[0]
+    assert "document_template_data_base64" not in statement
+    assert "sender_email_app_password" not in statement
+    assert "timezone" in statement
+    assert params == ("org-1",)
+
+
 def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
     cursor = ScriptedCursor(
         descriptions=[USER_LIST_COLUMNS, USER_COLUMNS, USER_COLUMNS],
@@ -1218,7 +1235,6 @@ def test_postgres_check_in_creation_relies_on_atomic_pending_unique_index():
 def test_postgres_check_in_listing_bulk_loads_candidates_using_stored_match_keys():
     cursor = ScriptedCursor(
         descriptions=[
-            [],
             CHECK_IN_REQUEST_COLUMNS,
             ["check_in_request_id", *PATIENT_COLUMNS],
         ],
@@ -1231,8 +1247,11 @@ def test_postgres_check_in_listing_bulk_loads_candidates_using_stored_match_keys
 
     requests = asyncio.run(repo.list_public_check_in_requests("org-1"))
 
-    assert len(cursor.executed) == 3
-    candidate_statement, candidate_params = cursor.executed[2]
+    assert len(cursor.executed) == 2
+    list_statement, _list_params = cursor.executed[0]
+    assert "expires_at > now()" in list_statement
+    assert "update public.public_check_in_requests" not in list_statement
+    candidate_statement, candidate_params = cursor.executed[1]
     assert "check_in.id = any(%s::uuid[])" in candidate_statement
     assert "patient.phone_match_key = check_in.submitted_phone_match_key" in candidate_statement
     assert "patient.email_normalized = check_in.submitted_email_normalized" in candidate_statement
@@ -1240,6 +1259,25 @@ def test_postgres_check_in_listing_bulk_loads_candidates_using_stored_match_keys
     assert candidate_params == ("org-1", ["check-in-1"])
     assert requests[0]["candidates"][0]["id"] == "patient-1"
     assert requests[0]["candidates"][0]["confidence"] == "strong"
+
+
+def test_postgres_check_in_status_is_a_single_read_query():
+    cursor = ScriptedCursor(
+        descriptions=[["id"]],
+        fetchall_rows=[[('request-b',), ('request-a',)]],
+    )
+    repo = PostgresCheckInsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    status = asyncio.run(repo.get_public_check_in_requests_status("org-1"))
+
+    assert len(cursor.executed) == 1
+    statement, params = cursor.executed[0]
+    assert statement.lstrip().lower().startswith("select")
+    assert "status = 'pending'" in statement
+    assert "expires_at > now()" in statement
+    assert params == ("org-1",)
+    assert status["pending_count"] == 2
+    assert status["revision"]
 
 
 def _appointment_row(*, status: str = "scheduled", phone: str = "1234567890") -> tuple:
@@ -1333,6 +1371,25 @@ def test_postgres_patient_flow_repository_creates_patient_and_visit():
     assert cursor.executed[0][1][1:6] == ("DL", "1234567890", "dl@example.com", "Main Road", "fever")
     assert cursor.executed[1][1][0:2] == ("org-1", "patient-1")
     assert patient["id"] == "patient-1"
+
+
+def test_postgres_patient_list_skips_queue_enrichment_when_not_requested():
+    full_patient = dict(zip(PATIENT_COLUMNS, _patient_row(current_visit_id="visit-1"), strict=True))
+    list_row = tuple(full_patient[column] for column in PATIENT_LIST_COLUMNS)
+    cursor = ScriptedCursor(
+        descriptions=[PATIENT_LIST_COLUMNS],
+        fetchall_rows=[[list_row]],
+    )
+    repo = PostgresPatientFlowRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    patients = asyncio.run(
+        repo.list_patients("org-1", limit=500, include_queue_context=False)
+    )
+
+    assert len(cursor.executed) == 1
+    assert "ai_summary" not in cursor.executed[0][0]
+    assert patients[0]["id"] == "patient-1"
+    assert patients[0]["current_visit_id"] == "visit-1"
 
 
 def test_postgres_patient_flow_repository_lists_appointments_with_filters():
@@ -1679,6 +1736,52 @@ def test_postgres_records_repository_lists_follow_ups_with_patient_names_and_que
     assert cursor.executed[0][1] == ("org-1", 50)
     assert cursor.executed[1][1] == ("org-1", ["patient-1"])
     assert rows[0]["patient_name"] == "DL"
+
+
+def test_postgres_records_repository_pages_follow_ups_and_returns_global_counts():
+    page_columns = [
+        *FOLLOW_UP_COLUMNS,
+        "patient_name",
+        "patient_email",
+        "patient_phone",
+        "appointment_id",
+        "appointment_status",
+        "appointment_scheduled_for",
+        "last_contacted_at",
+        "last_contact_channels",
+        "last_delivery_status",
+        "last_delivery_error",
+        "reminder_count",
+        "follow_up_view",
+    ]
+    cursor = ScriptedCursor(
+        descriptions=[page_columns, ["needs_action", "delivery_issues", "history"]],
+        fetchall_rows=[[]],
+        fetchone_rows=[(7, 2, 11)],
+    )
+    repo = PostgresRecordsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    page = asyncio.run(
+        repo.list_follow_up_page(
+            "org-1",
+            view="needs_action",
+            query="review",
+            limit=20,
+        )
+    )
+
+    assert page == {
+        "items": [],
+        "has_more": False,
+        "counts": {"needs_action": 7, "delivery_issues": 2, "history": 11},
+    }
+    page_statement, page_params = cursor.executed[0]
+    assert "left join lateral" in page_statement
+    assert "limit %s" in page_statement
+    assert page_params[-2:] == ("needs_action", 21)
+    count_statement, count_params = cursor.executed[1]
+    assert "count(*) filter" in count_statement
+    assert count_params == ("org-1",)
 
 
 def test_postgres_records_repository_creates_and_updates_follow_up():

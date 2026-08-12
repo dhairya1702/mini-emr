@@ -14,6 +14,7 @@ from app.services.followup_workflow import (
     _suggest_follow_up_slots,
     expire_stale_schedule_workflow,
 )
+from app.services.clinic_settings_service import get_clinic_runtime_settings
 
 
 async def get_public_appointment_slots(
@@ -23,7 +24,7 @@ async def get_public_appointment_slots(
     config = await repo.get_public_check_in_config_by_token(clinic_token)
     org_id = str(config["org_id"])
     await expire_stale_schedule_workflow(repo, org_id)
-    clinic_settings = await repo.get_clinic_settings(org_id)
+    clinic_settings = await get_clinic_runtime_settings(repo, org_id)
     slots = await _suggest_follow_up_slots(repo, org_id, clinic_settings)
     return config, clinic_settings, slots
 
@@ -36,7 +37,7 @@ async def create_public_appointment(
 ) -> tuple[dict, dict, str, list[datetime]]:
     config = await repo.get_public_check_in_config_by_token(clinic_token)
     org_id = str(config["org_id"])
-    clinic_settings = await repo.get_clinic_settings(org_id)
+    clinic_settings = await get_clinic_runtime_settings(repo, org_id)
     scheduled_for = _as_utc_minute(payload.scheduled_for)
     if scheduled_for <= datetime.now(UTC):
         raise ValueError("Appointment time must be in the future.")
@@ -88,7 +89,7 @@ async def get_public_appointment_context(
     appointment_id = str(token_payload["appointment_id"])
     await expire_stale_schedule_workflow(repo, org_id)
     appointment = await repo.get_appointment(org_id, appointment_id)
-    clinic_settings = await repo.get_clinic_settings(org_id)
+    clinic_settings = await get_clinic_runtime_settings(repo, org_id)
     slots = (
         await _suggest_follow_up_slots(repo, org_id, clinic_settings)
         if str(appointment.get("status") or "") == "scheduled"
@@ -106,7 +107,7 @@ async def reschedule_public_appointment(
     token_payload = decode_public_appointment_booking_token(booking_token)
     org_id = str(token_payload["org_id"])
     appointment_id = str(token_payload["appointment_id"])
-    clinic_settings = await repo.get_clinic_settings(org_id)
+    clinic_settings = await get_clinic_runtime_settings(repo, org_id)
     normalized = _as_utc_minute(scheduled_for)
     if normalized <= datetime.now(UTC):
         raise ValueError("Appointment time must be in the future.")
@@ -141,7 +142,7 @@ async def cancel_public_appointment(
     token_payload = decode_public_appointment_booking_token(booking_token)
     org_id = str(token_payload["org_id"])
     appointment_id = str(token_payload["appointment_id"])
-    clinic_settings = await repo.get_clinic_settings(org_id)
+    clinic_settings = await get_clinic_runtime_settings(repo, org_id)
     actor_name = str(clinic_settings.get("clinic_name") or "Clinic Team").strip() or "Clinic Team"
     cancelled = await repo.update_appointment(
         org_id,

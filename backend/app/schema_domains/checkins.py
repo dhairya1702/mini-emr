@@ -109,6 +109,11 @@ class CheckInRequestOut(BaseModel):
     candidates: list[CheckInCandidateOut] = Field(default_factory=list)
 
 
+class CheckInRequestsStatusOut(BaseModel):
+    pending_count: int = Field(ge=0)
+    revision: str
+
+
 class CheckInApproveRequest(BaseModel):
     existing_patient_id: UUID | None = None
     force_new: bool = False

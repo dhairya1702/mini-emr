@@ -391,8 +391,8 @@ class PostgresRecordsRepository:
         status: str | None = None,
         query: str | None = None,
         limit: int = 200,
-        scheduled_from: str | None = None,
-        scheduled_to: str | None = None,
+        scheduled_from: datetime | None = None,
+        scheduled_to: datetime | None = None,
     ) -> list[dict[str, Any]]:
         clauses = ["org_id = %s"]
         params: list[Any] = [org_id]
@@ -454,6 +454,184 @@ class PostgresRecordsRepository:
                             or normalized_query in str(row.get("notes") or "").lower()
                         ]
                     return rows
+
+        return await asyncio.to_thread(_list)
+
+    async def list_follow_up_page(
+        self,
+        org_id: str,
+        *,
+        view: str,
+        limit: int,
+        cursor_scheduled_for: datetime | None = None,
+        cursor_id: str | None = None,
+        status: str | None = None,
+        query: str | None = None,
+        scheduled_from: datetime | None = None,
+        scheduled_to: datetime | None = None,
+    ) -> dict[str, Any]:
+        base_clauses = ["follow_up.org_id = %s"]
+        base_params: list[Any] = [org_id]
+        if status:
+            base_clauses.append("follow_up.status = %s")
+            base_params.append(status)
+        if scheduled_from:
+            base_clauses.append("follow_up.scheduled_for >= %s")
+            base_params.append(scheduled_from)
+        if scheduled_to:
+            base_clauses.append("follow_up.scheduled_for < %s")
+            base_params.append(scheduled_to)
+        normalized_query = (query or "").strip()
+        if normalized_query:
+            pattern = f"%{normalized_query}%"
+            base_clauses.append(
+                "(patient.name ilike %s or follow_up.notes ilike %s or patient.phone ilike %s)"
+            )
+            base_params.extend([pattern, pattern, pattern])
+
+        direction = "desc" if view == "history" else "asc"
+        page_clauses = ["follow_up_view = %s"]
+        page_params: list[Any] = [view]
+        if cursor_scheduled_for is not None and cursor_id:
+            comparator = "<" if direction == "desc" else ">"
+            page_clauses.append(f"(scheduled_for, id) {comparator} (%s, %s::uuid)")
+            page_params.extend([cursor_scheduled_for, cursor_id])
+
+        follow_up_columns = ", ".join(f"follow_up.{column}" for column in FOLLOW_UP_COLUMNS)
+        tracked_sql = f"""
+            select {follow_up_columns},
+              patient.name as patient_name,
+              patient.email as patient_email,
+              patient.phone as patient_phone,
+              appointment.id as appointment_id,
+              appointment.status as appointment_status,
+              appointment.scheduled_for as appointment_scheduled_for,
+              contact.created_at as last_contacted_at,
+              coalesce(contact.metadata->'channels', '[]'::jsonb) as last_contact_channels,
+              nullif(contact.metadata->>'delivery_status', '') as last_delivery_status,
+              nullif(contact.metadata->>'error', '') as last_delivery_error,
+              coalesce(reminders.reminder_count, 0)::int as reminder_count
+            from public.follow_ups follow_up
+            join public.patients patient
+              on patient.org_id = follow_up.org_id and patient.id = follow_up.patient_id
+            left join lateral (
+              select id, status, scheduled_for
+              from public.appointments
+              where org_id = follow_up.org_id and follow_up_id = follow_up.id
+              order by created_at desc
+              limit 1
+            ) appointment on true
+            left join lateral (
+              select created_at, metadata
+              from public.audit_events
+              where org_id = follow_up.org_id
+                and entity_type = 'follow_up'
+                and entity_id = follow_up.id::text
+                and action in ('follow_up_invitation_sent', 'follow_up_reminder_sent')
+              order by created_at desc
+              limit 1
+            ) contact on true
+            left join lateral (
+              select count(*) as reminder_count
+              from public.audit_events
+              where org_id = follow_up.org_id
+                and entity_type = 'follow_up'
+                and entity_id = follow_up.id::text
+                and action = 'follow_up_reminder_sent'
+            ) reminders on true
+            where {" and ".join(base_clauses)}
+        """
+        classified_sql = f"""
+            with tracked as ({tracked_sql}), classified as (
+              select tracked.*,
+                case
+                  when status <> 'scheduled'
+                    or (appointment_id is not null and appointment_status <> 'cancelled')
+                    then 'history'
+                  when last_delivery_status in ('failed', 'partial')
+                    then 'delivery_issues'
+                  else 'needs_action'
+                end as follow_up_view
+              from tracked
+            )
+        """
+
+        counts_tracked_sql = f"""
+            select follow_up.status,
+              appointment.id as appointment_id,
+              appointment.status as appointment_status,
+              nullif(contact.metadata->>'delivery_status', '') as last_delivery_status
+            from public.follow_ups follow_up
+            left join lateral (
+              select id, status
+              from public.appointments
+              where org_id = follow_up.org_id and follow_up_id = follow_up.id
+              order by created_at desc
+              limit 1
+            ) appointment on true
+            left join lateral (
+              select metadata
+              from public.audit_events
+              where org_id = follow_up.org_id
+                and entity_type = 'follow_up'
+                and entity_id = follow_up.id::text
+                and action in ('follow_up_invitation_sent', 'follow_up_reminder_sent')
+              order by created_at desc
+              limit 1
+            ) contact on true
+            where follow_up.org_id = %s
+        """
+
+        def _list() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        {classified_sql}
+                        select * from classified
+                        where {" and ".join(page_clauses)}
+                        order by scheduled_for {direction}, id {direction}
+                        limit %s
+                        """,
+                        (*base_params, *page_params, limit + 1),
+                    )
+                    rows = [_row_to_dict(row, cursor) for row in cursor.fetchall()]
+                    has_more = len(rows) > limit
+                    items = rows[:limit]
+                    for item in items:
+                        item.pop("follow_up_view", None)
+
+                    cursor.execute(
+                        f"""
+                        with tracked as ({counts_tracked_sql}), classified as (
+                          select case
+                            when status <> 'scheduled'
+                              or (appointment_id is not null and appointment_status <> 'cancelled')
+                              then 'history'
+                            when last_delivery_status in ('failed', 'partial')
+                              then 'delivery_issues'
+                            else 'needs_action'
+                          end as follow_up_view
+                          from tracked
+                        )
+                        select
+                          count(*) filter (where follow_up_view = 'needs_action')::int as needs_action,
+                          count(*) filter (where follow_up_view = 'delivery_issues')::int as delivery_issues,
+                          count(*) filter (where follow_up_view = 'history')::int as history
+                        from classified
+                        """,
+                        (org_id,),
+                    )
+                    count_row = cursor.fetchone() or (0, 0, 0)
+                    return {
+                        "items": items,
+                        "has_more": has_more,
+                        "counts": {
+                            "needs_action": int(count_row[0] or 0),
+                            "delivery_issues": int(count_row[1] or 0),
+                            "history": int(count_row[2] or 0),
+                        },
+                    }
 
         return await asyncio.to_thread(_list)
 

@@ -84,11 +84,11 @@ def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
     assert follow_up["notes"] == "Review symptoms and blood pressure"
 
     list_follow_ups = test_client.get(
-        f"/follow-ups?scheduled_date={datetime.fromisoformat(follow_up['scheduled_for']).date().isoformat()}",
+        f"/follow-ups?view=delivery_issues&scheduled_date={datetime.fromisoformat(follow_up['scheduled_for']).date().isoformat()}",
         headers=auth_headers_for_token(session["token"]),
     )
     assert list_follow_ups.status_code == 200
-    assert len(list_follow_ups.json()) == 1
+    assert len(list_follow_ups.json()["items"]) == 1
 
     timeline = test_client.get(
         f"/patients/{patient['id']}/timeline",
@@ -102,6 +102,59 @@ def test_follow_up_can_be_created_listed_and_added_to_timeline(client):
     assert scheduled["details"]["notes"] == "Review symptoms and blood pressure"
 
 
+def test_follow_up_list_is_cursor_paginated_with_global_counts(client):
+    test_client, _repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="followup-pagination@clinic.com",
+        clinic_name="Follow Up Pagination Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+    patient = test_client.post(
+        "/patients",
+        json={
+            "name": "Pagination Patient",
+            "phone": "5550199999",
+            "reason": "Review",
+            "age": 32,
+            "weight": 65,
+            "height": 170,
+            "temperature": 98.4,
+        },
+        headers=headers,
+    ).json()
+    start = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(days=2)
+    for index in range(25):
+        response = test_client.post(
+            f"/patients/{patient['id']}/follow-ups",
+            json={
+                "scheduled_for": (start + timedelta(minutes=index)).isoformat(),
+                "notes": f"Page item {index}",
+            },
+            headers=headers,
+        )
+        assert response.status_code == 201
+
+    first = test_client.get("/follow-ups?view=delivery_issues&limit=20", headers=headers)
+    assert first.status_code == 200
+    first_page = first.json()
+    assert len(first_page["items"]) == 20
+    assert first_page["has_more"] is True
+    assert first_page["next_cursor"]
+    assert first_page["counts"] == {"needs_action": 0, "delivery_issues": 25, "history": 0}
+
+    second = test_client.get(
+        f"/follow-ups?view=delivery_issues&limit=20&cursor={first_page['next_cursor']}",
+        headers=headers,
+    )
+    assert second.status_code == 200
+    second_page = second.json()
+    assert len(second_page["items"]) == 5
+    assert second_page["has_more"] is False
+    assert second_page["next_cursor"] is None
+    assert {row["id"] for row in first_page["items"]}.isdisjoint(
+        {row["id"] for row in second_page["items"]}
+    )
 def test_follow_up_can_be_rescheduled_completed_and_cancelled(client):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="followup-manage@clinic.com", clinic_name="Follow Up Manage Clinic")
@@ -334,17 +387,17 @@ def test_follow_up_listing_uses_clinic_local_date_boundaries(client):
     assert create_follow_up.status_code == 201
 
     list_follow_ups = test_client.get(
-        f"/follow-ups?scheduled_date={(scheduled_for + timedelta(hours=5, minutes=30)).date().isoformat()}",
+        f"/follow-ups?view=delivery_issues&scheduled_date={(scheduled_for + timedelta(hours=5, minutes=30)).date().isoformat()}",
         headers=headers,
     )
     assert list_follow_ups.status_code == 200
-    assert len(list_follow_ups.json()) == 1
-    assert list_follow_ups.json()[0]["notes"] == "Midnight boundary review"
+    assert len(list_follow_ups.json()["items"]) == 1
+    assert list_follow_ups.json()["items"][0]["notes"] == "Midnight boundary review"
 
     upcoming_follow_ups = test_client.get(
-        "/follow-ups?upcoming=true",
+        "/follow-ups?view=delivery_issues&upcoming=true",
         headers=headers,
     )
     assert upcoming_follow_ups.status_code == 200
-    assert len(upcoming_follow_ups.json()) == 1
-    assert upcoming_follow_ups.json()[0]["notes"] == "Midnight boundary review"
+    assert len(upcoming_follow_ups.json()["items"]) == 1
+    assert upcoming_follow_ups.json()["items"][0]["notes"] == "Midnight boundary review"

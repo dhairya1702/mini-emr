@@ -236,6 +236,9 @@ export default function HomePage() {
   const workspaceTransitionRef = useRef(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [checkInRequests, setCheckInRequests] = useState<CheckInRequest[]>([]);
+  const [checkInCount, setCheckInCount] = useState(0);
+  const [isCheckInRequestsLoading, setIsCheckInRequestsLoading] = useState(false);
+  const [checkInRequestsError, setCheckInRequestsError] = useState("");
   const [pendingCheckInRequestId, setPendingCheckInRequestId] = useState("");
   const [isCheckInDrawerOpen, setIsCheckInDrawerOpen] = useState(false);
   const [hasUnseenCheckIns, setHasUnseenCheckIns] = useState(false);
@@ -272,9 +275,21 @@ export default function HomePage() {
   const queueRefreshFailureCountRef = useRef(0);
   const nextQueueRefreshAllowedAtRef = useRef(0);
   const lastQueueRefreshAtRef = useRef(Date.now());
-  const knownCheckInRequestIdsRef = useRef<Set<string>>(new Set());
-  const hasLoadedCheckInsRef = useRef(false);
   const isCheckInDrawerOpenRef = useRef(false);
+  const checkInStatusInFlightRef = useRef(false);
+  const checkInStatusInFlightGenerationRef = useRef(0);
+  const checkInRequestsInFlightRef = useRef(false);
+  const checkInStatusRefreshQueuedRef = useRef(false);
+  const checkInStatusFailureCountRef = useRef(0);
+  const nextCheckInStatusAllowedAtRef = useRef(0);
+  const lastCheckInStatusAttemptAtRef = useRef(0);
+  const checkInStatusRevisionRef = useRef("");
+  const loadedCheckInRequestsRevisionRef = useRef("");
+  const hasLoadedCheckInStatusRef = useRef(false);
+  const hasLoadedCheckInRequestsRef = useRef(false);
+  const checkInStatusGenerationRef = useRef(0);
+  const refreshCheckInStatusRef = useRef<(force?: boolean) => void>(() => undefined);
+  const billingCatalogLoadRequestedRef = useRef(false);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -312,6 +327,8 @@ export default function HomePage() {
     loadAuditEvents,
     catalogItems,
     loadCatalogItems,
+    isCatalogLoaded,
+    isCatalogLoading,
     clinicSettings,
     error,
     setError,
@@ -433,31 +450,113 @@ export default function HomePage() {
     return () => window.clearInterval(intervalId);
   }, []);
 
-  const applyCheckInRequests = useCallback((rows: CheckInRequest[]) => {
-    const nextIds = new Set(rows.map((row) => row.id));
-    const hasNewRequest = rows.some((row) => !knownCheckInRequestIdsRef.current.has(row.id));
-    if (
-      rows.length > 0
-      && (!hasLoadedCheckInsRef.current || hasNewRequest)
-      && !isCheckInDrawerOpenRef.current
-    ) {
-      setHasUnseenCheckIns(true);
+  const refreshCheckInRequests = useCallback(async (revision = checkInStatusRevisionRef.current) => {
+    if (checkInRequestsInFlightRef.current) return;
+    checkInRequestsInFlightRef.current = true;
+    const generation = checkInStatusGenerationRef.current;
+    setIsCheckInRequestsLoading(true);
+    setCheckInRequestsError("");
+    try {
+      const rows = await api.listCheckInRequests();
+      if (generation !== checkInStatusGenerationRef.current) return;
+      setCheckInRequests(rows);
+      if (!hasLoadedCheckInStatusRef.current) setCheckInCount(rows.length);
+      hasLoadedCheckInRequestsRef.current = true;
+      loadedCheckInRequestsRevisionRef.current = checkInStatusRevisionRef.current || revision;
+    } catch (requestError) {
+      setCheckInRequestsError(
+        requestError instanceof Error ? requestError.message : "Failed to load check-in requests.",
+      );
+    } finally {
+      checkInRequestsInFlightRef.current = false;
+      setIsCheckInRequestsLoading(false);
     }
-    knownCheckInRequestIdsRef.current = nextIds;
-    hasLoadedCheckInsRef.current = true;
-    setCheckInRequests(rows);
   }, []);
 
-  const refreshCheckInRequests = useCallback(async () => {
-    const rows = await api.listCheckInRequests();
-    applyCheckInRequests(rows);
-  }, [applyCheckInRequests]);
+  const refreshCheckInStatus = useCallback(async (force = false) => {
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    if (checkInStatusInFlightRef.current) {
+      if (
+        force
+        && checkInStatusInFlightGenerationRef.current !== checkInStatusGenerationRef.current
+      ) {
+        checkInStatusRefreshQueuedRef.current = true;
+      }
+      return;
+    }
+
+    const now = Date.now();
+    if (
+      !force
+      && (
+        now - lastCheckInStatusAttemptAtRef.current < QUEUE_REFRESH_INTERVAL_MS
+        || now < nextCheckInStatusAllowedAtRef.current
+      )
+    ) {
+      return;
+    }
+
+    checkInStatusInFlightRef.current = true;
+    lastCheckInStatusAttemptAtRef.current = now;
+    const generation = checkInStatusGenerationRef.current;
+    checkInStatusInFlightGenerationRef.current = generation;
+    try {
+      const status = await api.getCheckInRequestsStatus();
+      if (generation !== checkInStatusGenerationRef.current) return;
+
+      const previousRevision = checkInStatusRevisionRef.current;
+      const isFirstStatus = !hasLoadedCheckInStatusRef.current;
+      checkInStatusRevisionRef.current = status.revision;
+      hasLoadedCheckInStatusRef.current = true;
+      checkInStatusFailureCountRef.current = 0;
+      nextCheckInStatusAllowedAtRef.current = 0;
+      setCheckInCount(status.pending_count);
+
+      if (
+        status.pending_count > 0
+        && (isFirstStatus || previousRevision !== status.revision)
+        && !isCheckInDrawerOpenRef.current
+      ) {
+        setHasUnseenCheckIns(true);
+      }
+
+      if (
+        isCheckInDrawerOpenRef.current
+        && (
+          !hasLoadedCheckInRequestsRef.current
+          || loadedCheckInRequestsRevisionRef.current !== status.revision
+        )
+      ) {
+        void refreshCheckInRequests(status.revision);
+      }
+    } catch {
+      checkInStatusFailureCountRef.current += 1;
+      nextCheckInStatusAllowedAtRef.current = Date.now() + Math.min(
+        QUEUE_REFRESH_INTERVAL_MS * (2 ** (checkInStatusFailureCountRef.current - 1)),
+        QUEUE_REFRESH_MAX_BACKOFF_MS,
+      );
+    } finally {
+      checkInStatusInFlightRef.current = false;
+      if (checkInStatusRefreshQueuedRef.current) {
+        checkInStatusRefreshQueuedRef.current = false;
+        window.setTimeout(() => refreshCheckInStatusRef.current(true), 0);
+      }
+    }
+  }, [refreshCheckInRequests]);
+  refreshCheckInStatusRef.current = refreshCheckInStatus;
 
   const openCheckInDrawer = useCallback(() => {
     isCheckInDrawerOpenRef.current = true;
     setIsCheckInDrawerOpen(true);
     setHasUnseenCheckIns(false);
-  }, []);
+    if (
+      !hasLoadedCheckInRequestsRef.current
+      || loadedCheckInRequestsRevisionRef.current !== checkInStatusRevisionRef.current
+    ) {
+      void refreshCheckInRequests();
+    }
+    void refreshCheckInStatus(true);
+  }, [refreshCheckInRequests, refreshCheckInStatus]);
 
   const closeCheckInDrawer = useCallback(() => {
     isCheckInDrawerOpenRef.current = false;
@@ -467,37 +566,38 @@ export default function HomePage() {
   useEffect(() => {
     if (!isAuthReady || isRedirectingToLogin || !currentUser || isTrainingMode) {
       setCheckInRequests([]);
+      setCheckInCount(0);
+      setCheckInRequestsError("");
+      setIsCheckInRequestsLoading(false);
       setHasUnseenCheckIns(false);
-      knownCheckInRequestIdsRef.current = new Set();
-      hasLoadedCheckInsRef.current = false;
+      checkInStatusGenerationRef.current += 1;
+      checkInStatusRevisionRef.current = "";
+      loadedCheckInRequestsRevisionRef.current = "";
+      hasLoadedCheckInStatusRef.current = false;
+      hasLoadedCheckInRequestsRef.current = false;
+      lastCheckInStatusAttemptAtRef.current = 0;
+      nextCheckInStatusAllowedAtRef.current = 0;
       return;
     }
-    let active = true;
-    async function refreshCheckIns() {
-      try {
-        const rows = await api.listCheckInRequests();
-        if (active) applyCheckInRequests(rows);
-      } catch {
-        // The queue remains usable when the auxiliary request feed is unavailable.
-      }
-    }
-    void refreshCheckIns();
-    const intervalId = window.setInterval(() => void refreshCheckIns(), QUEUE_REFRESH_INTERVAL_MS);
+    void refreshCheckInStatus(true);
+    const intervalId = window.setInterval(
+      () => void refreshCheckInStatus(),
+      QUEUE_REFRESH_INTERVAL_MS,
+    );
     function handleVisibilityChange() {
-      if (document.visibilityState === "visible") void refreshCheckIns();
+      if (document.visibilityState === "visible") void refreshCheckInStatus();
     }
     function handleFocus() {
-      void refreshCheckIns();
+      void refreshCheckInStatus();
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", handleFocus);
     return () => {
-      active = false;
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [applyCheckInRequests, currentUser, isAuthReady, isRedirectingToLogin, isTrainingMode]);
+  }, [currentUser, isAuthReady, isRedirectingToLogin, isTrainingMode, refreshCheckInStatus]);
 
   async function approveCheckIn(requestId: string, existingPatientId?: string) {
     setPendingCheckInRequestId(requestId);
@@ -509,11 +609,14 @@ export default function HomePage() {
       });
       setPatients((current) => [...current.filter((row) => row.id !== patient.id), patient]);
       setCheckInRequests((current) => current.filter((row) => row.id !== requestId));
+      setCheckInCount((current) => Math.max(0, current - 1));
+      checkInStatusGenerationRef.current += 1;
+      loadedCheckInRequestsRevisionRef.current = "";
+      void refreshCheckInStatus(true);
     } catch (approvalError) {
       setError(approvalError instanceof Error ? approvalError.message : "Failed to approve check-in.");
-      try {
-        await refreshCheckInRequests();
-      } catch {}
+      void refreshCheckInRequests();
+      void refreshCheckInStatus(true);
     } finally {
       setPendingCheckInRequestId("");
     }
@@ -525,11 +628,14 @@ export default function HomePage() {
     try {
       await api.rejectCheckInRequest(requestId);
       setCheckInRequests((current) => current.filter((row) => row.id !== requestId));
+      setCheckInCount((current) => Math.max(0, current - 1));
+      checkInStatusGenerationRef.current += 1;
+      loadedCheckInRequestsRevisionRef.current = "";
+      void refreshCheckInStatus(true);
     } catch (rejectionError) {
       setError(rejectionError instanceof Error ? rejectionError.message : "Failed to reject check-in.");
-      try {
-        await refreshCheckInRequests();
-      } catch {}
+      void refreshCheckInRequests();
+      void refreshCheckInStatus(true);
     } finally {
       setPendingCheckInRequestId("");
     }
@@ -605,24 +711,6 @@ export default function HomePage() {
       window.removeEventListener("focus", handleFocus);
     };
   }, [draggedPatient, isAuthReady, isQueueMutationPending, isRedirectingToLogin, isSoloWorkspace, isTrainingMode]);
-
-  useEffect(() => {
-    if (!isAuthReady || currentUser?.role !== "admin") {
-      return;
-    }
-    if (!users.length) {
-      void loadUsers();
-    }
-  }, [currentUser, isAuthReady, loadUsers, users.length]);
-
-  useEffect(() => {
-    if (!isAuthReady || currentUser?.role !== "admin") {
-      return;
-    }
-    if (!catalogItems.length) {
-      void loadCatalogItems();
-    }
-  }, [catalogItems.length, currentUser, isAuthReady, loadCatalogItems]);
 
   const groupedPatients = useMemo(() => {
     return statusOrder.reduce<Record<PatientStatus, Patient[]>>(
@@ -707,6 +795,22 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!billingPatientId) {
+      billingCatalogLoadRequestedRef.current = false;
+      return;
+    }
+    if (isCatalogLoaded || isCatalogLoading || billingCatalogLoadRequestedRef.current) {
+      return;
+    }
+
+    billingCatalogLoadRequestedRef.current = true;
+    void loadCatalogItems().catch((loadError) => {
+      setBillingStatus("");
+      setBillingError(loadError instanceof Error ? loadError.message : "Failed to load services and medicines.");
+    });
+  }, [billingPatientId, isCatalogLoaded, isCatalogLoading, loadCatalogItems]);
+
+  useEffect(() => {
+    if (!billingPatientId) {
       setSelectedPatientNotes([]);
       setIsBillingNotesLoading(false);
       return;
@@ -737,7 +841,15 @@ export default function HomePage() {
   }, [billingPatientId]);
 
   useEffect(() => {
-    if (!billingPatientId || isBillingNotesLoading || isBillingSuggestionsLoading || hasSeededBillingDraft || isInvoiceDirty) {
+    if (
+      !billingPatientId
+      || !isCatalogLoaded
+      || isCatalogLoading
+      || isBillingNotesLoading
+      || isBillingSuggestionsLoading
+      || hasSeededBillingDraft
+      || isInvoiceDirty
+    ) {
       return;
     }
     setInvoiceItems(autoDraftInvoiceItems);
@@ -747,7 +859,16 @@ export default function HomePage() {
     setBillingStatus("");
     setAmountPaidInput("");
     setHasSeededBillingDraft(true);
-  }, [autoDraftInvoiceItems, billingPatientId, hasSeededBillingDraft, isBillingNotesLoading, isBillingSuggestionsLoading, isInvoiceDirty]);
+  }, [
+    autoDraftInvoiceItems,
+    billingPatientId,
+    hasSeededBillingDraft,
+    isBillingNotesLoading,
+    isBillingSuggestionsLoading,
+    isCatalogLoaded,
+    isCatalogLoading,
+    isInvoiceDirty,
+  ]);
 
   function handleClosePatientModal() {
     setIsModalOpen(false);
@@ -775,6 +896,7 @@ export default function HomePage() {
       workspaceTransitionRef.current = true;
     }
     const patient = patients.find((entry) => entry.id === patientId);
+    billingCatalogLoadRequestedRef.current = false;
     setBillingPatientId(patientId);
     resetBillingWorkspaceState();
     setBillingRecipientEmail(patient?.email ?? "");
@@ -1646,7 +1768,7 @@ export default function HomePage() {
           onOpenSettings={() => setIsSettingsOpen(true)}
           onLogout={handleLogout}
           timezone={clinicSettings?.timezone}
-          checkInCount={checkInRequests.length}
+          checkInCount={checkInCount}
           hasUnseenCheckIns={hasUnseenCheckIns}
           onOpenCheckIns={openCheckInDrawer}
         />
@@ -1684,10 +1806,14 @@ export default function HomePage() {
         {!isTrainingMode ? (
           <PendingCheckIns
             requests={checkInRequests}
+            pendingCount={checkInCount}
             pendingRequestId={pendingCheckInRequestId}
+            isLoading={isCheckInRequestsLoading}
+            error={checkInRequestsError}
             variant="drawer"
             isOpen={isCheckInDrawerOpen}
             onClose={closeCheckInDrawer}
+            onRetry={() => void refreshCheckInRequests()}
             onUseExisting={(requestId, patientId) => void approveCheckIn(requestId, patientId)}
             onCreateNew={(requestId) => void approveCheckIn(requestId)}
             onReject={(requestId) => void rejectCheckIn(requestId)}

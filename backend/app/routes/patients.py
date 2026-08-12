@@ -68,6 +68,7 @@ from app.services.patient_workflow import (
 )
 from app.services.auth_flow import enforce_repository_rate_limit
 from app.services.audit_service import write_audit_event_best_effort
+from app.services.clinic_settings_service import get_clinic_runtime_settings
 from app.storage import PatientAttachmentStorage, get_patient_attachment_storage
 
 
@@ -107,13 +108,13 @@ SPECIALTY_MODULE_TRACKS = {
 
 
 async def _require_optometry_clinic(repo: AppRepository, org_id: str) -> None:
-    settings = await repo.get_clinic_settings(org_id)
+    settings = await get_clinic_runtime_settings(repo, org_id)
     if str(settings.get("clinic_specialty") or "").strip() != "optometry":
         raise ValueError("This optometry evaluation is only available for optometry clinics.")
 
 
 async def _require_specialty_module(repo: AppRepository, org_id: str, module_type: str) -> None:
-    settings = await repo.get_clinic_settings(org_id)
+    settings = await get_clinic_runtime_settings(repo, org_id)
     clinic_specialty = str(settings.get("clinic_specialty") or "").strip()
     if module_type not in SPECIALTY_MODULE_TRACKS.get(clinic_specialty, set()):
         raise ValueError("This module is not available for the clinic specialty.")
@@ -189,6 +190,7 @@ def _profile_photo_extension(content_type: str) -> str:
 @router.get("/patients", response_model=list[PatientOut])
 async def get_patients(
     active_only: bool = Query(default=False),
+    include_queue_context: bool = Query(default=True),
     status: PatientStatus | None = Query(default=None),
     billed: bool | None = Query(default=None),
     q: str | None = Query(default=None, max_length=120),
@@ -206,6 +208,7 @@ async def get_patients(
             query=q,
             limit=limit,
             offset=offset,
+            include_queue_context=include_queue_context,
         )
         return [PatientOut(**row) for row in rows]
     except Exception as exc:  # pragma: no cover
@@ -219,7 +222,7 @@ async def get_patient_visits(
 ) -> list[PatientVisitOut]:
     try:
         visits = await repo.list_patient_visits(str(current_user.org_id))
-        patients = await repo.list_patients(str(current_user.org_id))
+        patients = await repo.list_patients(str(current_user.org_id), include_queue_context=False)
         return build_history_visit_rows(visits, patients)
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="get_patient_visits") from exc

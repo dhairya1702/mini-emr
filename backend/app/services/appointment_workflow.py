@@ -13,6 +13,7 @@ from app.schema_domains.patients import (
     PatientOut,
 )
 from app.services.audit_service import get_actor_name
+from app.services.clinic_settings_service import get_clinic_runtime_settings
 from app.services.followup_workflow import (
     _appointments_per_hour,
     _as_utc_minute,
@@ -29,7 +30,7 @@ async def create_appointment_workflow(
     scheduled_for = _as_utc_minute(payload.scheduled_for)
     if scheduled_for <= datetime.now(UTC):
         raise ValueError("Appointment time must be in the future.")
-    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    clinic_settings = await get_clinic_runtime_settings(repo, str(current_user.org_id))
     if not _is_within_booking_window(scheduled_for, clinic_settings):
         raise ValueError("Appointment time must be within clinic booking hours.")
     org_id = str(current_user.org_id)
@@ -101,7 +102,7 @@ async def update_appointment_workflow(
     payload: AppointmentUpdate,
 ) -> AppointmentOut:
     await expire_stale_schedule_workflow(repo, str(current_user.org_id))
-    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    clinic_settings = await get_clinic_runtime_settings(repo, str(current_user.org_id))
     if payload.scheduled_for is not None:
         scheduled_for = _as_utc_minute(payload.scheduled_for)
         if scheduled_for <= datetime.now(UTC):

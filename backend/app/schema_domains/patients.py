@@ -358,6 +358,19 @@ class FollowUpOut(BaseModel):
     created_at: datetime
 
 
+class FollowUpCountsOut(BaseModel):
+    needs_action: int = 0
+    delivery_issues: int = 0
+    history: int = 0
+
+
+class FollowUpPageOut(BaseModel):
+    items: list[FollowUpOut] = Field(default_factory=list)
+    next_cursor: str | None = None
+    has_more: bool = False
+    counts: FollowUpCountsOut = Field(default_factory=FollowUpCountsOut)
+
+
 class FollowUpReminderRequest(BaseModel):
     channels: list[Literal["email", "whatsapp"]] = Field(min_length=1, max_length=2)
     idempotency_key: str = Field(min_length=8, max_length=120, pattern=r"^[A-Za-z0-9_-]+$")

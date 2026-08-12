@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Download, RefreshCw, Search } from "lucide-react";
 
@@ -40,8 +40,11 @@ export default function PatientsPage() {
   const [exportStatus, setExportStatus] = useState("");
   const [exportError, setExportError] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const lastCompletedPatientQueryRef = useRef<string | null>(null);
+  const patientSearchRequestIdRef = useRef(0);
   const loadPageData = useCallback(async () => {
     const records = await api.listPatients({ limit: 500 });
+    lastCompletedPatientQueryRef.current = "";
     return records.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at));
   }, []);
   const onPageData = useCallback((data: Patient[]) => {
@@ -59,6 +62,7 @@ export default function PatientsPage() {
     error,
     isAuthReady,
     isRedirectingToLogin,
+    isPageDataLoaded,
     handleLogout,
     handleSaveClinicSettings,
     applyClinicSettings,
@@ -95,10 +99,21 @@ export default function PatientsPage() {
   }, []);
 
   useEffect(() => {
+    if (!isPageDataLoaded) {
+      return;
+    }
     const normalizedQuery = query.trim();
+    const requestId = ++patientSearchRequestIdRef.current;
+    if (lastCompletedPatientQueryRef.current === normalizedQuery) {
+      return;
+    }
     const timeoutId = window.setTimeout(async () => {
       try {
         const records = await api.listPatients({ q: normalizedQuery || undefined, limit: 500 });
+        if (requestId !== patientSearchRequestIdRef.current) {
+          return;
+        }
+        lastCompletedPatientQueryRef.current = normalizedQuery;
         setPatients(records.sort((left, right) => right.last_visit_at.localeCompare(left.last_visit_at)));
       } catch {
         // The shell-level request handling will surface auth/backend errors; keep
@@ -106,7 +121,7 @@ export default function PatientsPage() {
       }
     }, 250);
     return () => window.clearTimeout(timeoutId);
-  }, [query]);
+  }, [isPageDataLoaded, query]);
 
   function rememberRecentPatient(patient: Patient) {
     if (!recentPatientsScope) {

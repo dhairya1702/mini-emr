@@ -50,3 +50,4 @@ psql "$DATABASE_URL" -f db/migrations/<file>.sql
 | 2026-08-02 | `2026-08-02_referral_packages.sql` | Stores immutable referral-package snapshots, generated PDF metadata, and email/WhatsApp delivery attempts. |
 | 2026-08-11 | `2026-08-11_public_check_in_tracking.sql` | Adds hashed bearer tokens for privacy-preserving public QR check-in status polling. |
 | 2026-08-11 | `2026-08-11_follow_up_needs_action_backfill.sql` | Restores older unanswered follow-ups with no linked appointment to the active Needs Action queue. |
+| 2026-08-12 | `2026-08-12_follow_up_tracking_index.sql` | Speeds paginated follow-up views by indexing their latest reminder and invitation events. |

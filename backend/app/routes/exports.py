@@ -22,7 +22,7 @@ async def export_patients_csv(
     repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
-    patients = await repo.list_patients(str(current_user.org_id))
+    patients = await repo.list_patients(str(current_user.org_id), include_queue_context=False)
     await write_audit_event_best_effort(
         repo,
         current_user,
@@ -55,7 +55,7 @@ async def export_visits_csv(
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     visits = await repo.list_patient_visits(str(current_user.org_id))
-    patients = await repo.list_patients(str(current_user.org_id))
+    patients = await repo.list_patients(str(current_user.org_id), include_queue_context=False)
     history_rows = build_history_visit_rows(visits, patients)
     try:
         start_at = get_export_range_start(range)
@@ -96,7 +96,7 @@ async def export_invoices_csv(
     current_user: UserOut = Depends(require_admin),
 ) -> StreamingResponse:
     invoices = await repo.list_invoices(str(current_user.org_id))
-    patients = await repo.list_patients(str(current_user.org_id))
+    patients = await repo.list_patients(str(current_user.org_id), include_queue_context=False)
     patient_names = {str(patient.get("id")): patient.get("name", "") for patient in patients}
     rows: list[dict] = []
     for invoice in invoices:

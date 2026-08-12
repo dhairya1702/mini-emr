@@ -349,6 +349,9 @@ export async function mockClinicBootstrap(
     };
     await fulfillJson(route, clinicSettings);
   });
+  await page.route(`${API_ORIGIN}/check-in/requests/status`, async (route) => {
+    await fulfillJson(route, { pending_count: 0, revision: "empty" });
+  });
   await page.route(`${API_ORIGIN}/patients/queue/order`, async (route) => {
     const payload = JSON.parse(route.request().postData() || "{}");
     const columns = payload.columns ?? {};
@@ -516,7 +519,12 @@ export async function mockClinicBootstrap(
     await fulfillJson(route, []);
   });
   await page.route(`${API_ORIGIN}/follow-ups*`, async (route) => {
-    await fulfillJson(route, []);
+    await fulfillJson(route, {
+      items: [],
+      next_cursor: null,
+      has_more: false,
+      counts: { needs_action: 0, delivery_issues: 0, history: 0 },
+    });
   });
   await page.route(`${API_ORIGIN}/case-studies`, async (route) => {
     if (route.request().method() === "POST") {

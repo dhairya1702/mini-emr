@@ -1053,6 +1053,15 @@ export interface FollowUp {
   created_at: string;
 }
 
+export type FollowUpView = "needs_action" | "delivery_issues" | "history";
+
+export interface FollowUpPage {
+  items: FollowUp[];
+  next_cursor: string | null;
+  has_more: boolean;
+  counts: Record<FollowUpView, number>;
+}
+
 export interface FollowUpReminderResult {
   follow_up_id: string;
   sent_at: string;
@@ -1236,6 +1245,11 @@ export interface CheckInRequest {
   created_at: string;
   expires_at: string;
   candidates: CheckInCandidate[];
+}
+
+export interface CheckInRequestsStatus {
+  pending_count: number;
+  revision: string;
 }
 
 export type UserRole = "admin" | "staff";

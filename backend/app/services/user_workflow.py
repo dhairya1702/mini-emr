@@ -9,6 +9,7 @@ from app.auth import (
 )
 from app import config as config_module
 from app.db import AppRepository
+from app.services.clinic_settings_service import get_clinic_runtime_settings
 from app.repositories.base import normalize_phone_number
 from app.schema_domains.auth_settings import (
     AuthResponse,
@@ -148,7 +149,7 @@ async def create_staff_user_workflow(
     if existing:
         raise HTTPException(status_code=409, detail="An account with that email or phone already exists.")
 
-    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    clinic_settings = await get_clinic_runtime_settings(repo, str(current_user.org_id))
     users_used = await repo.count_users_for_org(str(current_user.org_id))
     users_allowed = int(clinic_settings.get("users_allowed") or 2)
     if users_used >= users_allowed:

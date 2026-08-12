@@ -21,6 +21,7 @@ from app.services.appointment_workflow import (
     create_appointment_workflow,
     update_appointment_workflow,
 )
+from app.services.clinic_settings_service import get_clinic_runtime_settings
 
 
 router = APIRouter()
@@ -48,7 +49,7 @@ async def list_appointments(
     repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> list[AppointmentOut]:
-    clinic_settings = await repo.get_clinic_settings(str(current_user.org_id))
+    clinic_settings = await get_clinic_runtime_settings(repo, str(current_user.org_id))
     effective_date = scheduled_date or clinic_today(clinic_settings)
     scheduled_from, scheduled_to = utc_day_bounds_for_clinic(effective_date, clinic_settings)
     if upcoming and scheduled_date is None:

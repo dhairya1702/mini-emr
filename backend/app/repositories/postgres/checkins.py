@@ -160,12 +160,10 @@ class PostgresCheckInsRepository:
                             update public.public_check_in_requests
                             set status = 'expired'
                             where org_id = %s
-                              and submitted_phone_normalized = %s
-                              and submitted_date_of_birth = %s
                               and status = 'pending'
                               and expires_at <= now()
                             """,
-                            (org_id, normalized_phone, date_of_birth),
+                            (org_id,),
                         )
                         cursor.execute(
                             f"""
@@ -208,17 +206,10 @@ class PostgresCheckInsRepository:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        update public.public_check_in_requests
-                        set status = 'expired'
-                        where tracking_token_hash = %s
-                          and status = 'pending'
-                          and expires_at <= now()
-                        """,
-                        (tracking_token_hash,),
-                    )
-                    cursor.execute(
-                        """
-                        select status
+                        select case
+                          when status = 'pending' and expires_at <= now() then 'expired'
+                          else status
+                        end as status
                         from public.public_check_in_requests
                         where tracking_token_hash = %s
                         """,
@@ -231,23 +222,36 @@ class PostgresCheckInsRepository:
 
         return await asyncio.to_thread(_get)
 
+    async def get_public_check_in_requests_status(self, org_id: str) -> dict[str, Any]:
+        def _get() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select id::text
+                        from public.public_check_in_requests
+                        where org_id = %s
+                          and status = 'pending'
+                          and expires_at > now()
+                        order by id
+                        """,
+                        (org_id,),
+                    )
+                    request_ids = [str(row[0]) for row in cursor.fetchall()]
+                    revision = hashlib.sha256(",".join(request_ids).encode("utf-8")).hexdigest()
+                    return {"pending_count": len(request_ids), "revision": revision}
+
+        return await asyncio.to_thread(_get)
+
     async def list_public_check_in_requests(self, org_id: str) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        """
-                        update public.public_check_in_requests
-                        set status = 'expired'
-                        where org_id = %s and status = 'pending' and expires_at <= now()
-                        """,
-                        (org_id,),
-                    )
-                    cursor.execute(
                         f"""
                         select {_columns_sql(CHECK_IN_REQUEST_COLUMNS)}
                         from public.public_check_in_requests
-                        where org_id = %s and status = 'pending'
+                        where org_id = %s and status = 'pending' and expires_at > now()
                         order by created_at asc
                         limit 100
                         """,
@@ -496,7 +500,7 @@ class PostgresCheckInsRepository:
                         update public.public_check_in_requests
                         set status = 'rejected', rejection_reason = %s,
                           reviewed_by = %s, reviewed_at = now()
-                        where id = %s and org_id = %s and status = 'pending'
+                        where id = %s and org_id = %s and status = 'pending' and expires_at > now()
                         returning {_columns_sql(CHECK_IN_REQUEST_COLUMNS)}
                         """,
                         (reason.strip(), reviewed_by, request_id, org_id),

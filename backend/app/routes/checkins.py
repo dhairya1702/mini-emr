@@ -11,6 +11,7 @@ from app.schema_domains.checkins import (
     CheckInConfigUpdate,
     CheckInRejectRequest,
     CheckInRequestOut,
+    CheckInRequestsStatusOut,
 )
 from app.schema_domains.patients import PatientOut
 from app.services.audit_service import write_audit_event_best_effort
@@ -99,6 +100,19 @@ async def list_check_in_requests(
         ]
     except Exception as exc:
         raise internal_server_error(exc, context="list_check_in_requests") from exc
+
+
+@router.get("/check-in/requests/status", response_model=CheckInRequestsStatusOut)
+async def get_check_in_requests_status(
+    repo: AppRepository = Depends(get_repository),
+    current_user: UserOut = Depends(get_current_user),
+) -> CheckInRequestsStatusOut:
+    try:
+        return CheckInRequestsStatusOut(
+            **await repo.get_public_check_in_requests_status(str(current_user.org_id))
+        )
+    except Exception as exc:
+        raise internal_server_error(exc, context="get_check_in_requests_status") from exc
 
 
 @router.post("/check-in/requests/{request_id}/approve", response_model=PatientOut)

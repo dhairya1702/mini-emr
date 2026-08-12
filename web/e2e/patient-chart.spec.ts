@@ -76,6 +76,71 @@ test("patient chart keeps newest visits first while numbering oldest as visit on
   await expect(visitButtons.nth(2)).toContainText("Visit 1");
 });
 
+test("patient chart preserves visits and summary when the queue refreshes", async ({ page }) => {
+  const user = buildUser();
+  const patient = buildPatient({ id: "patient-chart-refresh", name: "Robin Shah", reason: "Review" });
+  let visitRequests = 0;
+  let summaryRequests = 0;
+
+  await seedSession(page, { user });
+  await mockClinicBootstrap(page, { user, patients: [patient] });
+  await page.route("http://127.0.0.1:8001/patients/patient-chart-refresh/visits", async (route) => {
+    visitRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([1, 2, 3, 4].map((visitNumber) => ({
+        id: `visit-${visitNumber}`,
+        patient_id: patient.id,
+        visit_number: visitNumber,
+        reason: `Review ${visitNumber}`,
+        created_at: `2026-08-0${visitNumber}T10:00:00Z`,
+      })).reverse()),
+    });
+  });
+  await page.route("http://127.0.0.1:8001/patients/patient-chart-refresh/summary", async (route) => {
+    summaryRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        summary: "Robin has four documented review visits.",
+        updated_at: "2026-08-04T10:00:00Z",
+        stale: false,
+        used_fallback: false,
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open chart for Robin Shah" }).click();
+  await expect(page.getByRole("button", { name: /^Visit [1-4]/ })).toHaveCount(4);
+  await expect(page.getByText("Robin has four documented review visits.")).toBeVisible();
+  const visitsBeforeRefresh = visitRequests;
+  const summariesBeforeRefresh = summaryRequests;
+
+  const queueRefresh = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === "/patients"
+      && url.searchParams.get("active_only") === "true"
+      && url.searchParams.get("include_queue_context") === "true"
+      && response.request().method() === "GET";
+  });
+  await page.evaluate(() => {
+    const actualNow = Date.now;
+    Date.now = () => actualNow() + 16_000;
+    window.dispatchEvent(new Event("focus"));
+    Date.now = actualNow;
+  });
+  await queueRefresh;
+
+  await expect(page.getByRole("button", { name: /^Visit [1-4]/ })).toHaveCount(4);
+  await expect(page.getByText("Robin has four documented review visits.")).toBeVisible();
+  await expect(page.getByText("No visits recorded yet.")).toHaveCount(0);
+  expect(visitRequests).toBe(visitsBeforeRefresh);
+  expect(summaryRequests).toBe(summariesBeforeRefresh);
+});
+
 test("consultation note opens the saved letterhead PDF in a new tab", async ({ page }) => {
   const user = buildUser();
   const patient = buildPatient({ id: "patient-chart-note", name: "Casey Lin", reason: "Review" });

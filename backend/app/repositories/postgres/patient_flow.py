@@ -60,6 +60,18 @@ PATIENT_COLUMNS = [
     "last_visit_at",
 ]
 
+PATIENT_LIST_COLUMNS = [
+    column
+    for column in PATIENT_COLUMNS
+    if column not in {
+        "ai_summary",
+        "ai_summary_updated_at",
+        "ai_summary_stale",
+        "ai_summary_revision",
+        "ai_summary_source_hash",
+    }
+]
+
 PATIENT_UPDATE_COLUMNS = {
     "status",
     "billed",
@@ -434,6 +446,7 @@ class PostgresPatientFlowRepository:
         query: str | None = None,
         limit: int | None = None,
         offset: int = 0,
+        include_queue_context: bool = True,
     ) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
             with self.connection_manager.pool.connection() as connection:
@@ -476,7 +489,7 @@ class PostgresPatientFlowRepository:
                     )
                     cursor.execute(
                         f"""
-                        select {_columns_sql(PATIENT_COLUMNS)}
+                        select {_columns_sql(PATIENT_LIST_COLUMNS)}
                         from public.patients
                         where org_id = %s
                         {active_clause}
@@ -489,7 +502,9 @@ class PostgresPatientFlowRepository:
                         tuple(params_list),
                     )
                     patients = [_patient_with_profile_photo_url(_row_to_dict(row, cursor)) for row in cursor.fetchall()]
-                    return self._attach_queue_context(cursor, patients)
+                    if include_queue_context:
+                        return self._attach_queue_context(cursor, patients)
+                    return patients
 
         return await asyncio.to_thread(_list)
 

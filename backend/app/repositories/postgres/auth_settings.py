@@ -62,6 +62,36 @@ CLINIC_SETTINGS_COLUMNS = [
     "updated_at",
 ]
 
+# The operational paths only need this small, non-secret projection. Keeping
+# document blobs and encrypted mail credentials out of routine reads reduces
+# row transfer and avoids decrypting a secret that the request will not use.
+CLINIC_RUNTIME_SETTINGS_COLUMNS = [
+    "id",
+    "org_id",
+    "clinic_name",
+    "clinic_address",
+    "clinic_phone",
+    "gstin",
+    "clinic_specialty",
+    "timezone",
+    "appointment_start_time",
+    "appointment_end_time",
+    "appointments_per_hour",
+    "doctor_name",
+    "sender_name",
+    "sender_email",
+    "email_sender_mode",
+    "custom_header",
+    "custom_footer",
+    "onboarding_required",
+    "onboarding_completed_at",
+    "users_allowed",
+    "workspace_mode",
+    "public_check_in_enabled",
+    "public_check_in_token",
+    "updated_at",
+]
+
 CLINIC_SETTINGS_MUTABLE_COLUMNS = [
     "clinic_name",
     "clinic_address",
@@ -861,6 +891,24 @@ class PostgresAuthSettingsRepository:
 
     async def get_clinic_settings(self, org_id: str) -> dict[str, Any]:
         return await asyncio.to_thread(lambda: self.get_clinic_settings_sync(org_id))
+
+    async def get_clinic_runtime_settings(self, org_id: str) -> dict[str, Any]:
+        return await asyncio.to_thread(lambda: self.get_clinic_runtime_settings_sync(org_id))
+
+    def get_clinic_runtime_settings_sync(self, org_id: str) -> dict[str, Any]:
+        with self.connection_manager.pool.connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    select {", ".join(CLINIC_RUNTIME_SETTINGS_COLUMNS)}
+                    from public.clinic_settings
+                    where org_id = %s
+                    limit 1
+                    """,
+                    (org_id,),
+                )
+                row = cursor.fetchone()
+                return _row_to_dict(row, cursor) if row else {}
 
     def get_clinic_settings_sync(self, org_id: str) -> dict[str, Any]:
         with self.connection_manager.pool.connection() as connection:

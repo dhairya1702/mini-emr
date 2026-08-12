@@ -319,7 +319,7 @@ async def build_assistant_reply(repo: AppRepository, org_id: str, intent: str) -
         month_start, month_end = _month_bounds(effective_day, clinic_settings)
         return f"Patients seen this month: {len(_visits_in_range(visits, month_start, month_end))} visit(s)."
     if intent == "total_patients":
-        patients = await repo.list_patients(org_id, limit=10000)
+        patients = await repo.list_patients(org_id, limit=10000, include_queue_context=False)
         return f"Total patient records: {len(patients)}."
     if intent == "today_summary":
         appointments_left = await repo.list_appointments(

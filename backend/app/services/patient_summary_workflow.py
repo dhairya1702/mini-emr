@@ -7,6 +7,7 @@ from typing import Any, TypedDict
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.db import AppRepository
+from app.services.clinic_settings_service import get_clinic_runtime_settings
 from app.schema_domains.patients import calculate_age_from_dob
 from app.services.ai_generation_service import generate_patient_summary
 
@@ -154,7 +155,7 @@ async def load_patient_summary_source(
     current_patient = patient or await repo.get_patient(org_id, patient_id)
     visits = await repo.list_patient_visits_for_patient(org_id, patient_id)
     notes = await repo.list_notes_for_patient(org_id, patient_id)
-    clinic_settings = await repo.get_clinic_settings(org_id)
+    clinic_settings = await get_clinic_runtime_settings(repo, org_id)
     return build_patient_summary_source(
         current_patient,
         visits,

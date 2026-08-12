@@ -194,7 +194,7 @@ async def build_user_name_map(repo: AppRepository, org_id: str) -> dict[str, str
 
 
 async def build_patient_name_map(repo: AppRepository, org_id: str) -> dict[str, str]:
-    patients = await repo.list_patients(org_id)
+    patients = await repo.list_patients(org_id, include_queue_context=False)
     return {
         str(patient["id"]): str(patient.get("name") or "").strip()
         for patient in patients

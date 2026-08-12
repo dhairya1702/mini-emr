@@ -44,10 +44,14 @@ function initialsForName(value: string) {
 
 interface PendingCheckInsProps {
   requests: CheckInRequest[];
+  pendingCount?: number;
   pendingRequestId: string;
+  isLoading?: boolean;
+  error?: string;
   variant?: "inline" | "drawer";
   isOpen?: boolean;
   onClose?: () => void;
+  onRetry?: () => void;
   onUseExisting: (requestId: string, patientId: string) => void;
   onCreateNew: (requestId: string) => void;
   onReject: (requestId: string) => void;
@@ -55,10 +59,14 @@ interface PendingCheckInsProps {
 
 export function PendingCheckIns({
   requests,
+  pendingCount,
   pendingRequestId,
+  isLoading = false,
+  error = "",
   variant = "inline",
   isOpen = true,
   onClose,
+  onRetry,
   onUseExisting,
   onCreateNew,
   onReject,
@@ -179,7 +187,7 @@ export function PendingCheckIns({
           <div className="min-w-0 flex-1">
             <h2 id="check-in-drawer-title" className="text-lg font-bold text-[#1f2b3d]">Check-in requests</h2>
             <p className="mt-0.5 text-sm text-slate-500">
-              {requests.length} awaiting review
+              {isLoading && !requests.length ? "Loading requests…" : `${pendingCount ?? requests.length} awaiting review`}
             </p>
           </div>
           <button
@@ -194,8 +202,33 @@ export function PendingCheckIns({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
-          {requests.length ? (
+          {error && !requests.length ? (
+            <div className="grid min-h-[320px] place-items-center text-center">
+              <div className="max-w-xs">
+                <p className="text-sm font-bold text-rose-700">Couldn&apos;t load check-in requests</p>
+                <p className="mt-2 text-sm text-slate-600">{error}</p>
+                {onRetry ? (
+                  <button type="button" onClick={onRetry} className="mt-4 rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#267fc0]">
+                    Try again
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : isLoading && !requests.length ? (
+            <div className="grid min-h-[320px] place-items-center text-center">
+              <div>
+                <Clock3 className="mx-auto h-6 w-6 animate-pulse text-[#2f8fd3]" />
+                <p className="mt-3 text-sm font-semibold text-slate-600">Loading check-in requests…</p>
+              </div>
+            </div>
+          ) : requests.length ? (
             <div className="space-y-4">
+              {error ? (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                  <span>{error}</span>
+                  {onRetry ? <button type="button" onClick={onRetry} className="shrink-0 font-bold">Retry</button> : null}
+                </div>
+              ) : null}
               {requests.map((request) => {
                 const busy = pendingRequestId === request.id;
                 const confirmingReject = rejectingRequestId === request.id;

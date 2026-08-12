@@ -21,6 +21,7 @@ import {
   ClinicSettingsUpdatePayload,
   CheckInConfig,
   CheckInRequest,
+  CheckInRequestsStatus,
   PublicAppointmentBooking,
   PublicAppointmentSlots,
   PublicCheckInContext,
@@ -41,8 +42,10 @@ import {
   FinalizeInvoicePayload,
   FollowUp,
   FollowUpCreatePayload,
+  FollowUpPage,
   FollowUpReminderResult,
   FollowUpUpdatePayload,
+  FollowUpView,
   GenerateLetterPayload,
   GenerateLetterResponse,
   GenerateLetterPdfPayload,
@@ -305,8 +308,9 @@ function buildRequestHeaders(
   options?: { includeJsonContentType?: boolean },
 ) {
   const token = getActiveToken(path);
+  const hasBody = init?.body !== undefined && init.body !== null;
   const headers = {
-    ...((options?.includeJsonContentType ?? true) ? { "Content-Type": "application/json" } : {}),
+    ...((options?.includeJsonContentType ?? hasBody) ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...((init?.headers as Record<string, string> | undefined) || {}),
   };
@@ -740,12 +744,14 @@ export const api = {
       body: JSON.stringify(withIdempotencyKey(payload)),
     }),
   listFollowUps: (params?: {
+    view?: FollowUpView;
     status?: "scheduled" | "completed" | "cancelled";
     q?: string;
     scheduled_date?: string;
     upcoming?: boolean;
     limit?: number;
-  }) => request<FollowUp[]>(withQuery("/follow-ups", params ?? {})),
+    cursor?: string;
+  }) => request<FollowUpPage>(withQuery("/follow-ups", params ?? {})),
   listAppointments: (params?: {
     status?: "scheduled" | "checked_in" | "cancelled";
     q?: string;
@@ -800,6 +806,7 @@ export const api = {
   }) =>
     request<Patient[]>(withQuery("/patients", {
       active_only: options?.activeOnly ? "true" : undefined,
+      include_queue_context: "false",
       status: options?.status,
       billed: options?.billed === undefined ? undefined : String(options.billed),
       q: options?.q,
@@ -809,13 +816,21 @@ export const api = {
   listAllPatients: async () => {
     const rows: Patient[] = [];
     for (let offset = 0; ; offset += 500) {
-      const page = await request<Patient[]>(withQuery("/patients", { limit: 500, offset }));
+      const page = await request<Patient[]>(withQuery("/patients", {
+        include_queue_context: "false",
+        limit: 500,
+        offset,
+      }));
       rows.push(...page);
       if (page.length < 500) return rows;
     }
   },
   listQueuePatients: () =>
-    request<Patient[]>(withQuery("/patients", { active_only: "true", limit: 500 })),
+    request<Patient[]>(withQuery("/patients", {
+      active_only: "true",
+      include_queue_context: "true",
+      limit: 500,
+    })),
   getPatient: (patientId: string) => request<Patient>(`/patients/${patientId}`),
   getPatientOptometryHistory: (patientId: string) =>
     request<OptometryHistory>(`/patients/${patientId}/optometry-history`),
@@ -1076,6 +1091,8 @@ export const api = {
   regenerateCheckInConfig: () =>
     request<CheckInConfig>("/check-in/config/regenerate", { method: "POST" }),
   listCheckInRequests: () => request<CheckInRequest[]>("/check-in/requests"),
+  getCheckInRequestsStatus: () =>
+    request<CheckInRequestsStatus>("/check-in/requests/status"),
   approveCheckInRequest: (
     requestId: string,
     payload: { existing_patient_id?: string | null; force_new: boolean },

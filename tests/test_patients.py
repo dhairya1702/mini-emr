@@ -167,6 +167,21 @@ def test_queue_exposes_demographics_and_current_visit_context(client):
     assert patient["current_visit"]["kind"] == "new"
     assert patient["current_visit"]["source"] == "queue"
 
+    compatible_list = test_client.get("/patients", headers=headers)
+    assert compatible_list.status_code == 200
+    assert compatible_list.json()[0]["current_visit"]["id"] == patient["current_visit"]["id"]
+
+    lightweight_list = test_client.get(
+        "/patients",
+        params={"include_queue_context": False},
+        headers=headers,
+    )
+    assert lightweight_list.status_code == 200
+    lightweight_patient = lightweight_list.json()[0]
+    assert lightweight_patient["current_visit"] is None
+    assert lightweight_patient["billing_summary"] is None
+    assert lightweight_patient["billing_estimate"] is None
+
     returning_walk_in = test_client.post(
         f"/patients/{patient['id']}/visits",
         headers=headers,
@@ -262,6 +277,22 @@ def test_billing_column_summary_is_scoped_to_current_visit(client):
         "completed_at": None,
         "sent_at": None,
     }
+
+    lightweight = test_client.get(
+        "/patients",
+        params={"active_only": True, "include_queue_context": False, "limit": 500},
+        headers=headers,
+    ).json()
+    lightweight_patient = next(row for row in lightweight if row["id"] == patient["id"])
+    assert lightweight_patient["current_visit"] is None
+    assert lightweight_patient["billing_summary"] is None
+    assert lightweight_patient["billing_estimate"] is None
+
+    enriched_again = test_client.get("/patients?active_only=true&limit=500", headers=headers).json()
+    enriched_summary = next(row for row in enriched_again if row["id"] == patient["id"])["billing_summary"]
+    assert enriched_summary == summary
+
+
 def test_patient_timeline_includes_notes_and_billing_events(client, monkeypatch):
     test_client, repo = client
     session = register_test_clinic(test_client, identifier="timeline@clinic.com", clinic_name="Timeline Clinic")

@@ -60,6 +60,48 @@ test("queue smoke adds a patient and opens the settings drawer", async ({ page }
   await expect(page.getByText("Clinic name")).toBeVisible();
 });
 
+test("queue defers users and catalog until their workflows need them", async ({ page }) => {
+  const user = buildUser({ doctor_signature_name: "signature.png" });
+  const patient = buildPatient({
+    id: "patient-lazy-resources-1",
+    name: "Casey Billing",
+    status: "done",
+    billed: false,
+  });
+  let usersRequests = 0;
+  let catalogRequests = 0;
+
+  page.on("request", (request) => {
+    if (request.url() === "http://127.0.0.1:8001/users") usersRequests += 1;
+    if (request.url() === "http://127.0.0.1:8001/catalog") catalogRequests += 1;
+  });
+  await seedSession(page, { user });
+  await mockClinicBootstrap(page, {
+    user,
+    users: [user],
+    clinicSettings: buildClinicSettings({ clinic_specialty: "general_physician" }),
+    patients: [patient],
+  });
+  await page.route(`http://127.0.0.1:8001/patients/${patient.id}/notes`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+
+  await page.goto("/");
+  await expect(page.getByText(patient.name, { exact: true })).toBeVisible();
+  expect(usersRequests).toBe(0);
+  expect(catalogRequests).toBe(0);
+
+  await page.getByRole("button", { name: `Open billing for ${patient.name}` }).click();
+  await expect.poll(() => catalogRequests).toBe(1);
+  expect(usersRequests).toBe(0);
+
+  await page.getByRole("button", { name: "Close billing" }).click();
+  await page.getByRole("button", { name: `Open billing for ${patient.name}` }).click();
+  await expect(page.getByRole("button", { name: "Close billing" })).toBeVisible();
+  expect(catalogRequests).toBe(1);
+  expect(usersRequests).toBe(0);
+});
+
 test("queue drag moves a waiting patient into consultation", async ({ page }) => {
   const user = buildUser({ doctor_signature_name: "signature.png" });
   const staffUser = buildUser({ id: "user-staff-1", identifier: "staff@clinic.test", role: "staff" });
@@ -96,6 +138,8 @@ test("queue header reviews and approves a QR check-in request", async ({ page })
     queue_position: 2,
   });
   let pending = true;
+  let statusRequests = 0;
+  let fullRequests = 0;
 
   await seedSession(page, { user });
   await mockClinicBootstrap(page, {
@@ -104,7 +148,19 @@ test("queue header reviews and approves a QR check-in request", async ({ page })
     patients: [existingPatient],
   });
   await mockQueueIntake(page, [existingPatient]);
+  await page.route("**/check-in/requests/status", async (route) => {
+    statusRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        pending_count: pending ? 1 : 0,
+        revision: pending ? "request-qr-1" : "empty",
+      }),
+    });
+  });
   await page.route("**/check-in/requests", async (route) => {
+    fullRequests += 1;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -135,8 +191,11 @@ test("queue header reviews and approves a QR check-in request", async ({ page })
 
   const checkInsButton = page.getByRole("button", { name: "Open check-in requests, 1 pending" });
   await expect(checkInsButton).toBeVisible();
+  await expect.poll(() => statusRequests).toBeGreaterThanOrEqual(1);
+  expect(fullRequests).toBe(0);
   await expect(checkInsButton).toHaveClass(/animate-pulse/);
   await checkInsButton.click();
+  await expect.poll(() => fullRequests).toBe(1);
   await expect(page.getByRole("heading", { name: "Check-in requests" })).toBeVisible();
   await expect(page.getByText("Jordan QR", { exact: true })).toBeVisible();
   await expect(checkInsButton).not.toHaveClass(/animate-pulse/);
