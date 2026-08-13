@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.api_errors import bad_request_error, internal_server_error
-from app.auth import require_admin
+from app.auth import require_admin_or_doctor
 from app.clinic_context import build_clinic_context, build_measurements_context, build_patient_context
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
@@ -55,7 +55,7 @@ async def _build_common_context(
 async def create_clinical_questions(
     payload: ClinicalQuestionsRequest,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> ClinicalQuestionsResponse:
     try:
         await enforce_repository_rate_limit(repo, "clinical_questions", str(current_user.id))
@@ -83,7 +83,7 @@ async def create_clinical_questions(
 async def create_clinical_analysis(
     payload: ClinicalAnalysisRequest,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> ClinicalAnalysisResponse:
     try:
         await enforce_repository_rate_limit(repo, "clinical_analysis", str(current_user.id))

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.api_errors import bad_request_error, internal_server_error, not_found_error
-from app.auth import require_admin
+from app.auth import require_admin_or_doctor
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.case_studies import (
@@ -32,7 +32,7 @@ router = APIRouter()
 @router.get("/case-studies", response_model=list[CaseStudyOut])
 async def list_case_studies(
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> list[CaseStudyOut]:
     try:
         return await list_case_studies_view(repo, str(current_user.org_id))
@@ -44,7 +44,7 @@ async def list_case_studies(
 async def get_case_study(
     case_study_id: str,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> CaseStudyOut:
     try:
         return await get_case_study_view(repo, str(current_user.org_id), case_study_id)
@@ -58,7 +58,7 @@ async def get_case_study(
 async def generate_case_study(
     payload: GenerateCaseStudyRequest,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> GenerateCaseStudyResponse:
     try:
         return await generate_case_study_workflow(repo, current_user, payload)
@@ -72,7 +72,7 @@ async def generate_case_study(
 async def create_case_study(
     payload: CaseStudyCreate,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> CaseStudyOut:
     try:
         return await create_case_study_workflow(repo, current_user, payload)
@@ -87,7 +87,7 @@ async def update_case_study(
     case_study_id: str,
     payload: CaseStudyUpdate,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> CaseStudyOut:
     updates = payload.model_dump(exclude_none=True)
     if not updates:
@@ -104,7 +104,7 @@ async def update_case_study(
 async def generate_case_study_pdf(
     case_study_id: str,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> StreamingResponse:
     try:
         case_study = await get_case_study_view(repo, str(current_user.org_id), case_study_id)

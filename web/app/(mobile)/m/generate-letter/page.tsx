@@ -7,6 +7,7 @@ import { MobileAdminGate } from "@/components/mobile/mobile-admin-gate";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { LetterFormState, SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-panel";
 import { api } from "@/lib/api";
+import { canUseClinicalTools } from "@/lib/permissions";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { printBlob } from "@/lib/print";
 import { hasUserSignature } from "@/lib/setup-checklist";
@@ -156,7 +157,7 @@ export default function MobileGenerateLetterPage() {
   }
 
   return (
-    <MobileAdminGate title="Generate Letter">
+    <MobileAdminGate title="Generate Letter" canAccess={canUseClinicalTools}>
       <MobileShell title="Generate Letter">
         <SettingsDrawerLetterPanel
           letterForm={letterForm}

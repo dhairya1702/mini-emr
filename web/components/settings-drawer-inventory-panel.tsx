@@ -3,6 +3,7 @@
 import { FormEvent } from "react";
 import { Pill, Stethoscope, Trash2 } from "lucide-react";
 
+import { canUseInventory } from "@/lib/permissions";
 import { AuthUser, CatalogItem } from "@/lib/types";
 
 export type CatalogFormState = {
@@ -201,7 +202,7 @@ export function SettingsDrawerInventoryPanel({
         <div className="mt-5 flex justify-end">
           <button
             type="submit"
-            disabled={isSavingCatalog || currentUser?.role !== "admin"}
+            disabled={isSavingCatalog || !canUseInventory(currentUser?.role)}
             className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
           >
             {isSavingCatalog ? "Saving..." : "Save Inventory Item"}
@@ -240,7 +241,7 @@ export function SettingsDrawerInventoryPanel({
                       />
                       <button
                         type="button"
-                        disabled={adjustingStockId === item.id || currentUser?.role !== "admin"}
+                        disabled={adjustingStockId === item.id || !canUseInventory(currentUser?.role)}
                         onClick={() => onAdjustStock(item.id)}
                         className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-50"
                       >
@@ -251,7 +252,7 @@ export function SettingsDrawerInventoryPanel({
                 </div>
                 <button
                   type="button"
-                  disabled={deletingCatalogId === item.id || currentUser?.role !== "admin"}
+                  disabled={deletingCatalogId === item.id || !canUseInventory(currentUser?.role)}
                   onClick={() => onDeleteCatalogItem(item.id)}
                   className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-white disabled:opacity-50"
                 >
@@ -292,7 +293,7 @@ export function SettingsDrawerInventoryPanel({
                       />
                       <button
                         type="button"
-                        disabled={adjustingStockId === item.id || currentUser?.role !== "admin"}
+                        disabled={adjustingStockId === item.id || !canUseInventory(currentUser?.role)}
                         onClick={() => onAdjustStock(item.id)}
                         className="rounded-xl border border-[#bfd7e8] bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-[#f3f8fb] disabled:opacity-50"
                       >
@@ -303,7 +304,7 @@ export function SettingsDrawerInventoryPanel({
                 </div>
                 <button
                   type="button"
-                  disabled={deletingCatalogId === item.id || currentUser?.role !== "admin"}
+                  disabled={deletingCatalogId === item.id || !canUseInventory(currentUser?.role)}
                   onClick={() => onDeleteCatalogItem(item.id)}
                   className="rounded-xl border border-[#bfd7e8] p-2 text-slate-600 transition hover:bg-white disabled:opacity-50"
                 >

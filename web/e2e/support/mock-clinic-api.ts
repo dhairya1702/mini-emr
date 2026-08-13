@@ -4,7 +4,7 @@ const API_ORIGIN = "http://127.0.0.1:8001";
 const DEFAULT_TOKEN = "playwright-session-token";
 const DEFAULT_EXPIRY_SECONDS = Math.floor(Date.now() / 1000) + 60 * 60;
 
-type UserRole = "admin" | "staff";
+type UserRole = "admin" | "doctor" | "staff";
 type ClinicSpecialty = "general_physician" | "optometry" | "pediatrics" | "dentistry" | null;
 type WorkspaceMode = "solo" | "team";
 

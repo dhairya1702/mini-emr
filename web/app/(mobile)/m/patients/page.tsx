@@ -179,7 +179,7 @@ export default function MobilePatientsPage() {
                 {patients.length ? "No patients match this search yet." : "No patients have been recorded yet."}
               </p>
               <p className="mt-2 text-sm text-slate-500">
-                {patients.length ? "Try a broader name, reason, or phone fragment." : "Add a patient from the queue to start chart history."}
+                {patients.length ? "Try a broader name, phone number, or reason." : "Add a patient from the queue to start chart history."}
               </p>
             </div>
           )}

@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, Download, ReceiptIndianRupee, Search } from "lucide-react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
-import { MobileAdminGate } from "@/components/mobile/mobile-admin-gate";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { api } from "@/lib/api";
+import { canViewEarnings } from "@/lib/permissions";
 import type { Invoice } from "@/lib/types";
 
 type GroupMode = "week" | "month" | "year";
@@ -55,7 +55,7 @@ export default function MobileEarningsPage() {
   const [hoveredPointKey, setHoveredPointKey] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") return;
+    if (!isAuthReady || isRedirectingToLogin || !canViewEarnings(currentUser?.role)) return;
     let active = true;
     setIsLoading(true);
     api.listInvoices({ limit: 500 })
@@ -260,8 +260,13 @@ export default function MobileEarningsPage() {
   }
 
   return (
-    <MobileAdminGate title="Earnings">
-      <MobileShell title="Earnings">
+    <MobileShell title="Earnings">
+      {!isAuthReady || isRedirectingToLogin ? (
+        <p className="clinic-empty-state">Loading...</p>
+      ) : !canViewEarnings(currentUser?.role) ? (
+        <p className="clinic-empty-state">Access restricted. You do not have permission to view earnings.</p>
+      ) : (
+        <>
         {error ? <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
         {isLoading ? (
           <p className="clinic-empty-state">Loading earnings...</p>
@@ -412,7 +417,8 @@ export default function MobileEarningsPage() {
             </section>
           </div>
         )}
-      </MobileShell>
-    </MobileAdminGate>
+        </>
+      )}
+    </MobileShell>
   );
 }

@@ -4,15 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
-import { MobileAdminGate } from "@/components/mobile/mobile-admin-gate";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
 import { api } from "@/lib/api";
 import { calculateDraftInvoiceTaxTotals } from "@/lib/billing-tax";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { printBlob } from "@/lib/print";
+import { canUseBilling } from "@/lib/permissions";
 import { useInfinitePatients } from "@/lib/use-infinite-patients";
-import type { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus } from "@/lib/types";
+import type { BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, Patient, PaymentStatus, UserRole } from "@/lib/types";
 
 function createId() {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
@@ -101,10 +101,22 @@ function buildAutoDraftInvoiceItems(
 
 export default function MobileBillingPage() {
   const { currentUser, isAuthReady, isRedirectingToLogin } = useClinicShell();
+  if (!isAuthReady || isRedirectingToLogin) {
+    return (
+      <MobileShell title="Billing">
+        <p className="clinic-empty-state">Loading...</p>
+      </MobileShell>
+    );
+  }
+  if (!canUseBilling(currentUser?.role)) {
+    return (
+      <MobileShell title="Billing">
+        <p className="clinic-empty-state">Access restricted.</p>
+      </MobileShell>
+    );
+  }
   return (
-    <MobileAdminGate title="Billing">
-      <MobileBillingContent authReady={isAuthReady} redirecting={isRedirectingToLogin} userRole={currentUser?.role} />
-    </MobileAdminGate>
+    <MobileBillingContent authReady={isAuthReady} redirecting={isRedirectingToLogin} userRole={currentUser?.role} />
   );
 }
 
@@ -115,7 +127,7 @@ function MobileBillingContent({
 }: {
   authReady?: boolean;
   redirecting?: boolean;
-  userRole?: string;
+  userRole?: UserRole;
 }) {
   const { catalogItems, loadCatalogItems, invalidateCatalog } = useClinicShell();
   const [selectedBillingPatientId, setSelectedBillingPatientId] = useState("");
@@ -147,7 +159,7 @@ function MobileBillingContent({
     error: patientLoadError,
     sentinelRef: patientSentinelRef,
   } = useInfinitePatients({
-    enabled: authReady && !redirecting && userRole === "admin",
+    enabled: authReady && !redirecting && canUseBilling(userRole),
     status: "done",
     billed: false,
   });
@@ -177,7 +189,7 @@ function MobileBillingContent({
   );
 
   useEffect(() => {
-    if (!authReady || redirecting || userRole !== "admin") {
+    if (!authReady || redirecting || !canUseBilling(userRole)) {
       return;
     }
     let active = true;

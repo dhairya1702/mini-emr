@@ -7,6 +7,7 @@ import { useClinicShell } from "@/components/clinic-shell-provider";
 import { MobileAdminGate } from "@/components/mobile/mobile-admin-gate";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { api } from "@/lib/api";
+import { canUseClinicalTools } from "@/lib/permissions";
 import type { CaseStudy, Patient } from "@/lib/types";
 
 export default function MobileCaseStudyPage() {
@@ -17,7 +18,7 @@ export default function MobileCaseStudyPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") return;
+    if (!isAuthReady || isRedirectingToLogin || !canUseClinicalTools(currentUser?.role)) return;
     let active = true;
     setIsLoading(true);
     Promise.all([api.listPatients({ limit: 6 }), api.listCaseStudies()])
@@ -39,7 +40,7 @@ export default function MobileCaseStudyPage() {
   }, [currentUser, isAuthReady, isRedirectingToLogin]);
 
   return (
-    <MobileAdminGate title="Case Study">
+    <MobileAdminGate title="Case Study" canAccess={canUseClinicalTools}>
       <MobileShell title="Case Study">
         {error ? <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
         {isLoading ? (

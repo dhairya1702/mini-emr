@@ -179,8 +179,8 @@ export default function PatientsPage() {
                   <input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search by name, phone fragment, or visit reason"
-                    className="w-full bg-transparent text-base text-black outline-none placeholder:text-black"
+                    placeholder="Search by name, phone number, or visit reason"
+                    className="w-full bg-transparent text-base text-black outline-none placeholder:text-slate-500"
                   />
                 </div>
               </div>
@@ -308,7 +308,7 @@ export default function PatientsPage() {
                   {isPatientsLoading
                     ? ""
                     : patients.length
-                    ? "Try a broader name, reason, or phone fragment."
+                    ? "Try a broader name, phone number, or reason."
                     : (patientLoadError || error) === "Failed to fetch" || (patientLoadError || error).includes("timed out")
                       ? "Check the API server and refresh this page."
                       : "Add a patient from the queue to start building the chart history."}

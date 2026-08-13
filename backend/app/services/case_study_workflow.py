@@ -386,5 +386,5 @@ async def update_case_study_workflow(
 
 
 async def require_admin_case_study_access(current_user: UserOut) -> None:
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required for case studies.")
+    if current_user.role not in {"admin", "doctor"}:
+        raise HTTPException(status_code=403, detail="Clinical access required for case studies.")

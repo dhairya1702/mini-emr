@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Download, ReceiptIndianRupee, Search } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { api } from "@/lib/api";
+import { canViewEarnings } from "@/lib/permissions";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { CatalogItemType, Invoice, PaymentStatus } from "@/lib/types";
 
@@ -48,7 +49,7 @@ export default function EarningsPage() {
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const [openingInvoiceId, setOpeningInvoiceId] = useState("");
   const [hoveredChartPointKey, setHoveredChartPointKey] = useState<string | null>(null);
-  const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
+  const canLoadEarningsPageData = useCallback((user: { role: "admin" | "doctor" | "staff" }) => canViewEarnings(user.role), []);
   const loadPageData = useCallback(async () => {
     return {
       invoices: await api.listInvoices({ limit: 500 }),
@@ -83,17 +84,11 @@ export default function EarningsPage() {
     handleExportVisitsCsv,
     handleExportInvoicesCsv,
   } = useClinicShellPage({
-    canLoadPageData: canLoadAdminPageData,
+    canLoadPageData: canLoadEarningsPageData,
     loadPageData,
     onPageData,
   });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
-
-  useEffect(() => {
-    if (isAuthReady && currentUser?.role === "staff") {
-      router.replace("/");
-    }
-  }, [currentUser, isAuthReady, router]);
 
   const paidInvoices = useMemo(
     () =>
@@ -362,11 +357,12 @@ export default function EarningsPage() {
     );
   }
 
-  if (currentUser?.role === "staff") {
+  if (!canViewEarnings(currentUser?.role)) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
-          Redirecting to queue...
+        <div className="max-w-md rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-center shadow-[0_14px_38px_rgba(64,131,181,0.09)]">
+          <h1 className="text-lg font-semibold text-slate-900">Access restricted</h1>
+          <p className="mt-2 text-sm text-slate-600">You do not have permission to view earnings.</p>
         </div>
       </main>
     );

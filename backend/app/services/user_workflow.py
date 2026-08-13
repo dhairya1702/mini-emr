@@ -155,20 +155,23 @@ async def create_staff_user_workflow(
     if users_used >= users_allowed:
         raise HTTPException(status_code=400, detail="User limit reached for this customer.")
 
+    role = payload.role
     created = await repo.create_user(
         org_id=str(current_user.org_id),
         identifier=identifier,
         name="",
         password_hash=hash_password(payload.password),
-        role="staff",
+        role=role,
     )
+    role_label = str(role).replace("_", " ")
+    action = "staff_user_created" if role == "staff" else "user_created"
     await write_audit_event(
         repo,
         current_user,
         entity_type="user",
         entity_id=str(created["id"]),
-        action="staff_user_created",
-        summary=f"Created staff user {identifier}.",
-        metadata={"identifier": identifier, "role": "staff"},
+        action=action,
+        summary=f"Created {role_label} user {identifier}.",
+        metadata={"identifier": identifier, "role": role},
     )
     return build_user_out(created)

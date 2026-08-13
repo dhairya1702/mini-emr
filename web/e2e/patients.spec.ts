@@ -46,7 +46,7 @@ test("patient directory uses one lightweight initial request and ignores stale s
   expect(requestedQueries).toEqual([""]);
   expect(limits).toEqual(["20"]);
 
-  const search = page.getByPlaceholder("Search by name, phone fragment, or visit reason");
+  const search = page.getByPlaceholder("Search by name, phone number, or visit reason");
   await search.fill("Robin");
   await expect.poll(() => requestedQueries.includes("Robin")).toBe(true);
   await search.fill("Casey");

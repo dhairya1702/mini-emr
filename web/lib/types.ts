@@ -1292,7 +1292,7 @@ export interface PatientPage {
   has_more: boolean;
 }
 
-export type UserRole = "admin" | "staff";
+export type UserRole = "admin" | "doctor" | "staff";
 
 export interface UserRoleUpdatePayload {
   role: UserRole;
@@ -1335,7 +1335,7 @@ export interface SuperuserOrgUser {
   org_id: string;
   identifier: string;
   name: string;
-  role: "admin" | "staff";
+  role: UserRole;
   created_at: string;
 }
 
@@ -1625,6 +1625,7 @@ export interface WhatsAppDelivery {
 export interface StaffUserCreatePayload {
   identifier: string;
   password: string;
+  role?: UserRole;
 }
 
 export interface CatalogItemCreatePayload {

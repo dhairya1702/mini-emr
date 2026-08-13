@@ -8,6 +8,7 @@ import { AppHeader } from "@/components/app-header";
 import type { CatalogFormState } from "@/components/settings-drawer-inventory-panel";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { api } from "@/lib/api";
+import { canUseInventory } from "@/lib/permissions";
 import type { CatalogItem, CatalogItemType } from "@/lib/types";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 
@@ -68,7 +69,7 @@ export default function InventoryPage() {
   const [deletingCatalogId, setDeletingCatalogId] = useState("");
   const [inventorySearch, setInventorySearch] = useState("");
   const [inventoryFilter, setInventoryFilter] = useState<InventoryFilter>("all");
-  const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
+  const canLoadInventoryPageData = useCallback((user: { role: "admin" | "doctor" | "staff" }) => canUseInventory(user.role), []);
   const loadPageData = useCallback(async () => null, []);
   const onPageData = useCallback(() => undefined, []);
   const {
@@ -100,7 +101,7 @@ export default function InventoryPage() {
     handleExportVisitsCsv,
     handleExportInvoicesCsv,
   } = useClinicShellPage({
-    canLoadPageData: canLoadAdminPageData,
+    canLoadPageData: canLoadInventoryPageData,
     loadPageData,
     onPageData,
   });
@@ -178,13 +179,7 @@ export default function InventoryPage() {
   }
 
   useEffect(() => {
-    if (isAuthReady && currentUser?.role === "staff") {
-      router.replace("/");
-    }
-  }, [currentUser, isAuthReady, router]);
-
-  useEffect(() => {
-    if (isAuthReady && currentUser?.role === "admin") {
+    if (isAuthReady && canUseInventory(currentUser?.role)) {
       void loadCatalogItems().catch(() => undefined);
     }
   }, [currentUser, isAuthReady, loadCatalogItems]);
@@ -278,7 +273,7 @@ export default function InventoryPage() {
 
   if (isRedirectingToLogin) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to login...</div></main>;
   if (!isAuthReady) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Loading ClinicOS...</div></main>;
-  if (currentUser?.role === "staff") return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to queue...</div></main>;
+  if (!canUseInventory(currentUser?.role)) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Access restricted.</div></main>;
 
   return (
     <main className="clinic-page">
@@ -617,7 +612,7 @@ export default function InventoryPage() {
                   ) : editingCatalogItem ? (
                     <button
                       type="button"
-                      disabled={deletingCatalogId === editingCatalogItem.id || currentUser?.role !== "admin"}
+                      disabled={deletingCatalogId === editingCatalogItem.id || !canUseInventory(currentUser?.role)}
                       onClick={() => void handleDeleteCatalog(editingCatalogItem.id)}
                       className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-100"
                     >
@@ -636,7 +631,7 @@ export default function InventoryPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={isSavingCatalog || currentUser?.role !== "admin"}
+                    disabled={isSavingCatalog || !canUseInventory(currentUser?.role)}
                     className="rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-100"
                   >
                     {isSavingCatalog ? "Saving..." : editingCatalogItem ? "Save changes" : "Save item"}

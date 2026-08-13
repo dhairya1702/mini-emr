@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.api_errors import bad_request_error, internal_server_error
-from app.auth import get_current_user, require_admin
+from app.auth import require_admin_or_doctor
 from app.db import AppRepository, get_repository
 from app.formatting import format_display_date
 from app.schema_domains.auth_settings import UserOut
@@ -51,7 +51,7 @@ async def create_generated_note(
     payload: GenerateNoteRequest,
     repo: AppRepository = Depends(get_repository),
     storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> GenerateNoteResponse:
     try:
         return await generate_note_workflow(repo, storage, current_user, payload)
@@ -67,7 +67,7 @@ async def create_generated_note(
 async def create_generated_letter(
     payload: GenerateLetterRequest,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> GenerateLetterResponse:
     try:
         content = await generate_letter_content(
@@ -86,7 +86,7 @@ async def create_generated_letter(
 async def create_parent_handout(
     payload: GenerateParentHandoutRequest,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> GenerateParentHandoutResponse:
     try:
         return await generate_parent_handout_workflow(repo, current_user, payload)
@@ -102,7 +102,7 @@ async def create_parent_handout(
 async def finalize_note(
     payload: FinalizeNoteRequest,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> NoteOut:
     try:
         return await finalize_note_workflow(repo, current_user, payload)
@@ -115,7 +115,7 @@ async def update_note_draft(
     note_id: str,
     payload: UpdateNoteDraftRequest,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> NoteOut:
     try:
         return await update_note_draft_workflow(
@@ -132,7 +132,7 @@ async def update_note_draft(
 @router.post("/send-note", response_model=SendNoteResponse)
 async def send_note(
     payload: SendNoteRequest,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
     repo: AppRepository = Depends(get_repository),
     storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
 ) -> SendNoteResponse:
@@ -145,7 +145,7 @@ async def send_note(
 @router.post("/send-note-whatsapp", response_model=SendNoteResponse)
 async def send_note_whatsapp(
     payload: SendNoteWhatsAppRequest,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
     repo: AppRepository = Depends(get_repository),
     storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
 ) -> SendNoteResponse:
@@ -159,7 +159,7 @@ async def send_note_whatsapp(
 async def send_letter(
     payload: SendLetterRequest,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> SendNoteResponse:
     return await send_letter_workflow(
         repo,
@@ -174,7 +174,7 @@ async def send_letter(
 async def send_letter_whatsapp(
     payload: SendLetterWhatsAppRequest,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> SendNoteResponse:
     return await send_letter_whatsapp_workflow(
         repo,
@@ -192,7 +192,7 @@ async def send_letter_whatsapp(
 async def generate_note_pdf(
     payload: GeneratePdfRequest,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> StreamingResponse:
     try:
         patient = await repo.get_patient(str(current_user.org_id), str(payload.patient_id))
@@ -221,7 +221,7 @@ async def generate_saved_note_pdf(
     note_id: str,
     repo: AppRepository = Depends(get_repository),
     storage: PatientAttachmentStorage = Depends(get_patient_attachment_storage),
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> StreamingResponse:
     try:
         note = await repo.get_note(str(current_user.org_id), note_id)
@@ -260,7 +260,7 @@ async def generate_saved_note_pdf(
 async def generate_letter_pdf(
     payload: GenerateLetterPdfRequest,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(require_admin_or_doctor),
 ) -> StreamingResponse:
     try:
         clinic_settings = await build_document_context_for_user(repo, current_user)

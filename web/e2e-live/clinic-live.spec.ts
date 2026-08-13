@@ -89,7 +89,7 @@ async function createStaffUser(request: APIRequestContext, token: string, identi
 async function listUsers(request: APIRequestContext, token: string) {
   const response = await request.get(`${API_BASE_URL}/users`, { headers: authHeaders(token) });
   expect(response.status()).toBe(200);
-  return response.json() as Promise<Array<{ id: string; identifier: string; role: "admin" | "staff" }>>;
+  return response.json() as Promise<Array<{ id: string; identifier: string; role: "admin" | "doctor" | "staff" }>>;
 }
 
 async function createCatalogItem(request: APIRequestContext, token: string) {
@@ -460,12 +460,12 @@ test("live user management creates, promotes, and removes staff", async ({ page,
   await signIn(page, session.identifier, session.password);
 
   await page.goto("/users");
-  await expect(page.getByRole("heading", { name: "Clinic Users" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
   await expect(page.getByText("1 total")).toBeVisible();
   await page.getByRole("button", { name: "Add User" }).click();
   await page.getByLabel("Email or phone number").fill(staffIdentifier);
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
-  await page.getByRole("button", { name: "Create Staff User" }).click();
+  await page.getByRole("button", { name: "Create User" }).click();
 
   await expect(page.getByText("Staff user added.")).toBeVisible();
   await expect(page.getByText(staffIdentifier)).toBeVisible();

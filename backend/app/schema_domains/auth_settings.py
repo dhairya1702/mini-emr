@@ -203,6 +203,7 @@ class UserCreate(UserBase):
 
 class StaffUserCreate(UserBase):
     password: str = Field(min_length=12, max_length=128)
+    role: UserRole = "staff"
 
 
 class UserRoleUpdate(BaseModel):

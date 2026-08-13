@@ -28,6 +28,7 @@ import { PatientCard } from "@/components/patient-card";
 import { PatientColumn } from "@/components/patient-column";
 import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
 import { api } from "@/lib/api";
+import { canUseBilling, canUseClinicalTools } from "@/lib/permissions";
 import { calculateDraftInvoiceTaxTotals } from "@/lib/billing-tax";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import {
@@ -1183,8 +1184,8 @@ export default function HomePage() {
   }
 
   async function transitionPatientStatus(patient: Patient, nextStatus: PatientStatus) {
-    if (currentUser?.role !== "admin" && nextStatus === "consultation") {
-      throw new Error("Only admins can start or continue consultation.");
+    if (!canUseClinicalTools(currentUser?.role) && nextStatus === "consultation") {
+      throw new Error("Only admins and doctors can start or continue consultation.");
     }
     const previousStatus = patient.status;
     if (isTrainingMode) {
@@ -1836,12 +1837,12 @@ export default function HomePage() {
       ? "Start consultation"
       : selectedPatient.status === "consultation"
         ? "Continue Consultation"
-        : !selectedPatient.billed && currentUser?.role === "admin"
+        : !selectedPatient.billed && canUseBilling(currentUser?.role)
           ? "Open billing"
           : null
     : null;
   const patientChartActionDisabled = selectedPatient
-    ? (selectedPatient.status === "waiting" || selectedPatient.status === "consultation") && currentUser?.role !== "admin"
+    ? (selectedPatient.status === "waiting" || selectedPatient.status === "consultation") && !canUseClinicalTools(currentUser?.role)
     : false;
 
   if (isRedirectingToLogin) {
@@ -1956,7 +1957,7 @@ export default function HomePage() {
                     onRemoveFromQueue={handleRemoveFromQueue}
                     onTogglePriority={handleTogglePriority}
                     onOpenBilling={(patient) => openBillingWorkspace(patient.id)}
-                    canAdvance={currentUser?.role === "admin"}
+                    canAdvance={canUseClinicalTools(currentUser?.role)}
                     now={queueClock}
                   />
                 )) : (
@@ -1989,7 +1990,7 @@ export default function HomePage() {
                 onTogglePriority={handleTogglePriority}
                 onOpenBilling={(patient) => openBillingWorkspace(patient.id)}
                 onAddPatient={() => setIsModalOpen(true)}
-                canAdvance={() => currentUser?.role === "admin"}
+                canAdvance={() => canUseClinicalTools(currentUser?.role)}
                 now={queueClock}
               />
               <PatientColumn
@@ -2001,7 +2002,7 @@ export default function HomePage() {
                 onRemoveFromQueue={handleRemoveFromQueue}
                 onTogglePriority={handleTogglePriority}
                 onOpenBilling={(patient) => openBillingWorkspace(patient.id)}
-                canAdvance={() => currentUser?.role === "admin"}
+                canAdvance={() => canUseClinicalTools(currentUser?.role)}
                 now={queueClock}
               />
               <PatientColumn
@@ -2119,7 +2120,7 @@ export default function HomePage() {
           )
           : null}
         isTrainingMode={isTrainingMode}
-        canRefer={currentUser?.role === "admin"}
+        canRefer={canUseClinicalTools(currentUser?.role)}
         onLoadVisits={handleLoadPatientVisits}
         onLoadVisitDetail={handleLoadPatientVisitDetail}
         onLoadTimeline={handleLoadPatientTimeline}

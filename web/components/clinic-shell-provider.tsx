@@ -29,6 +29,7 @@ import {
   Patient,
   QueueSnapshot,
   StaffUserCreatePayload,
+  UserRole,
 } from "@/lib/types";
 
 const SESSION_EXPIRED_REDIRECT = "/login?reason=session-expired";
@@ -75,7 +76,7 @@ type ClinicShellContextValue = {
   loadCatalogItems: (force?: boolean) => Promise<CatalogItem[]>;
   loadActiveMedicines: (force?: boolean) => Promise<MedicineCatalogItem[]>;
   createStaffUser: (payload: StaffUserCreatePayload) => Promise<AuthUser>;
-  updateUserRole: (userId: string, role: "admin" | "staff") => Promise<AuthUser>;
+  updateUserRole: (userId: string, role: UserRole) => Promise<AuthUser>;
   deleteUser: (userId: string) => Promise<void>;
   uploadUserSignature: (userId: string, file: File) => Promise<AuthUser>;
   removeUserSignature: (userId: string) => Promise<AuthUser>;
@@ -594,7 +595,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
     return created;
   }, [patchLoadedUser]);
 
-  const updateUserRole = useCallback(async (userId: string, role: "admin" | "staff") => {
+  const updateUserRole = useCallback(async (userId: string, role: UserRole) => {
     const updated = await api.updateUserRole(userId, { role });
     patchLoadedUser(updated);
     return updated;

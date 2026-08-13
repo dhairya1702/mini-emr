@@ -35,11 +35,12 @@ import { CatalogFormState, SettingsDrawerInventoryPanel } from "@/components/set
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
 import { api, resolveApiAssetUrl } from "@/lib/api";
 import { calculateDraftInvoiceTaxTotals } from "@/lib/billing-tax";
+import { canManageClinicSettings, canUseClinicalTools, canViewAudit, canViewEarnings } from "@/lib/permissions";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { printBlob } from "@/lib/print";
 import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
-import { Appointment, AuditEvent, AuthUser, CatalogItem, CatalogItemType, ClinicSettings, ClinicSettingsUpdatePayload, FollowUp, Invoice, Patient, PaymentStatus } from "@/lib/types";
+import { Appointment, AuditEvent, AuthUser, CatalogItem, CatalogItemType, ClinicSettings, ClinicSettingsUpdatePayload, FollowUp, Invoice, Patient, PaymentStatus, StaffUserCreatePayload, UserRole } from "@/lib/types";
 import { hasUserSignature } from "@/lib/setup-checklist";
 import { useInfinitePatients } from "@/lib/use-infinite-patients";
 
@@ -53,8 +54,8 @@ function createId() {
 export type SettingsTab = "settings" | "training" | "about" | "contact" | "billing" | "clinic" | "users" | "letter" | "catalog" | "appointments" | "audit" | "exports";
 export type ClinicSettingsSection = "specialty" | "hours" | "template";
 type DrawerMenuItem =
-  | { href: string; label: string; icon: typeof Settings2 }
-  | { tab: SettingsTab; label: string; icon: typeof Settings2 };
+  | { href: string; label: string; icon: typeof Settings2; canView?: (role: UserRole | null | undefined) => boolean }
+  | { tab: SettingsTab; label: string; icon: typeof Settings2; canView?: (role: UserRole | null | undefined) => boolean };
 
 interface SettingsDrawerProps {
   open: boolean;
@@ -72,7 +73,7 @@ interface SettingsDrawerProps {
     payload: ClinicSettingsUpdatePayload,
   ) => Promise<ClinicSettings | void>;
   onClinicSettingsChange?: (settings: ClinicSettings) => void;
-  onAddUser: (payload: { identifier: string; password: string }) => Promise<void>;
+  onAddUser: (payload: StaffUserCreatePayload) => Promise<void>;
   onCreateCatalogItem: (payload: {
     name: string;
     item_type: "service" | "medicine";
@@ -87,7 +88,7 @@ interface SettingsDrawerProps {
   }) => Promise<void>;
   onAdjustCatalogStock: (itemId: string, delta: number) => Promise<void>;
   onDeleteCatalogItem: (itemId: string) => Promise<void>;
-  onUpdateUserRole?: (userId: string, role: "admin" | "staff") => Promise<AuthUser>;
+  onUpdateUserRole?: (userId: string, role: UserRole) => Promise<AuthUser>;
   onDeleteUser?: (userId: string) => Promise<void>;
   onUploadUserSignature?: (userId: string, file: File) => Promise<void>;
   onRemoveUserSignature?: (userId: string) => Promise<void>;
@@ -579,7 +580,7 @@ export function SettingsDrawer({
   const [letterPdfPreviewUrl, setLetterPdfPreviewUrl] = useState("");
 
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [userForm, setUserForm] = useState<UserFormState>({ identifier: "", password: "" });
+  const [userForm, setUserForm] = useState<UserFormState>({ identifier: "", password: "", role: "staff" });
   const [userError, setUserError] = useState("");
   const [userSuccess, setUserSuccess] = useState("");
   const [isAddingUser, setIsAddingUser] = useState(false);
@@ -691,24 +692,28 @@ export function SettingsDrawer({
   ] : [
     { href: "/", label: "Queue", icon: LayoutDashboard },
     { href: "/appointments", label: "Appointments", icon: CalendarClock },
-    { href: "/patients", label: "Patients", icon: Search },
-    { href: "/qr-code", label: "QR Code", icon: QrCode },
     { href: "/billing", label: "Billing", icon: CreditCard },
     { href: "/inventory", label: "Inventory", icon: Stethoscope },
+    { href: "/patients", label: "Patients", icon: Search },
     { href: "/history", label: "History", icon: History },
-    { href: "/generate-letter", label: "Generate Letter", icon: FilePenLine },
-    { href: "/case-study", label: "Case Study", icon: FileText },
     { href: "/users", label: "Users", icon: UserPlus },
-    { href: "/clinic", label: "Clinic", icon: Building2 },
+    { href: "/clinic", label: "Clinic", icon: Building2, canView: canManageClinicSettings },
     { href: "/account", label: "Account", icon: User },
-    { href: "/audit", label: "Audit", icon: Settings2 },
+    { href: "/generate-letter", label: "Generate Letter", icon: FilePenLine, canView: canUseClinicalTools },
+    { href: "/case-study", label: "Case Study", icon: FileText, canView: canUseClinicalTools },
+    { href: "/qr-code", label: "QR Code", icon: QrCode },
+    { href: "/audit", label: "Audit", icon: Settings2, canView: canViewAudit },
     { href: "/training", label: "Training Mode", icon: GraduationCap },
     { href: "/about", label: "About", icon: Info },
-  ];
+  ].filter((item) => !item.canView || item.canView(currentUser?.role));
 
-  if (!isTrainingMode && currentUser?.role === "admin") {
-    menuItems.splice(3, 0, { href: "/care-programs", label: "Care Programs", icon: ClipboardList });
-    menuItems.splice(8, 0, { href: "/earnings", label: "Earnings", icon: BarChart3 });
+  if (!isTrainingMode && canUseClinicalTools(currentUser?.role)) {
+    const caseStudyIndex = menuItems.findIndex((item) => "href" in item && item.href === "/case-study");
+    menuItems.splice(caseStudyIndex >= 0 ? caseStudyIndex : menuItems.length, 0, { href: "/care-programs", label: "Care Programs", icon: ClipboardList });
+  }
+  if (!isTrainingMode && canViewEarnings(currentUser?.role)) {
+    const auditIndex = menuItems.findIndex((item) => "href" in item && item.href === "/audit");
+    menuItems.splice(auditIndex >= 0 ? auditIndex : menuItems.length, 0, { href: "/earnings", label: "Earnings", icon: BarChart3 });
   }
 
   useEffect(() => {
@@ -1127,9 +1132,10 @@ export function SettingsDrawer({
       await onAddUser({
         identifier: userForm.identifier.trim(),
         password: userForm.password,
+        role: userForm.role,
       });
-      setUserSuccess("Staff user added.");
-      setUserForm({ identifier: "", password: "" });
+      setUserSuccess(`${userForm.role === "admin" ? "Admin" : userForm.role === "doctor" ? "Doctor" : "Staff"} user added.`);
+      setUserForm({ identifier: "", password: "", role: "staff" });
       setIsAddUserOpen(false);
     } catch (saveError) {
       setUserError(saveError instanceof Error ? saveError.message : "Failed to add user.");
@@ -2096,7 +2102,7 @@ export function SettingsDrawer({
         }}
         onSubmit={handleAddUser}
         onUserFormChange={(patch) => setUserForm((current) => ({ ...current, ...patch }))}
-        onUpdateUserRole={onUpdateUserRole ?? (async (userId: string, role: "admin" | "staff") => {
+        onUpdateUserRole={onUpdateUserRole ?? (async (userId: string, role: UserRole) => {
           void userId;
           void role;
           throw new Error("User role updates are unavailable.");

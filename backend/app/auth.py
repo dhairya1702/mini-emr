@@ -342,6 +342,12 @@ async def require_admin(current_user: UserOut = Depends(get_current_user)) -> Us
     return current_user
 
 
+async def require_admin_or_doctor(current_user: UserOut = Depends(get_current_user)) -> UserOut:
+    if current_user.role not in {"admin", "doctor"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Clinical access required.")
+    return current_user
+
+
 def _super_admin_identifiers() -> set[str]:
     settings = get_settings()
     raw = str(getattr(settings, "super_admin_identifiers", "") or "")

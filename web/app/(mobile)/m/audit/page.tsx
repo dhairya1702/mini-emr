@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
-import { MobileAdminGate } from "@/components/mobile/mobile-admin-gate";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { api } from "@/lib/api";
+import { canViewAudit } from "@/lib/permissions";
 import type { AuditEvent } from "@/lib/types";
 
 function formatDate(value: string) {
@@ -20,7 +20,7 @@ export default function MobileAuditPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") return;
+    if (!isAuthReady || isRedirectingToLogin || !canViewAudit(currentUser?.role)) return;
     let active = true;
     setIsLoading(true);
     api.listAuditEvents({ limit: 100 })
@@ -41,8 +41,13 @@ export default function MobileAuditPage() {
   }, [currentUser, isAuthReady, isRedirectingToLogin]);
 
   return (
-    <MobileAdminGate title="Audit">
-      <MobileShell title="Audit">
+    <MobileShell title="Audit">
+      {!isAuthReady || isRedirectingToLogin ? (
+        <p className="clinic-empty-state">Loading...</p>
+      ) : !canViewAudit(currentUser?.role) ? (
+        <p className="clinic-empty-state">Access restricted.</p>
+      ) : (
+        <>
         {error ? <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
         {isLoading ? (
           <p className="clinic-empty-state">Loading audit events...</p>
@@ -62,7 +67,8 @@ export default function MobileAuditPage() {
             {!events.length ? <p className="clinic-empty-state">No audit events yet.</p> : null}
           </div>
         )}
-      </MobileShell>
-    </MobileAdminGate>
+        </>
+      )}
+    </MobileShell>
   );
 }

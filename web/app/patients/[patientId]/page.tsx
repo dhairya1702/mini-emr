@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
 import { api } from "@/lib/api";
+import { canUseClinicalTools } from "@/lib/permissions";
 import { saveRecentPatient } from "@/lib/recent-patients";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { Patient, PatientChartVisit, PatientTimelineEvent, PatientVisitDetail } from "@/lib/types";
@@ -100,7 +101,7 @@ export default function PatientChartPage() {
       fullScreen
       fullScreenBackLabel={backLabel}
       readOnly={fromHistory}
-      canRefer={currentUser?.role === "admin"}
+      canRefer={canUseClinicalTools(currentUser?.role)}
       onLoadVisits={handleLoadPatientVisits}
       onLoadVisitDetail={handleLoadPatientVisitDetail}
       onLoadTimeline={handleLoadPatientTimeline}

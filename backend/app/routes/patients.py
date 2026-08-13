@@ -422,8 +422,8 @@ async def update_patient(
     updates = payload.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided.")
-    if current_user.role != "admin" and updates.get("status") == "consultation":
-        raise HTTPException(status_code=403, detail="Admin access required to start consultation.")
+    if current_user.role not in {"admin", "doctor"} and updates.get("status") == "consultation":
+        raise HTTPException(status_code=403, detail="Clinical access required to start consultation.")
 
     try:
         return await update_patient_workflow(repo, current_user, patient_id, payload)

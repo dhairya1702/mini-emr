@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { LetterFormState, SettingsDrawerLetterPanel } from "@/components/settings-drawer-letter-panel";
 import { api } from "@/lib/api";
+import { canUseClinicalTools } from "@/lib/permissions";
 import { printBlob } from "@/lib/print";
 import { hasUserSignature } from "@/lib/setup-checklist";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
@@ -62,7 +63,7 @@ export default function GenerateLetterPage() {
     handleExportPatientsCsv,
     handleExportVisitsCsv,
     handleExportInvoicesCsv,
-  } = useClinicShellPage({ loadPageData, onPageData });
+  } = useClinicShellPage({ canLoadPageData: (user) => canUseClinicalTools(user.role), loadPageData, onPageData });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
   const setupWarnings = [
     !clinicSettings?.email_configured ? "Clinic sender email is not configured yet." : "",
@@ -185,6 +186,7 @@ export default function GenerateLetterPage() {
 
   if (isRedirectingToLogin) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to login...</div></main>;
   if (!isAuthReady) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Loading ClinicOS...</div></main>;
+  if (!canUseClinicalTools(currentUser?.role)) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Access restricted.</div></main>;
 
   return (
     <main className="clinic-page">

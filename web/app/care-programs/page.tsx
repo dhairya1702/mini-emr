@@ -25,6 +25,7 @@ import { CareProgramEnrollmentModal } from "@/components/care-programs/care-prog
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { HistoricalMyopiaModal } from "@/components/optometry/myopia/historical-myopia-modal";
 import { api } from "@/lib/api";
+import { canUseClinicalTools } from "@/lib/permissions";
 import type {
   CareProgramOffering,
   MyopiaMeasurementPayload,
@@ -88,7 +89,7 @@ export default function CareProgramsPage() {
 
   useEffect(() => {
     if (!isAuthReady || isRedirectingToLogin || !currentUser) return;
-    if (currentUser.role !== "admin") {
+    if (!canUseClinicalTools(currentUser.role)) {
       router.replace("/");
       return;
     }
@@ -109,7 +110,7 @@ export default function CareProgramsPage() {
     pending: enrollments.filter((row) => row.status === "pending").length,
     unassigned: enrollments.filter((row) => row.status === "active" && !row.responsible_user_id).length,
   }), [enrollments]);
-  const doctorUsers = useMemo(() => users.filter((user) => user.role === "admin"), [users]);
+  const doctorUsers = useMemo(() => users.filter((user) => canUseClinicalTools(user.role)), [users]);
 
   const filteredEnrollments = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();

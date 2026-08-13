@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api_errors import bad_request_error
-from app.auth import get_current_user, require_admin
+from app.auth import get_current_user
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import CatalogItemCreate, CatalogItemOut, CatalogItemUpdate, CatalogStockUpdate, MedicineCatalogItemOut
@@ -27,7 +27,7 @@ async def list_active_medicines(
 
 @router.get("/catalog", response_model=list[CatalogItemOut])
 async def list_catalog(
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> list[CatalogItemOut]:
     items = await repo.list_catalog_items(str(current_user.org_id))
@@ -37,7 +37,7 @@ async def list_catalog(
 @router.post("/catalog", response_model=CatalogItemOut, status_code=201)
 async def create_catalog_item(
     payload: CatalogItemCreate,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> CatalogItemOut:
     try:
@@ -50,7 +50,7 @@ async def create_catalog_item(
 async def update_catalog_stock(
     item_id: str,
     payload: CatalogStockUpdate,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> CatalogItemOut:
     try:
@@ -63,7 +63,7 @@ async def update_catalog_stock(
 async def update_catalog_item(
     item_id: str,
     payload: CatalogItemUpdate,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> CatalogItemOut:
     try:
@@ -75,7 +75,7 @@ async def update_catalog_item(
 @router.delete("/catalog/{item_id}", status_code=204)
 async def delete_catalog_item(
     item_id: str,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> None:
     try:

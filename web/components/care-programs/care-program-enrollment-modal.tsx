@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { api } from "@/lib/api";
+import { canUseClinicalTools } from "@/lib/permissions";
 import type {
   AuthUser,
   CareProgramOffering,
@@ -42,7 +43,7 @@ export function CareProgramEnrollmentModal({
   onComplete: (enrollment: ProgramEnrollment, message: string) => void | Promise<void>;
 }) {
   const { users: clinicUsers, loadUsers } = useClinicShell();
-  const users = clinicUsers.filter((user) => user.role === "admin");
+  const users = clinicUsers.filter((user) => canUseClinicalTools(user.role));
   const activeOfferings = offerings.filter((offering) => offering.is_active && offering.catalog_item_id);
   const initialOffering = activeOfferings[0] || null;
   const [mode, setMode] = useState<"existing" | "new">("existing");

@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { MobileShell } from "@/components/mobile/mobile-shell";
@@ -9,14 +8,12 @@ import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-d
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 
 export default function MobileUsersPage() {
-  const router = useRouter();
   const { currentUser, isAuthReady, isRedirectingToLogin } = useClinicShell();
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [userForm, setUserForm] = useState<UserFormState>({ identifier: "", password: "" });
+  const [userForm, setUserForm] = useState<UserFormState>({ identifier: "", password: "", role: "staff" });
   const [userError, setUserError] = useState("");
   const [userSuccess, setUserSuccess] = useState("");
   const [isAddingUser, setIsAddingUser] = useState(false);
-  const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(async () => null, []);
   const onPageData = useCallback(() => undefined, []);
   const {
@@ -28,19 +25,12 @@ export default function MobileUsersPage() {
     handleUpdateUserRole,
     handleDeleteUser,
   } = useClinicShellPage({
-    canLoadPageData: canLoadAdminPageData,
     loadPageData,
     onPageData,
   });
 
   useEffect(() => {
-    if (isAuthReady && currentUser?.role === "staff") {
-      router.replace("/m");
-    }
-  }, [currentUser, isAuthReady, router]);
-
-  useEffect(() => {
-    if (isAuthReady && currentUser?.role === "admin") {
+    if (isAuthReady && currentUser) {
       void loadUsers().catch(() => undefined);
     }
   }, [currentUser, isAuthReady, loadUsers]);
@@ -62,9 +52,10 @@ export default function MobileUsersPage() {
       await handleAddStaffUser({
         identifier: userForm.identifier.trim(),
         password: userForm.password,
+        role: userForm.role,
       });
-      setUserSuccess("Staff user added.");
-      setUserForm({ identifier: "", password: "" });
+      setUserSuccess(`${userForm.role === "admin" ? "Admin" : userForm.role === "doctor" ? "Doctor" : "Staff"} user added.`);
+      setUserForm({ identifier: "", password: "", role: "staff" });
       setIsAddUserOpen(false);
     } catch (saveError) {
       setUserError(saveError instanceof Error ? saveError.message : "Failed to add user.");
@@ -77,14 +68,6 @@ export default function MobileUsersPage() {
     return (
       <MobileShell title="Users">
         <p className="clinic-empty-state">Loading...</p>
-      </MobileShell>
-    );
-  }
-
-  if (currentUser?.role === "staff") {
-    return (
-      <MobileShell title="Users">
-        <p className="clinic-empty-state">Redirecting to queue...</p>
       </MobileShell>
     );
   }

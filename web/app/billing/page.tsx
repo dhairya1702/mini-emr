@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
@@ -11,6 +10,7 @@ import { api } from "@/lib/api";
 import { calculateDraftInvoiceTaxTotals } from "@/lib/billing-tax";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { printBlob } from "@/lib/print";
+import { canUseBilling } from "@/lib/permissions";
 import { connectDashboardEvents } from "@/lib/realtime";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { useInfinitePatients } from "@/lib/use-infinite-patients";
@@ -197,7 +197,6 @@ function buildAutoDraftInvoiceItems(
 }
 
 export default function BillingPage() {
-  const router = useRouter();
   const [invoices, setInvoices] = useState<InvoiceSummary[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedBillingPatientId, setSelectedBillingPatientId] = useState("");
@@ -230,7 +229,7 @@ export default function BillingPage() {
   const billingRefreshBackoffRef = useRef(BILLING_REFRESH_INTERVAL_MS);
   const isInvoiceDirtyRef = useRef(false);
   const billingRefreshMountedRef = useRef(false);
-  const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
+  const canLoadBillingPageData = useCallback((user: { role: "admin" | "doctor" | "staff" }) => canUseBilling(user.role), []);
   const loadPageData = useCallback(async () => {
     return api.getBillingDashboard({ recent_invoice_limit: RECENT_INVOICE_LIMIT });
   }, []);
@@ -270,7 +269,7 @@ export default function BillingPage() {
     handleExportVisitsCsv,
     handleExportInvoicesCsv,
   } = useClinicShellPage({
-    canLoadPageData: canLoadAdminPageData,
+    canLoadPageData: canLoadBillingPageData,
     loadPageData,
     onPageData,
   });
@@ -284,7 +283,7 @@ export default function BillingPage() {
     isLoadingMore: isLoadingMorePatients,
     sentinelRef: patientSentinelRef,
   } = useInfinitePatients({
-    enabled: isAuthReady && !isRedirectingToLogin && currentUser?.role === "admin",
+    enabled: isAuthReady && !isRedirectingToLogin && canUseBilling(currentUser?.role),
     status: "done",
     billed: false,
   });
@@ -311,13 +310,7 @@ export default function BillingPage() {
   }, [isInvoiceDirty, reloadPatients]);
 
   useEffect(() => {
-    if (isAuthReady && currentUser?.role === "staff") {
-      router.replace("/");
-    }
-  }, [currentUser, isAuthReady, router]);
-
-  useEffect(() => {
-    if (isAuthReady && currentUser?.role === "admin") {
+    if (isAuthReady && canUseBilling(currentUser?.role)) {
       void loadCatalogItems().catch(() => undefined);
     }
   }, [currentUser, isAuthReady, loadCatalogItems]);
@@ -373,7 +366,7 @@ export default function BillingPage() {
   }, [reloadPatients]);
 
   useEffect(() => {
-    if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") {
+    if (!isAuthReady || isRedirectingToLogin || !canUseBilling(currentUser?.role)) {
       billingRefreshMountedRef.current = false;
       return;
     }
@@ -410,7 +403,7 @@ export default function BillingPage() {
   }, [currentUser, isAuthReady, isRedirectingToLogin, isSoloWorkspace, refreshBillingData]);
 
   useEffect(() => {
-    if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") {
+    if (!isAuthReady || isRedirectingToLogin || !canUseBilling(currentUser?.role)) {
       return;
     }
 
@@ -738,7 +731,7 @@ export default function BillingPage() {
 
   if (isRedirectingToLogin) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to login...</div></main>;
   if (!isAuthReady) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Loading ClinicOS...</div></main>;
-  if (currentUser?.role === "staff") return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to queue...</div></main>;
+  if (!canUseBilling(currentUser?.role)) return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-black shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Access restricted.</div></main>;
 
   return (
     <main className="clinic-page">

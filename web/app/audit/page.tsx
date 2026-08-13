@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { RefreshCw, X } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { api } from "@/lib/api";
+import { canViewAudit } from "@/lib/permissions";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { AuditEvent } from "@/lib/types";
 
@@ -55,19 +55,19 @@ function getActionLabel(action: string) {
     follow_up_created: "Created",
     follow_up_updated: "Updated",
     staff_user_created: "Created",
+    user_created: "Created",
   };
   return labels[action] || action.replaceAll("_", " ");
 }
 
 export default function AuditPage() {
-  const router = useRouter();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [auditError, setAuditError] = useState("");
   const [isAuditLoading, setIsAuditLoading] = useState(false);
   const [actionFilter, setActionFilter] = useState("all");
   const [entityFilter, setEntityFilter] = useState("all");
   const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);
-  const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
+  const canLoadAuditPageData = useCallback((user: { role: "admin" | "doctor" | "staff" }) => canViewAudit(user.role), []);
   const loadPageData = useCallback(async () => null, []);
   const onPageData = useCallback(() => undefined, []);
   const {
@@ -97,17 +97,11 @@ export default function AuditPage() {
     handleExportVisitsCsv,
     handleExportInvoicesCsv,
   } = useClinicShellPage({
-    canLoadPageData: canLoadAdminPageData,
+    canLoadPageData: canLoadAuditPageData,
     loadPageData,
     onPageData,
   });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
-
-  useEffect(() => {
-    if (isAuthReady && currentUser?.role === "staff") {
-      router.replace("/");
-    }
-  }, [currentUser, isAuthReady, router]);
 
   const handleRefreshAudit = useCallback(async () => {
     setIsAuditLoading(true);
@@ -122,7 +116,7 @@ export default function AuditPage() {
   }, [loadAuditEvents]);
 
   useEffect(() => {
-    if (isAuthReady && currentUser?.role === "admin") {
+    if (isAuthReady && canViewAudit(currentUser?.role)) {
       void handleRefreshAudit();
     }
   }, [currentUser, handleRefreshAudit, isAuthReady]);
@@ -211,8 +205,8 @@ export default function AuditPage() {
   if (!isAuthReady) {
     return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Loading ClinicOS...</div></main>;
   }
-  if (currentUser?.role === "staff") {
-    return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to queue...</div></main>;
+  if (!canViewAudit(currentUser?.role)) {
+    return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Access restricted.</div></main>;
   }
 
   return (

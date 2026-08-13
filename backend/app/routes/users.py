@@ -20,12 +20,25 @@ async def create_staff_user(
     current_user: UserOut = Depends(require_admin),
     repo: AppRepository = Depends(get_repository),
 ) -> UserOut:
+    return await create_staff_user_workflow(
+        repo,
+        current_user,
+        StaffUserCreate(identifier=payload.identifier, password=payload.password, role="staff"),
+    )
+
+
+@router.post("/users", response_model=UserOut, status_code=201)
+async def create_user(
+    payload: StaffUserCreate,
+    current_user: UserOut = Depends(require_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> UserOut:
     return await create_staff_user_workflow(repo, current_user, payload)
 
 
 @router.get("/users", response_model=list[UserOut])
 async def list_users(
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> list[UserOut]:
     users = await repo.list_users(str(current_user.org_id))
@@ -43,7 +56,7 @@ async def update_user_role(
         target = await repo.get_user_for_org(str(current_user.org_id), user_id)
         if (
             target.get("role") == "admin"
-            and payload.role == "staff"
+            and payload.role != "admin"
             and await repo.count_admins_for_org(str(current_user.org_id)) <= 1
         ):
             raise HTTPException(status_code=400, detail="Every clinic must retain at least one admin.")

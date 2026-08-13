@@ -1,4 +1,5 @@
 import type { UserRole } from "@/lib/types";
+import { canManageClinicSettings, canUseBilling, canUseClinicalTools, canUseInventory, canViewAudit, canViewEarnings } from "@/lib/permissions";
 
 export type MobileNavItemKey =
   | "queue"
@@ -23,7 +24,7 @@ export type MobileNavItem = {
   key: MobileNavItemKey;
   href: string;
   label: string;
-  adminOnly?: boolean;
+  canView?: (role: UserRole | null | undefined) => boolean;
 };
 
 export const mobileNavItems: MobileNavItem[] = [
@@ -31,23 +32,23 @@ export const mobileNavItems: MobileNavItem[] = [
   { key: "appointments", href: "/m/appointments", label: "Appointments" },
   { key: "patients", href: "/m/patients", label: "Patients" },
   { key: "qr-code", href: "/qr-code", label: "QR Code" },
-  { key: "care-programs", href: "/care-programs", label: "Care Programs", adminOnly: true },
-  { key: "billing", href: "/m/billing", label: "Billing", adminOnly: true },
-  { key: "inventory", href: "/m/inventory", label: "Inventory", adminOnly: true },
+  { key: "care-programs", href: "/care-programs", label: "Care Programs", canView: canUseClinicalTools },
+  { key: "billing", href: "/m/billing", label: "Billing", canView: canUseBilling },
+  { key: "inventory", href: "/m/inventory", label: "Inventory", canView: canUseInventory },
   { key: "history", href: "/m/history", label: "History" },
-  { key: "generate-letter", href: "/m/generate-letter", label: "Generate Letter", adminOnly: true },
-  { key: "earnings", href: "/m/earnings", label: "Earnings", adminOnly: true },
-  { key: "case-study", href: "/m/case-study", label: "Case Study", adminOnly: true },
-  { key: "users", href: "/m/users", label: "Users", adminOnly: true },
-  { key: "clinic", href: "/m/clinic", label: "Clinic", adminOnly: true },
+  { key: "generate-letter", href: "/m/generate-letter", label: "Generate Letter", canView: canUseClinicalTools },
+  { key: "earnings", href: "/m/earnings", label: "Earnings", canView: canViewEarnings },
+  { key: "case-study", href: "/m/case-study", label: "Case Study", canView: canUseClinicalTools },
+  { key: "users", href: "/m/users", label: "Users" },
+  { key: "clinic", href: "/m/clinic", label: "Clinic", canView: canManageClinicSettings },
   { key: "account", href: "/m/account", label: "Account" },
-  { key: "audit", href: "/m/audit", label: "Audit", adminOnly: true },
+  { key: "audit", href: "/m/audit", label: "Audit", canView: canViewAudit },
   { key: "training", href: "/m/training", label: "Training Mode" },
   { key: "about", href: "/m/about", label: "About" },
 ];
 
 export function getVisibleMobileNavItems(role: UserRole | null | undefined) {
-  return mobileNavItems.filter((item) => !item.adminOnly || role === "admin");
+  return mobileNavItems.filter((item) => !item.canView || item.canView(role));
 }
 
 export function isMobileNavItemActive(pathname: string, item: MobileNavItem) {

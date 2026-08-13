@@ -5,6 +5,7 @@ import { Bell, CalendarDays, LogOut, Menu, Search } from "lucide-react";
 import Link from "next/link";
 
 import { AuthUser } from "@/lib/types";
+import { canUseBilling, canUseInventory, canViewEarnings } from "@/lib/permissions";
 
 interface AppHeaderProps {
   clinicName: string;
@@ -61,11 +62,11 @@ export function AppHeader({
     { href: "/", label: "Queue", key: "queue" },
     { href: "/appointments", label: "Appointments", key: "appointments" },
     { href: "/patients", label: "Patients", key: "patients" },
-    { href: "/billing", label: "Billing", key: "billing" },
-    { href: "/inventory", label: "Inventory", key: "inventory" },
+    { href: "/billing", label: "Billing", key: "billing", canView: canUseBilling },
+    { href: "/inventory", label: "Inventory", key: "inventory", canView: canUseInventory },
     { href: "/history", label: "History", key: "history" },
-    { href: "/earnings", label: "Earnings", key: "earnings" },
-  ] as const;
+    { href: "/earnings", label: "Earnings", key: "earnings", canView: canViewEarnings },
+  ].filter((item) => !item.canView || item.canView(currentUser?.role));
 
   function handleGlobalSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

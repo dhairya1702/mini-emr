@@ -6,6 +6,7 @@ import { Copy, Download, FileText, RefreshCw, Search, Sparkles } from "lucide-re
 import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
 import { api } from "@/lib/api";
+import { canUseClinicalTools } from "@/lib/permissions";
 import { CaseStudy, CaseStudySavePayload, CaseStudyTemplateKey, Patient, PatientCaseStudySource } from "@/lib/types";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 
@@ -112,7 +113,7 @@ export default function CaseStudyPage() {
     handleExportVisitsCsv,
     handleExportInvoicesCsv,
   } = useClinicShellPage({
-    canLoadPageData: (user) => user.role === "admin",
+    canLoadPageData: (user) => canUseClinicalTools(user.role),
     loadPageData,
     onPageData,
   });
@@ -328,7 +329,7 @@ export default function CaseStudyPage() {
     );
   }
 
-  if (currentUser?.role !== "admin") {
+  if (!canUseClinicalTools(currentUser?.role)) {
     return (
       <main className="clinic-page">
         <div className="clinic-container">
@@ -340,7 +341,7 @@ export default function CaseStudyPage() {
             onLogout={handleLogout}
           />
           <section className="rounded-[20px] border border-amber-200 bg-amber-50/80 p-6 text-slate-700 shadow-[0_20px_60px_rgba(250,204,21,0.12)]">
-            Case Study is admin-only because it generates and stores AI-authored clinical documents.
+            Case Study requires clinical access because it generates and stores AI-authored clinical documents.
           </section>
         </div>
       </main>

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.api_errors import bad_request_error, internal_server_error
-from app.auth import require_admin
+from app.auth import get_current_user
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.billing import (
@@ -39,7 +39,7 @@ router = APIRouter()
 
 @router.get("/billing/status", response_model=BillingStatusOut)
 async def get_billing_status(
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> BillingStatusOut:
     try:
@@ -51,7 +51,7 @@ async def get_billing_status(
 @router.get("/billing/dashboard", response_model=BillingDashboardOut)
 async def get_billing_dashboard(
     recent_invoice_limit: int = Query(default=5, ge=1, le=20),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> BillingDashboardOut:
     try:
@@ -68,7 +68,7 @@ async def get_billing_dashboard(
 @router.get("/invoices/summaries", response_model=list[InvoiceSummaryOut])
 async def list_invoice_summaries(
     limit: int = Query(default=5, ge=1, le=20),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> list[InvoiceSummaryOut]:
     try:
@@ -81,7 +81,7 @@ async def list_invoice_summaries(
 @router.get("/notes/{note_id}/billing-suggestions", response_model=BillingSuggestionsResponse)
 async def get_note_billing_suggestions(
     note_id: str,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> BillingSuggestionsResponse:
     try:
@@ -93,7 +93,7 @@ async def get_note_billing_suggestions(
 @router.post("/invoices", response_model=InvoiceOut, status_code=201)
 async def create_invoice(
     payload: InvoiceCreate,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> InvoiceOut:
     try:
@@ -106,7 +106,7 @@ async def create_invoice(
 async def list_invoices(
     limit: int = Query(default=500, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> list[InvoiceOut]:
     return await list_invoices_with_user_names(
@@ -120,7 +120,7 @@ async def list_invoices(
 @router.post("/invoices/finalize", response_model=InvoiceActionResponse)
 async def finalize_invoice(
     payload: FinalizeInvoiceRequest,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> InvoiceActionResponse:
     try:
@@ -133,7 +133,7 @@ async def finalize_invoice(
 async def update_invoice_payment(
     invoice_id: str,
     payload: InvoicePaymentUpdate,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> InvoiceActionResponse:
     try:
@@ -145,7 +145,7 @@ async def update_invoice_payment(
 @router.post("/send-invoice", response_model=InvoiceActionResponse)
 async def send_invoice(
     payload: SendInvoiceRequest,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> InvoiceActionResponse:
     try:
@@ -157,7 +157,7 @@ async def send_invoice(
 @router.post("/send-invoice-whatsapp", response_model=InvoiceActionResponse)
 async def send_invoice_whatsapp(
     payload: SendInvoiceWhatsAppRequest,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
     repo: AppRepository = Depends(get_repository),
 ) -> InvoiceActionResponse:
     try:
@@ -170,7 +170,7 @@ async def send_invoice_whatsapp(
 async def generate_invoice_pdf(
     invoice_id: str,
     repo: AppRepository = Depends(get_repository),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(get_current_user),
 ) -> StreamingResponse:
     try:
         invoice = await repo.get_invoice(str(current_user.org_id), invoice_id)

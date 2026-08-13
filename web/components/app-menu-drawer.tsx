@@ -23,6 +23,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 
 import type { AuthUser } from "@/lib/types";
+import { canManageClinicSettings, canUseBilling, canUseClinicalTools, canUseInventory, canViewAudit, canViewEarnings } from "@/lib/permissions";
 
 interface AppMenuDrawerProps {
   open: boolean;
@@ -38,22 +39,22 @@ export function AppMenuDrawer({ open, currentUser, onClose }: AppMenuDrawerProps
   const items = [
     { href: "/", label: "Queue", icon: LayoutDashboard },
     { href: "/appointments", label: "Appointments", icon: CalendarClock },
+    { href: "/billing", label: "Billing", icon: CreditCard, canView: canUseBilling },
+    { href: "/inventory", label: "Inventory", icon: Stethoscope, canView: canUseInventory },
     { href: "/patients", label: "Patients", icon: Search },
-    { href: "/qr-code", label: "QR Code", icon: QrCode },
-    { href: "/care-programs", label: "Care Programs", icon: ClipboardList, adminOnly: true },
-    { href: "/billing", label: "Billing", icon: CreditCard, adminOnly: true },
-    { href: "/inventory", label: "Inventory", icon: Stethoscope, adminOnly: true },
     { href: "/history", label: "History", icon: History },
-    { href: "/generate-letter", label: "Generate Letter", icon: FilePenLine, adminOnly: true },
-    { href: "/earnings", label: "Earnings", icon: BarChart3, adminOnly: true },
-    { href: "/case-study", label: "Case Study", icon: FileText, adminOnly: true },
-    { href: "/users", label: "Users", icon: UserPlus, adminOnly: true },
-    { href: "/clinic", label: "Clinic", icon: Building2, adminOnly: true },
+    { href: "/users", label: "Users", icon: UserPlus },
+    { href: "/clinic", label: "Clinic", icon: Building2, canView: canManageClinicSettings },
     { href: "/account", label: "Account", icon: User },
-    { href: "/audit", label: "Audit", icon: Settings2, adminOnly: true },
+    { href: "/generate-letter", label: "Generate Letter", icon: FilePenLine, canView: canUseClinicalTools },
+    { href: "/care-programs", label: "Care Programs", icon: ClipboardList, canView: canUseClinicalTools },
+    { href: "/case-study", label: "Case Study", icon: FileText, canView: canUseClinicalTools },
+    { href: "/qr-code", label: "QR Code", icon: QrCode },
+    { href: "/earnings", label: "Earnings", icon: BarChart3, canView: canViewEarnings },
+    { href: "/audit", label: "Audit", icon: Settings2, canView: canViewAudit },
     { href: "/training", label: "Training Mode", icon: GraduationCap },
     { href: "/about", label: "About", icon: Info },
-  ].filter((item) => !item.adminOnly || currentUser?.role === "admin");
+  ].filter((item) => !item.canView || item.canView(currentUser?.role));
 
   return (
     <div className="fixed inset-0 z-40">

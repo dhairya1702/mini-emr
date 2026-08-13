@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
 from app.api_errors import bad_request_error
-from app.auth import require_admin
+from app.auth import require_admin_or_doctor
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.care_programs import (
@@ -38,7 +38,7 @@ router = APIRouter()
 
 @router.get("/care-programs/offerings", response_model=list[CareProgramOfferingOut])
 async def get_care_program_offerings(
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
     repo: AppRepository = Depends(get_repository),
 ) -> list[CareProgramOfferingOut]:
     try:
@@ -50,7 +50,7 @@ async def get_care_program_offerings(
 @router.put("/care-programs/offerings/myopia-care", response_model=CareProgramOfferingOut)
 async def put_myopia_care_offering(
     payload: MyopiaOfferingUpdate,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
     repo: AppRepository = Depends(get_repository),
 ) -> CareProgramOfferingOut:
     try:
@@ -63,7 +63,7 @@ async def put_myopia_care_offering(
 async def list_care_program_enrollments(
     patient_id: str | None = Query(default=None),
     status: str | None = Query(default=None),
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
     repo: AppRepository = Depends(get_repository),
 ) -> list[ProgramEnrollmentSummaryOut]:
     return await list_enrollments_workflow(
@@ -74,7 +74,7 @@ async def list_care_program_enrollments(
 @router.get("/care-programs/enrollments/{enrollment_id}", response_model=ProgramEnrollmentOut)
 async def get_care_program_enrollment(
     enrollment_id: str,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
     repo: AppRepository = Depends(get_repository),
 ) -> ProgramEnrollmentOut:
     try:
@@ -87,7 +87,7 @@ async def get_care_program_enrollment(
 async def assign_care_program_enrollment(
     enrollment_id: str,
     payload: ProgramAssigneeUpdate,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
     repo: AppRepository = Depends(get_repository),
 ) -> ProgramEnrollmentOut:
     try:
@@ -102,7 +102,7 @@ async def assign_care_program_enrollment(
 async def cancel_care_program_enrollment(
     enrollment_id: str,
     payload: ProgramCancellationRequest,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
     repo: AppRepository = Depends(get_repository),
 ) -> ProgramEnrollmentOut:
     try:
@@ -119,7 +119,7 @@ async def complete_care_program_review(
     enrollment_id: str,
     event_id: str,
     payload: ProgramReviewCompleteRequest,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
     repo: AppRepository = Depends(get_repository),
 ) -> ProgramEnrollmentOut:
     try:
@@ -138,7 +138,7 @@ async def create_care_program_report(
     enrollment_id: str,
     event_id: str,
     payload: ProgramReportCreate,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
     repo: AppRepository = Depends(get_repository),
 ) -> ProgramReportOut:
     try:
@@ -152,7 +152,7 @@ async def create_care_program_report(
 @router.get("/care-program-reports/{report_id}/pdf")
 async def get_care_program_report_pdf(
     report_id: str,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
     repo: AppRepository = Depends(get_repository),
 ) -> StreamingResponse:
     try:
@@ -170,7 +170,7 @@ async def get_care_program_report_pdf(
 async def send_care_program_report_whatsapp(
     report_id: str,
     payload: ProgramReportWhatsAppRequest,
-    current_user: UserOut = Depends(require_admin),
+    current_user: UserOut = Depends(require_admin_or_doctor),
     repo: AppRepository = Depends(get_repository),
 ) -> dict[str, str | bool]:
     try:

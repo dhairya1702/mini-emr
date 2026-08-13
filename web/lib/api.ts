@@ -575,7 +575,7 @@ export const api = {
   listAuditEvents: (params?: { limit?: number }) =>
     request<AuditEvent[]>(withQuery("/audit-events", params ?? {})),
   createStaffUser: (payload: StaffUserCreatePayload) =>
-    request<AuthUser>("/users/staff", {
+    request<AuthUser>("/users", {
       method: "POST",
       body: JSON.stringify(payload),
     }),

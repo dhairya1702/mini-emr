@@ -1,4 +1,5 @@
-import type { PatientStatus } from "@/lib/types";
+import type { PatientStatus, UserRole } from "@/lib/types";
+import { canUseClinicalTools } from "@/lib/permissions";
 
 export type QueueOrder = Record<PatientStatus, string[]>;
 
@@ -64,14 +65,14 @@ export function movePatientBetweenQueueColumns(
 }
 
 export function canMovePatientStatus(
-  role: "admin" | "staff" | undefined,
+  role: UserRole | undefined,
   fromStatus: PatientStatus,
   toStatus: PatientStatus,
 ): boolean {
   if (fromStatus === toStatus) {
     return true;
   }
-  if (role !== "admin") {
+  if (!canUseClinicalTools(role)) {
     return false;
   }
   return (

@@ -8,6 +8,7 @@ import { AppHeader } from "@/components/app-header";
 import { AppMenuDrawer } from "@/components/app-menu-drawer";
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { api } from "@/lib/api";
+import { canUseClinicalTools } from "@/lib/permissions";
 import type { CareProgramOffering } from "@/lib/types";
 
 export default function ManageCareProgramsPage() {
@@ -20,7 +21,7 @@ export default function ManageCareProgramsPage() {
 
   useEffect(() => {
     if (!isAuthReady || isRedirectingToLogin || !currentUser) return;
-    if (currentUser.role !== "admin") {
+    if (!canUseClinicalTools(currentUser.role)) {
       router.replace("/");
       return;
     }

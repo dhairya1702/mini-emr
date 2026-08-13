@@ -3,8 +3,8 @@
 import { useEffect, useMemo } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
-import { MobileAdminGate } from "@/components/mobile/mobile-admin-gate";
 import { MobileShell } from "@/components/mobile/mobile-shell";
+import { canUseInventory } from "@/lib/permissions";
 import type { CatalogItem } from "@/lib/types";
 
 function itemTypeLabel(item: CatalogItem) {
@@ -26,7 +26,7 @@ export default function MobileInventoryPage() {
   } = useClinicShell();
 
   useEffect(() => {
-    if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") {
+    if (!isAuthReady || isRedirectingToLogin || !canUseInventory(currentUser?.role)) {
       return;
     }
     void loadCatalogItems().catch(() => undefined);
@@ -38,8 +38,13 @@ export default function MobileInventoryPage() {
   );
 
   return (
-    <MobileAdminGate title="Inventory">
-      <MobileShell title="Inventory">
+    <MobileShell title="Inventory">
+      {!isAuthReady || isRedirectingToLogin ? (
+        <p className="clinic-empty-state">Loading...</p>
+      ) : !canUseInventory(currentUser?.role) ? (
+        <p className="clinic-empty-state">Access restricted.</p>
+      ) : (
+        <>
         {error ? <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
         {isLoading && !isCatalogLoaded ? (
           <p className="clinic-empty-state">Loading inventory...</p>
@@ -64,7 +69,8 @@ export default function MobileInventoryPage() {
             {!sortedItems.length ? <p className="clinic-empty-state">No inventory items yet.</p> : null}
           </div>
         )}
-      </MobileShell>
-    </MobileAdminGate>
+        </>
+      )}
+    </MobileShell>
   );
 }

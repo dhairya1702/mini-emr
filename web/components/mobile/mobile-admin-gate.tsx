@@ -5,22 +5,25 @@ import { ReactNode, useEffect } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { MobileShell } from "@/components/mobile/mobile-shell";
+import type { UserRole } from "@/lib/types";
 
 export function MobileAdminGate({
   title,
+  canAccess = (role) => role === "admin",
   children,
 }: {
   title: string;
+  canAccess?: (role: UserRole | null | undefined) => boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
   const { currentUser, isAuthReady, isRedirectingToLogin } = useClinicShell();
 
   useEffect(() => {
-    if (isAuthReady && currentUser?.role === "staff") {
+    if (isAuthReady && currentUser && !canAccess(currentUser.role)) {
       router.replace("/m");
     }
-  }, [currentUser, isAuthReady, router]);
+  }, [canAccess, currentUser, isAuthReady, router]);
 
   if (!isAuthReady || isRedirectingToLogin) {
     return (
@@ -30,7 +33,7 @@ export function MobileAdminGate({
     );
   }
 
-  if (currentUser?.role === "staff") {
+  if (!canAccess(currentUser?.role)) {
     return (
       <MobileShell title={title}>
         <p className="clinic-empty-state">Redirecting to queue...</p>

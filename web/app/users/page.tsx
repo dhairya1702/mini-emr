@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { AppHeader } from "@/components/app-header";
 import { LazySettingsDrawer } from "@/components/lazy-settings-drawer";
@@ -10,15 +9,13 @@ import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 
 export default function UsersPage() {
-  const router = useRouter();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [openAddFirstStaffSetup, setOpenAddFirstStaffSetup] = useState(false);
-  const [userForm, setUserForm] = useState<UserFormState>({ identifier: "", password: "" });
+  const [userForm, setUserForm] = useState<UserFormState>({ identifier: "", password: "", role: "staff" });
   const [userError, setUserError] = useState("");
   const [userSuccess, setUserSuccess] = useState("");
   const [isAddingUser, setIsAddingUser] = useState(false);
-  const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(async () => null, []);
   const onPageData = useCallback(() => undefined, []);
   const {
@@ -51,20 +48,13 @@ export default function UsersPage() {
     handleExportVisitsCsv,
     handleExportInvoicesCsv,
   } = useClinicShellPage({
-    canLoadPageData: canLoadAdminPageData,
     loadPageData,
     onPageData,
   });
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
 
   useEffect(() => {
-    if (isAuthReady && currentUser?.role === "staff") {
-      router.replace("/");
-    }
-  }, [currentUser, isAuthReady, router]);
-
-  useEffect(() => {
-    if (isAuthReady && currentUser?.role === "admin") {
+    if (isAuthReady && currentUser) {
       void loadUsers().catch(() => undefined);
     }
   }, [currentUser, isAuthReady, loadUsers]);
@@ -104,9 +94,10 @@ export default function UsersPage() {
       await handleAddStaffUser({
         identifier: userForm.identifier.trim(),
         password: userForm.password,
+        role: userForm.role,
       });
-      setUserSuccess("Staff user added.");
-      setUserForm({ identifier: "", password: "" });
+      setUserSuccess(`${userForm.role === "admin" ? "Admin" : userForm.role === "doctor" ? "Doctor" : "Staff"} user added.`);
+      setUserForm({ identifier: "", password: "", role: "staff" });
       setIsAddUserOpen(false);
     } catch (saveError) {
       setUserError(saveError instanceof Error ? saveError.message : "Failed to add user.");
@@ -121,10 +112,6 @@ export default function UsersPage() {
   if (!isAuthReady) {
     return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Loading ClinicOS...</div></main>;
   }
-  if (currentUser?.role === "staff") {
-    return <main className="flex min-h-screen items-center justify-center px-4"><div className="rounded-[20px] border border-[#dbe7ef] bg-white px-8 py-7 text-sm text-slate-600 shadow-[0_14px_38px_rgba(64,131,181,0.09)]">Redirecting to queue...</div></main>;
-  }
-
   return (
     <main className="clinic-page">
       <div className="clinic-container">

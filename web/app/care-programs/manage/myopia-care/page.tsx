@@ -9,6 +9,7 @@ import { AppMenuDrawer } from "@/components/app-menu-drawer";
 import { MyopiaOfferingEditor } from "@/components/care-programs/myopia-offering-editor";
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { api } from "@/lib/api";
+import { canUseClinicalTools } from "@/lib/permissions";
 import type { CareProgramOffering } from "@/lib/types";
 
 export default function MyopiaCareConfigurationPage() {
@@ -21,7 +22,7 @@ export default function MyopiaCareConfigurationPage() {
 
   useEffect(() => {
     if (!isAuthReady || isRedirectingToLogin || !currentUser) return;
-    if (currentUser.role !== "admin") {
+    if (!canUseClinicalTools(currentUser.role)) {
       router.replace("/");
       return;
     }
