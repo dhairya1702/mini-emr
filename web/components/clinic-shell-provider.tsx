@@ -40,6 +40,8 @@ const SHELL_LOAD_RETRY_DELAY_MS = 350;
 const SHARED_RESOURCE_TTL_MS = 5 * 60 * 1000;
 const QUEUE_RESOURCE_TTL_MS = 30 * 1000;
 const DASHBOARD_STATUS_TTL_MS = 15 * 1000;
+const IDLE_WARNING_MS = 9 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
 type ClinicShellContextValue = {
   currentUser: AuthUser | null;
@@ -104,6 +106,17 @@ function isSessionErrorMessage(message: string) {
   );
 }
 
+function isPublicShellPath(pathname: string) {
+  return (
+    PUBLIC_PATHS.has(pathname) ||
+    pathname.startsWith("/login/") ||
+    pathname === "/superdashboard" ||
+    pathname.startsWith("/superdashboard/") ||
+    pathname === "/superuser" ||
+    pathname.startsWith("/attachment-view")
+  );
+}
+
 function toActiveMedicine(item: CatalogItem): MedicineCatalogItem | null {
   if (item.item_type !== "medicine" || item.is_active === false) return null;
   return {
@@ -141,6 +154,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const [queueRevision, setQueueRevision] = useState("");
   const [isQueueLoaded, setIsQueueLoaded] = useState(false);
   const [isQueueRefreshing, setIsQueueRefreshing] = useState(false);
+  const [isIdleWarningOpen, setIsIdleWarningOpen] = useState(false);
   const hasBootstrappedRef = useRef(false);
   const bootstrapPromiseRef = useRef<Promise<void> | null>(null);
   const usersRef = useRef<AuthUser[]>([]);
@@ -163,6 +177,8 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const dashboardStatusRef = useRef<DashboardStatus | null>(null);
   const dashboardStatusLoadedAtRef = useRef(0);
   const dashboardStatusPromiseRef = useRef<Promise<DashboardStatus> | null>(null);
+  const idleWarningTimeoutRef = useRef<number | null>(null);
+  const idleLogoutTimeoutRef = useRef<number | null>(null);
   const trainingScope = useMemo(() => createTrainingScope(currentUser), [currentUser]);
   const queueScopeRef = useRef("");
 
@@ -270,13 +286,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   }, [trainingScope]);
 
   const loadShell = useCallback(async (force = false) => {
-    const isPublicPath =
-      PUBLIC_PATHS.has(pathname) ||
-      pathname.startsWith("/login/") ||
-      pathname === "/superdashboard" ||
-      pathname.startsWith("/superdashboard/") ||
-      pathname === "/superuser";
-    if (isPublicPath) {
+    if (isPublicShellPath(pathname)) {
       hasBootstrappedRef.current = false;
       setError("");
       setIsRedirectingToLogin(false);
@@ -670,18 +680,87 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const handleLogout = useCallback(() => {
     setIsRedirectingToLogin(true);
     const loginPath = pathname.startsWith("/m") ? "/login/m" : "/login";
-    void api.logout()
-      .catch(() => undefined)
-      .finally(() => {
-        authStorage.clear();
-        clearSharedResources();
-        setCurrentUser(null);
-        setClinicSettings(null);
-        setIsTrainingMode(false);
-        hasBootstrappedRef.current = false;
-        router.replace(loginPath);
+    void api.logout().catch(() => undefined);
+    authStorage.clear();
+    clearSharedResources();
+    setCurrentUser(null);
+    setClinicSettings(null);
+    setIsTrainingMode(false);
+    hasBootstrappedRef.current = false;
+    window.location.replace(loginPath);
+  }, [clearSharedResources, pathname]);
+
+  useEffect(() => {
+    if (!currentUser || isRedirectingToLogin || isPublicShellPath(pathname)) {
+      setIsIdleWarningOpen(false);
+      if (idleWarningTimeoutRef.current !== null) {
+        window.clearTimeout(idleWarningTimeoutRef.current);
+        idleWarningTimeoutRef.current = null;
+      }
+      if (idleLogoutTimeoutRef.current !== null) {
+        window.clearTimeout(idleLogoutTimeoutRef.current);
+        idleLogoutTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    function clearIdleTimers() {
+      if (idleWarningTimeoutRef.current !== null) {
+        window.clearTimeout(idleWarningTimeoutRef.current);
+        idleWarningTimeoutRef.current = null;
+      }
+      if (idleLogoutTimeoutRef.current !== null) {
+        window.clearTimeout(idleLogoutTimeoutRef.current);
+        idleLogoutTimeoutRef.current = null;
+      }
+    }
+
+    function scheduleIdleTimers() {
+      clearIdleTimers();
+      idleWarningTimeoutRef.current = window.setTimeout(() => {
+        setIsIdleWarningOpen(true);
+      }, IDLE_WARNING_MS);
+      idleLogoutTimeoutRef.current = window.setTimeout(() => {
+        handleLogout();
+      }, IDLE_TIMEOUT_MS);
+    }
+
+    function recordActivity() {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+      setIsIdleWarningOpen(false);
+      scheduleIdleTimers();
+    }
+
+    const activityEvents: Array<keyof WindowEventMap> = [
+      "pointerdown",
+      "mousedown",
+      "keydown",
+      "touchstart",
+      "scroll",
+      "focus",
+    ];
+
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, recordActivity, { passive: true });
+    });
+    document.addEventListener("visibilitychange", recordActivity);
+    scheduleIdleTimers();
+
+    return () => {
+      clearIdleTimers();
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, recordActivity);
       });
-  }, [clearSharedResources, pathname, router]);
+      document.removeEventListener("visibilitychange", recordActivity);
+    };
+  }, [currentUser, handleLogout, isRedirectingToLogin, pathname]);
+
+  const staySignedIn = useCallback(() => {
+    setIsIdleWarningOpen(false);
+    window.dispatchEvent(new Event("focus"));
+  }, []);
 
   const enterTrainingMode = useCallback(() => {
     writeTrainingMode(trainingScope, true);
@@ -801,6 +880,38 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   return (
     <ClinicShellContext.Provider value={value}>
       {children}
+      {isIdleWarningOpen ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm" role="presentation">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="idle-timeout-title"
+            className="w-full max-w-sm rounded-[20px] border border-[#dbe7ef] bg-white p-5 text-slate-900 shadow-[0_30px_90px_rgba(15,23,42,0.24)]"
+          >
+            <h2 id="idle-timeout-title" className="text-lg font-bold text-[#1f2b3d]">You&apos;ll be signed out in 1 minute.</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              For patient privacy, ClinicOS signs out after 10 minutes without activity.
+            </p>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+              >
+                Sign out
+              </button>
+              <button
+                type="button"
+                onClick={staySignedIn}
+                autoFocus
+                className="inline-flex items-center justify-center rounded-xl bg-[#2f8fd3] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#287fc0]"
+              >
+                Stay signed in
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </ClinicShellContext.Provider>
   );
 }
