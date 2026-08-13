@@ -116,14 +116,14 @@ export function AppHeader({
               aria-label={`Open check-in requests${checkInCount ? `, ${checkInCount} pending` : ""}`}
               className={`hidden items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition sm:inline-flex motion-reduce:animate-none ${
                 checkInCount
-                  ? "border-[#79b7de] bg-[#e8f4fb] text-[#1d659a] shadow-[0_0_0_4px_rgba(47,143,211,0.10)]"
+                  ? "check-in-alert-active border-red-600 bg-red-600 text-white shadow-[0_0_0_5px_rgba(220,38,38,0.24),0_0_28px_rgba(220,38,38,0.68)] hover:bg-red-700"
                   : "border-[#bfe0f5] bg-[#ecf6fd] text-[#2a6fa8]"
               } ${hasUnseenCheckIns ? "animate-pulse" : ""}`}
             >
               <Bell className="h-3.5 w-3.5" />
               <span>Check-ins</span>
               {checkInCount ? (
-                <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#2f8fd3] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-red-700 ring-2 ring-red-200">
                   {checkInCount > 99 ? "99+" : checkInCount}
                 </span>
               ) : null}
