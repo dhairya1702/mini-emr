@@ -11,11 +11,12 @@ import { api } from "@/lib/api";
 import { calculateDraftInvoiceTaxTotals } from "@/lib/billing-tax";
 import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import { printBlob } from "@/lib/print";
+import { connectDashboardEvents } from "@/lib/realtime";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { useInfinitePatients } from "@/lib/use-infinite-patients";
 import { BillingDashboard, BillingSuggestionsResponse, CatalogItem, ConsultationNote, Invoice, InvoiceSummary, Patient, PaymentStatus } from "@/lib/types";
 
-const BILLING_REFRESH_INTERVAL_MS = 30_000;
+const BILLING_REFRESH_INTERVAL_MS = 60_000;
 const BILLING_REFRESH_DEDUPE_MS = 2_000;
 const BILLING_REFRESH_MAX_BACKOFF_MS = 5 * 60_000;
 const RECENT_INVOICE_LIMIT = 5;
@@ -228,6 +229,7 @@ export default function BillingPage() {
   const billingRefreshRetryAtRef = useRef(0);
   const billingRefreshBackoffRef = useRef(BILLING_REFRESH_INTERVAL_MS);
   const isInvoiceDirtyRef = useRef(false);
+  const billingRefreshMountedRef = useRef(false);
   const canLoadAdminPageData = useCallback((user: { role: "admin" | "staff" }) => user.role === "admin", []);
   const loadPageData = useCallback(async () => {
     return api.getBillingDashboard({ recent_invoice_limit: RECENT_INVOICE_LIMIT });
@@ -320,61 +322,63 @@ export default function BillingPage() {
     }
   }, [currentUser, isAuthReady, loadCatalogItems]);
 
-  useEffect(() => {
-    if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") {
+  const refreshBillingData = useCallback(async (force = false) => {
+    const now = Date.now();
+    if (
+      document.visibilityState !== "visible"
+      || billingRefreshInFlightRef.current
+      || now < billingRefreshRetryAtRef.current
+      || (!force && now - billingRefreshLastStartedAtRef.current < BILLING_REFRESH_DEDUPE_MS)
+    ) {
       return;
     }
 
-    let active = true;
+    billingRefreshInFlightRef.current = true;
+    billingRefreshLastStartedAtRef.current = now;
+    try {
+      const status = await api.getBillingStatus();
+      if (!billingRefreshMountedRef.current) return;
 
-    async function refreshBillingData() {
-      const now = Date.now();
-      if (
-        document.visibilityState !== "visible"
-        || billingRefreshInFlightRef.current
-        || now < billingRefreshRetryAtRef.current
-        || now - billingRefreshLastStartedAtRef.current < BILLING_REFRESH_DEDUPE_MS
-      ) {
-        return;
+      if (billingInvoicesRevisionRef.current === null) {
+        billingInvoicesRevisionRef.current = status.invoices_revision;
+      } else if (billingInvoicesRevisionRef.current !== status.invoices_revision) {
+        const nextInvoices = await api.listInvoiceSummaries({ limit: RECENT_INVOICE_LIMIT });
+        if (!billingRefreshMountedRef.current) return;
+        setInvoices(nextInvoices);
+        billingInvoicesRevisionRef.current = status.invoices_revision;
       }
-      billingRefreshInFlightRef.current = true;
-      billingRefreshLastStartedAtRef.current = now;
-      try {
-        const status = await api.getBillingStatus();
-        if (!active) return;
 
-        if (billingInvoicesRevisionRef.current === null) {
-          billingInvoicesRevisionRef.current = status.invoices_revision;
-        } else if (billingInvoicesRevisionRef.current !== status.invoices_revision) {
-          const nextInvoices = await api.listInvoiceSummaries({ limit: RECENT_INVOICE_LIMIT });
-          if (!active) return;
-          setInvoices(nextInvoices);
-          billingInvoicesRevisionRef.current = status.invoices_revision;
-        }
-
-        if (billingPatientsRevisionRef.current === null) {
+      if (billingPatientsRevisionRef.current === null) {
+        billingPatientsRevisionRef.current = status.billable_patients_revision;
+      } else if (billingPatientsRevisionRef.current !== status.billable_patients_revision) {
+        if (isInvoiceDirtyRef.current) {
+          pendingPatientsRevisionRef.current = status.billable_patients_revision;
+        } else {
           billingPatientsRevisionRef.current = status.billable_patients_revision;
-        } else if (billingPatientsRevisionRef.current !== status.billable_patients_revision) {
-          if (isInvoiceDirtyRef.current) {
-            pendingPatientsRevisionRef.current = status.billable_patients_revision;
-          } else {
-            billingPatientsRevisionRef.current = status.billable_patients_revision;
-            reloadPatients();
-          }
+          reloadPatients();
         }
-
-        billingRefreshBackoffRef.current = BILLING_REFRESH_INTERVAL_MS;
-        billingRefreshRetryAtRef.current = 0;
-      } catch {
-        billingRefreshRetryAtRef.current = Date.now() + billingRefreshBackoffRef.current;
-        billingRefreshBackoffRef.current = Math.min(
-          billingRefreshBackoffRef.current * 2,
-          BILLING_REFRESH_MAX_BACKOFF_MS,
-        );
-      } finally {
-        billingRefreshInFlightRef.current = false;
       }
+
+      billingRefreshBackoffRef.current = BILLING_REFRESH_INTERVAL_MS;
+      billingRefreshRetryAtRef.current = 0;
+    } catch {
+      billingRefreshRetryAtRef.current = Date.now() + billingRefreshBackoffRef.current;
+      billingRefreshBackoffRef.current = Math.min(
+        billingRefreshBackoffRef.current * 2,
+        BILLING_REFRESH_MAX_BACKOFF_MS,
+      );
+    } finally {
+      billingRefreshInFlightRef.current = false;
     }
+  }, [reloadPatients]);
+
+  useEffect(() => {
+    if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") {
+      billingRefreshMountedRef.current = false;
+      return;
+    }
+
+    billingRefreshMountedRef.current = true;
 
     const intervalId = isSoloWorkspace
       ? null
@@ -396,14 +400,32 @@ export default function BillingPage() {
     window.addEventListener("focus", handleFocus);
 
     return () => {
-      active = false;
+      billingRefreshMountedRef.current = false;
       if (intervalId !== null) {
         window.clearInterval(intervalId);
       }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [currentUser, isAuthReady, isRedirectingToLogin, isSoloWorkspace, reloadPatients]);
+  }, [currentUser, isAuthReady, isRedirectingToLogin, isSoloWorkspace, refreshBillingData]);
+
+  useEffect(() => {
+    if (!isAuthReady || isRedirectingToLogin || currentUser?.role !== "admin") {
+      return;
+    }
+
+    const source = connectDashboardEvents({
+      onDashboard: (event) => {
+        if (event.changed.some((item) => item === "billing_patients" || item === "billing_invoices")) {
+          void refreshBillingData(true);
+        }
+      },
+    });
+
+    return () => {
+      source?.close();
+    };
+  }, [currentUser, isAuthReady, isRedirectingToLogin, refreshBillingData]);
 
   useEffect(() => {
     if (!selectedBillingPatientId && billablePatients[0]) {

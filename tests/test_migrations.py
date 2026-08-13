@@ -134,3 +134,21 @@ def test_tenant_fk_delete_semantics_only_nulls_nullable_reference_columns():
         assert f"on delete set null ({column})" in migration_sql
         assert f"on delete set null ({column})" in schema_sql
     assert "on delete set null (org_id)" not in migration_sql
+
+
+def test_dashboard_revision_notifications_publish_minimal_invalidations():
+    root = Path(__file__).resolve().parents[1]
+    migration_sql = (
+        root / "db" / "migrations" / "2026-08-13_dashboard_revision_notifications.sql"
+    ).read_text(encoding="utf-8")
+    schema_sql = (root / "db" / "schema.sql").read_text(encoding="utf-8")
+
+    for sql in (migration_sql, schema_sql):
+        assert "clinic_dashboard_revisions" in sql
+        assert "public.notify_dashboard_revision_change" in sql
+        assert "pg_notify(" in sql
+        assert "'changed', changed_counters" in sql
+        assert "'queue_revision'" in sql
+        assert "'check_in_revision'" in sql
+        assert "'billing_patients_revision'" in sql
+        assert "'billing_invoices_revision'" in sql

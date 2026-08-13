@@ -40,6 +40,7 @@ from app.routes import (
     notes_router,
     patients_router,
     public_router,
+    realtime_router,
     referrals_router,
     settings_router,
     superuser_router,
@@ -50,6 +51,7 @@ from app.schema_domains.auth_settings import UserOut
 from app.services.auth_flow import RATE_LIMIT_BUCKETS, RATE_LIMIT_WINDOWS
 from app.services.followup_workflow import send_due_follow_up_emails_workflow
 from app.services.request_metrics import RequestMetricsBuffer
+from app.services.realtime import DashboardRealtimeHub, PostgresDashboardNotificationListener
 
 logger = logging.getLogger(__name__)
 
@@ -112,9 +114,23 @@ async def lifespan(app: FastAPI):
     request_metrics_stop = asyncio.Event()
     request_metrics_task = asyncio.create_task(request_metrics.run(request_metrics_stop))
     app.state.request_metrics = request_metrics
+    dashboard_realtime_hub = DashboardRealtimeHub()
+    dashboard_realtime_stop = asyncio.Event()
+    dashboard_realtime_listener = PostgresDashboardNotificationListener(
+        str(getattr(settings, "database_url", "") or ""),
+        dashboard_realtime_hub,
+    )
+    dashboard_realtime_task = asyncio.create_task(
+        dashboard_realtime_listener.run(dashboard_realtime_stop)
+    )
+    app.state.dashboard_realtime_hub = dashboard_realtime_hub
     try:
         yield
     finally:
+        dashboard_realtime_stop.set()
+        dashboard_realtime_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await dashboard_realtime_task
         request_metrics_stop.set()
         with suppress(Exception):
             await request_metrics_task
@@ -220,6 +236,7 @@ for router in (
     appointments_router,
     followups_router,
     public_router,
+    realtime_router,
     referrals_router,
     superuser_router,
     notes_router,

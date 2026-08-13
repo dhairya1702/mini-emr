@@ -83,7 +83,8 @@ gcloud run deploy "$BACKEND_SERVICE" \
   --set-env-vars="DB_POOL_MIN_SIZE=1" \
   --set-env-vars="DB_POOL_MAX_SIZE=10" \
   --set-env-vars="DB_POOL_TIMEOUT_SECONDS=10" \
-  --concurrency=20 \
+  --timeout=30m \
+  --concurrency=80 \
   --max-instances=3 \
   --no-traffic
 

@@ -183,6 +183,10 @@ export function resolveApiAssetUrl(path: string | null | undefined) {
   return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+export function resolveApiUrl(path: string) {
+  return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 function isSessionErrorMessage(message: string) {
   return (
     message === "Authentication required." ||

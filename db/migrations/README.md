@@ -52,3 +52,4 @@ psql "$DATABASE_URL" -f db/migrations/<file>.sql
 | 2026-08-11 | `2026-08-11_follow_up_needs_action_backfill.sql` | Restores older unanswered follow-ups with no linked appointment to the active Needs Action queue. |
 | 2026-08-12 | `2026-08-12_follow_up_tracking_index.sql` | Speeds paginated follow-up views by indexing their latest reminder and invitation events. |
 | 2026-08-12 | `2026-08-12_patient_directory_pagination.sql` | Adds the stable organization/visit/id index used by cursor-paginated patient directories. |
+| 2026-08-13 | `2026-08-13_dashboard_revision_notifications.sql` | Publishes Postgres dashboard revision invalidations for SSE clients. |

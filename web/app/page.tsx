@@ -37,6 +37,7 @@ import {
   QueueOrder,
   reorderQueueColumn,
 } from "@/lib/queue-dnd";
+import { connectDashboardEvents, type DashboardRealtimeEvent } from "@/lib/realtime";
 import { hasClinicDocumentTemplate, hasUserSignature } from "@/lib/setup-checklist";
 import { printBlob } from "@/lib/print";
 import {
@@ -50,7 +51,7 @@ import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 import { BillingSuggestionsResponse, CatalogItem, CheckInRequest, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientTimelineEvent, PatientVisitDetail, PaymentStatus, QueueSnapshot, SexAtBirth } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
-const QUEUE_REFRESH_INTERVAL_MS = 15000;
+const QUEUE_REFRESH_INTERVAL_MS = 60000;
 const QUEUE_REFRESH_MAX_BACKOFF_MS = 60000;
 
 function applyQueueOrder(patients: Patient[], order: QueueOrder, changedAt: string) {
@@ -303,7 +304,14 @@ export default function HomePage() {
   const hasLoadedCheckInRequestsRef = useRef(false);
   const checkInStatusGenerationRef = useRef(0);
   const refreshDashboardStatusRef = useRef<(force?: boolean) => void>(() => undefined);
+  const lastRealtimeStatusRefreshAtRef = useRef(0);
+  const selectedPatientRef = useRef<Patient | null>(null);
+  const drawerModeRef = useRef<"details" | "consultation" | null>(null);
+  const finishConsultationWorkspaceRef = useRef<() => void>(() => undefined);
   const billingCatalogLoadRequestedRef = useRef(false);
+  selectedPatientRef.current = selectedPatient;
+  drawerModeRef.current = drawerMode;
+  finishConsultationWorkspaceRef.current = finishConsultationWorkspace;
   if (queueRevision) loadedQueueRevisionRef.current = queueRevision;
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -332,6 +340,24 @@ export default function HomePage() {
   }, [loadQueueSnapshot]);
   const onPageData = useCallback((data: QueueSnapshot) => {
     applyQueueSnapshot(data);
+    const currentSelectedPatient = selectedPatientRef.current;
+    if (currentSelectedPatient) {
+      const refreshedPatient = data.patients.find((patient) => patient.id === currentSelectedPatient.id) ?? null;
+      if (refreshedPatient) {
+        setSelectedPatient(refreshedPatient);
+        if (drawerModeRef.current === "consultation" && refreshedPatient.status === "done") {
+          workspaceTransitionRef.current = true;
+          setSelectedPatient(null);
+          setDrawerMode(null);
+          finishConsultationWorkspaceRef.current();
+        }
+      } else if (drawerModeRef.current === "consultation") {
+        workspaceTransitionRef.current = true;
+        setSelectedPatient(null);
+        setDrawerMode(null);
+        finishConsultationWorkspaceRef.current();
+      }
+    }
     loadedQueueRevisionRef.current = data.revision;
     if (
       latestQueueRevisionRef.current
@@ -696,6 +722,37 @@ export default function HomePage() {
       window.removeEventListener("focus", handleFocus);
     };
   }, [currentUser, isAuthReady, isRedirectingToLogin, isTrainingMode, refreshDashboardStatus]);
+
+  useEffect(() => {
+    if (!isAuthReady || isRedirectingToLogin || !currentUser || isTrainingMode) {
+      return;
+    }
+
+    let active = true;
+    function requestRealtimeRefresh() {
+      if (!active) return;
+      const now = Date.now();
+      if (now - lastRealtimeStatusRefreshAtRef.current < 1000) return;
+      lastRealtimeStatusRefreshAtRef.current = now;
+      refreshDashboardStatusRef.current(true);
+    }
+
+    function handleDashboardEvent(event: DashboardRealtimeEvent) {
+      if (event.changed.some((item) => item === "queue" || item === "check_ins")) {
+        requestRealtimeRefresh();
+      }
+    }
+
+    const source = connectDashboardEvents({
+      onOpen: requestRealtimeRefresh,
+      onDashboard: handleDashboardEvent,
+    });
+
+    return () => {
+      active = false;
+      source?.close();
+    };
+  }, [currentUser, isAuthReady, isRedirectingToLogin, isTrainingMode]);
 
   async function approveCheckIn(requestId: string, existingPatientId?: string) {
     setPendingCheckInRequestId(requestId);
