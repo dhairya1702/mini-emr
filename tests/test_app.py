@@ -148,6 +148,7 @@ class FakeRepo:
         self.audit_events: dict[str, dict] = {}
         self.ai_usage_events: dict[str, dict] = {}
         self.platform_errors: dict[str, dict] = {}
+        self.password_reset_tokens: dict[str, dict] = {}
         self.whatsapp_owner_bindings: dict[str, dict] = {}
         self.whatsapp_message_events: dict[str, dict] = {}
         self.public_check_in_requests: dict[str, dict] = {}
@@ -530,6 +531,8 @@ class FakeRepo:
         expected_phone: str,
         clinic_settings,
         identifier: str,
+        email: str,
+        phone: str,
         name: str,
         password_hash: str,
     ) -> dict:
@@ -556,6 +559,8 @@ class FakeRepo:
             created = await self.create_user(
                 org_id=org_id,
                 identifier=identifier,
+                email=email,
+                phone=phone,
                 name=name,
                 password_hash=password_hash,
                 role="admin",
@@ -577,6 +582,8 @@ class FakeRepo:
         *,
         clinic_settings,
         identifier: str,
+        email: str,
+        phone: str,
         name: str,
         password_hash: str,
     ) -> dict:
@@ -589,6 +596,8 @@ class FakeRepo:
             return await self.create_user(
                 org_id=org_id,
                 identifier=identifier,
+                email=email,
+                phone=phone,
                 name=name,
                 password_hash=password_hash,
                 role="admin",
@@ -1453,12 +1462,23 @@ class FakeRepo:
         self.clinic_settings[org_id] = row
         return row
 
-    async def create_user(self, org_id: str, identifier: str, name: str, password_hash: str, role: str) -> dict:
+    async def create_user(
+        self,
+        org_id: str,
+        identifier: str,
+        email: str = "",
+        phone: str = "",
+        name: str = "",
+        password_hash: str = "",
+        role: str = "staff",
+    ) -> dict:
         user_id = str(uuid4())
         user = {
             "id": user_id,
             "org_id": org_id,
             "identifier": identifier,
+            "email": email,
+            "phone": phone,
             "name": name.strip() or (identifier.split("@", 1)[0].title() if "@" in identifier else identifier),
             "password_hash": password_hash,
             "role": role,
@@ -1486,6 +1506,8 @@ class FakeRepo:
             "id": user["id"],
             "org_id": user["org_id"],
             "identifier": user["identifier"],
+            "email": user.get("email", ""),
+            "phone": user.get("phone", ""),
             "name": user["name"],
             "role": user["role"],
             "doctor_dob": user.get("doctor_dob"),
@@ -1507,6 +1529,8 @@ class FakeRepo:
             "id": user["id"],
             "org_id": user["org_id"],
             "identifier": user["identifier"],
+            "email": user.get("email", ""),
+            "phone": user.get("phone", ""),
             "name": user["name"],
             "role": user["role"],
             "doctor_dob": user.get("doctor_dob"),
@@ -1533,6 +1557,8 @@ class FakeRepo:
                 "id": user["id"],
                 "org_id": user["org_id"],
                 "identifier": user["identifier"],
+                "email": user.get("email", ""),
+                "phone": user.get("phone", ""),
                 "name": user["name"],
                 "role": user["role"],
                 "doctor_dob": user.get("doctor_dob"),
@@ -1566,6 +1592,51 @@ class FakeRepo:
         user["session_version"] = int(user.get("session_version", 1)) + 1
         user["superdashboard_session_version"] = int(user.get("superdashboard_session_version", 1)) + 1
         return dict(user)
+
+    async def create_password_reset_token(
+        self,
+        *,
+        user_id: str,
+        token_hash: str,
+        requested_by_user_id: str | None,
+        requested_by_name: str,
+        requester_realm: str,
+        expires_at,
+    ) -> dict:
+        token_id = str(uuid4())
+        row = {
+            "id": token_id,
+            "user_id": user_id,
+            "token_hash": token_hash,
+            "requested_by_user_id": requested_by_user_id,
+            "requested_by_name": requested_by_name,
+            "requester_realm": requester_realm,
+            "expires_at": expires_at,
+            "used_at": None,
+            "created_at": _now(),
+        }
+        self.password_reset_tokens[token_id] = row
+        return dict(row)
+
+    async def get_active_password_reset_token(self, token_hash: str) -> dict | None:
+        now = _now()
+        for token in self.password_reset_tokens.values():
+            if token["token_hash"] != token_hash or token.get("used_at") is not None or token["expires_at"] <= now:
+                continue
+            user = self.users[token["user_id"]]
+            return {
+                **token,
+                "org_id": user["org_id"],
+                "identifier": user["identifier"],
+                "email": user.get("email", ""),
+                "phone": user.get("phone", ""),
+                "name": user["name"],
+                "role": user["role"],
+            }
+        return None
+
+    async def mark_password_reset_token_used(self, token_id: str) -> None:
+        self.password_reset_tokens[token_id]["used_at"] = _now()
 
     async def revoke_user_sessions(self, user_id: str) -> None:
         user = self.users[user_id]
@@ -3316,6 +3387,8 @@ def register_test_clinic(client: TestClient, *, identifier: str, clinic_name: st
         "/auth/register",
         json={
             "identifier": identifier,
+            "email": identifier if "@" in identifier else f"{identifier}@example.com",
+            "phone": "5550100000",
             "password": "password123!",
             "customer_id": customer_id,
             "admin_name": "Clinic Admin",
@@ -3371,7 +3444,12 @@ def test_active_medicine_catalog_is_minimal_and_available_to_staff(client):
     assert test_client.post(
         "/users/staff",
         headers=admin_headers,
-        json={"identifier": "medicine-staff@example.com", "password": "password123!"},
+        json={
+            "identifier": "medicine-staff@example.com",
+            "email": "medicine-staff@example.com",
+            "phone": "5550103447",
+            "password": "password123!",
+        },
     ).status_code == 201
     staff_session = test_client.post(
         "/auth/login",
@@ -4683,11 +4761,12 @@ def test_build_document_context_for_user_prefers_user_profile_name() -> None:
             ),
         )
         user = await repo.create_user(
-            org["id"],
-            "admin@clinic.test",
-            "Dr. Rivera",
-            "hashed-password",
-            "admin",
+            org_id=org["id"],
+            identifier="admin@clinic.test",
+            email="admin@clinic.test",
+            name="Dr. Rivera",
+            password_hash="hashed-password",
+            role="admin",
         )
         await repo.set_user_signature(
             user["id"],

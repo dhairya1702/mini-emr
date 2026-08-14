@@ -57,7 +57,12 @@ def test_audit_events_include_catalog_and_staff_changes(client):
 
     create_staff = test_client.post(
         "/users/staff",
-        json={"identifier": "staff-audit@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "staff-audit@clinic.com",
+            "email": "staff-audit@clinic.com",
+            "phone": "5550108001",
+            "password": "password123!",
+        },
         headers=headers,
     )
     assert create_staff.status_code == 201

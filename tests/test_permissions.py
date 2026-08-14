@@ -32,7 +32,12 @@ def test_auth_org_isolation_and_admin_staff_rules(client):
 
     create_staff = test_client.post(
         "/users/staff",
-        json={"identifier": "staff-a@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "staff-a@clinic.com",
+            "email": "staff-a@clinic.com",
+            "phone": "5550107001",
+            "password": "password123!",
+        },
         headers=auth_headers_for_token(session_a["token"]),
     )
     assert create_staff.status_code == 201
@@ -45,19 +50,29 @@ def test_auth_org_isolation_and_admin_staff_rules(client):
 
     forbidden = test_client.post(
         "/users/staff",
-        json={"identifier": "blocked@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "blocked@clinic.com",
+            "email": "blocked@clinic.com",
+            "phone": "5550107002",
+            "password": "password123!",
+        },
         headers=auth_headers_for_token(staff_login.json()["token"]),
     )
     assert forbidden.status_code == 403
 
 
-def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client):
+def test_staff_cannot_access_earnings_user_admin_or_start_consultation(client):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="owner-perms@clinic.com", clinic_name="Perms Clinic")
 
     create_staff = test_client.post(
         "/users/staff",
-        json={"identifier": "staff-perms@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "staff-perms@clinic.com",
+            "email": "staff-perms@clinic.com",
+            "phone": "5550107003",
+            "password": "password123!",
+        },
         headers=auth_headers_for_token(session["token"]),
     )
     assert create_staff.status_code == 201
@@ -111,11 +126,10 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
     ).json()
 
     invoices = test_client.get("/invoices", headers=staff_headers)
-    assert invoices.status_code == 403
-    assert "Admin access required" in invoices.text
+    assert invoices.status_code == 200
 
     users = test_client.get("/users", headers=staff_headers)
-    assert users.status_code == 403
+    assert users.status_code == 200
 
     audit_events = test_client.get("/audit-events", headers=staff_headers)
     assert audit_events.status_code == 403
@@ -125,7 +139,7 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
     assert exports.status_code == 403
 
     catalog = test_client.get("/catalog", headers=staff_headers)
-    assert catalog.status_code == 403
+    assert catalog.status_code == 200
 
     create_catalog = test_client.post(
         "/catalog",
@@ -140,7 +154,7 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
         },
         headers=staff_headers,
     )
-    assert create_catalog.status_code == 403
+    assert create_catalog.status_code == 201
 
     create_invoice = test_client.post(
         "/invoices",
@@ -151,24 +165,24 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
         },
         headers=staff_headers,
     )
-    assert create_invoice.status_code == 403
+    assert create_invoice.status_code == 201
 
     send_invoice = test_client.post(
         "/send-invoice",
         json={"invoice_id": invoice["id"], "recipient_email": "patient@example.com"},
         headers=staff_headers,
     )
-    assert send_invoice.status_code == 403
+    assert send_invoice.status_code == 400
 
     send_invoice_whatsapp = test_client.post(
         "/send-invoice-whatsapp",
         json={"invoice_id": invoice["id"], "recipient_phone": "9600106623"},
         headers=staff_headers,
     )
-    assert send_invoice_whatsapp.status_code == 403
+    assert send_invoice_whatsapp.status_code == 400
 
     invoice_pdf = test_client.get(f"/invoices/{invoice['id']}/pdf", headers=staff_headers)
-    assert invoice_pdf.status_code == 403
+    assert invoice_pdf.status_code == 200
 
     generate_note = test_client.post(
         "/generate-note",
@@ -198,8 +212,7 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
     assert send_note.status_code == 403
 
     note_pdf = test_client.get(f"/notes/{note['note_id']}/pdf", headers=staff_headers)
-    assert note_pdf.status_code == 200
-    assert note_pdf.headers["content-type"] == "application/pdf"
+    assert note_pdf.status_code == 403
 
     start_consultation = test_client.patch(
         f"/patients/{patient['id']}",
@@ -207,7 +220,7 @@ def test_staff_cannot_access_earnings_invoice_list_or_start_consultation(client)
         headers=staff_headers,
     )
     assert start_consultation.status_code == 403
-    assert "Admin access required to start consultation" in start_consultation.text
+    assert "Clinical access required to start consultation" in start_consultation.text
 
 
 def test_staff_can_prioritize_and_reorder_but_cannot_advance_queue_stage(client):
@@ -216,7 +229,12 @@ def test_staff_can_prioritize_and_reorder_but_cannot_advance_queue_stage(client)
     admin_headers = auth_headers_for_token(session["token"])
     assert test_client.post(
         "/users/staff",
-        json={"identifier": "staff-queue-perms@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "staff-queue-perms@clinic.com",
+            "email": "staff-queue-perms@clinic.com",
+            "phone": "5550107004",
+            "password": "password123!",
+        },
         headers=admin_headers,
     ).status_code == 201
     staff_login = test_client.post(
@@ -263,7 +281,12 @@ def test_admin_cannot_manage_users_across_organizations(client):
 
     create_staff_b = test_client.post(
         "/users/staff",
-        json={"identifier": "staff-users-b@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "staff-users-b@clinic.com",
+            "email": "staff-users-b@clinic.com",
+            "phone": "5550107005",
+            "password": "password123!",
+        },
         headers=auth_headers_for_token(session_b["token"]),
     )
     assert create_staff_b.status_code == 201
@@ -309,7 +332,12 @@ def test_foreign_user_signature_upload_does_not_process_image(client, monkeypatc
 
     create_staff_b = test_client.post(
         "/users/staff",
-        json={"identifier": "staff-signature-b@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "staff-signature-b@clinic.com",
+            "email": "staff-signature-b@clinic.com",
+            "phone": "5550107006",
+            "password": "password123!",
+        },
         headers=auth_headers_for_token(session_b["token"]),
     )
     assert create_staff_b.status_code == 201

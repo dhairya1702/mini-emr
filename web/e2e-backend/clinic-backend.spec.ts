@@ -37,6 +37,8 @@ async function registerClinic(request: APIRequestContext, label = unique("clinic
   const response = await request.post("/auth/register", {
     data: {
       identifier,
+      email: identifier,
+      phone: "5550100000",
       password: "password123!",
       admin_name: "Dr. Backend E2E",
       clinic_name: `Backend E2E ${label}`,
@@ -287,6 +289,8 @@ test("admin user management enforces staff permissions and supports role changes
     headers,
     data: {
       identifier: "staff-e2e@clinic.test",
+      email: "staff-e2e@clinic.test",
+      phone: "5550103000",
       password: "password123!",
     },
   });
@@ -612,6 +616,8 @@ test("account, media, specialty records, and mobile finalize routes work togethe
     data: {
       name: "Signature Staff",
       identifier: `${unique("signature-staff")}@clinic.test`,
+      email: `${unique("signature-email")}@clinic.test`,
+      phone: "5550103001",
       password: "password12345",
     },
   });
@@ -994,6 +1000,8 @@ test("superdashboard routes manage onboarding, organizations, users, and access 
     headers: managedHeaders,
     data: {
       identifier: `${unique("managed-staff")}@clinic.test`,
+      email: `${unique("managed-staff-email")}@clinic.test`,
+      phone: "5550103002",
       password: "password123!",
     },
   });
@@ -1003,6 +1011,8 @@ test("superdashboard routes manage onboarding, organizations, users, and access 
     headers: aliasManagedHeaders,
     data: {
       identifier: `${unique("alias-managed-staff")}@clinic.test`,
+      email: `${unique("alias-managed-staff-email")}@clinic.test`,
+      phone: "5550103003",
       password: "password123!",
     },
   });

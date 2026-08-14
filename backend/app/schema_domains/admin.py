@@ -31,6 +31,8 @@ class SuperuserOrgUserOut(BaseModel):
     id: UUID
     org_id: UUID
     identifier: str
+    email: str = ""
+    phone: str = ""
     name: str
     role: UserRole
     created_at: datetime

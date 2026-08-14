@@ -20,7 +20,7 @@ from app.schema_domains.auth_settings import (
     UserOut,
 )
 from app.services.audit_service import write_audit_event
-from app.services.auth_flow import enforce_repository_rate_limit, normalize_identifier
+from app.services.auth_flow import enforce_repository_rate_limit, normalize_email, normalize_identifier
 
 
 def _session_identity(row: dict) -> dict[str, str | int]:
@@ -41,6 +41,8 @@ def build_user_out(row: dict) -> UserOut:
             "id",
             "org_id",
             "identifier",
+            "email",
+            "phone",
             "name",
             "role",
             "doctor_dob",
@@ -53,6 +55,8 @@ def build_user_out(row: dict) -> UserOut:
             "superdashboard_session_version",
         )
     }
+    values["email"] = str(row.get("email") or "")
+    values["phone"] = str(row.get("phone") or "")
     values["session_version"] = int(row.get("session_version") or 1)
     values["superdashboard_session_version"] = int(row.get("superdashboard_session_version") or 1)
     return UserOut(**values)
@@ -69,6 +73,8 @@ async def register_user_workflow(
     client_ip: str = "unknown",
 ) -> AuthResponse:
     identifier = normalize_identifier(payload.identifier)
+    email = normalize_email(payload.email or (identifier if "@" in identifier else ""))
+    phone = normalize_phone_number(payload.phone)
     customer_id = payload.customer_id.strip().upper()
     await enforce_repository_rate_limit(repo, "auth_register", client_ip or "unknown")
     if customer_id:
@@ -95,6 +101,8 @@ async def register_user_workflow(
                 expected_phone=normalize_phone_number(payload.clinic_phone),
                 clinic_settings=clinic_settings,
                 identifier=identifier,
+                email=email,
+                phone=phone,
                 name=payload.admin_name,
                 password_hash=hash_password(payload.password),
             )
@@ -104,6 +112,8 @@ async def register_user_workflow(
             created = await repo.provision_open_organization(
                 clinic_settings=clinic_settings,
                 identifier=identifier,
+                email=email,
+                phone=phone,
                 name=payload.admin_name,
                 password_hash=hash_password(payload.password),
             )
@@ -146,6 +156,8 @@ async def create_staff_user_workflow(
     payload: StaffUserCreate,
 ) -> UserOut:
     identifier = normalize_identifier(payload.identifier)
+    email = normalize_email(payload.email)
+    phone = normalize_phone_number(payload.phone)
     existing = await repo.get_user_by_identifier(identifier)
     if existing:
         raise HTTPException(status_code=409, detail="An account with that email or phone already exists.")
@@ -160,7 +172,9 @@ async def create_staff_user_workflow(
     created = await repo.create_user(
         org_id=str(current_user.org_id),
         identifier=identifier,
-        name="",
+        email=email,
+        phone=phone,
+        name=payload.name,
         password_hash=hash_password(payload.password),
         role=role,
     )
@@ -173,6 +187,6 @@ async def create_staff_user_workflow(
         entity_id=str(created["id"]),
         action=action,
         summary=f"Created {role_label} user {identifier}.",
-        metadata={"identifier": identifier, "role": role},
+        metadata={"identifier": identifier, "email": email, "role": role},
     )
     return build_user_out(created)

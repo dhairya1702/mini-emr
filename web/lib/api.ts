@@ -97,6 +97,7 @@ import {
   PatientTimelineEvent,
   PatientStatus,
   PasswordUpdatePayload,
+  PasswordResetConfirmPayload,
   PatientCaseStudySource,
   RegisterPayload,
   RegistrationConfig,
@@ -539,6 +540,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  confirmPasswordReset: (payload: PasswordResetConfirmPayload) =>
+    request<{ message: string }>("/auth/password-reset/confirm", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   uploadMySignature: (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -561,6 +567,10 @@ export const api = {
     request<AuthUser>(`/users/${userId}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
+    }),
+  sendUserPasswordReset: (userId: string) =>
+    request<{ message: string }>(`/users/${userId}/password-reset`, {
+      method: "POST",
     }),
   uploadUserSignature: (userId: string, file: File) => {
     const formData = new FormData();
@@ -668,6 +678,10 @@ export const api = {
     request<SuperuserOrgUser>(`/superdashboard/users/${userId}/role`, {
       method: "PATCH",
       body: JSON.stringify(payload),
+    }),
+  sendSuperdashboardUserPasswordReset: (userId: string) =>
+    request<{ message: string }>(`/superdashboard/users/${userId}/password-reset`, {
+      method: "POST",
     }),
   listPlatformErrors: (limit = 100) => request<PlatformError[]>(withQuery("/superdashboard/errors", { limit })),
   getControlRoomStatus: () => request<ControlRoomStatus>("/controlroom/status"),

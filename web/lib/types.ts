@@ -1313,6 +1313,8 @@ export interface AuthUser {
   org_id: string;
   name: string;
   identifier: string;
+  email: string;
+  phone: string;
   role: UserRole;
   doctor_dob?: string | null;
   doctor_address?: string;
@@ -1344,6 +1346,8 @@ export interface SuperuserOrgUser {
   id: string;
   org_id: string;
   identifier: string;
+  email: string;
+  phone: string;
   name: string;
   role: UserRole;
   created_at: string;
@@ -1594,6 +1598,8 @@ export interface PasswordUpdatePayload {
 
 export interface RegisterPayload {
   identifier: string;
+  email: string;
+  phone: string;
   password: string;
   customer_id?: string;
   admin_name: string;
@@ -1634,8 +1640,16 @@ export interface WhatsAppDelivery {
 
 export interface StaffUserCreatePayload {
   identifier: string;
+  email: string;
+  phone: string;
+  name?: string;
   password: string;
   role?: UserRole;
+}
+
+export interface PasswordResetConfirmPayload {
+  token: string;
+  new_password: string;
 }
 
 export interface CatalogItemCreatePayload {

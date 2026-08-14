@@ -209,6 +209,8 @@ USER_COLUMNS = [
     "id",
     "org_id",
     "identifier",
+    "email",
+    "phone",
     "name",
     "role",
     "doctor_dob",
@@ -223,6 +225,8 @@ USER_LIST_COLUMNS = [
     "id",
     "org_id",
     "identifier",
+    "email",
+    "phone",
     "name",
     "role",
     "doctor_dob",
@@ -520,6 +524,8 @@ class PostgresAuthSettingsRepository:
         expected_phone: str,
         clinic_settings: ClinicSettingsUpdate,
         identifier: str,
+        email: str,
+        phone: str,
         name: str,
         password_hash: str,
     ) -> dict[str, Any]:
@@ -583,16 +589,16 @@ class PostgresAuthSettingsRepository:
                     cursor.execute(
                         """
                         insert into public.clinic_users (
-                          org_id, identifier, name, password_hash, role, doctor_dob,
+                          org_id, identifier, email, phone, name, password_hash, role, doctor_dob,
                           doctor_address, session_version
                         )
-                        values (%s, %s, %s, %s, 'admin', null, '', 1)
-                        returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                        values (%s, %s, %s, %s, %s, %s, 'admin', null, '', 1)
+                        returning id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
                           doctor_signature_data_base64, created_at, session_version,
                           superdashboard_session_version
                         """,
-                        (org_id, identifier, name.strip(), password_hash),
+                        (org_id, identifier, email, phone, name.strip(), password_hash),
                     )
                     user_row = cursor.fetchone()
                     if not user_row:
@@ -623,6 +629,8 @@ class PostgresAuthSettingsRepository:
         *,
         clinic_settings: ClinicSettingsUpdate,
         identifier: str,
+        email: str,
+        phone: str,
         name: str,
         password_hash: str,
     ) -> dict[str, Any]:
@@ -666,16 +674,16 @@ class PostgresAuthSettingsRepository:
                     cursor.execute(
                         """
                         insert into public.clinic_users (
-                          org_id, identifier, name, password_hash, role, doctor_dob,
+                          org_id, identifier, email, phone, name, password_hash, role, doctor_dob,
                           doctor_address, session_version
                         )
-                        values (%s, %s, %s, %s, 'admin', null, '', 1)
-                        returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                        values (%s, %s, %s, %s, %s, %s, 'admin', null, '', 1)
+                        returning id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
                           doctor_signature_data_base64, created_at, session_version,
                           superdashboard_session_version
                         """,
-                        (org_id, identifier, name.strip(), password_hash),
+                        (org_id, identifier, email, phone, name.strip(), password_hash),
                     )
                     user_row = cursor.fetchone()
                     if not user_row:
@@ -1078,9 +1086,11 @@ class PostgresAuthSettingsRepository:
         self,
         org_id: str,
         identifier: str,
-        name: str,
-        password_hash: str,
-        role: UserRole,
+        email: str = "",
+        phone: str = "",
+        name: str = "",
+        password_hash: str = "",
+        role: UserRole = "staff",
     ) -> dict[str, Any]:
         def _create() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
@@ -1090,19 +1100,21 @@ class PostgresAuthSettingsRepository:
                         insert into public.clinic_users (
                           org_id,
                           identifier,
+                          email,
+                          phone,
                           name,
                           password_hash,
                           role,
                           doctor_dob,
                           doctor_address
                         )
-                        values (%s, %s, %s, %s, %s, null, '')
-                        returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                        values (%s, %s, %s, %s, %s, %s, %s, null, '')
+                        returning id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
                           doctor_signature_data_base64, created_at, session_version,
                           superdashboard_session_version
                         """,
-                        (org_id, identifier, name.strip(), password_hash, role),
+                        (org_id, identifier, email, phone, name.strip(), password_hash, role),
                     )
                     row = cursor.fetchone()
                     if not row:
@@ -1117,7 +1129,7 @@ class PostgresAuthSettingsRepository:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        select id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                        select id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
                           doctor_signature_data_base64, password_hash, created_at, session_version,
                           superdashboard_session_version
@@ -1142,7 +1154,7 @@ class PostgresAuthSettingsRepository:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        select id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                        select id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
                           doctor_signature_data_base64, created_at
                         from public.clinic_users
@@ -1164,7 +1176,7 @@ class PostgresAuthSettingsRepository:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        select id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                        select id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type, created_at,
                           session_version, superdashboard_session_version
                         from public.clinic_users
@@ -1186,7 +1198,7 @@ class PostgresAuthSettingsRepository:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        select id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                        select id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
                           doctor_signature_data_base64, created_at
                         from public.clinic_users
@@ -1208,7 +1220,7 @@ class PostgresAuthSettingsRepository:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        select id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                        select id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type, created_at
                         from public.clinic_users
                         where org_id = %s
@@ -1229,7 +1241,7 @@ class PostgresAuthSettingsRepository:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        select id, org_id, identifier, name, role, created_at
+                        select id, org_id, identifier, email, phone, name, role, created_at
                         from public.clinic_users
                         where org_id = %s
                         order by created_at asc
@@ -1254,7 +1266,7 @@ class PostgresAuthSettingsRepository:
                         update public.clinic_users
                         set role = %s, updated_at = %s
                         where id = %s
-                        returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                        returning id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
                           doctor_signature_data_base64, created_at, session_version,
                           superdashboard_session_version
@@ -1281,7 +1293,7 @@ class PostgresAuthSettingsRepository:
                         update public.clinic_users
                         set name = %s, doctor_dob = %s, doctor_address = %s, updated_at = %s
                         where id = %s
-                        returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                        returning id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
                           doctor_signature_data_base64, created_at, session_version,
                           superdashboard_session_version
@@ -1315,7 +1327,7 @@ class PostgresAuthSettingsRepository:
                           superdashboard_session_version = coalesce(superdashboard_session_version, 1) + 1,
                           updated_at = %s
                         where id = %s
-                        returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                        returning id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
                           doctor_signature_data_base64, password_hash, created_at, session_version,
                           superdashboard_session_version
@@ -1330,6 +1342,89 @@ class PostgresAuthSettingsRepository:
                     return user
 
         return await asyncio.to_thread(_update)
+
+    async def create_password_reset_token(
+        self,
+        *,
+        user_id: str,
+        token_hash: str,
+        requested_by_user_id: str | None,
+        requested_by_name: str,
+        requester_realm: str,
+        expires_at: datetime,
+    ) -> dict[str, Any]:
+        def _create() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        insert into public.password_reset_tokens (
+                          user_id,
+                          token_hash,
+                          requested_by_user_id,
+                          requested_by_name,
+                          requester_realm,
+                          expires_at
+                        )
+                        values (%s, %s, %s, %s, %s, %s)
+                        returning id, user_id, token_hash, requested_by_user_id,
+                          requested_by_name, requester_realm, expires_at, used_at, created_at
+                        """,
+                        (
+                            user_id,
+                            token_hash,
+                            requested_by_user_id,
+                            requested_by_name.strip(),
+                            requester_realm,
+                            expires_at,
+                        ),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("Failed to create password reset token.")
+                    return _row_to_dict(row, cursor)
+
+        return await asyncio.to_thread(_create)
+
+    async def get_active_password_reset_token(self, token_hash: str) -> dict[str, Any] | None:
+        def _get() -> dict[str, Any] | None:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select token.id, token.user_id, token.expires_at, token.used_at,
+                          token.created_at, user_row.org_id, user_row.identifier,
+                          user_row.email, user_row.phone, user_row.name, user_row.role
+                        from public.password_reset_tokens token
+                        join public.clinic_users user_row on user_row.id = token.user_id
+                        where token.token_hash = %s
+                          and token.used_at is null
+                          and token.expires_at > now()
+                        limit 1
+                        """,
+                        (token_hash,),
+                    )
+                    row = cursor.fetchone()
+                    return _row_to_dict(row, cursor) if row else None
+
+        return await asyncio.to_thread(_get)
+
+    async def mark_password_reset_token_used(self, token_id: str) -> None:
+        def _mark() -> None:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        update public.password_reset_tokens
+                        set used_at = now()
+                        where id = %s and used_at is null
+                        """,
+                        (token_id,),
+                    )
+                    if cursor.rowcount != 1:
+                        raise IndexError(token_id)
+
+        await asyncio.to_thread(_mark)
 
     async def revoke_user_sessions(self, user_id: str) -> None:
         def _revoke() -> None:
@@ -1388,7 +1483,7 @@ class PostgresAuthSettingsRepository:
                           doctor_signature_data_base64 = %s,
                           updated_at = %s
                         where id = %s
-                        returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                        returning id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
                           doctor_signature_data_base64, created_at, session_version,
                           superdashboard_session_version
@@ -1416,7 +1511,7 @@ class PostgresAuthSettingsRepository:
                           doctor_signature_data_base64 = null,
                           updated_at = %s
                         where id = %s
-                        returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
+                        returning id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
                           doctor_signature_data_base64, created_at, session_version,
                           superdashboard_session_version

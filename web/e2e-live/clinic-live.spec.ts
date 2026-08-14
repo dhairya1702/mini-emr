@@ -38,6 +38,8 @@ async function registerClinic(request: APIRequestContext, label = unique("live")
   const response = await request.post(`${API_BASE_URL}/auth/register`, {
     data: {
       identifier,
+      email: identifier,
+      phone: "5550100000",
       password: PASSWORD,
       admin_name: "Dr. Live E2E",
       clinic_name: `Live E2E ${label}`,
@@ -80,7 +82,7 @@ async function completeOnboarding(request: APIRequestContext, token: string) {
 async function createStaffUser(request: APIRequestContext, token: string, identifier: string, password = PASSWORD) {
   const response = await request.post(`${API_BASE_URL}/users/staff`, {
     headers: authHeaders(token),
-    data: { identifier, password },
+    data: { identifier, email: identifier, phone: "5550100001", password },
   });
   expect(response.status()).toBe(201);
   return response.json() as Promise<{ id: string; identifier: string; role: "staff" }>;

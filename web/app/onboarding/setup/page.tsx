@@ -117,7 +117,7 @@ export default function OnboardingSetupPage() {
     sender_email: "",
     app_password: "",
   });
-  const [staff, setStaff] = useState({ identifier: "", password: "" });
+  const [staff, setStaff] = useState({ email: "", phone: "", identifier: "", password: "" });
   const [createdStaffUsers, setCreatedStaffUsers] = useState<AuthUser[]>([]);
   const [patient, setPatient] = useState({ name: "", phone: "", reason: "" });
   const [templateSettings, setTemplateSettings] = useState<ClinicSettings | null>(null);
@@ -316,16 +316,25 @@ export default function OnboardingSetupPage() {
 
   async function saveStaff(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!staff.identifier.trim() || staff.password.length < 12) {
-      setError("Enter a staff login and a password of at least 12 characters, or continue without adding another user.");
+    if (!staff.email.trim() || !staff.phone.trim() || !staff.identifier.trim()) {
+      setError("Enter the staff user's email, phone number, and login ID, or continue without adding another user.");
+      return;
+    }
+    if (staff.password.length < 12) {
+      setError("Password must be at least 12 characters.");
       return;
     }
     setIsSaving(true);
     setError("");
     try {
-      const created = await createStaffUser({ identifier: staff.identifier.trim(), password: staff.password });
+      const created = await createStaffUser({
+        email: staff.email.trim(),
+        phone: staff.phone.trim(),
+        identifier: staff.identifier.trim(),
+        password: staff.password,
+      });
       setCreatedStaffUsers((current) => [...current, created]);
-      setStaff({ identifier: "", password: "" });
+      setStaff({ email: "", phone: "", identifier: "", password: "" });
       markComplete("staff");
       setStatus("Staff user added. Add another user or continue.");
     } catch (saveError) {
@@ -596,8 +605,28 @@ export default function OnboardingSetupPage() {
           {activeStep.key === "staff" ? (
             <form className="space-y-4" onSubmit={saveStaff}>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Staff email or phone</span>
+                <span className="mb-2 block text-sm font-medium text-slate-700">Email</span>
+                <input
+                  type="email"
+                  value={staff.email}
+                  onChange={(event) => setStaff((current) => ({ ...current, email: event.target.value }))}
+                  className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Phone number</span>
+                <input
+                  value={staff.phone}
+                  onChange={(event) => setStaff((current) => ({ ...current, phone: event.target.value }))}
+                  className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Login ID</span>
                 <input value={staff.identifier} onChange={(event) => setStaff((current) => ({ ...current, identifier: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none" />
+                <p className="mt-2 text-sm text-slate-500">
+                  This is the login credential. It can match the phone number or be a separate username.
+                </p>
               </label>
               <PasswordInput label="Temporary password" value={staff.password} onChange={(event) => setStaff((current) => ({ ...current, password: event.target.value }))} placeholder="Minimum 12 characters" />
               {createdStaffUsers.length ? (

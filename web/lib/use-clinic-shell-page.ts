@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { api } from "@/lib/api";
-import { AuditEvent, AuthUser, ClinicSettings, ClinicSettingsUpdatePayload, Invoice, InvoiceActionResult, UserRole } from "@/lib/types";
+import { AuditEvent, AuthUser, ClinicSettings, ClinicSettingsUpdatePayload, Invoice, InvoiceActionResult, StaffUserCreatePayload, UserRole } from "@/lib/types";
 
 const PAGE_LOAD_RETRY_DELAY_MS = 400;
 const PAGE_LOAD_MAX_ATTEMPTS = 2;
@@ -204,7 +204,7 @@ export function useClinicShellPage<T>({
     return loadedAuditEvents;
   }, []);
 
-  const handleAddStaffUser = useCallback(async (payload: { identifier: string; password: string; role?: UserRole }) => {
+  const handleAddStaffUser = useCallback(async (payload: StaffUserCreatePayload) => {
     await createStaffUser(payload);
     const refreshedSettings = await api.getClinicSettings();
     applyShellClinicSettings(refreshedSettings);

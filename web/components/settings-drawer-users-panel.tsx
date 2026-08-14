@@ -1,12 +1,15 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { UserPlus, X } from "lucide-react";
+import { KeyRound, UserPlus, X } from "lucide-react";
 
 import { PasswordInput } from "@/components/password-input";
 import { AuthUser, UserRole } from "@/lib/types";
 
 export type UserFormState = {
+  name: string;
+  email: string;
+  phone: string;
   identifier: string;
   password: string;
   role: UserRole;
@@ -40,6 +43,7 @@ interface SettingsDrawerUsersPanelProps {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
   onUserFormChange: (patch: Partial<UserFormState>) => void;
   onUpdateUserRole: (userId: string, role: UserRole) => Promise<AuthUser>;
+  onSendPasswordReset: (userId: string) => Promise<{ message: string }>;
   onDeleteUser: (userId: string) => Promise<void>;
 }
 
@@ -55,26 +59,32 @@ export function SettingsDrawerUsersPanel({
   onSubmit,
   onUserFormChange,
   onUpdateUserRole,
+  onSendPasswordReset,
   onDeleteUser,
 }: SettingsDrawerUsersPanelProps) {
   const [selectedUser, setSelectedUser] = useState<AuthUser | null>(null);
   const [selectedRole, setSelectedRole] = useState<UserRole>("staff");
   const [isUpdatingRole, setIsUpdatingRole] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [roleError, setRoleError] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
   const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     if (!selectedUser) {
       setSelectedRole("staff");
       setRoleError("");
+      setResetMessage("");
       setIsUpdatingRole(false);
+      setIsSendingReset(false);
       setIsDeletingUser(false);
       setDeleteError("");
       return;
     }
     setSelectedRole(selectedUser.role);
     setRoleError("");
+    setResetMessage("");
     setDeleteError("");
   }, [selectedUser]);
 
@@ -107,6 +117,23 @@ export function SettingsDrawerUsersPanel({
       setDeleteError(error instanceof Error ? error.message : "Failed to remove user.");
     } finally {
       setIsDeletingUser(false);
+    }
+  }
+
+  async function handleSendPasswordReset() {
+    if (!selectedUser) {
+      return;
+    }
+    setIsSendingReset(true);
+    setRoleError("");
+    setResetMessage("");
+    try {
+      const result = await onSendPasswordReset(selectedUser.id);
+      setResetMessage(result.message);
+    } catch (error) {
+      setRoleError(error instanceof Error ? error.message : "Failed to send password reset.");
+    } finally {
+      setIsSendingReset(false);
     }
   }
 
@@ -143,6 +170,7 @@ export function SettingsDrawerUsersPanel({
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold">Name</th>
                   <th className="px-4 py-3 text-left font-semibold">Login ID</th>
+                  <th className="px-4 py-3 text-left font-semibold">Email</th>
                   <th className="px-4 py-3 text-left font-semibold">Role</th>
                   <th className="px-4 py-3 text-left font-semibold">Added On</th>
                 </tr>
@@ -171,6 +199,7 @@ export function SettingsDrawerUsersPanel({
                   >
                     <td className="px-4 py-3 text-slate-800">{user.name}</td>
                     <td className="px-4 py-3 text-slate-600">{user.identifier}</td>
+                    <td className="px-4 py-3 text-slate-600">{user.email || "-"}</td>
                     <td className="px-4 py-3">
                       <span className="rounded-xl bg-[#f3f8fb] px-3 py-1 text-xs font-medium text-[#2a6fa8]">
                         {formatRole(user.role)}
@@ -199,6 +228,7 @@ export function SettingsDrawerUsersPanel({
               <div>
                 <h4 className="text-lg font-semibold text-slate-900">{selectedUser.name}</h4>
                 <p className="mt-1 text-sm text-slate-500">{selectedUser.identifier}</p>
+                <p className="mt-1 text-sm text-slate-500">{selectedUser.email || "No recovery email"}</p>
               </div>
               <button
                 type="button"
@@ -223,9 +253,19 @@ export function SettingsDrawerUsersPanel({
             </label>
 
             {roleError ? <p className="mt-3 text-sm font-medium text-rose-600">{roleError}</p> : null}
+            {resetMessage ? <p className="mt-3 text-sm font-medium text-emerald-700">{resetMessage}</p> : null}
             {deleteError ? <p className="mt-2 text-sm font-medium text-rose-600">{deleteError}</p> : null}
 
             <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => void handleSendPasswordReset()}
+                disabled={isSendingReset || !selectedUser.email}
+                className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] px-4 py-2 text-sm font-medium text-[#2a6fa8] transition hover:bg-[#f3f8fb] disabled:opacity-60"
+              >
+                <KeyRound className="h-4 w-4" />
+                {isSendingReset ? "Sending..." : "Reset Password"}
+              </button>
               <button
                 type="button"
                 onClick={() => void handleDeleteSelectedUser()}
@@ -280,12 +320,40 @@ export function SettingsDrawerUsersPanel({
             </div>
 
             <label className="mt-5 block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Email or phone number</span>
+              <span className="mb-2 block text-sm font-medium text-slate-700">Name</span>
+              <input
+                value={userForm.name}
+                onChange={(event) => onUserFormChange({ name: event.target.value })}
+                className="w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+              />
+            </label>
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Email</span>
+              <input
+                type="email"
+                value={userForm.email}
+                onChange={(event) => onUserFormChange({ email: event.target.value })}
+                className="w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+              />
+            </label>
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Phone number</span>
+              <input
+                value={userForm.phone}
+                onChange={(event) => onUserFormChange({ phone: event.target.value })}
+                className="w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+              />
+            </label>
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Login ID</span>
               <input
                 value={userForm.identifier}
                 onChange={(event) => onUserFormChange({ identifier: event.target.value })}
                 className="w-full rounded-xl border border-[#bfd7e8] bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
               />
+              <p className="mt-2 text-sm text-slate-500">
+                This is the login credential. It can match the phone number or be a separate username.
+              </p>
             </label>
             <div className="mt-4">
               <PasswordInput

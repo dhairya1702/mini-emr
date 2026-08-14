@@ -17,6 +17,7 @@ from test_app import (
     signature_png_bytes,
 )
 from app import config as config_module
+from app.services import password_reset_service
 from app.services.signature_service import normalize_signature_image
 from app.services.user_workflow import build_user_out
 
@@ -103,6 +104,8 @@ def test_open_registration_creates_team_clinic_without_customer_id(client):
         "/auth/register",
         json={
             "identifier": "open-register@clinic.com",
+            "email": "open-register@clinic.com",
+            "phone": "5550104444",
             "password": "password123!",
             "admin_name": "Clinic Admin",
             "clinic_name": "Open Clinic",
@@ -132,6 +135,8 @@ def test_closed_registration_requires_customer_id(client, monkeypatch: pytest.Mo
         "/auth/register",
         json={
             "identifier": "closed-register@clinic.com",
+            "email": "closed-register@clinic.com",
+            "phone": "5550105555",
             "password": "password123!",
             "admin_name": "Clinic Admin",
             "clinic_name": "Closed Clinic",
@@ -154,6 +159,8 @@ def test_register_requires_valid_onboarded_customer_id(client):
         "/auth/register",
         json={
             "identifier": "blocked-register@clinic.com",
+            "email": "blocked-register@clinic.com",
+            "phone": "5550109999",
             "password": "password123!",
             "customer_id": "CID-MISSING-0000",
             "admin_name": "Clinic Admin",
@@ -185,6 +192,8 @@ def test_register_requires_onboarded_phone_match(client):
         "/auth/register",
         json={
             "identifier": "phone-mismatch@clinic.com",
+            "email": "phone-mismatch@clinic.com",
+            "phone": "5550102222",
             "password": "password123!",
             "customer_id": customer_id,
             "admin_name": "Clinic Admin",
@@ -217,6 +226,8 @@ def test_valid_registration_claims_onboarded_customer_id(client):
         "/auth/register",
         json={
             "identifier": "claimed-register@clinic.com",
+            "email": "claimed-register@clinic.com",
+            "phone": "5550103333",
             "password": "password123!",
             "customer_id": customer_id,
             "admin_name": "Clinic Admin",
@@ -286,7 +297,12 @@ def test_conflicting_bearer_and_cookie_identities_are_rejected(client):
     admin = register_test_clinic(test_client, identifier="conflict-admin@clinic.com", clinic_name="Conflict Clinic")
     created = test_client.post(
         "/users/staff",
-        json={"identifier": "conflict-staff@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "conflict-staff@clinic.com",
+            "email": "conflict-staff@clinic.com",
+            "phone": "5550102929",
+            "password": "password123!",
+        },
         headers=auth_headers_for_token(admin["token"]),
     )
     assert created.status_code == 201
@@ -305,6 +321,133 @@ def test_conflicting_bearer_and_cookie_identities_are_rejected(client):
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Conflicting authentication credentials."
+
+
+def test_clinic_admin_can_send_and_confirm_user_password_reset(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="reset-admin@clinic.com", clinic_name="Reset Clinic")
+    headers = auth_headers_for_token(session["token"])
+    token_value = "known-reset-token-value-that-is-long-enough"
+    sent_messages: list[dict] = []
+
+    async def fake_send_clinic_email_message(**kwargs):
+        sent_messages.append(kwargs)
+        return {"message_id": "reset-email"}
+
+    monkeypatch.setattr(password_reset_service.secrets, "token_urlsafe", lambda _length: token_value)
+    monkeypatch.setattr(password_reset_service, "send_clinic_email_message", fake_send_clinic_email_message)
+
+    created = test_client.post(
+        "/users",
+        headers=headers,
+        json={
+            "identifier": "reset-staff",
+            "email": "reset-staff@clinic.com",
+            "phone": "5550103330",
+            "password": "password123!",
+            "role": "staff",
+        },
+    )
+    assert created.status_code == 201, created.json()
+
+    reset = test_client.post(f"/users/{created.json()['id']}/password-reset", headers=headers)
+    assert reset.status_code == 200
+    assert reset.json() == {"message": "Password reset email sent to reset-staff@clinic.com."}
+    assert sent_messages[0]["recipient"] == "reset-staff@clinic.com"
+    assert f"/reset-password?token={token_value}" in sent_messages[0]["text_content"]
+    stored_token = next(iter(repo.password_reset_tokens.values()))
+    assert stored_token["token_hash"] == password_reset_service._hash_reset_token(token_value)
+    assert stored_token["requester_realm"] == "clinic"
+
+    old_login = test_client.post(
+        "/auth/login",
+        json={"identifier": "reset-staff", "password": "password123!"},
+    )
+    assert old_login.status_code == 200
+
+    confirmed = test_client.post(
+        "/auth/password-reset/confirm",
+        json={"token": token_value, "new_password": "new-password123!"},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json() == {"message": "Password updated. You can sign in with the new password."}
+    assert repo.password_reset_tokens[stored_token["id"]]["used_at"] is not None
+
+    reused = test_client.post(
+        "/auth/password-reset/confirm",
+        json={"token": token_value, "new_password": "another-password123!"},
+    )
+    assert reused.status_code == 400
+    assert reused.json()["detail"] == "Password reset link is invalid or expired."
+    assert test_client.post(
+        "/auth/login",
+        json={"identifier": "reset-staff", "password": "password123!"},
+    ).status_code == 401
+    assert test_client.post(
+        "/auth/login",
+        json={"identifier": "reset-staff", "password": "new-password123!"},
+    ).status_code == 200
+
+
+def test_superdashboard_can_send_user_password_reset_without_clinic_audit(
+    client,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="reset-ops@clinic.com", clinic_name="Reset Ops Clinic")
+    monkeypatch.setattr(
+        auth_module,
+        "get_settings",
+        lambda: type(
+            "Settings",
+            (),
+            {
+                "auth_secret": "test-secret",
+                "super_admin_identifiers": session["user"]["identifier"],
+                "app_origin": "http://testserver",
+                "session_ttl_hours": 12,
+                "superdashboard_session_ttl_hours": 4,
+            },
+        )(),
+    )
+    token_value = "known-ops-reset-token-value-that-is-long-enough"
+    sent_messages: list[dict] = []
+
+    async def fake_send_clinic_email_message(**kwargs):
+        sent_messages.append(kwargs)
+        return {"message_id": "ops-reset-email"}
+
+    monkeypatch.setattr(password_reset_service.secrets, "token_urlsafe", lambda _length: token_value)
+    monkeypatch.setattr(password_reset_service, "send_clinic_email_message", fake_send_clinic_email_message)
+
+    created = test_client.post(
+        "/users",
+        headers=auth_headers_for_token(session["token"]),
+        json={
+            "identifier": "ops-reset-staff",
+            "email": "ops-reset-staff@clinic.com",
+            "phone": "5550103331",
+            "password": "password123!",
+            "role": "staff",
+        },
+    )
+    assert created.status_code == 201, created.json()
+    ops_login = test_client.post(
+        "/superdashboard/auth/login",
+        json={"identifier": session["user"]["identifier"], "password": "password123!"},
+    )
+    assert ops_login.status_code == 200, ops_login.json()
+
+    reset = test_client.post(
+        f"/superdashboard/users/{created.json()['id']}/password-reset",
+        headers=auth_headers_for_token(ops_login.json()["token"]),
+    )
+
+    assert reset.status_code == 200
+    assert sent_messages[0]["recipient"] == "ops-reset-staff@clinic.com"
+    stored_token = next(iter(repo.password_reset_tokens.values()))
+    assert stored_token["requester_realm"] == "superdashboard"
+    assert not any(event["action"] == "password_reset_requested" for event in repo.audit_events.values())
 
 
 def test_cookie_authenticated_mutation_requires_allowed_origin(client):

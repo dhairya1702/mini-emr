@@ -48,12 +48,14 @@ from app.schema_domains.auth_settings import (
     ClinicSettingsOut,
     ClinicSettingsUpdate,
     LoginRequest,
+    PasswordResetRequestOut,
     UserOut,
     UserRoleUpdate,
 )
 from app.schema_domains.patients import AuditEventOut
 from app.email_validation import normalize_single_email
 from app.services.email_service import EmailDeliveryError, test_email_credentials
+from app.services.password_reset_service import send_password_reset_for_user
 from app.services.auth_flow import enforce_repository_rate_limit, normalize_identifier
 from app.services.user_workflow import build_user_out
 
@@ -546,6 +548,26 @@ async def update_superdashboard_user_role(
             raise HTTPException(status_code=400, detail="Organization must keep at least one admin.")
     updated = await repo.update_user_role(str(user_id), payload)
     return SuperuserOrgUserOut(**updated)
+
+
+@router.post("/superdashboard/users/{user_id}/password-reset", response_model=PasswordResetRequestOut)
+@router.post("/superuser/users/{user_id}/password-reset", response_model=PasswordResetRequestOut)
+async def send_superdashboard_user_password_reset(
+    user_id: UUID,
+    current_user: UserOut = Depends(require_super_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> PasswordResetRequestOut:
+    try:
+        target_user = await repo.get_user(str(user_id))
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="User not found.") from exc
+    await send_password_reset_for_user(
+        repo,
+        target_user=target_user,
+        requested_by=current_user,
+        requester_realm="superdashboard",
+    )
+    return PasswordResetRequestOut(message=f"Password reset email sent to {target_user['email']}.")
 
 
 @router.get("/superdashboard/errors", response_model=list[PlatformErrorOut])

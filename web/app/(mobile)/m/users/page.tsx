@@ -5,12 +5,14 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { MobileShell } from "@/components/mobile/mobile-shell";
 import { SettingsDrawerUsersPanel, UserFormState } from "@/components/settings-drawer-users-panel";
+import { api } from "@/lib/api";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
 
 export default function MobileUsersPage() {
   const { currentUser, isAuthReady, isRedirectingToLogin } = useClinicShell();
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [userForm, setUserForm] = useState<UserFormState>({ identifier: "", password: "", role: "staff" });
+  const emptyUserForm: UserFormState = { name: "", email: "", phone: "", identifier: "", password: "", role: "staff" };
+  const [userForm, setUserForm] = useState<UserFormState>(emptyUserForm);
   const [userError, setUserError] = useState("");
   const [userSuccess, setUserSuccess] = useState("");
   const [isAddingUser, setIsAddingUser] = useState(false);
@@ -39,8 +41,12 @@ export default function MobileUsersPage() {
     event.preventDefault();
     setUserError("");
     setUserSuccess("");
+    if (!userForm.email.trim()) {
+      setUserError("Email is required.");
+      return;
+    }
     if (!userForm.identifier.trim()) {
-      setUserError("Email or phone number is required.");
+      setUserError("Login ID is required.");
       return;
     }
     if (userForm.password.length < 12) {
@@ -50,12 +56,15 @@ export default function MobileUsersPage() {
     setIsAddingUser(true);
     try {
       await handleAddStaffUser({
+        name: userForm.name.trim(),
+        email: userForm.email.trim(),
+        phone: userForm.phone.trim(),
         identifier: userForm.identifier.trim(),
         password: userForm.password,
         role: userForm.role,
       });
       setUserSuccess(`${userForm.role === "admin" ? "Admin" : userForm.role === "doctor" ? "Doctor" : "Staff"} user added.`);
-      setUserForm({ identifier: "", password: "", role: "staff" });
+      setUserForm(emptyUserForm);
       setIsAddUserOpen(false);
     } catch (saveError) {
       setUserError(saveError instanceof Error ? saveError.message : "Failed to add user.");
@@ -91,6 +100,7 @@ export default function MobileUsersPage() {
         onSubmit={handleAddUser}
         onUserFormChange={(patch) => setUserForm((current) => ({ ...current, ...patch }))}
         onUpdateUserRole={handleUpdateUserRole}
+        onSendPasswordReset={(userId) => api.sendUserPasswordReset(userId)}
         onDeleteUser={handleDeleteUser}
       />
     </MobileShell>

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Copy, LogOut, RefreshCw, Save, Trash2, UserCog, XCircle } from "lucide-react";
+import { ArrowLeft, Copy, KeyRound, LogOut, RefreshCw, Save, Trash2, UserCog, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
@@ -128,6 +128,7 @@ export default function SuperdashboardOrgDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState("");
+  const [resettingUserId, setResettingUserId] = useState("");
   const [deletingUserId, setDeletingUserId] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const adminCount = useMemo(
@@ -255,6 +256,23 @@ export default function SuperdashboardOrgDetailPage() {
       setMessage(error instanceof Error ? error.message : "Failed to delete user.");
     } finally {
       setDeletingUserId("");
+    }
+  }
+
+  async function sendPasswordReset(user: SuperuserOrgUser) {
+    if (!user.email) {
+      setMessage("This user does not have a recovery email.");
+      return;
+    }
+    setResettingUserId(user.id);
+    setMessage("");
+    try {
+      const result = await api.sendSuperdashboardUserPasswordReset(user.id);
+      setMessage(result.message);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to send password reset.");
+    } finally {
+      setResettingUserId("");
     }
   }
 
@@ -432,6 +450,7 @@ export default function SuperdashboardOrgDetailPage() {
                         <td className="px-7 py-5">
                           <p className="font-black text-slate-950">{user.name || user.identifier}</p>
                           <p className="mt-1 text-sm font-bold text-slate-500">{user.identifier}</p>
+                          <p className="mt-1 text-sm font-bold text-slate-500">{user.email || "No recovery email"}</p>
                         </td>
                         <td className="px-7 py-5">
                           <select
@@ -441,11 +460,21 @@ export default function SuperdashboardOrgDetailPage() {
                             className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 font-black capitalize outline-none transition focus:border-blue-500 disabled:opacity-60"
                           >
                             <option value="admin">Admin</option>
+                            <option value="doctor">Doctor</option>
                             <option value="staff">Staff</option>
                           </select>
                         </td>
                         <td className="px-7 py-5 font-bold text-slate-600">{formatDateTime(user.created_at)}</td>
                         <td className="px-7 py-5 text-right">
+                          <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => void sendPasswordReset(user)}
+                            disabled={resettingUserId === user.id || !user.email}
+                            className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-600 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Reset password"
+                          >
+                            <KeyRound className="h-5 w-5" />
+                          </button>
                           <button
                             onClick={() => void deleteUser(user)}
                             disabled={deletingUserId === user.id}
@@ -454,6 +483,7 @@ export default function SuperdashboardOrgDetailPage() {
                           >
                             <Trash2 className="h-5 w-5" />
                           </button>
+                          </div>
                         </td>
                       </tr>
                     );

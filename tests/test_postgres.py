@@ -856,6 +856,8 @@ def test_postgres_auth_settings_repository_creates_organization_and_user():
                 "user-1",
                 "org-1",
                 "admin@example.com",
+                "admin@example.com",
+                "",
                 "",
                 "admin",
                 None,
@@ -883,7 +885,7 @@ def test_postgres_auth_settings_repository_creates_organization_and_user():
     )
 
     assert cursor.executed[0][1] == ("Fika Clinic",)
-    assert cursor.executed[1][1] == ("org-1", "admin@example.com", "", "hashed", "admin")
+    assert cursor.executed[1][1] == ("org-1", "admin@example.com", "", "", "", "hashed", "admin")
     assert org["name"] == "Fika Clinic"
     assert user["name"] == "Admin"
     assert user["doctor_signature_url"] is None

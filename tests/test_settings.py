@@ -578,6 +578,8 @@ def test_user_signature_can_be_uploaded_and_removed(client):
         headers=headers,
         json={
             "identifier": "signature-user@clinic.com",
+            "email": "signature-user@clinic.com",
+            "phone": "5550106001",
             "password": "password123!",
         },
     )
@@ -607,7 +609,12 @@ def test_admin_can_change_user_role(client):
     created = test_client.post(
         "/users/staff",
         headers=headers,
-        json={"identifier": "staff-role@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "staff-role@clinic.com",
+            "email": "staff-role@clinic.com",
+            "phone": "5550106002",
+            "password": "password123!",
+        },
     )
     assert created.status_code == 201
     user_id = created.json()["id"]
@@ -633,7 +640,12 @@ def test_staff_creation_preserves_ops_workspace_mode(client):
     created = test_client.post(
         "/users/staff",
         headers=headers,
-        json={"identifier": "workspace-staff@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "workspace-staff@clinic.com",
+            "email": "workspace-staff@clinic.com",
+            "phone": "5550106003",
+            "password": "password123!",
+        },
     )
     assert created.status_code == 201
 
@@ -664,7 +676,12 @@ def test_onboarding_completion_preserves_ops_workspace_mode_when_staff_exists(cl
     created = test_client.post(
         "/users/staff",
         headers=headers,
-        json={"identifier": "workspace-team@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "workspace-team@clinic.com",
+            "email": "workspace-team@clinic.com",
+            "phone": "5550106004",
+            "password": "password123!",
+        },
     )
     assert created.status_code == 201
 
@@ -706,7 +723,12 @@ def test_admin_can_remove_user_but_not_self(client):
     created = test_client.post(
         "/users/staff",
         headers=headers,
-        json={"identifier": "remove-staff@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "remove-staff@clinic.com",
+            "email": "remove-staff@clinic.com",
+            "phone": "5550106005",
+            "password": "password123!",
+        },
     )
     assert created.status_code == 201
     user_id = created.json()["id"]

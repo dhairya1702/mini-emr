@@ -189,9 +189,13 @@ class ClinicSettingsOut(BaseModel):
 
 class UserBase(BaseModel):
     identifier: str = Field(min_length=5, max_length=120)
+    email: str = Field(default="", max_length=200)
+    phone: str = Field(default="", max_length=40)
 
 
 class UserCreate(UserBase):
+    email: str = Field(min_length=5, max_length=200)
+    phone: str = Field(min_length=5, max_length=40)
     password: str = Field(min_length=12, max_length=128)
     customer_id: str = Field(default="", max_length=80)
     admin_name: str = Field(min_length=1, max_length=120)
@@ -202,6 +206,9 @@ class UserCreate(UserBase):
 
 
 class StaffUserCreate(UserBase):
+    name: str = Field(default="", max_length=120)
+    email: str = Field(min_length=5, max_length=200)
+    phone: str = Field(min_length=5, max_length=40)
     password: str = Field(min_length=12, max_length=128)
     role: UserRole = "staff"
 
@@ -228,6 +235,15 @@ class UserAccountUpdate(BaseModel):
 
 class UserPasswordUpdate(BaseModel):
     current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=12, max_length=128)
+
+
+class PasswordResetRequestOut(BaseModel):
+    message: str
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=32, max_length=300)
     new_password: str = Field(min_length=12, max_length=128)
 
 

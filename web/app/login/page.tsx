@@ -25,6 +25,8 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [registerStep, setRegisterStep] = useState<1 | 2>(1);
   const [identifier, setIdentifier] = useState("");
+  const [accountEmail, setAccountEmail] = useState("");
+  const [accountPhone, setAccountPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [customerId, setCustomerId] = useState("");
@@ -110,6 +112,8 @@ export default function LoginPage() {
   function resetRegisterFields() {
     setRegisterStep(1);
     setIdentifier("");
+    setAccountEmail("");
+    setAccountPhone("");
     setPassword("");
     setConfirmPassword("");
     setCustomerId("");
@@ -153,10 +157,6 @@ export default function LoginPage() {
       setError("Clinic address is required.");
       return;
     }
-
-    if (!identifier.trim()) {
-      setIdentifier(clinicPhone.trim());
-    }
     setError("");
     setRegisterStep(2);
   }
@@ -195,8 +195,14 @@ export default function LoginPage() {
         if (!clinicAddress.trim()) {
           throw new Error("Clinic address is required.");
         }
+        if (!accountEmail.trim()) {
+          throw new Error("Email is required.");
+        }
+        if (!accountPhone.trim()) {
+          throw new Error("Phone number is required.");
+        }
         if (!identifier.trim()) {
-          throw new Error("Username, email, or phone number is required.");
+          throw new Error("Login ID is required.");
         }
         if (password.length < 12) {
           throw new Error("Password must be at least 12 characters.");
@@ -207,6 +213,8 @@ export default function LoginPage() {
 
         session = await api.register({
           identifier: identifier.trim(),
+          email: accountEmail.trim(),
+          phone: accountPhone.trim(),
           password,
           customer_id: customerId.trim().toUpperCase() || undefined,
           admin_name: adminName.trim(),
@@ -260,12 +268,12 @@ export default function LoginPage() {
                 <>
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-slate-700">
-                      Email or phone number
+                      Username, email, or phone number
                     </span>
                     <input
                       value={identifier}
                       onChange={(event) => setIdentifier(event.target.value)}
-                      placeholder="doctor@clinic.com or +1 555 010 2020"
+                      placeholder="doctor, doctor@clinic.com, or +1 555 010 2020"
                       className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                   </label>
@@ -363,17 +371,34 @@ export default function LoginPage() {
               ) : (
                 <>
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">
-                      Username, email, or phone number
-                    </span>
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Email</span>
+                    <input
+                      type="email"
+                      value={accountEmail}
+                      onChange={(event) => setAccountEmail(event.target.value)}
+                      className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Phone number</span>
+                    <input
+                      value={accountPhone}
+                      onChange={(event) => setAccountPhone(event.target.value)}
+                      className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Username / Login ID</span>
                     <input
                       value={identifier}
                       onChange={(event) => setIdentifier(event.target.value)}
-                      placeholder="doctor@clinic.com or +1 555 010 2020"
+                      placeholder="dr-sharma"
                       className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none transition focus:border-[#6daed8]"
                     />
                     <p className="mt-2 text-sm text-slate-500">
-                      This is your login credential. It can match the clinic phone or be a separate email.
+                      This is your login credential. It can match the clinic phone or be a separate username.
                     </p>
                   </label>
 

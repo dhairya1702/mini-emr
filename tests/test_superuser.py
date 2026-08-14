@@ -285,7 +285,12 @@ def test_superdashboard_can_change_organization_user_limit(client, monkeypatch: 
     staff = test_client.post(
         "/users/staff",
         headers=auth_headers_for_token(session["token"]),
-        json={"identifier": "ops-limit-staff@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "ops-limit-staff@clinic.com",
+            "email": "ops-limit-staff@clinic.com",
+            "phone": "5550109001",
+            "password": "password123!",
+        },
     )
     assert staff.status_code == 201
 
@@ -385,7 +390,12 @@ def test_superdashboard_can_update_user_role(client, monkeypatch: pytest.MonkeyP
     staff = test_client.post(
         "/users/staff",
         headers=auth_headers_for_token(session["token"]),
-        json={"identifier": "role-staff@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "role-staff@clinic.com",
+            "email": "role-staff@clinic.com",
+            "phone": "5550109002",
+            "password": "password123!",
+        },
     )
     assert staff.status_code == 201, staff.json()
     staff_id = staff.json()["id"]
@@ -483,12 +493,22 @@ def test_customer_user_limit_blocks_extra_staff(client):
     first_staff = test_client.post(
         "/users/staff",
         headers=headers,
-        json={"identifier": "limit-staff-1@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "limit-staff-1@clinic.com",
+            "email": "limit-staff-1@clinic.com",
+            "phone": "5550109003",
+            "password": "password123!",
+        },
     )
     second_staff = test_client.post(
         "/users/staff",
         headers=headers,
-        json={"identifier": "limit-staff-2@clinic.com", "password": "password123!"},
+        json={
+            "identifier": "limit-staff-2@clinic.com",
+            "email": "limit-staff-2@clinic.com",
+            "phone": "5550109004",
+            "password": "password123!",
+        },
     )
 
     assert first_staff.status_code == 201

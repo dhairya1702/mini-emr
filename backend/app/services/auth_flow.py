@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 PHONE_PATTERN = re.compile(r"^\+?[0-9]{6,}$")
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,79}$")
 RATE_LIMIT_WINDOWS: dict[str, tuple[int, float]] = {
     "auth_login": (5, 60.0),
     "auth_login_ip": (20, 60.0),
@@ -41,10 +42,20 @@ def normalize_identifier(identifier: str) -> str:
     if PHONE_PATTERN.match(compact):
         return compact
 
+    if USERNAME_PATTERN.match(value):
+        return value.lower()
+
     raise HTTPException(
         status_code=400,
-        detail="Enter a valid email address or phone number.",
+        detail="Enter a valid username, email address, or phone number.",
     )
+
+
+def normalize_email(value: str) -> str:
+    email = str(value or "").strip().lower()
+    if not EMAIL_PATTERN.match(email):
+        raise HTTPException(status_code=400, detail="Enter a valid email address.")
+    return email
 
 
 def enforce_rate_limit(scope: str, key: str) -> None:

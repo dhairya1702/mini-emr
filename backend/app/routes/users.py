@@ -6,7 +6,8 @@ from fastapi.responses import StreamingResponse
 from app.api_errors import bad_request_error, internal_server_error
 from app.auth import get_current_user, require_admin
 from app.db import AppRepository, get_repository
-from app.schema_domains.auth_settings import StaffUserCreate, UserOut, UserRoleUpdate
+from app.schema_domains.auth_settings import PasswordResetRequestOut, StaffUserCreate, UserOut, UserRoleUpdate
+from app.services.password_reset_service import send_password_reset_for_user
 from app.services.signature_service import MAX_SIGNATURE_UPLOAD_BYTES, normalize_signature_image
 from app.services.user_workflow import build_user_out, create_staff_user_workflow
 
@@ -23,7 +24,14 @@ async def create_staff_user(
     return await create_staff_user_workflow(
         repo,
         current_user,
-        StaffUserCreate(identifier=payload.identifier, password=payload.password, role="staff"),
+        StaffUserCreate(
+            identifier=payload.identifier,
+            email=payload.email,
+            phone=payload.phone,
+            name=payload.name,
+            password=payload.password,
+            role="staff",
+        ),
     )
 
 
@@ -87,6 +95,25 @@ async def delete_user(
         raise HTTPException(status_code=400, detail="Every clinic must retain at least one admin.")
 
     await repo.delete_user(user_id)
+
+
+@router.post("/users/{user_id}/password-reset", response_model=PasswordResetRequestOut)
+async def send_user_password_reset(
+    user_id: str,
+    current_user: UserOut = Depends(require_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> PasswordResetRequestOut:
+    try:
+        target = await repo.get_user_for_org(str(current_user.org_id), user_id)
+    except (IndexError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail="User not found.") from exc
+    await send_password_reset_for_user(
+        repo,
+        target_user=target,
+        requested_by=current_user,
+        requester_realm="clinic",
+    )
+    return PasswordResetRequestOut(message=f"Password reset email sent to {target['email']}.")
 
 
 @router.post("/users/{user_id}/signature", response_model=UserOut)

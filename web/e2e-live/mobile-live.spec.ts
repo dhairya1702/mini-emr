@@ -19,6 +19,8 @@ async function registerClinic(request: APIRequestContext, label = unique("mobile
   const response = await request.post(`${API_BASE_URL}/auth/register`, {
     data: {
       identifier,
+      email: identifier,
+      phone: "5550100000",
       password: PASSWORD,
       admin_name: "Dr. Mobile E2E",
       clinic_name: `Mobile E2E ${label}`,

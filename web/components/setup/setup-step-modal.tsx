@@ -8,7 +8,7 @@ import { api, resolveApiAssetUrl } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
 import type { ClinicSetupStepKey } from "@/lib/setup-checklist";
-import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload } from "@/lib/types";
+import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload, StaffUserCreatePayload } from "@/lib/types";
 
 type SetupStepModalProps = {
   stepKey: ClinicSetupStepKey | null;
@@ -19,7 +19,7 @@ type SetupStepModalProps = {
   onSaveClinic: (payload: ClinicSettingsUpdatePayload) => Promise<ClinicSettings | void>;
   onClinicSettingsChange: (settings: ClinicSettings) => void;
   onCurrentUserChange: (user: AuthUser | null) => void;
-  onAddUser: (payload: { identifier: string; password: string }) => Promise<void>;
+  onAddUser: (payload: StaffUserCreatePayload) => Promise<void>;
   onLoadUsers: () => Promise<AuthUser[]>;
 };
 
@@ -529,14 +529,14 @@ function StaffUserSetup({
   onLoadUsers,
   onComplete,
 }: Pick<SetupStepModalProps, "onAddUser" | "onLoadUsers"> & { onComplete: () => void }) {
-  const [form, setForm] = useState({ identifier: "", password: "" });
+  const [form, setForm] = useState({ email: "", phone: "", identifier: "", password: "" });
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!form.identifier.trim()) {
-      setError("Email or phone number is required.");
+    if (!form.email.trim() || !form.phone.trim() || !form.identifier.trim()) {
+      setError("Email, phone number, and login ID are required.");
       return;
     }
     if (form.password.length < 12) {
@@ -547,7 +547,12 @@ function StaffUserSetup({
     setIsSaving(true);
     setError("");
     try {
-      await onAddUser({ identifier: form.identifier.trim(), password: form.password });
+      await onAddUser({
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        identifier: form.identifier.trim(),
+        password: form.password,
+      });
       await onLoadUsers();
       onComplete();
     } catch (saveError) {
@@ -560,12 +565,32 @@ function StaffUserSetup({
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       <label className="block">
-        <span className="mb-2 block text-sm font-medium text-slate-700">Email or phone number</span>
+        <span className="mb-2 block text-sm font-medium text-slate-700">Email</span>
+        <input
+          type="email"
+          value={form.email}
+          onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+          className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-2 block text-sm font-medium text-slate-700">Phone number</span>
+        <input
+          value={form.phone}
+          onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+          className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-2 block text-sm font-medium text-slate-700">Login ID</span>
         <input
           value={form.identifier}
           onChange={(event) => setForm((current) => ({ ...current, identifier: event.target.value }))}
           className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
         />
+        <p className="mt-2 text-sm text-slate-500">
+          This is the login credential. It can match the phone number or be a separate username.
+        </p>
       </label>
       <PasswordInput
         label="Password"

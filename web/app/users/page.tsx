@@ -12,7 +12,8 @@ export default function UsersPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [openAddFirstStaffSetup, setOpenAddFirstStaffSetup] = useState(false);
-  const [userForm, setUserForm] = useState<UserFormState>({ identifier: "", password: "", role: "staff" });
+  const emptyUserForm: UserFormState = { name: "", email: "", phone: "", identifier: "", password: "", role: "staff" };
+  const [userForm, setUserForm] = useState<UserFormState>(emptyUserForm);
   const [userError, setUserError] = useState("");
   const [userSuccess, setUserSuccess] = useState("");
   const [isAddingUser, setIsAddingUser] = useState(false);
@@ -81,8 +82,12 @@ export default function UsersPage() {
     event.preventDefault();
     setUserError("");
     setUserSuccess("");
+    if (!userForm.email.trim()) {
+      setUserError("Email is required.");
+      return;
+    }
     if (!userForm.identifier.trim()) {
-      setUserError("Email or phone number is required.");
+      setUserError("Login ID is required.");
       return;
     }
     if (userForm.password.length < 12) {
@@ -92,12 +97,15 @@ export default function UsersPage() {
     setIsAddingUser(true);
     try {
       await handleAddStaffUser({
+        name: userForm.name.trim(),
+        email: userForm.email.trim(),
+        phone: userForm.phone.trim(),
         identifier: userForm.identifier.trim(),
         password: userForm.password,
         role: userForm.role,
       });
       setUserSuccess(`${userForm.role === "admin" ? "Admin" : userForm.role === "doctor" ? "Doctor" : "Staff"} user added.`);
-      setUserForm({ identifier: "", password: "", role: "staff" });
+      setUserForm(emptyUserForm);
       setIsAddUserOpen(false);
     } catch (saveError) {
       setUserError(saveError instanceof Error ? saveError.message : "Failed to add user.");
@@ -133,6 +141,7 @@ export default function UsersPage() {
           onSubmit={handleAddUser}
           onUserFormChange={(patch) => setUserForm((current) => ({ ...current, ...patch }))}
           onUpdateUserRole={handleUpdateUserRole}
+          onSendPasswordReset={(userId) => api.sendUserPasswordReset(userId)}
           onDeleteUser={handleDeleteUser}
         />
       </div>

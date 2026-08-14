@@ -10,6 +10,8 @@ from app import config as config_module
 from app.schema_domains.auth_settings import (
     AuthResponse,
     LoginRequest,
+    PasswordResetConfirm,
+    PasswordResetRequestOut,
     RegistrationConfigOut,
     UserAccountUpdate,
     UserCreate,
@@ -17,6 +19,7 @@ from app.schema_domains.auth_settings import (
     UserPasswordUpdate,
 )
 from app.services.signature_service import MAX_SIGNATURE_UPLOAD_BYTES, normalize_signature_image
+from app.services.password_reset_service import confirm_password_reset
 from app.services.user_workflow import login_user_workflow, register_user_workflow
 from app.services.user_workflow import build_user_out
 
@@ -62,6 +65,15 @@ async def login_user(
         payload,
         client_ip=request.client.host if request.client else "unknown",
     )
+
+
+@router.post("/auth/password-reset/confirm", response_model=PasswordResetRequestOut)
+async def confirm_password_reset_route(
+    payload: PasswordResetConfirm,
+    repo: AppRepository = Depends(get_repository),
+) -> PasswordResetRequestOut:
+    await confirm_password_reset(repo, token=payload.token, new_password=payload.new_password)
+    return PasswordResetRequestOut(message="Password updated. You can sign in with the new password.")
 
 
 @router.get("/auth/me", response_model=UserOut)
