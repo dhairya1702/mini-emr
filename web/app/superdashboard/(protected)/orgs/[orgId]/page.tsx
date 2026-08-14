@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, LogOut, RefreshCw, Save, Trash2, UserCog, XCircle } from "lucide-react";
+import { ArrowLeft, Copy, LogOut, RefreshCw, Save, Trash2, UserCog, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import {
   ClinicSettings,
+  PlatformError,
   SuperuserOrgDetail,
   SuperuserOrgUser,
   UserRole,
@@ -16,6 +17,27 @@ import {
 } from "@/lib/types";
 
 type Tab = "overview" | "users" | "settings" | "activity" | "errors" | "danger";
+
+function formatErrorContext(context: PlatformError["context"]) {
+  if (!context || !Object.keys(context).length) return "";
+  return JSON.stringify(context, null, 2);
+}
+
+function copyErrorTrace(error: PlatformError) {
+  const contextText = formatErrorContext(error.context);
+  const trace = [
+    `${error.method} ${error.path}`,
+    `Time: ${new Date(error.created_at).toLocaleString()}`,
+    `Status: ${error.status_code || "—"}`,
+    `Type: ${error.error_type}`,
+    `Identifier: ${error.identifier || "—"}`,
+    "",
+    error.message,
+    error.details ? `\nDetails:\n${error.details}` : "",
+    contextText ? `\nContext:\n${contextText}` : "",
+  ].filter(Boolean).join("\n");
+  void navigator.clipboard?.writeText(trace);
+}
 
 type SettingsDraft = {
   clinic_name: string;
@@ -524,17 +546,38 @@ export default function SuperdashboardOrgDetailPage() {
           <div className="rounded-[24px] border border-slate-200 bg-white p-7 shadow-sm">
             <h2 className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">Recent platform errors</h2>
             <div className="mt-6 space-y-4">
-              {detail.recent_errors.length ? detail.recent_errors.map((error) => (
+              {detail.recent_errors.length ? detail.recent_errors.map((error) => {
+                const contextText = formatErrorContext(error.context);
+                return (
                 <div key={error.id} className="border-b border-slate-100 pb-4 last:border-0">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="font-black text-slate-950">{error.method} {error.path}</p>
+                    <p className="break-all font-black text-slate-950">{error.method} {error.path}</p>
                     <p className="text-sm font-bold text-slate-500">{formatDateTime(error.created_at)}</p>
                   </div>
                   <p className="mt-2 font-bold text-rose-600">{error.error_type} {error.status_code ? `· ${error.status_code}` : ""}</p>
-                  <p className="mt-1 font-bold text-slate-600">{error.message}</p>
-                  {error.details ? <p className="mt-2 text-sm font-semibold text-slate-500">{error.details}</p> : null}
+                  <p className="mt-1 break-words font-bold text-slate-600">{error.message}</p>
+                  <details className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <summary className="cursor-pointer text-sm font-black text-slate-700">Trace</summary>
+                    <div className="mt-3 space-y-3">
+                      {error.details ? (
+                        <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 text-xs font-semibold text-slate-700">{error.details}</pre>
+                      ) : null}
+                      {contextText ? (
+                        <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 text-xs font-semibold text-slate-700">{contextText}</pre>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => copyErrorTrace(error)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700 transition hover:border-blue-300 hover:text-blue-700"
+                      >
+                        <Copy className="h-4 w-4" />
+                        Copy trace
+                      </button>
+                    </div>
+                  </details>
                 </div>
-              )) : <p className="font-bold text-slate-500">No recent errors for this organization.</p>}
+              );
+              }) : <p className="font-bold text-slate-500">No recent errors for this organization.</p>}
             </div>
           </div>
         ) : null}

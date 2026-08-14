@@ -959,7 +959,13 @@ def test_postgres_platform_email_availability_does_not_read_or_decrypt_credentia
 
 def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
     cursor = ScriptedCursor(
-        descriptions=[USER_LIST_COLUMNS, USER_COLUMNS, USER_COLUMNS],
+        descriptions=[
+            USER_LIST_COLUMNS,
+            [*USER_COLUMNS, "session_version", "superdashboard_session_version"],
+            [*USER_COLUMNS, "session_version", "superdashboard_session_version"],
+            [*USER_COLUMNS, "session_version", "superdashboard_session_version"],
+            [*USER_COLUMNS, "session_version", "superdashboard_session_version"],
+        ],
         fetchall_rows=[
             [
                 (
@@ -989,6 +995,8 @@ def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
                 "image/png",
                 "base64",
                 "2026-06-11T15:01:00+00:00",
+                1,
+                1,
             ),
             (
                 "user-1",
@@ -1002,6 +1010,38 @@ def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
                 "image/png",
                 "base64",
                 "2026-06-11T15:01:00+00:00",
+                1,
+                1,
+            ),
+            (
+                "user-1",
+                "org-1",
+                "doctor@example.com",
+                "Dr Updated",
+                "staff",
+                "1990-01-01",
+                "Clinic Lane",
+                "signature.png",
+                "image/png",
+                "base64",
+                "2026-06-11T15:01:00+00:00",
+                1,
+                1,
+            ),
+            (
+                "user-1",
+                "org-1",
+                "doctor@example.com",
+                "Dr Updated",
+                "staff",
+                "1990-01-01",
+                "Clinic Lane",
+                None,
+                None,
+                None,
+                "2026-06-11T15:01:00+00:00",
+                1,
+                1,
             ),
         ],
     )
@@ -1015,12 +1055,24 @@ def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
         )
     )
     role_updated = asyncio.run(repo.update_user_role("user-1", UserRoleUpdate(role="staff")))
+    signature_updated = asyncio.run(
+        repo.set_user_signature(
+            "user-1",
+            filename="signature.png",
+            content_type="image/png",
+            data_base64="base64",
+        )
+    )
+    signature_removed = asyncio.run(repo.clear_user_signature("user-1"))
 
     assert users[0]["doctor_signature_url"] == "/users/user-1/signature/file"
     assert cursor.executed[1][1][:3] == ("Dr Updated", "1990-01-01", "Clinic Lane")
     assert updated["doctor_signature_url"] == "/users/user-1/signature/file"
     assert cursor.executed[2][1][0] == "staff"
     assert role_updated["role"] == "staff"
+    assert signature_updated["superdashboard_session_version"] == 1
+    assert signature_removed["doctor_signature_name"] is None
+    assert signature_removed["superdashboard_session_version"] == 1
 
 
 def test_postgres_auth_settings_repository_upserts_clinic_settings_with_defaults():

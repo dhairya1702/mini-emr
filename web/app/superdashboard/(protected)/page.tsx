@@ -21,6 +21,26 @@ import {
 
 type Tab = "dashboard" | "onboard" | "errors" | "settings";
 
+function formatErrorContext(context: PlatformError["context"]) {
+  if (!context || !Object.keys(context).length) return "";
+  return JSON.stringify(context, null, 2);
+}
+
+function copyErrorTrace(error: PlatformError) {
+  const trace = [
+    `${error.method} ${error.path}`,
+    `Time: ${new Date(error.created_at).toLocaleString()}`,
+    `Status: ${error.status_code || "—"}`,
+    `Type: ${error.error_type}`,
+    `Identifier: ${error.identifier || "—"}`,
+    "",
+    error.message,
+    error.details ? `\nDetails:\n${error.details}` : "",
+    formatErrorContext(error.context) ? `\nContext:\n${formatErrorContext(error.context)}` : "",
+  ].filter(Boolean).join("\n");
+  void navigator.clipboard?.writeText(trace);
+}
+
 const emptyDashboard: SuperdashboardDashboard = {
   org_count: 0,
   active_org_count: 0,
@@ -729,23 +749,51 @@ export default function SuperdashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(errors.length ? errors : []).map((error) => (
-                    <tr key={error.id} className="border-t border-slate-100 text-base">
-                      <td className="px-7 py-5 font-bold text-slate-600">{new Date(error.created_at).toLocaleString()}</td>
-                      <td className="px-7 py-5 font-black">{error.method}</td>
-                      <td className="px-7 py-5">
-                        <span className="inline-flex items-center gap-2 font-bold text-blue-700">
-                          {error.path} <ExternalLink className="h-4 w-4" />
-                        </span>
-                      </td>
-                      <td className="px-7 py-5">
-                        <span className="rounded-full bg-rose-50 px-3 py-1 font-black text-rose-700">{error.status_code || "—"}</span>
-                      </td>
-                      <td className="px-7 py-5 font-bold">{error.error_type}</td>
-                      <td className="px-7 py-5 text-slate-600">{error.identifier || "—"}</td>
-                      <td className="px-7 py-5 max-w-xl truncate text-slate-600">{error.message}</td>
-                    </tr>
-                  ))}
+                  {(errors.length ? errors : []).map((error) => {
+                    const contextText = formatErrorContext(error.context);
+                    return (
+                      <tr key={error.id} className="border-t border-slate-100 align-top text-base">
+                        <td className="px-7 py-5 font-bold text-slate-600">{new Date(error.created_at).toLocaleString()}</td>
+                        <td className="px-7 py-5 font-black">{error.method}</td>
+                        <td className="max-w-sm px-7 py-5">
+                          <span className="inline-flex items-start gap-2 whitespace-normal break-all font-bold text-blue-700">
+                            {error.path} <ExternalLink className="mt-1 h-4 w-4 shrink-0" />
+                          </span>
+                        </td>
+                        <td className="px-7 py-5">
+                          <span className="rounded-full bg-rose-50 px-3 py-1 font-black text-rose-700">{error.status_code || "—"}</span>
+                        </td>
+                        <td className="px-7 py-5 font-bold">{error.error_type}</td>
+                        <td className="max-w-xs break-all px-7 py-5 text-slate-600">{error.identifier || "—"}</td>
+                        <td className="min-w-[520px] px-7 py-5 text-slate-600">
+                          <p className="whitespace-normal break-words font-semibold">{error.message}</p>
+                          <details className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                            <summary className="cursor-pointer text-sm font-black text-slate-700">Trace</summary>
+                            <div className="mt-3 space-y-3">
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Path</p>
+                                <p className="mt-1 break-all font-mono text-sm text-slate-800">{error.method} {error.path}</p>
+                              </div>
+                              {error.details ? (
+                                <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 text-xs font-semibold text-slate-700">{error.details}</pre>
+                              ) : null}
+                              {contextText ? (
+                                <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 text-xs font-semibold text-slate-700">{contextText}</pre>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => copyErrorTrace(error)}
+                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700 transition hover:border-blue-300 hover:text-blue-700"
+                              >
+                                <Copy className="h-4 w-4" />
+                                Copy trace
+                              </button>
+                            </div>
+                          </details>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {!errors.length && !isLoading ? (
                     <tr>
                       <td colSpan={7} className="px-7 py-16 text-center text-lg font-black text-slate-400">

@@ -18,6 +18,28 @@ from test_app import (
 )
 from app import config as config_module
 from app.services.signature_service import normalize_signature_image
+from app.services.user_workflow import build_user_out
+
+
+def test_build_user_out_defaults_missing_superdashboard_session_version():
+    user = build_user_out({
+        "id": uuid4(),
+        "org_id": uuid4(),
+        "identifier": "missing-super-session@example.com",
+        "name": "Missing Session",
+        "role": "admin",
+        "doctor_dob": None,
+        "doctor_address": "",
+        "doctor_signature_name": None,
+        "doctor_signature_url": None,
+        "doctor_signature_content_type": None,
+        "created_at": "2026-08-14T12:28:24+00:00",
+        "session_version": None,
+        "superdashboard_session_version": None,
+    })
+
+    assert user.session_version == 1
+    assert user.superdashboard_session_version == 1
 
 
 def test_auth_me_reissues_session_headers(client):

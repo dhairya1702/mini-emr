@@ -54,6 +54,7 @@ def build_user_out(row: dict) -> UserOut:
         )
     }
     values["session_version"] = int(row.get("session_version") or 1)
+    values["superdashboard_session_version"] = int(row.get("superdashboard_session_version") or 1)
     return UserOut(**values)
 
 
