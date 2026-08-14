@@ -26,7 +26,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^0.511.0",
     "next": "^15.5.22",
-    "pdfjs-dist": "^6.1.200",
+    "pdfjs-dist": "^6.2.108",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

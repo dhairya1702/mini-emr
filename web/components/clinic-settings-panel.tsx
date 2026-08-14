@@ -157,7 +157,7 @@ async function renderPdfFirstPagePreview(blob: Blob): Promise<string> {
   ).toString();
 
   const source = await blob.arrayBuffer();
-  const loadingTask = pdfjs.getDocument({ data: source });
+  const loadingTask = pdfjs.getDocument({ data: source, enableXfa: false });
   const document = await loadingTask.promise;
   const page = await document.getPage(1);
   const unscaledViewport = page.getViewport({ scale: 1 });
