@@ -371,7 +371,9 @@ export default function LoginPage() {
               ) : (
                 <>
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">Email</span>
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Email <span className="text-rose-600">*</span>
+                    </span>
                     <input
                       type="email"
                       value={accountEmail}
