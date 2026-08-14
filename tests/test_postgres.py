@@ -1038,13 +1038,16 @@ def test_postgres_platform_email_availability_does_not_read_or_decrypt_credentia
 
 
 def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
+    user_columns = [*USER_COLUMNS, "session_version", "superdashboard_session_version"]
     cursor = ScriptedCursor(
         descriptions=[
             USER_LIST_COLUMNS,
-            [*USER_COLUMNS, "session_version", "superdashboard_session_version"],
-            [*USER_COLUMNS, "session_version", "superdashboard_session_version"],
-            [*USER_COLUMNS, "session_version", "superdashboard_session_version"],
-            [*USER_COLUMNS, "session_version", "superdashboard_session_version"],
+            user_columns,
+            ["org_id"],
+            ["role"],
+            user_columns,
+            user_columns,
+            user_columns,
         ],
         fetchall_rows=[
             [
@@ -1052,6 +1055,8 @@ def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
                     "user-1",
                     "org-1",
                     "doctor@example.com",
+                    "doctor@example.com",
+                    "+911234567890",
                     "Dr Test",
                     "admin",
                     None,
@@ -1067,6 +1072,8 @@ def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
                 "user-1",
                 "org-1",
                 "doctor@example.com",
+                "doctor@example.com",
+                "+911234567890",
                 "Dr Updated",
                 "admin",
                 "1990-01-01",
@@ -1084,6 +1091,8 @@ def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
                 "user-1",
                 "org-1",
                 "doctor@example.com",
+                "doctor@example.com",
+                "+911234567890",
                 "Dr Updated",
                 "staff",
                 "1990-01-01",
@@ -1099,6 +1108,8 @@ def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
                 "user-1",
                 "org-1",
                 "doctor@example.com",
+                "doctor@example.com",
+                "+911234567890",
                 "Dr Updated",
                 "staff",
                 "1990-01-01",
@@ -1114,6 +1125,8 @@ def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
                 "user-1",
                 "org-1",
                 "doctor@example.com",
+                "doctor@example.com",
+                "+911234567890",
                 "Dr Updated",
                 "staff",
                 "1990-01-01",

@@ -10,8 +10,10 @@ from types import SimpleNamespace
 import pytest
 
 from test_app import auth_headers_for_token, client, register_test_clinic
+from app import clinic_timezone
 from app import config as config_module
 from app.routes import whatsapp as whatsapp_route
+from app.services import appointment_workflow
 from app.services import whatsapp_assistant
 from app.services import whatsapp_client as whatsapp_client_module
 from app.services import whatsapp_followup_workflow
@@ -365,17 +367,28 @@ def test_whatsapp_appointments_this_week_command(client, monkeypatch: pytest.Mon
     repo.clinic_settings[org_id]["timezone"] = "UTC"
     _bind_owner(repo, org_id)
 
-    tomorrow = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(days=1)
-    test_client.post(
+    fixed_now = datetime(2026, 1, 14, 10, 0, tzinfo=UTC)
+
+    class _FixedClock:
+        @staticmethod
+        def now(tz=None):
+            return fixed_now
+
+    monkeypatch.setattr(appointment_workflow, "datetime", _FixedClock)
+    monkeypatch.setattr(clinic_timezone, "clinic_now", lambda settings: fixed_now)
+
+    appointment_time = (fixed_now + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+    created = test_client.post(
         "/appointments",
         json={
             "name": "Week Appointment",
             "phone": "5550103434",
             "reason": "Review",
-            "scheduled_for": tomorrow.isoformat(),
+            "scheduled_for": appointment_time.isoformat(),
         },
         headers=headers,
     )
+    assert created.status_code == 201
 
     response = _post_whatsapp_text(test_client, "appointments this week")
 

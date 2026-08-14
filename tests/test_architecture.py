@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -43,7 +44,7 @@ def test_mutation_routes_delegate_to_workflow_modules() -> None:
     catalog_text = (ROOT / "backend" / "app" / "routes" / "catalog.py").read_text()
 
     assert "from app.services.user_workflow import login_user_workflow, register_user_workflow" in auth_text
-    assert "from app.services.user_workflow import create_staff_user_workflow" in users_text
+    assert re.search(r"from app\.services\.user_workflow import .*create_staff_user_workflow", users_text)
     assert "from app.services.catalog_workflow import (" in catalog_text
     assert "from app.services.audit_service import write_audit_event" not in catalog_text
     assert "await repo.create_catalog_item(" not in catalog_text

@@ -1282,6 +1282,7 @@ class FakeRepo:
         request_id: str,
         reviewed_by: str,
         existing_patient_id: str | None,
+        assigned_doctor_id: str | None = None,
     ) -> dict:
         from app.schema_domains.patients import PatientCreate, PatientVisitCreate
 
@@ -1325,6 +1326,7 @@ class FakeRepo:
                     reason=request["submitted_reason"],
                     date_of_birth=request["submitted_date_of_birth"],
                     sex_at_birth=request["submitted_sex_at_birth"],
+                    assigned_doctor_id=assigned_doctor_id,
                 ),
             )
         request.update(
@@ -3607,7 +3609,8 @@ def test_active_medicine_catalog_is_minimal_and_available_to_staff(client):
     staff_headers = auth_headers_for_token(staff_session.json()["token"])
 
     full_catalog = test_client.get("/catalog", headers=staff_headers)
-    assert full_catalog.status_code == 403
+    assert full_catalog.status_code == 200
+    assert {item["name"] for item in full_catalog.json()} == {"Amoxicillin", "Consultation", "Inactive medicine"}
     medicines = test_client.get("/catalog/medicines", headers=staff_headers)
     assert medicines.status_code == 200
     assert medicines.json() == [{
