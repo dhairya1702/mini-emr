@@ -708,7 +708,9 @@ export default function OnboardingSetupPage() {
           {activeStep.key === "staff" ? (
             <form className="space-y-4" onSubmit={saveStaff}>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Email</span>
+                <span className="mb-2 block text-sm font-medium text-slate-700">
+                  Email <span className="text-rose-500">*</span>
+                </span>
                 <input
                   type="email"
                   value={staff.email}

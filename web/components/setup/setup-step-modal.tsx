@@ -618,7 +618,9 @@ function StaffUserSetup({
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       <label className="block">
-        <span className="mb-2 block text-sm font-medium text-slate-700">Email</span>
+        <span className="mb-2 block text-sm font-medium text-slate-700">
+          Email <span className="text-rose-500">*</span>
+        </span>
         <input
           type="email"
           value={form.email}
