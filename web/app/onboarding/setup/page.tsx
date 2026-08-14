@@ -6,7 +6,7 @@ import { Check, ChevronLeft, ChevronRight, Clock, FileText, Mail, PenLine, Steth
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { PasswordInput } from "@/components/password-input";
-import { api, resolveApiAssetUrl } from "@/lib/api";
+import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { openNativeTimePicker } from "@/lib/time-input";
 import { DEFAULT_CLINIC_TIMEZONE, getDefaultClinicTimeZone, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
@@ -122,12 +122,14 @@ export default function OnboardingSetupPage() {
   const [createdStaffUsers, setCreatedStaffUsers] = useState<AuthUser[]>([]);
   const [patient, setPatient] = useState({ name: "", phone: "", reason: "" });
   const [templateSettings, setTemplateSettings] = useState<ClinicSettings | null>(null);
+  const [signaturePreviewUrl, setSignaturePreviewUrl] = useState("");
 
   const activeStep = steps[activeIndex];
   const isMobileSurface = pathname.startsWith("/m");
   const requiredComplete = completedSteps.has("specialty") && completedSteps.has("hours");
   const canGoPreviousStep = activeIndex > 0;
   const canGoNextStep = activeIndex < steps.length - 1;
+  const hasSignature = Boolean(currentUser?.doctor_signature_name || currentUser?.doctor_signature_url);
 
   useEffect(() => {
     if (!clinicSettings) {
@@ -165,6 +167,38 @@ export default function OnboardingSetupPage() {
       setCompletedSteps((current) => new Set(current).add("signature"));
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!hasSignature) {
+      setSignaturePreviewUrl("");
+      return;
+    }
+
+    let isMounted = true;
+    let objectUrl = "";
+    setSignaturePreviewUrl("");
+
+    void api.downloadMySignature()
+      .then((blob) => {
+        if (!isMounted) {
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setSignaturePreviewUrl(objectUrl);
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSignaturePreviewUrl("");
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [hasSignature, currentUser?.doctor_signature_name, currentUser?.doctor_signature_url]);
 
   const canGoNext = useMemo(() => {
     if (activeStep.key === "specialty") return completedSteps.has("specialty");
@@ -566,16 +600,18 @@ export default function OnboardingSetupPage() {
             <div className="space-y-4">
               <p className="text-sm leading-6 text-slate-600">Upload the doctor signature used on notes, letters, and PDFs.</p>
               <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
-                {currentUser?.doctor_signature_url ? (
+                {signaturePreviewUrl ? (
                   <div className="flex flex-wrap items-center gap-3">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={resolveApiAssetUrl(currentUser.doctor_signature_url)}
+                      src={signaturePreviewUrl}
                       alt="User signature"
                       className="max-h-12 w-auto max-w-[220px] object-contain"
                     />
                     <span className="text-sm text-slate-600">Uploaded</span>
                   </div>
+                ) : hasSignature ? (
+                  <p className="text-sm text-slate-500">Signature uploaded. Preview loading...</p>
                 ) : (
                   <p className="text-sm text-slate-500">No signature uploaded yet.</p>
                 )}
@@ -591,7 +627,7 @@ export default function OnboardingSetupPage() {
                   Back
                 </button>
                 <div className="flex flex-col gap-3 sm:flex-row">
-                  {!currentUser?.doctor_signature_url ? (
+                  {!hasSignature ? (
                     <button
                       type="button"
                       disabled={isSaving}
@@ -603,14 +639,14 @@ export default function OnboardingSetupPage() {
                   ) : null}
                   <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-5 py-3 text-sm font-medium text-[#2a6fa8] transition hover:bg-[#f3f8fb]">
                     <Upload className="h-4 w-4" />
-                    {isSaving ? "Uploading..." : currentUser?.doctor_signature_url ? "Replace signature" : "Upload signature"}
+                    {isSaving ? "Uploading..." : hasSignature ? "Replace signature" : "Upload signature"}
                     <input type="file" accept="image/png,image/jpeg" className="sr-only" disabled={isSaving} onChange={(event) => {
                       const file = event.target.files?.[0];
                       if (file) void uploadSignature(file);
                       event.target.value = "";
                     }} />
                   </label>
-                  {currentUser?.doctor_signature_url ? (
+                  {hasSignature ? (
                     <button
                       type="button"
                       disabled={isSaving}

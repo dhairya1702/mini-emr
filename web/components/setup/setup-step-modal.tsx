@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Clock, FileText, Mail, PenLine, Settings2, Stethoscope, Trash2, Upload, UserPlus, X } from "lucide-react";
 
 import { PasswordInput } from "@/components/password-input";
-import { api, resolveApiAssetUrl } from "@/lib/api";
+import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
 import type { ClinicSetupStepKey } from "@/lib/setup-checklist";
@@ -347,6 +347,40 @@ function SignatureSetup({
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [signaturePreviewUrl, setSignaturePreviewUrl] = useState("");
+  const hasSignature = Boolean(currentUser?.doctor_signature_name || currentUser?.doctor_signature_url);
+
+  useEffect(() => {
+    if (!hasSignature) {
+      setSignaturePreviewUrl("");
+      return;
+    }
+
+    let isMounted = true;
+    let objectUrl = "";
+    setSignaturePreviewUrl("");
+
+    void api.downloadMySignature()
+      .then((blob) => {
+        if (!isMounted) {
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setSignaturePreviewUrl(objectUrl);
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSignaturePreviewUrl("");
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [hasSignature, currentUser?.doctor_signature_name, currentUser?.doctor_signature_url]);
 
   async function handleUpload(file: File) {
     setIsSaving(true);
@@ -380,13 +414,15 @@ function SignatureSetup({
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
-        {currentUser?.doctor_signature_url ? (
+        {signaturePreviewUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={resolveApiAssetUrl(currentUser.doctor_signature_url)}
+            src={signaturePreviewUrl}
             alt="User signature"
             className="max-h-28 w-auto max-w-full object-contain"
           />
+        ) : hasSignature ? (
+          <p className="text-sm text-slate-500">Signature uploaded. Preview loading...</p>
         ) : (
           <p className="text-sm text-slate-500">No signature uploaded yet.</p>
         )}
@@ -394,7 +430,7 @@ function SignatureSetup({
       <div className="flex flex-wrap gap-3">
         <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0]">
           <Upload className="h-4 w-4" />
-          {isSaving ? "Uploading..." : currentUser?.doctor_signature_url ? "Replace signature" : "Upload signature"}
+          {isSaving ? "Uploading..." : hasSignature ? "Replace signature" : "Upload signature"}
           <input
             type="file"
             accept="image/png,image/jpeg"
@@ -411,7 +447,7 @@ function SignatureSetup({
         </label>
         <button
           type="button"
-          disabled={!currentUser?.doctor_signature_name || isSaving}
+          disabled={!hasSignature || isSaving}
           onClick={() => void handleRemove()}
           className="rounded-xl border border-rose-200 bg-white px-5 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
         >
