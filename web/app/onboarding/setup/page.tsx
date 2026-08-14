@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Check, ChevronLeft, ChevronRight, Clock, FileText, Mail, PenLine, Stethoscope, Upload, UserPlus, Users } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Clock, FileText, Mail, PenLine, Stethoscope, Upload, UserPlus } from "lucide-react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { PasswordInput } from "@/components/password-input";
@@ -12,7 +12,7 @@ import { openNativeTimePicker } from "@/lib/time-input";
 import { DEFAULT_CLINIC_TIMEZONE, getDefaultClinicTimeZone, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
 import type { ClinicSettings, ClinicSettingsUpdatePayload, UserRole } from "@/lib/types";
 
-type StepKey = "specialty" | "hours" | "signature" | "email" | "staff" | "template" | "patient" | "done";
+type StepKey = "specialty" | "hours" | "signature" | "email" | "staff" | "template" | "done";
 
 const steps: Array<{ key: StepKey; title: string; optional: boolean }> = [
   { key: "specialty", title: "Specialty", optional: false },
@@ -21,7 +21,6 @@ const steps: Array<{ key: StepKey; title: string; optional: boolean }> = [
   { key: "email", title: "Gmail Sender", optional: true },
   { key: "staff", title: "Users", optional: true },
   { key: "template", title: "Letterhead", optional: true },
-  { key: "patient", title: "First Patient", optional: true },
   { key: "done", title: "Done", optional: false },
 ];
 
@@ -32,7 +31,6 @@ const iconByStep: Record<StepKey, typeof Stethoscope> = {
   email: Mail,
   staff: UserPlus,
   template: FileText,
-  patient: Users,
   done: Check,
 };
 
@@ -134,8 +132,6 @@ export default function OnboardingSetupPage() {
     password: string;
     role: Extract<UserRole, "staff" | "doctor">;
   }>({ email: "", phone: "", identifier: "", password: "", role: "staff" });
-  const [temporaryPasswordsByUserId, setTemporaryPasswordsByUserId] = useState<Record<string, string>>({});
-  const [patient, setPatient] = useState({ name: "", phone: "", reason: "" });
   const [templateSettings, setTemplateSettings] = useState<ClinicSettings | null>(null);
   const [signaturePreviewUrl, setSignaturePreviewUrl] = useState("");
 
@@ -391,14 +387,13 @@ export default function OnboardingSetupPage() {
     setIsSaving(true);
     setError("");
     try {
-      const created = await createStaffUser({
+      await createStaffUser({
         email: staff.email.trim(),
         phone: staff.phone.trim(),
         identifier: staff.identifier.trim(),
         password: staff.password,
         role: staff.role,
       });
-      setTemporaryPasswordsByUserId((current) => ({ ...current, [created.id]: staff.password }));
       setStaff({ email: "", phone: "", identifier: "", password: "", role: "staff" });
       markComplete("staff");
       setStatus("User added. Add another user or continue.");
@@ -420,36 +415,6 @@ export default function OnboardingSetupPage() {
       goToNext();
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Failed to upload letterhead.");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function savePatient(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!patient.name.trim() || !patient.phone.trim() || !patient.reason.trim()) {
-      setError("Patient name, phone, and visit reason are required, or skip this step.");
-      return;
-    }
-    setIsSaving(true);
-    setError("");
-    try {
-      await api.createPatient({
-        name: patient.name.trim(),
-        phone: patient.phone.trim(),
-        reason: patient.reason.trim(),
-        email: "",
-        address: "",
-        date_of_birth: null,
-        age: null,
-        weight: null,
-        height: null,
-        temperature: null,
-      });
-      markComplete("patient");
-      goToNext();
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to create first patient.");
     } finally {
       setIsSaving(false);
     }
@@ -791,7 +756,6 @@ export default function OnboardingSetupPage() {
                           <th className="px-4 py-3 font-semibold">Email / Phone</th>
                           <th className="px-4 py-3 font-semibold">Login ID</th>
                           <th className="px-4 py-3 font-semibold">Role</th>
-                          <th className="px-4 py-3 font-semibold">Temporary password</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#eef3f7] text-slate-700">
@@ -809,7 +773,6 @@ export default function OnboardingSetupPage() {
                                 {user.role}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-slate-500">{temporaryPasswordsByUserId[user.id] || "-"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -851,24 +814,6 @@ export default function OnboardingSetupPage() {
               </label>
               <OptionalActions isSaving={isSaving} onBack={() => setActiveIndex((current) => current - 1)} onSkip={skipOptional} showSubmit={false} />
             </div>
-          ) : null}
-
-          {activeStep.key === "patient" ? (
-            <form className="space-y-4" onSubmit={savePatient}>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Patient name</span>
-                <input value={patient.name} onChange={(event) => setPatient((current) => ({ ...current, name: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none" />
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Phone</span>
-                <input value={patient.phone} onChange={(event) => setPatient((current) => ({ ...current, phone: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none" />
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Reason for visit</span>
-                <input value={patient.reason} onChange={(event) => setPatient((current) => ({ ...current, reason: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none" />
-              </label>
-              <OptionalActions isSaving={isSaving} onBack={() => setActiveIndex((current) => current - 1)} onSkip={skipOptional} submitLabel="Create and continue" />
-            </form>
           ) : null}
 
           {activeStep.key === "done" ? (

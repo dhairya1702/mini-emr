@@ -1,4 +1,4 @@
-import { AuthUser, ClinicSettings, Patient } from "@/lib/types";
+import { AuthUser, ClinicSettings } from "@/lib/types";
 
 export type ClinicSetupStepKey =
   | "specialty"
@@ -6,7 +6,6 @@ export type ClinicSetupStepKey =
   | "signature"
   | "sender_email"
   | "first_staff_user"
-  | "first_patient"
   | "document_template";
 
 export type ClinicSetupStepStatus = "complete" | "incomplete" | "recommended";
@@ -51,10 +50,9 @@ export function hasClinicHoursConfigured(settings: ClinicSettings | null | undef
 export function buildClinicSetupChecklist(args: {
   currentUser: AuthUser | null;
   users: AuthUser[];
-  patients: Patient[];
   clinicSettings: ClinicSettings | null;
 }): ClinicSetupChecklist {
-  const { currentUser, users, patients, clinicSettings } = args;
+  const { currentUser, users, clinicSettings } = args;
 
   const steps: ClinicSetupStep[] = [
     {
@@ -86,12 +84,6 @@ export function buildClinicSetupChecklist(args: {
       title: "Add first staff user",
       description: "Invite another clinic user so the workspace is ready for team use.",
       status: users.some((user) => user.id !== currentUser?.id) ? "complete" : "incomplete",
-    },
-    {
-      key: "first_patient",
-      title: "Create first patient",
-      description: "Add your first real patient record so the clinic can start using the system.",
-      status: patients.length > 0 ? "complete" : "incomplete",
     },
     {
       key: "document_template",

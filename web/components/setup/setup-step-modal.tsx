@@ -82,7 +82,7 @@ function stepTitle(stepKey: ClinicSetupStepKey) {
     case "document_template":
       return "Upload document template";
     default:
-      return "Create first patient";
+      return "Complete setup";
   }
 }
 
@@ -915,7 +915,7 @@ export function SetupStepModal({
   onAddUser,
   onLoadUsers,
 }: SetupStepModalProps) {
-  if (!stepKey || stepKey === "first_patient") {
+  if (!stepKey) {
     return null;
   }
 

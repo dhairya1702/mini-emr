@@ -8,8 +8,6 @@ export function setupQueryForStep(stepKey: ClinicSetupStepKey) {
       return "sender-email";
     case "first_staff_user":
       return "add-first-staff";
-    case "first_patient":
-      return "create-first-patient";
     case "document_template":
       return "document-template";
     default:
@@ -29,8 +27,6 @@ export function setupStepFromQuery(value: string): ClinicSetupStepKey | null {
       return "sender_email";
     case "add-first-staff":
       return "first_staff_user";
-    case "create-first-patient":
-      return "first_patient";
     case "document-template":
       return "document_template";
     default:
