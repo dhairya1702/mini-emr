@@ -23,8 +23,10 @@ interface MultiDoctorQueueBoardProps {
   onRemoveFromQueue: (patient: Patient) => void;
   onTogglePriority: (patient: Patient) => void;
   onOpenBilling: (patient: Patient) => void;
+  onAssignDoctor: (patient: Patient) => void;
   onAddPatient: () => void;
   canAdvance: (patient: Patient) => boolean;
+  canAssignDoctor: boolean;
   now: number;
 }
 
@@ -63,8 +65,10 @@ export function MultiDoctorQueueBoard({
   onRemoveFromQueue,
   onTogglePriority,
   onOpenBilling,
+  onAssignDoctor,
   onAddPatient,
   canAdvance,
+  canAssignDoctor,
   now,
 }: MultiDoctorQueueBoardProps) {
   const sections = [
@@ -97,8 +101,10 @@ export function MultiDoctorQueueBoard({
               onRemoveFromQueue={onRemoveFromQueue}
               onTogglePriority={onTogglePriority}
               onOpenBilling={onOpenBilling}
+              onAssignDoctor={onAssignDoctor}
               onAddPatient={index === 0 ? onAddPatient : undefined}
               canAdvance={canAdvance}
+              canAssignDoctor={canAssignDoctor}
               now={now}
             />
           );
@@ -134,8 +140,10 @@ function ProviderSection({
   onRemoveFromQueue,
   onTogglePriority,
   onOpenBilling,
+  onAssignDoctor,
   onAddPatient,
   canAdvance,
+  canAssignDoctor,
   now,
 }: {
   providerId: string;
@@ -147,8 +155,10 @@ function ProviderSection({
   onRemoveFromQueue: (patient: Patient) => void;
   onTogglePriority: (patient: Patient) => void;
   onOpenBilling: (patient: Patient) => void;
+  onAssignDoctor: (patient: Patient) => void;
   onAddPatient?: () => void;
   canAdvance: (patient: Patient) => boolean;
+  canAssignDoctor: boolean;
   now: number;
 }) {
   const { isOver, setNodeRef } = useDroppable({
@@ -197,7 +207,9 @@ function ProviderSection({
                 onRemoveFromQueue={onRemoveFromQueue}
                 onTogglePriority={onTogglePriority}
                 onOpenBilling={onOpenBilling}
+                onAssignDoctor={onAssignDoctor}
                 canAdvance={canAdvance(patient)}
+                canAssignDoctor={canAssignDoctor}
                 now={now}
               />
             )) : (
@@ -221,7 +233,9 @@ function SortablePatientCard({
   onRemoveFromQueue,
   onTogglePriority,
   onOpenBilling,
+  onAssignDoctor,
   canAdvance,
+  canAssignDoctor,
   now,
 }: {
   patient: Patient;
@@ -231,7 +245,9 @@ function SortablePatientCard({
   onRemoveFromQueue: (patient: Patient) => void;
   onTogglePriority: (patient: Patient) => void;
   onOpenBilling: (patient: Patient) => void;
+  onAssignDoctor: (patient: Patient) => void;
   canAdvance: boolean;
+  canAssignDoctor: boolean;
   now: number;
 }) {
   const { attributes, isDragging, listeners, setActivatorNodeRef, setNodeRef, transform, transition } = useSortable({
@@ -256,7 +272,9 @@ function SortablePatientCard({
         onRemoveFromQueue={onRemoveFromQueue}
         onTogglePriority={onTogglePriority}
         onOpenBilling={onOpenBilling}
+        onAssignDoctor={onAssignDoctor}
         canAdvance={canAdvance}
+        canAssignDoctor={canAssignDoctor}
         now={now}
         dragHandleProps={{
           attributes,

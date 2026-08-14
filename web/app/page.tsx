@@ -13,7 +13,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { Plus } from "lucide-react";
+import { Plus, Stethoscope, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -50,7 +50,7 @@ import {
   writeTrainingPatients,
 } from "@/lib/training-mode";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { BillingSuggestionsResponse, CatalogItem, CheckInRequest, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientTimelineEvent, PatientVisitDetail, PaymentStatus, QueueSnapshot, SexAtBirth } from "@/lib/types";
+import { BillingSuggestionsResponse, CatalogItem, CheckInRequest, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientTimelineEvent, PatientVisitDetail, PaymentStatus, QueueProvider, QueueSnapshot, SexAtBirth } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
 const QUEUE_REFRESH_INTERVAL_MS = 60000;
@@ -259,6 +259,7 @@ export default function HomePage() {
   const [billingPatientId, setBillingPatientId] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [assignDoctorPatient, setAssignDoctorPatient] = useState<Patient | null>(null);
   const [draggedPatient, setDraggedPatient] = useState<Patient | null>(null);
   const [isQueueMutationPending, setIsQueueMutationPending] = useState(false);
   const [queueClock, setQueueClock] = useState(() => Date.now());
@@ -416,6 +417,7 @@ export default function HomePage() {
   const workspaceMode = clinicSettings?.workspace_mode ?? "team";
   const isSoloWorkspace = workspaceMode === "solo";
   const isMultiDoctorWorkspace = workspaceMode === "multi_doctor";
+  const canAssignDoctors = isMultiDoctorWorkspace && !isTrainingMode && (currentUser?.role === "admin" || currentUser?.role === "staff");
   isQueueMutationPendingRef.current = isQueueMutationPending;
   isDraggingPatientRef.current = Boolean(draggedPatient);
   isSoloWorkspaceRef.current = isSoloWorkspace;
@@ -839,6 +841,10 @@ export default function HomePage() {
       return priorityDifference || new Date(left.last_visit_at).getTime() - new Date(right.last_visit_at).getTime();
     });
   }, [patients]);
+  const doctorQueueProviders = useMemo(
+    () => queueProviders.filter((provider) => provider.active && provider.role === "doctor"),
+    [queueProviders],
+  );
 
   const billingPatients = useMemo(
     () => patients.filter((patient) => patient.status === "done" && !patient.billed),
@@ -1455,6 +1461,49 @@ export default function HomePage() {
     setDraggedPatient(null);
   }
 
+  function openAssignDoctorModal(patient: Patient) {
+    if (!canAssignDoctors) {
+      return;
+    }
+    setAssignDoctorPatient(patient);
+  }
+
+  async function handleAssignDoctor(patient: Patient, providerId: string) {
+    if (!canAssignDoctors) {
+      return;
+    }
+    const previousPatients = patients;
+    const nextProvider = queueProviders.find((provider) => provider.id === providerId) ?? null;
+    const optimisticPatient: Patient = {
+      ...patient,
+      assigned_doctor_id: providerId || null,
+      assigned_doctor: nextProvider,
+    };
+    setPatients((current) => current.map((entry) => entry.id === patient.id ? optimisticPatient : entry));
+    if (selectedPatient?.id === patient.id) {
+      setSelectedPatient(optimisticPatient);
+    }
+    setIsQueueMutationPending(true);
+    try {
+      const saved = await api.updatePatient(patient.id, { assigned_doctor_id: providerId || null });
+      setPatients((current) => current.map((entry) => entry.id === patient.id ? saved : entry));
+      if (selectedPatient?.id === patient.id) {
+        setSelectedPatient(saved);
+      }
+      setAssignDoctorPatient(null);
+      setError("");
+      void refreshDashboardStatus(true);
+    } catch (updateError) {
+      setPatients(previousPatients);
+      if (selectedPatient?.id === patient.id) {
+        setSelectedPatient(patient);
+      }
+      setError(updateError instanceof Error ? updateError.message : "Failed to assign doctor.");
+    } finally {
+      setIsQueueMutationPending(false);
+    }
+  }
+
   async function handleRemoveFromQueue(patient: Patient) {
     const previousPatients = patients;
     const previousSelectedPatient = selectedPatient;
@@ -2050,8 +2099,10 @@ export default function HomePage() {
             onRemoveFromQueue={handleRemoveFromQueue}
             onTogglePriority={handleTogglePriority}
             onOpenBilling={(patient) => openBillingWorkspace(patient.id)}
+            onAssignDoctor={openAssignDoctorModal}
             onAddPatient={() => setIsModalOpen(true)}
             canAdvance={() => canUseClinicalTools(currentUser?.role)}
+            canAssignDoctor={canAssignDoctors}
             now={queueClock}
           />
         ) : (
@@ -2126,6 +2177,16 @@ export default function HomePage() {
         onSubmit={handleCreatePatient}
         providers={queueProviders}
         showProviderSelector={isMultiDoctorWorkspace}
+      />
+
+      <AssignDoctorModal
+        patient={assignDoctorPatient ? patients.find((patient) => patient.id === assignDoctorPatient.id) ?? assignDoctorPatient : null}
+        providers={doctorQueueProviders}
+        isSaving={isQueueMutationPending}
+        onAssign={(patient, providerId) => {
+          void handleAssignDoctor(patient, providerId);
+        }}
+        onClose={() => setAssignDoctorPatient(null)}
       />
 
       {isSettingsOpen ? (
@@ -2207,6 +2268,8 @@ export default function HomePage() {
           )
           : null}
         isTrainingMode={isTrainingMode}
+        canAssignDoctor={canAssignDoctors}
+        onAssignDoctor={openAssignDoctorModal}
         canRefer={canUseClinicalTools(currentUser?.role)}
         onLoadVisits={handleLoadPatientVisits}
         onLoadVisitDetail={handleLoadPatientVisitDetail}
@@ -2396,5 +2459,87 @@ export default function HomePage() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+function AssignDoctorModal({
+  patient,
+  providers,
+  isSaving,
+  onAssign,
+  onClose,
+}: {
+  patient: Patient | null;
+  providers: QueueProvider[];
+  isSaving: boolean;
+  onAssign: (patient: Patient, providerId: string) => void;
+  onClose: () => void;
+}) {
+  if (!patient) {
+    return null;
+  }
+
+  const assignedDoctorId = patient.assigned_doctor_id || "";
+  const options = [{ id: "", name: "Unassigned", role: "Needs doctor" }, ...providers];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/35 p-4 backdrop-blur-sm">
+      <div className="mx-auto mt-[8vh] w-full max-w-xl rounded-[20px] border border-[#bfd7e8] bg-white p-5 shadow-[0_32px_90px_rgba(15,23,42,0.20)] sm:p-6">
+        <div className="flex items-start gap-4">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#edf5fa] text-[#2f8fd3]">
+            <Stethoscope className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#6c7d91]">Assign Doctor</p>
+            <h2 className="mt-1 truncate text-2xl font-black text-[#0f172a]">{patient.name}</h2>
+            <p className="mt-1 text-sm font-medium text-[#5b6b80]">
+              Choose the doctor queue this patient should move to.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-[#bfd7e8] bg-white text-[#344154] transition hover:bg-[#edf5fa]"
+            aria-label="Close assign doctor"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-2">
+          {options.map((provider) => {
+            const selected = provider.id === assignedDoctorId;
+            return (
+              <button
+                key={provider.id || "unassigned"}
+                type="button"
+                disabled={isSaving || selected || (provider.id !== "" && !providers.length)}
+                onClick={() => onAssign(patient, provider.id)}
+                className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition ${
+                  selected
+                    ? "border-[#2f8fd3] bg-[#ecf6fd] text-[#1f2b3d]"
+                    : "border-[#dbe7ef] bg-white text-[#1f2b3d] hover:border-[#9fc7e1] hover:bg-[#f7fbfe]"
+                } disabled:cursor-not-allowed disabled:opacity-65`}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-bold">{provider.name}</span>
+                  <span className="mt-0.5 block text-xs font-semibold capitalize text-[#6c7d91]">{provider.role}</span>
+                </span>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                  selected ? "bg-white text-[#2a6fa8]" : "bg-[#f3f8fb] text-[#6c7d91]"
+                }`}>
+                  {selected ? "Current" : "Assign"}
+                </span>
+              </button>
+            );
+          })}
+          {!providers.length ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+              No doctor users are active yet. Add a Doctor role user first, or keep this patient unassigned.
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }

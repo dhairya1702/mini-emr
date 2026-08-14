@@ -81,6 +81,8 @@ interface PatientDetailsDrawerProps {
   onLoadGrowthHistory?: (patientId: string) => Promise<PediatricGrowthSummary>;
   isTrainingMode?: boolean;
   readOnly?: boolean;
+  canAssignDoctor?: boolean;
+  onAssignDoctor?: (patient: Patient) => void;
   canRefer?: boolean;
   /** Render as an edge-to-edge full-screen page (route) instead of a modal overlay. */
   fullScreen?: boolean;
@@ -1247,6 +1249,8 @@ export function PatientDetailsDrawer({
   onLoadGrowthHistory,
   isTrainingMode = false,
   readOnly = false,
+  canAssignDoctor = false,
+  onAssignDoctor,
   canRefer = false,
   fullScreen = false,
   fullScreenBackLabel = "Patients",
@@ -2445,6 +2449,15 @@ export function PatientDetailsDrawer({
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2.5">
+                  {canAssignDoctor && onAssignDoctor && !readOnly && !isTrainingMode ? (
+                    <button
+                      type="button"
+                      onClick={() => onAssignDoctor(currentPatient)}
+                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#2f8fd3] bg-white px-4 text-sm font-semibold text-[#287fc0] transition hover:bg-[#edf5fa]"
+                    >
+                      <UserRound className="h-4 w-4" /> Assign Doctor
+                    </button>
+                  ) : null}
                   {canRefer && !readOnly && !isTrainingMode ? (
                     <button
                       type="button"
@@ -2679,6 +2692,15 @@ export function PatientDetailsDrawer({
                 onClick={() => setActiveTab("timeline")}
               />
             </div>
+            {canAssignDoctor && onAssignDoctor && !readOnly && !isTrainingMode ? (
+              <button
+                type="button"
+                onClick={() => onAssignDoctor(currentPatient)}
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#2f8fd3] bg-white px-4 text-sm font-semibold text-[#287fc0] transition hover:bg-[#edf5fa] sm:ml-auto sm:w-auto"
+              >
+                <UserRound className="h-4 w-4" /> Assign Doctor
+              </button>
+            ) : null}
             {canRefer && !readOnly && !isTrainingMode ? (
               <button
                 type="button"

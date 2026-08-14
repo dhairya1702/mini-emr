@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, Clock3, Flag, GripVertical, ReceiptIndianRupee, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Clock3, Flag, GripVertical, ReceiptIndianRupee, Stethoscope, Trash2 } from "lucide-react";
 import type { HTMLAttributes } from "react";
 import { useEffect, useState } from "react";
 
@@ -134,6 +134,8 @@ interface PatientCardProps {
   onRemoveFromQueue: (patient: Patient) => void;
   onTogglePriority?: (patient: Patient) => void;
   onOpenBilling?: (patient: Patient) => void;
+  onAssignDoctor?: (patient: Patient) => void;
+  canAssignDoctor?: boolean;
   canAdvance?: boolean;
   now?: number;
   dragHandleProps?: {
@@ -151,6 +153,8 @@ export function PatientCard({
   onRemoveFromQueue,
   onTogglePriority,
   onOpenBilling,
+  onAssignDoctor,
+  canAssignDoctor = false,
   canAdvance = true,
   now = Date.now(),
   dragHandleProps,
@@ -164,6 +168,7 @@ export function PatientCard({
     ? billing ? formatRupees(billing.total) : "Ready"
     : elapsed;
   const [profilePhotoObjectUrl, setProfilePhotoObjectUrl] = useState("");
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!patient.profile_photo_url) {
@@ -196,6 +201,27 @@ export function PatientCard({
     };
   }, [patient.id, patient.profile_photo_url, patient.profile_photo_updated_at]);
 
+  useEffect(() => {
+    if (!contextMenu) return undefined;
+
+    function closeMenu() {
+      setContextMenu(null);
+    }
+
+    function closeMenuOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setContextMenu(null);
+      }
+    }
+
+    window.addEventListener("click", closeMenu);
+    window.addEventListener("keydown", closeMenuOnEscape);
+    return () => {
+      window.removeEventListener("click", closeMenu);
+      window.removeEventListener("keydown", closeMenuOnEscape);
+    };
+  }, [contextMenu]);
+
   return (
     <article
       ref={dragHandleProps?.setActivatorNodeRef}
@@ -203,6 +229,14 @@ export function PatientCard({
       {...dragHandleProps?.listeners}
       aria-label={`Drag ${patient.name}; open chart`}
       onClick={() => onOpen(patient)}
+      onContextMenu={(event) => {
+        if (!canAssignDoctor || !onAssignDoctor) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        setContextMenu({ x: event.clientX, y: event.clientY });
+      }}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
@@ -214,6 +248,26 @@ export function PatientCard({
       } ${dragHandleProps && !dragHandleProps.disabled ? "cursor-grab active:cursor-grabbing" : ""}`}
       tabIndex={0}
     >
+      {contextMenu && canAssignDoctor && onAssignDoctor ? (
+        <div
+          className="fixed z-[120] w-52 rounded-xl border border-[#bfd7e8] bg-white p-1.5 shadow-[0_18px_44px_rgba(31,43,61,0.18)]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setContextMenu(null);
+              onAssignDoctor(patient);
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-[#1f2b3d] transition hover:bg-[#edf5fa] hover:text-[#2a6fa8]"
+          >
+            <Stethoscope className="h-4 w-4" />
+            Assign Doctor
+          </button>
+        </div>
+      ) : null}
       <div className="flex items-center gap-2.5">
         {dragHandleProps ? (
           <span className={`inline-flex h-8 w-6 shrink-0 items-center justify-center rounded-lg text-slate-400 transition ${
