@@ -842,7 +842,7 @@ export default function HomePage() {
     });
   }, [patients]);
   const doctorQueueProviders = useMemo(
-    () => queueProviders.filter((provider) => provider.active && provider.role === "doctor"),
+    () => queueProviders.filter((provider) => provider.active && (provider.role === "admin" || provider.role === "doctor")),
     [queueProviders],
   );
 
