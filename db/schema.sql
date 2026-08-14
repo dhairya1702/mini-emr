@@ -578,13 +578,13 @@ begin
     );
   end if;
   if old_is_active or new_is_active then
-    changed_counters := changed_counters || 'queue';
+    changed_counters := array_append(changed_counters, 'queue');
   end if;
   if candidate_changed then
-    changed_counters := changed_counters || 'check_ins';
+    changed_counters := array_append(changed_counters, 'check_ins');
   end if;
   if old_is_billable or new_is_billable then
-    changed_counters := changed_counters || 'billing_patients';
+    changed_counters := array_append(changed_counters, 'billing_patients');
   end if;
   insert into public.dashboard_revisions (
     org_id, queue_revision, check_in_revision, billing_patients_revision, updated_at
