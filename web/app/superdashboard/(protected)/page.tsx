@@ -260,6 +260,7 @@ export default function SuperdashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [updatingWorkspaceId, setUpdatingWorkspaceId] = useState("");
+  const [pendingWorkspaceModes, setPendingWorkspaceModes] = useState<Record<string, WorkspaceMode>>({});
   const [updatingUserLimitId, setUpdatingUserLimitId] = useState("");
 
   const totalRemaining = useMemo(
@@ -294,6 +295,19 @@ export default function SuperdashboardPage() {
       setMessage(error instanceof Error ? error.message : "Failed to load Superdashboard.");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function refreshWorkspaceRows() {
+    try {
+      const [orgData, onboardingData] = await Promise.all([
+        api.listSuperdashboardOrgs(),
+        api.getSuperdashboardOnboarding(),
+      ]);
+      setOrgs(orgData);
+      setOnboarding(onboardingData);
+    } catch {
+      // The explicit save already succeeded; keep the local update if the background refresh fails.
     }
   }
 
@@ -376,6 +390,7 @@ export default function SuperdashboardPage() {
       return;
     }
     setUpdatingWorkspaceId(row.id);
+    setPendingWorkspaceModes((current) => ({ ...current, [row.id]: mode }));
     setMessage("");
     try {
       const updated = await api.updateSuperdashboardCustomer(row.id, { workspace_mode: mode });
@@ -391,9 +406,15 @@ export default function SuperdashboardPage() {
         )));
       }
       setMessage(`${row.customer_name} now uses the ${mode === "solo" ? "Solo" : mode === "multi_doctor" ? "Multi-Doctor" : "Team"} workspace.`);
+      void refreshWorkspaceRows();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to update workspace mode.");
     } finally {
+      setPendingWorkspaceModes((current) => {
+        const next = { ...current };
+        delete next[row.id];
+        return next;
+      });
       setUpdatingWorkspaceId("");
     }
   }
@@ -405,6 +426,7 @@ export default function SuperdashboardPage() {
       return;
     }
     setUpdatingWorkspaceId(org.org_id);
+    setPendingWorkspaceModes((current) => ({ ...current, [org.org_id]: mode }));
     setMessage("");
     try {
       const updated = await api.updateSuperdashboardOrgWorkspaceMode(org.org_id, mode);
@@ -420,9 +442,15 @@ export default function SuperdashboardPage() {
         )),
       }));
       setMessage(`${org.clinic_name} now uses the ${mode === "solo" ? "Solo" : mode === "multi_doctor" ? "Multi-Doctor" : "Team"} workspace.`);
+      void refreshWorkspaceRows();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to update workspace mode.");
     } finally {
+      setPendingWorkspaceModes((current) => {
+        const next = { ...current };
+        delete next[org.org_id];
+        return next;
+      });
       setUpdatingWorkspaceId("");
     }
   }
@@ -545,7 +573,7 @@ export default function SuperdashboardPage() {
                         <td className="px-7 py-5 font-bold text-slate-600">{specialtyLabel(org.clinic_specialty)}</td>
                         <td className="px-7 py-5">
                           <select
-                            value={org.workspace_mode}
+                            value={pendingWorkspaceModes[org.org_id] ?? org.workspace_mode}
                             disabled={updatingWorkspaceId === org.org_id}
                             onClick={(event) => event.stopPropagation()}
                             onChange={(event) => void updateOrgWorkspaceMode(org, event.target.value as WorkspaceMode)}
@@ -700,7 +728,7 @@ export default function SuperdashboardPage() {
                         <td className="px-7 py-5">{customer.users_used} / {customer.users_allowed}</td>
                         <td className="px-7 py-5">
                           <select
-                            value={customer.workspace_mode}
+                            value={pendingWorkspaceModes[customer.id] ?? customer.workspace_mode}
                             disabled={updatingWorkspaceId === customer.id || customer.status === "disabled"}
                             onChange={(event) => void updateOnboardingWorkspaceMode(customer, event.target.value as WorkspaceMode)}
                             aria-label={`Workspace mode for ${customer.customer_name}`}
