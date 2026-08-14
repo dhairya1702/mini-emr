@@ -98,6 +98,7 @@ import {
   PatientStatus,
   PasswordUpdatePayload,
   PasswordResetConfirmPayload,
+  TemporaryPasswordSetPayload,
   PatientCaseStudySource,
   RegisterPayload,
   RegistrationConfig,
@@ -682,6 +683,11 @@ export const api = {
   sendSuperdashboardUserPasswordReset: (userId: string) =>
     request<{ message: string }>(`/superdashboard/users/${userId}/password-reset`, {
       method: "POST",
+    }),
+  setSuperdashboardUserTemporaryPassword: (userId: string, payload: TemporaryPasswordSetPayload) =>
+    request<{ message: string }>(`/superdashboard/users/${userId}/temporary-password`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
   listPlatformErrors: (limit = 100) => request<PlatformError[]>(withQuery("/superdashboard/errors", { limit })),
   getControlRoomStatus: () => request<ControlRoomStatus>("/controlroom/status"),

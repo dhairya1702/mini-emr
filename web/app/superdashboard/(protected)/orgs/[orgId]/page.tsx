@@ -130,6 +130,12 @@ export default function SuperdashboardOrgDetailPage() {
   const [updatingUserId, setUpdatingUserId] = useState("");
   const [resettingUserId, setResettingUserId] = useState("");
   const [deletingUserId, setDeletingUserId] = useState("");
+  const [resetUser, setResetUser] = useState<SuperuserOrgUser | null>(null);
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [temporaryPasswordConfirm, setTemporaryPasswordConfirm] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [resetSuccess, setResetSuccess] = useState("");
+  const [isSettingTemporaryPassword, setIsSettingTemporaryPassword] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const adminCount = useMemo(
     () => detail?.users.filter((user) => user.role === "admin").length ?? 0,
@@ -259,20 +265,64 @@ export default function SuperdashboardOrgDetailPage() {
     }
   }
 
+  function openPasswordReset(user: SuperuserOrgUser) {
+    setResetUser(user);
+    setTemporaryPassword("");
+    setTemporaryPasswordConfirm("");
+    setResetError("");
+    setResetSuccess("");
+  }
+
+  function closePasswordReset() {
+    setResetUser(null);
+    setTemporaryPassword("");
+    setTemporaryPasswordConfirm("");
+    setResetError("");
+    setResetSuccess("");
+    setIsSettingTemporaryPassword(false);
+  }
+
   async function sendPasswordReset(user: SuperuserOrgUser) {
     if (!user.email) {
-      setMessage("This user does not have a recovery email.");
+      setResetError("No recovery email on file.");
       return;
     }
     setResettingUserId(user.id);
-    setMessage("");
+    setResetError("");
+    setResetSuccess("");
     try {
       const result = await api.sendSuperdashboardUserPasswordReset(user.id);
-      setMessage(result.message);
+      setResetSuccess(result.message);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to send password reset.");
+      setResetError(error instanceof Error ? error.message : "Failed to send password reset.");
     } finally {
       setResettingUserId("");
+    }
+  }
+
+  async function setTemporaryUserPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!resetUser) return;
+    setResetError("");
+    setResetSuccess("");
+    if (temporaryPassword.length < 12) {
+      setResetError("Temporary password must be at least 12 characters.");
+      return;
+    }
+    if (temporaryPassword !== temporaryPasswordConfirm) {
+      setResetError("Temporary passwords do not match.");
+      return;
+    }
+    setIsSettingTemporaryPassword(true);
+    try {
+      const result = await api.setSuperdashboardUserTemporaryPassword(resetUser.id, { password: temporaryPassword });
+      setTemporaryPassword("");
+      setTemporaryPasswordConfirm("");
+      setResetSuccess(result.message);
+    } catch (error) {
+      setResetError(error instanceof Error ? error.message : "Failed to set temporary password.");
+    } finally {
+      setIsSettingTemporaryPassword(false);
     }
   }
 
@@ -468,8 +518,8 @@ export default function SuperdashboardOrgDetailPage() {
                         <td className="px-7 py-5 text-right">
                           <div className="flex justify-end gap-2">
                           <button
-                            onClick={() => void sendPasswordReset(user)}
-                            disabled={resettingUserId === user.id || !user.email}
+                            onClick={() => openPasswordReset(user)}
+                            disabled={resettingUserId === user.id || isSettingTemporaryPassword}
                             className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-600 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
                             title="Reset password"
                           >
@@ -638,6 +688,102 @@ export default function SuperdashboardOrgDetailPage() {
           </div>
         ) : null}
       </section>
+      {resetUser ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <button
+            type="button"
+            aria-label="Close password reset options"
+            className="absolute inset-0"
+            onClick={closePasswordReset}
+          />
+          <section className="relative z-10 w-full max-w-2xl rounded-[24px] border border-slate-200 bg-white p-7 shadow-[0_28px_90px_rgba(15,23,42,0.24)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">Reset password</p>
+                <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950">
+                  {resetUser.name || resetUser.identifier}
+                </h2>
+                <p className="mt-2 font-bold text-slate-500">
+                  Choose how to restore access for this user.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closePasswordReset}
+                className="rounded-2xl border border-slate-200 p-3 text-slate-500 transition hover:text-slate-950"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-7 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                <h3 className="text-lg font-black text-slate-950">Send recovery email</h3>
+                <p className="mt-2 text-sm font-bold text-slate-600">
+                  Sends a reset link that expires in 1 hour.
+                </p>
+                <p className="mt-4 break-words text-sm font-bold text-slate-500">
+                  {resetUser.email || "No recovery email on file."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void sendPasswordReset(resetUser)}
+                  disabled={resettingUserId === resetUser.id || !resetUser.email}
+                  className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <KeyRound className="h-4 w-4" />
+                  {resettingUserId === resetUser.id ? "Sending..." : "Send email"}
+                </button>
+              </div>
+
+              <form className="rounded-2xl border border-slate-200 bg-white p-5" onSubmit={setTemporaryUserPassword}>
+                <h3 className="text-lg font-black text-slate-950">Set temporary password</h3>
+                <p className="mt-2 text-sm font-bold text-slate-600">
+                  Use when the user cannot access email. Share it securely after saving.
+                </p>
+                <label className="mt-4 block">
+                  <span className="mb-2 block text-sm font-black text-slate-700">Temporary password</span>
+                  <input
+                    type="password"
+                    value={temporaryPassword}
+                    onChange={(event) => setTemporaryPassword(event.target.value)}
+                    placeholder="Minimum 12 characters"
+                    className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 font-bold outline-none focus:border-blue-500"
+                  />
+                </label>
+                <label className="mt-3 block">
+                  <span className="mb-2 block text-sm font-black text-slate-700">Confirm password</span>
+                  <input
+                    type="password"
+                    value={temporaryPasswordConfirm}
+                    onChange={(event) => setTemporaryPasswordConfirm(event.target.value)}
+                    placeholder="Re-enter password"
+                    className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 font-bold outline-none focus:border-blue-500"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={isSettingTemporaryPassword}
+                  className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSettingTemporaryPassword ? "Saving..." : "Set password"}
+                </button>
+              </form>
+            </div>
+
+            {resetError ? (
+              <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+                {resetError}
+              </div>
+            ) : null}
+            {resetSuccess ? (
+              <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
+                {resetSuccess}
+              </div>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

@@ -247,6 +247,10 @@ class PasswordResetConfirm(BaseModel):
     new_password: str = Field(min_length=12, max_length=128)
 
 
+class TemporaryPasswordSet(BaseModel):
+    password: str = Field(min_length=12, max_length=128)
+
+
 class UserOut(UserBase):
     id: UUID
     org_id: UUID

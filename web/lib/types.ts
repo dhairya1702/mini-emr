@@ -1652,6 +1652,10 @@ export interface PasswordResetConfirmPayload {
   new_password: string;
 }
 
+export interface TemporaryPasswordSetPayload {
+  password: string;
+}
+
 export interface CatalogItemCreatePayload {
   name: string;
   item_type: CatalogItemType;

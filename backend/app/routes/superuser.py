@@ -49,6 +49,7 @@ from app.schema_domains.auth_settings import (
     ClinicSettingsUpdate,
     LoginRequest,
     PasswordResetRequestOut,
+    TemporaryPasswordSet,
     UserOut,
     UserRoleUpdate,
 )
@@ -568,6 +569,22 @@ async def send_superdashboard_user_password_reset(
         requester_realm="superdashboard",
     )
     return PasswordResetRequestOut(message=f"Password reset email sent to {target_user['email']}.")
+
+
+@router.post("/superdashboard/users/{user_id}/temporary-password", response_model=PasswordResetRequestOut)
+@router.post("/superuser/users/{user_id}/temporary-password", response_model=PasswordResetRequestOut)
+async def set_superdashboard_user_temporary_password(
+    user_id: UUID,
+    payload: TemporaryPasswordSet,
+    current_user: UserOut = Depends(require_super_admin),
+    repo: AppRepository = Depends(get_repository),
+) -> PasswordResetRequestOut:
+    del current_user
+    try:
+        await repo.update_user_password_hash(str(user_id), hash_password(payload.password))
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="User not found.") from exc
+    return PasswordResetRequestOut(message="Temporary password updated. Share it with the user securely.")
 
 
 @router.get("/superdashboard/errors", response_model=list[PlatformErrorOut])
