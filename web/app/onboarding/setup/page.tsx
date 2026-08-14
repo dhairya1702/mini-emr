@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { openNativeTimePicker } from "@/lib/time-input";
 import { DEFAULT_CLINIC_TIMEZONE, getDefaultClinicTimeZone, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
-import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload, UserRole } from "@/lib/types";
+import type { ClinicSettings, ClinicSettingsUpdatePayload, UserRole } from "@/lib/types";
 
 type StepKey = "specialty" | "hours" | "signature" | "email" | "staff" | "template" | "patient" | "done";
 
@@ -40,8 +40,6 @@ const selectableUserRoles: Array<{ value: Extract<UserRole, "staff" | "doctor">;
   { value: "staff", label: "Staff" },
   { value: "doctor", label: "Doctor" },
 ];
-
-type CreatedSetupUser = AuthUser & { temporary_password?: string };
 
 function settingsPayload(settings: ClinicSettings, patch: Partial<ClinicSettingsUpdatePayload>): ClinicSettingsUpdatePayload {
   return {
@@ -105,6 +103,10 @@ export default function OnboardingSetupPage() {
     applyClinicSettings,
     applyCurrentUser,
     createStaffUser,
+    users,
+    usersError,
+    isUsersLoading,
+    loadUsers,
   } = useClinicShell();
   const [activeIndex, setActiveIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<StepKey>>(() => new Set());
@@ -132,7 +134,7 @@ export default function OnboardingSetupPage() {
     password: string;
     role: Extract<UserRole, "staff" | "doctor">;
   }>({ email: "", phone: "", identifier: "", password: "", role: "staff" });
-  const [createdStaffUsers, setCreatedStaffUsers] = useState<CreatedSetupUser[]>([]);
+  const [temporaryPasswordsByUserId, setTemporaryPasswordsByUserId] = useState<Record<string, string>>({});
   const [patient, setPatient] = useState({ name: "", phone: "", reason: "" });
   const [templateSettings, setTemplateSettings] = useState<ClinicSettings | null>(null);
   const [signaturePreviewUrl, setSignaturePreviewUrl] = useState("");
@@ -143,6 +145,7 @@ export default function OnboardingSetupPage() {
   const canGoPreviousStep = activeIndex > 0;
   const canGoNextStep = activeIndex < steps.length - 1;
   const hasSignature = Boolean(currentUser?.doctor_signature_name || currentUser?.doctor_signature_url);
+  const visibleUsers = users.length ? users : currentUser ? [currentUser] : [];
 
   useEffect(() => {
     if (!clinicSettings) {
@@ -180,6 +183,13 @@ export default function OnboardingSetupPage() {
       setCompletedSteps((current) => new Set(current).add("signature"));
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (activeStep.key !== "staff" || !currentUser) {
+      return;
+    }
+    void loadUsers();
+  }, [activeStep.key, currentUser, loadUsers]);
 
   useEffect(() => {
     if (!hasSignature) {
@@ -388,7 +398,7 @@ export default function OnboardingSetupPage() {
         password: staff.password,
         role: staff.role,
       });
-      setCreatedStaffUsers((current) => [...current, { ...created, temporary_password: staff.password }]);
+      setTemporaryPasswordsByUserId((current) => ({ ...current, [created.id]: staff.password }));
       setStaff({ email: "", phone: "", identifier: "", password: "", role: "staff" });
       markComplete("staff");
       setStatus("User added. Add another user or continue.");
@@ -764,28 +774,51 @@ export default function OnboardingSetupPage() {
                   ))}
                 </select>
               </label>
-              {createdStaffUsers.length ? (
-                <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3">
+              <div className="overflow-hidden rounded-xl border border-[#dbe7ef] bg-white">
+                <div className="flex items-center justify-between border-b border-[#e8f0f6] bg-[#f3f8fb]/70 px-4 py-3">
                   <p className="text-sm font-semibold text-slate-900">Users</p>
-                  <div className="mt-3 grid gap-2">
-                    {createdStaffUsers.map((user) => (
-                      <div key={user.id} className="rounded-lg border border-[#e3edf4] bg-white px-4 py-3 text-sm text-slate-700">
-                        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                          <span className="font-medium text-slate-900">{user.email}</span>
-                          <span>{user.phone}</span>
-                          <span className="rounded-full bg-[#eef6fb] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#2a6fa8]">
-                            {user.role}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500">
-                          <span>Login ID: {user.identifier}</span>
-                          {user.temporary_password ? <span>Temporary password: {user.temporary_password}</span> : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <span className="rounded-full bg-[#eef6fb] px-3 py-1 text-xs font-semibold text-[#2a6fa8]">
+                    {isUsersLoading ? "Loading" : `${visibleUsers.length} total`}
+                  </span>
                 </div>
-              ) : null}
+                {usersError ? (
+                  <p className="px-4 py-3 text-sm text-rose-600">{usersError}</p>
+                ) : visibleUsers.length ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="bg-[#f8fbfd] text-xs uppercase tracking-[0.14em] text-slate-500">
+                        <tr>
+                          <th className="px-4 py-3 font-semibold">Email / Phone</th>
+                          <th className="px-4 py-3 font-semibold">Login ID</th>
+                          <th className="px-4 py-3 font-semibold">Role</th>
+                          <th className="px-4 py-3 font-semibold">Temporary password</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#eef3f7] text-slate-700">
+                        {visibleUsers.map((user) => (
+                          <tr key={user.id}>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                <span className="font-medium text-slate-900">{user.email || "-"}</span>
+                                <span className="text-slate-500">{user.phone || "-"}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">{user.identifier}</td>
+                            <td className="px-4 py-3">
+                              <span className="rounded-full bg-[#eef6fb] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#2a6fa8]">
+                                {user.role}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-500">{temporaryPasswordsByUserId[user.id] || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="px-4 py-3 text-sm text-slate-500">No users loaded yet.</p>
+                )}
+              </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
                 <button type="button" disabled={isSaving} onClick={() => setActiveIndex((current) => current - 1)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-5 py-3 text-sm font-medium text-slate-700">
                   <ChevronLeft className="h-4 w-4" />
@@ -797,7 +830,7 @@ export default function OnboardingSetupPage() {
                     <ChevronRight className="h-4 w-4" />
                   </button>
                   <button type="button" disabled={isSaving} onClick={skipOptional} className="rounded-xl border border-[#bfd7e8] bg-white px-5 py-3 text-sm font-medium text-slate-700">
-                    {createdStaffUsers.length ? "Continue" : "Skip for now"}
+                    {visibleUsers.length > 1 ? "Continue" : "Skip for now"}
                   </button>
                 </div>
               </div>
