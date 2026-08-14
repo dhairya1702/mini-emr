@@ -76,6 +76,7 @@ async def send_password_reset_for_user(
             subject=f"Reset your {clinic_name} password",
             text_content=text,
             html_content=html,
+            include_automated_footer=False,
         )
     except EmailDeliveryError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
