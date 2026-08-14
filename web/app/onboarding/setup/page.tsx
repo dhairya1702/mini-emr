@@ -8,6 +8,7 @@ import { useClinicShell } from "@/components/clinic-shell-provider";
 import { PasswordInput } from "@/components/password-input";
 import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
+import { openNativeTimePicker } from "@/lib/time-input";
 import { DEFAULT_CLINIC_TIMEZONE, getDefaultClinicTimeZone, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
 import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload } from "@/lib/types";
 
@@ -528,11 +529,23 @@ export default function OnboardingSetupPage() {
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Opening time</span>
-                  <input type="time" value={hours.start} onChange={(event) => setHours((current) => ({ ...current, start: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none" />
+                  <input
+                    type="time"
+                    value={hours.start}
+                    onClick={(event) => openNativeTimePicker(event.currentTarget)}
+                    onChange={(event) => setHours((current) => ({ ...current, start: event.target.value }))}
+                    className="w-full cursor-pointer rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none"
+                  />
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Closing time</span>
-                  <input type="time" value={hours.end} onChange={(event) => setHours((current) => ({ ...current, end: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none" />
+                  <input
+                    type="time"
+                    value={hours.end}
+                    onClick={(event) => openNativeTimePicker(event.currentTarget)}
+                    onChange={(event) => setHours((current) => ({ ...current, end: event.target.value }))}
+                    className="w-full cursor-pointer rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none"
+                  />
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">Appointments / hour</span>

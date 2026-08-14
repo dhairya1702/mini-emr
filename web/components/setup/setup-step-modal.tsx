@@ -8,6 +8,7 @@ import { api, resolveApiAssetUrl } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
 import type { ClinicSetupStepKey } from "@/lib/setup-checklist";
+import { openNativeTimePicker } from "@/lib/time-input";
 import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload, StaffUserCreatePayload } from "@/lib/types";
 
 type SetupStepModalProps = {
@@ -300,8 +301,9 @@ function HoursSetup({
           <input
             type="time"
             value={form.appointment_start_time}
+            onClick={(event) => openNativeTimePicker(event.currentTarget)}
             onChange={(event) => setForm((current) => ({ ...current, appointment_start_time: event.target.value }))}
-            className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
+            className="w-full cursor-pointer rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
           />
         </label>
         <label className="block">
@@ -309,8 +311,9 @@ function HoursSetup({
           <input
             type="time"
             value={form.appointment_end_time}
+            onClick={(event) => openNativeTimePicker(event.currentTarget)}
             onChange={(event) => setForm((current) => ({ ...current, appointment_end_time: event.target.value }))}
-            className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
+            className="w-full cursor-pointer rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
           />
         </label>
         <label className="block">
