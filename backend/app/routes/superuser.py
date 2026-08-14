@@ -381,12 +381,11 @@ async def update_superdashboard_customer(
     current_user: UserOut = Depends(require_super_admin),
     repo: AppRepository = Depends(get_repository),
 ) -> CustomerOnboardingOut:
+    del current_user
     updates = payload.model_dump(exclude_unset=True)
     if "phone" in updates and updates["phone"] is not None:
         updates["phone"] = normalize_phone_number(updates["phone"])
     try:
-        existing_rows = await repo.list_customer_onboarding()
-        existing = next((item for item in existing_rows if str(item["id"]) == str(customer_onboarding_id)), None)
         await repo.update_customer_onboarding(str(customer_onboarding_id), updates)
         refreshed_rows = await repo.list_customer_onboarding()
         row = next((item for item in refreshed_rows if str(item["id"]) == str(customer_onboarding_id)), None)
@@ -395,41 +394,6 @@ async def update_superdashboard_customer(
     except ValueError as exc:
         status_code = 404 if "not found" in str(exc).lower() else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
-    if (
-        existing
-        and existing.get("claimed_org_id")
-        and "workspace_mode" in updates
-        and existing.get("workspace_mode") != row.get("workspace_mode")
-    ):
-        await repo.create_audit_event(
-            str(existing["claimed_org_id"]),
-            str(current_user.id),
-            current_user.name or current_user.identifier,
-            "organization",
-            str(existing["claimed_org_id"]),
-            "workspace_mode_changed",
-            f"ClinicOS Ops changed workspace mode from {existing.get('workspace_mode')} to {row.get('workspace_mode')}.",
-            {"previous_mode": existing.get("workspace_mode"), "workspace_mode": row.get("workspace_mode")},
-        )
-    if (
-        existing
-        and existing.get("claimed_org_id")
-        and "users_allowed" in updates
-        and existing.get("users_allowed") != row.get("users_allowed")
-    ):
-        await repo.create_audit_event(
-            str(existing["claimed_org_id"]),
-            str(current_user.id),
-            current_user.name or current_user.identifier,
-            "organization",
-            str(existing["claimed_org_id"]),
-            "user_limit_changed",
-            f"ClinicOS Ops changed the user limit from {existing.get('users_allowed')} to {row.get('users_allowed')}.",
-            {
-                "previous_users_allowed": existing.get("users_allowed"),
-                "users_allowed": row.get("users_allowed"),
-            },
-        )
     return CustomerOnboardingOut(**row)
 
 
@@ -504,25 +468,14 @@ async def update_superdashboard_org_workspace_mode(
     current_user: UserOut = Depends(require_super_admin),
     repo: AppRepository = Depends(get_repository),
 ) -> OrganizationWorkspaceModeOut:
+    del current_user
     settings = await repo.get_clinic_settings(str(org_id))
     if not settings:
         raise HTTPException(status_code=404, detail="Organization settings not found.")
-    previous_mode = str(settings.get("workspace_mode") or "solo")
     try:
         saved_mode = await repo.update_organization_workspace_mode(str(org_id), payload.workspace_mode)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    if saved_mode != previous_mode:
-        await repo.create_audit_event(
-            str(org_id),
-            str(current_user.id),
-            current_user.name or current_user.identifier,
-            "organization",
-            str(org_id),
-            "workspace_mode_changed",
-            f"ClinicOS Ops changed workspace mode from {previous_mode} to {saved_mode}.",
-            {"previous_mode": previous_mode, "workspace_mode": saved_mode},
-        )
     return OrganizationWorkspaceModeOut(org_id=org_id, workspace_mode=saved_mode)
 
 
@@ -533,26 +486,15 @@ async def update_superdashboard_org_users_allowed(
     current_user: UserOut = Depends(require_super_admin),
     repo: AppRepository = Depends(get_repository),
 ) -> OrganizationUsersAllowedOut:
+    del current_user
     settings = await repo.get_clinic_settings(str(org_id))
     if not settings:
         raise HTTPException(status_code=404, detail="Organization settings not found.")
-    previous_limit = int(settings.get("users_allowed") or 2)
     try:
         saved_limit = await repo.update_organization_users_allowed(str(org_id), payload.users_allowed)
     except ValueError as exc:
         status_code = 404 if "not found" in str(exc).lower() else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
-    if saved_limit != previous_limit:
-        await repo.create_audit_event(
-            str(org_id),
-            str(current_user.id),
-            current_user.name or current_user.identifier,
-            "organization",
-            str(org_id),
-            "user_limit_changed",
-            f"ClinicOS Ops changed the user limit from {previous_limit} to {saved_limit}.",
-            {"previous_users_allowed": previous_limit, "users_allowed": saved_limit},
-        )
     return OrganizationUsersAllowedOut(org_id=org_id, users_allowed=saved_limit)
 
 
@@ -564,6 +506,7 @@ async def update_superdashboard_org_settings(
     current_user: UserOut = Depends(require_super_admin),
     repo: AppRepository = Depends(get_repository),
 ) -> ClinicSettingsOut:
+    del current_user
     current_settings = await repo.get_clinic_settings(str(org_id))
     if not current_settings:
         raise HTTPException(status_code=404, detail="Organization settings not found.")
@@ -577,18 +520,6 @@ async def update_superdashboard_org_settings(
         saved = await repo.upsert_clinic_settings(str(org_id), payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if updates:
-        audit_updates = {key: value for key, value in updates.items() if key != "sender_email_app_password"}
-        await repo.create_audit_event(
-            str(org_id),
-            str(current_user.id),
-            current_user.name or current_user.identifier,
-            "organization",
-            str(org_id),
-            "settings_changed",
-            "ClinicOS Ops changed organization settings.",
-            {"fields": sorted(audit_updates), "updates": audit_updates},
-        )
     return ClinicSettingsOut(**saved)
 
 
@@ -600,6 +531,7 @@ async def update_superdashboard_user_role(
     current_user: UserOut = Depends(require_super_admin),
     repo: AppRepository = Depends(get_repository),
 ) -> SuperuserOrgUserOut:
+    del current_user
     try:
         target_user = await repo.get_user(str(user_id))
     except Exception as exc:
@@ -613,21 +545,6 @@ async def update_superdashboard_user_role(
         if admin_count <= 1:
             raise HTTPException(status_code=400, detail="Organization must keep at least one admin.")
     updated = await repo.update_user_role(str(user_id), payload)
-    await repo.create_audit_event(
-        target_org_id,
-        str(current_user.id),
-        current_user.name or current_user.identifier,
-        "user",
-        str(user_id),
-        "user_role_changed",
-        f"ClinicOS Ops changed {updated.get('identifier')} from {previous_role} to {payload.role}.",
-        {
-            "target_user_id": str(user_id),
-            "identifier": updated.get("identifier"),
-            "previous_role": previous_role,
-            "role": payload.role,
-        },
-    )
     return SuperuserOrgUserOut(**updated)
 
 

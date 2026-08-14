@@ -219,7 +219,7 @@ def test_superdashboard_can_create_and_list_customer_onboarding(client, monkeypa
 
 
 def test_superdashboard_can_switch_organization_workspace_mode(client, monkeypatch: pytest.MonkeyPatch):
-    test_client, _repo = client
+    test_client, repo = client
     session = register_test_clinic(test_client, identifier="ops-mode@clinic.com", clinic_name="Mode Clinic")
     monkeypatch.setattr(
         auth_module,
@@ -247,10 +247,11 @@ def test_superdashboard_can_switch_organization_workspace_mode(client, monkeypat
     assert settings.json()["workspace_mode"] == "team"
     orgs = test_client.get("/superdashboard/orgs", headers=headers)
     assert orgs.json()[0]["workspace_mode"] == "team"
+    assert not any(event["action"] == "workspace_mode_changed" for event in repo.audit_events.values())
 
 
 def test_superdashboard_can_change_organization_user_limit(client, monkeypatch: pytest.MonkeyPatch):
-    test_client, _repo = client
+    test_client, repo = client
     session = register_test_clinic(test_client, identifier="ops-limit@clinic.com", clinic_name="Limit Ops Clinic")
     monkeypatch.setattr(
         auth_module,
@@ -279,6 +280,7 @@ def test_superdashboard_can_change_organization_user_limit(client, monkeypatch: 
     assert settings.json()["users_allowed"] == 5
     orgs = test_client.get("/superdashboard/orgs", headers=headers)
     assert orgs.json()[0]["users_allowed"] == 5
+    assert not any(event["action"] == "user_limit_changed" for event in repo.audit_events.values())
 
     staff = test_client.post(
         "/users/staff",
@@ -365,7 +367,7 @@ def test_superdashboard_can_update_organization_settings(client, monkeypatch: py
 
 
 def test_superdashboard_can_update_user_role(client, monkeypatch: pytest.MonkeyPatch):
-    test_client, _repo = client
+    test_client, repo = client
     session = register_test_clinic(test_client, identifier="ops-role@clinic.com", clinic_name="Role Clinic")
     monkeypatch.setattr(
         auth_module,
@@ -398,6 +400,7 @@ def test_superdashboard_can_update_user_role(client, monkeypatch: pytest.MonkeyP
     assert updated.json()["role"] == "admin"
     detail = test_client.get(f"/superdashboard/orgs/{session['user']['org_id']}", headers=headers)
     assert any(user["identifier"] == "role-staff@clinic.com" and user["role"] == "admin" for user in detail.json()["users"])
+    assert not any(event["action"] == "user_role_changed" for event in repo.audit_events.values())
 
 
 def test_superdashboard_prevents_demoting_last_admin_but_can_delete_admins(client, monkeypatch: pytest.MonkeyPatch):
