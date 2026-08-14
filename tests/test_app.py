@@ -1472,6 +1472,11 @@ class FakeRepo:
         password_hash: str = "",
         role: str = "staff",
     ) -> dict:
+        settings = self.clinic_settings.get(org_id, {})
+        users_allowed = int(settings.get("users_allowed") or 2)
+        users_used = sum(1 for user in self.users.values() if user["org_id"] == org_id)
+        if users_used >= users_allowed:
+            raise ValueError("User limit reached for this customer.")
         user_id = str(uuid4())
         user = {
             "id": user_id,
@@ -1574,8 +1579,14 @@ class FakeRepo:
             if user["org_id"] == org_id
         ]
 
-    async def update_user_role(self, user_id: str, payload) -> dict:
-        user = self.users[user_id]
+    async def update_user_role(self, org_id: str, user_id: str, payload) -> dict:
+        user = self.users.get(user_id)
+        if user is None or user["org_id"] != org_id:
+            raise IndexError(user_id)
+        if user["role"] == "admin" and payload.role != "admin":
+            admin_count = await self.count_admins_for_org(org_id)
+            if admin_count <= 1:
+                raise ValueError("Every clinic must retain at least one admin.")
         user["role"] = payload.role
         return dict(user)
 
@@ -1646,7 +1657,14 @@ class FakeRepo:
         user = self.users[user_id]
         user["superdashboard_session_version"] = int(user.get("superdashboard_session_version", 1)) + 1
 
-    async def delete_user(self, user_id: str) -> None:
+    async def delete_user(self, org_id: str, user_id: str) -> None:
+        user = self.users.get(user_id)
+        if user is None or user["org_id"] != org_id:
+            raise IndexError(user_id)
+        if user["role"] == "admin":
+            admin_count = await self.count_admins_for_org(org_id)
+            if admin_count <= 1:
+                raise ValueError("Every clinic must retain at least one admin.")
         self.users.pop(user_id, None)
 
     async def set_user_signature(self, user_id: str, *, filename: str, content_type: str, data_base64: str) -> dict:

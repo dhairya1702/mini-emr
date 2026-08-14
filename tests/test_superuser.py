@@ -446,7 +446,7 @@ def test_superdashboard_prevents_demoting_last_admin_but_can_delete_admins(clien
     delete_self = test_client.delete(f"/superdashboard/users/{user_id}", headers=headers)
 
     assert demote.status_code == 400
-    assert demote.json()["detail"] == "Organization must keep at least one admin."
+    assert demote.json()["detail"] == "Every clinic must retain at least one admin."
     assert delete_managed_admin.status_code == 200, delete_managed_admin.text
     assert delete_self.status_code == 400
     assert delete_self.json()["detail"] == "You cannot remove your own account."

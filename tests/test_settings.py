@@ -628,6 +628,21 @@ def test_admin_can_change_user_role(client):
     assert updated.json()["role"] == "admin"
 
 
+def test_admin_cannot_demote_last_admin(client):
+    test_client, _repo = client
+    session = register_test_clinic(test_client, identifier="last-admin-role@clinic.com", clinic_name="Last Admin Role Clinic")
+    headers = auth_headers_for_token(session["token"])
+
+    demote = test_client.patch(
+        f"/users/{session['user']['id']}",
+        headers=headers,
+        json={"role": "staff"},
+    )
+
+    assert demote.status_code == 400
+    assert demote.json()["detail"] == "Every clinic must retain at least one admin."
+
+
 def test_staff_creation_preserves_ops_workspace_mode(client):
     test_client, _repo = client
     session = register_test_clinic(test_client, identifier="workspace-admin@clinic.com", clinic_name="Workspace Clinic")

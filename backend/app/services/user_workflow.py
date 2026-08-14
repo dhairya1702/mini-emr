@@ -9,7 +9,6 @@ from app.auth import (
 )
 from app import config as config_module
 from app.db import AppRepository
-from app.services.clinic_settings_service import get_clinic_runtime_settings
 from app.repositories.base import normalize_phone_number
 from app.schema_domains.auth_settings import (
     AuthResponse,
@@ -162,22 +161,21 @@ async def create_staff_user_workflow(
     if existing:
         raise HTTPException(status_code=409, detail="An account with that email or phone already exists.")
 
-    clinic_settings = await get_clinic_runtime_settings(repo, str(current_user.org_id))
-    users_used = await repo.count_users_for_org(str(current_user.org_id))
-    users_allowed = int(clinic_settings.get("users_allowed") or 2)
-    if users_used >= users_allowed:
-        raise HTTPException(status_code=400, detail="User limit reached for this customer.")
-
     role = payload.role
-    created = await repo.create_user(
-        org_id=str(current_user.org_id),
-        identifier=identifier,
-        email=email,
-        phone=phone,
-        name=payload.name,
-        password_hash=hash_password(payload.password),
-        role=role,
-    )
+    try:
+        created = await repo.create_user(
+            org_id=str(current_user.org_id),
+            identifier=identifier,
+            email=email,
+            phone=phone,
+            name=payload.name,
+            password_hash=hash_password(payload.password),
+            role=role,
+        )
+    except ValueError as exc:
+        if "User limit reached for this customer." in str(exc):
+            raise HTTPException(status_code=400, detail="User limit reached for this customer.") from exc
+        raise
     role_label = str(role).replace("_", " ")
     action = "staff_user_created" if role == "staff" else "user_created"
     await write_audit_event(

@@ -776,6 +776,11 @@ class PostgresAuthSettingsRepository:
                         )
                     if "users_allowed" in updates and claimed_org_id:
                         cursor.execute(
+                            "select users_allowed from public.clinic_settings where org_id = %s for update",
+                            (claimed_org_id,),
+                        )
+                        cursor.fetchone()
+                        cursor.execute(
                             "select count(*)::int from public.clinic_users where org_id = %s",
                             (claimed_org_id,),
                         )
@@ -833,6 +838,11 @@ class PostgresAuthSettingsRepository:
         def _update() -> int:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
+                    cursor.execute(
+                        "select users_allowed from public.clinic_settings where org_id = %s for update",
+                        (org_id,),
+                    )
+                    cursor.fetchone()
                     cursor.execute(
                         "select count(*)::int from public.clinic_users where org_id = %s",
                         (org_id,),
@@ -1097,6 +1107,25 @@ class PostgresAuthSettingsRepository:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
+                        select coalesce(users_allowed, 2)::int
+                        from public.clinic_settings
+                        where org_id = %s
+                        for update
+                        """,
+                        (org_id,),
+                    )
+                    settings_row = cursor.fetchone()
+                    users_allowed = int(settings_row[0]) if settings_row else 2
+                    cursor.execute(
+                        "select count(*)::int from public.clinic_users where org_id = %s",
+                        (org_id,),
+                    )
+                    count_row = cursor.fetchone()
+                    users_used = int(count_row[0] if count_row else 0)
+                    if users_used >= users_allowed:
+                        raise ValueError("User limit reached for this customer.")
+                    cursor.execute(
+                        """
                         insert into public.clinic_users (
                           org_id,
                           identifier,
@@ -1255,12 +1284,38 @@ class PostgresAuthSettingsRepository:
 
         return await asyncio.to_thread(_list)
 
-    async def update_user_role(self, user_id: str, payload: UserRoleUpdate) -> dict[str, Any]:
+    async def update_user_role(self, org_id: str, user_id: str, payload: UserRoleUpdate) -> dict[str, Any]:
         timestamp = datetime.now(UTC).isoformat()
 
         def _update() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
+                    cursor.execute(
+                        "select org_id from public.clinic_settings where org_id = %s for update",
+                        (org_id,),
+                    )
+                    cursor.fetchone()
+                    cursor.execute(
+                        "select role from public.clinic_users where id = %s and org_id = %s limit 1",
+                        (user_id, org_id),
+                    )
+                    target_row = cursor.fetchone()
+                    if not target_row:
+                        raise IndexError(user_id)
+                    target_role = str(target_row[0])
+                    if target_role == "admin" and payload.role != "admin":
+                        cursor.execute(
+                            """
+                            select count(*)::int
+                            from public.clinic_users
+                            where org_id = %s and role = 'admin'
+                            """,
+                            (org_id,),
+                        )
+                        admin_row = cursor.fetchone()
+                        admin_count = int(admin_row[0] if admin_row else 0)
+                        if admin_count <= 1:
+                            raise ValueError("Every clinic must retain at least one admin.")
                     cursor.execute(
                         """
                         update public.clinic_users
@@ -1525,8 +1580,41 @@ class PostgresAuthSettingsRepository:
 
         return await asyncio.to_thread(_clear)
 
-    async def delete_user(self, user_id: str) -> None:
-        await self.delete_user_any(user_id)
+    async def delete_user(self, org_id: str, user_id: str) -> None:
+        def _delete() -> None:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "select org_id from public.clinic_settings where org_id = %s for update",
+                        (org_id,),
+                    )
+                    cursor.fetchone()
+                    cursor.execute(
+                        "select role from public.clinic_users where id = %s and org_id = %s limit 1",
+                        (user_id, org_id),
+                    )
+                    target_row = cursor.fetchone()
+                    if not target_row:
+                        raise IndexError(user_id)
+                    if str(target_row[0]) == "admin":
+                        cursor.execute(
+                            """
+                            select count(*)::int
+                            from public.clinic_users
+                            where org_id = %s and role = 'admin'
+                            """,
+                            (org_id,),
+                        )
+                        admin_row = cursor.fetchone()
+                        admin_count = int(admin_row[0] if admin_row else 0)
+                        if admin_count <= 1:
+                            raise ValueError("Every clinic must retain at least one admin.")
+                    cursor.execute(
+                        "delete from public.clinic_users where id = %s and org_id = %s",
+                        (user_id, org_id),
+                    )
+
+        await asyncio.to_thread(_delete)
 
     async def delete_user_any(self, user_id: str) -> None:
         def _delete() -> None:

@@ -919,9 +919,16 @@ def test_postgres_platform_errors_repository_records_request_metric_batch():
 
 def test_postgres_auth_settings_repository_creates_organization_and_user():
     cursor = ScriptedCursor(
-        descriptions=[["id", "name", "created_at"], [*USER_COLUMNS, "session_version", "superdashboard_session_version"]],
+        descriptions=[
+            ["id", "name", "created_at"],
+            ["users_allowed"],
+            ["count"],
+            [*USER_COLUMNS, "session_version", "superdashboard_session_version"],
+        ],
         fetchone_rows=[
             ("org-1", "Fika Clinic", "2026-06-11T15:00:00+00:00"),
+            (2,),
+            (0,),
             (
                 "user-1",
                 "org-1",
@@ -955,7 +962,8 @@ def test_postgres_auth_settings_repository_creates_organization_and_user():
     )
 
     assert cursor.executed[0][1] == ("Fika Clinic",)
-    assert cursor.executed[1][1] == ("org-1", "admin@example.com", "", "", "", "hashed", "admin")
+    assert cursor.executed[3][1] == ("org-1", "admin@example.com", "", "", "", "hashed", "admin")
+    assert "for update" in cursor.executed[1][0]
     assert org["name"] == "Fika Clinic"
     assert user["name"] == "Admin"
     assert user["doctor_signature_url"] is None
@@ -1070,6 +1078,8 @@ def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
                 1,
                 1,
             ),
+            ("org-1",),
+            ("staff",),
             (
                 "user-1",
                 "org-1",
@@ -1126,7 +1136,7 @@ def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
             UserAccountUpdate(name="  Dr Updated  ", doctor_dob=date(1990, 1, 1), doctor_address="  Clinic Lane  "),
         )
     )
-    role_updated = asyncio.run(repo.update_user_role("user-1", UserRoleUpdate(role="staff")))
+    role_updated = asyncio.run(repo.update_user_role("org-1", "user-1", UserRoleUpdate(role="staff")))
     signature_updated = asyncio.run(
         repo.set_user_signature(
             "user-1",
@@ -1140,7 +1150,7 @@ def test_postgres_auth_settings_repository_reads_and_updates_user_shapes():
     assert users[0]["doctor_signature_url"] == "/users/user-1/signature/file"
     assert cursor.executed[1][1][:3] == ("Dr Updated", "1990-01-01", "Clinic Lane")
     assert updated["doctor_signature_url"] == "/users/user-1/signature/file"
-    assert cursor.executed[2][1][0] == "staff"
+    assert cursor.executed[4][1][0] == "staff"
     assert role_updated["role"] == "staff"
     assert signature_updated["superdashboard_session_version"] == 1
     assert signature_removed["doctor_signature_name"] is None
@@ -1382,18 +1392,62 @@ def test_postgres_auth_settings_repository_lists_superuser_org_summaries():
 
 def test_postgres_auth_settings_repository_deletes_and_counts_users():
     cursor = ScriptedCursor(
-        descriptions=[[], [], ["count"]],
-        fetchone_rows=[(7,)],
+        descriptions=[["org_id"], ["role"], [], [], ["count"]],
+        fetchone_rows=[("org-1",), ("staff",), (7,)],
     )
     repo = PostgresAuthSettingsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
 
-    asyncio.run(repo.delete_user("user-1"))
+    asyncio.run(repo.delete_user("org-1", "user-1"))
     asyncio.run(repo.delete_organization("org-1"))
     count = asyncio.run(repo.count_users())
 
-    assert cursor.executed[0][1] == ("user-1",)
-    assert cursor.executed[1][1] == ("org-1",)
+    assert cursor.executed[2][1] == ("user-1", "org-1")
+    assert "for update" in cursor.executed[0][0]
+    assert cursor.executed[3][1] == ("org-1",)
     assert count == 7
+
+
+def test_postgres_create_user_enforces_users_allowed_limit():
+    cursor = ScriptedCursor(
+        descriptions=[["users_allowed"], ["count"]],
+        fetchone_rows=[(1,), (1,)],
+    )
+    repo = PostgresAuthSettingsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="User limit reached for this customer."):
+        asyncio.run(
+            repo.create_user(
+                org_id="org-1",
+                identifier="admin@example.com",
+                role="admin",
+            )
+        )
+
+    assert "for update" in cursor.executed[0][0]
+
+
+def test_postgres_update_user_role_blocks_last_admin_demote():
+    cursor = ScriptedCursor(
+        descriptions=[["org_id"], ["role"], ["count"]],
+        fetchone_rows=[("org-1",), ("admin",), (1,)],
+    )
+    repo = PostgresAuthSettingsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="Every clinic must retain at least one admin."):
+        asyncio.run(
+            repo.update_user_role("org-1", "user-1", UserRoleUpdate(role="staff"))
+        )
+
+
+def test_postgres_delete_user_blocks_last_admin_removal():
+    cursor = ScriptedCursor(
+        descriptions=[["org_id"], ["role"], ["count"], []],
+        fetchone_rows=[("org-1",), ("admin",), (1,)],
+    )
+    repo = PostgresAuthSettingsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="Every clinic must retain at least one admin."):
+        asyncio.run(repo.delete_user("org-1", "user-1"))
 
 
 def _patient_row(patient_id: str = "patient-1", *, phone: str = "1234567890", current_visit_id: str | None = None) -> tuple:

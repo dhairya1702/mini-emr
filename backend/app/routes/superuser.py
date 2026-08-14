@@ -543,11 +543,12 @@ async def update_superdashboard_user_role(
     target_org_id = str(target_user["org_id"])
     if previous_role == payload.role:
         return SuperuserOrgUserOut(**target_user)
-    if previous_role == "admin" and payload.role != "admin":
-        admin_count = await repo.count_admins_for_org(target_org_id)
-        if admin_count <= 1:
-            raise HTTPException(status_code=400, detail="Organization must keep at least one admin.")
-    updated = await repo.update_user_role(str(user_id), payload)
+    try:
+        updated = await repo.update_user_role(target_org_id, str(user_id), payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (IndexError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail="User not found.") from exc
     return SuperuserOrgUserOut(**updated)
 
 
