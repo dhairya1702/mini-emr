@@ -84,8 +84,6 @@ async def send_password_reset_for_user(
 
 
 async def confirm_password_reset(repo: AppRepository, *, token: str, new_password: str) -> None:
-    reset_row = await repo.get_active_password_reset_token(_hash_reset_token(token))
-    if not reset_row:
+    updated = await repo.consume_password_reset_token(_hash_reset_token(token), hash_password(new_password))
+    if not updated:
         raise HTTPException(status_code=400, detail="Password reset link is invalid or expired.")
-    await repo.update_user_password_hash(str(reset_row["user_id"]), hash_password(new_password))
-    await repo.mark_password_reset_token_used(str(reset_row["id"]))

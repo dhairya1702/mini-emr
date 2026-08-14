@@ -1413,6 +1413,14 @@ class PostgresAuthSettingsRepository:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
+                        update public.password_reset_tokens
+                        set used_at = now()
+                        where user_id = %s and used_at is null
+                        """,
+                        (user_id,),
+                    )
+                    cursor.execute(
+                        """
                         insert into public.password_reset_tokens (
                           user_id,
                           token_hash,
@@ -1441,33 +1449,48 @@ class PostgresAuthSettingsRepository:
 
         return await asyncio.to_thread(_create)
 
-    async def get_active_password_reset_token(self, token_hash: str) -> dict[str, Any] | None:
-        def _get() -> dict[str, Any] | None:
+    async def consume_password_reset_token(self, token_hash: str, new_password_hash: str) -> dict[str, Any] | None:
+        timestamp = datetime.now(UTC).isoformat()
+
+        def _consume() -> dict[str, Any] | None:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        select token.id, token.user_id, token.expires_at, token.used_at,
-                          token.created_at, user_row.org_id, user_row.identifier,
-                          user_row.email, user_row.phone, user_row.name, user_row.role
-                        from public.password_reset_tokens token
-                        join public.clinic_users user_row on user_row.id = token.user_id
-                        where token.token_hash = %s
-                          and token.used_at is null
-                          and token.expires_at > now()
+                        select id, user_id
+                        from public.password_reset_tokens
+                        where token_hash = %s
+                          and used_at is null
+                          and expires_at > now()
+                        for update
                         limit 1
                         """,
                         (token_hash,),
                     )
-                    row = cursor.fetchone()
-                    return _row_to_dict(row, cursor) if row else None
-
-        return await asyncio.to_thread(_get)
-
-    async def mark_password_reset_token_used(self, token_id: str) -> None:
-        def _mark() -> None:
-            with self.connection_manager.pool.connection() as connection:
-                with connection.cursor() as cursor:
+                    token_row = cursor.fetchone()
+                    if not token_row:
+                        return None
+                    token_id, user_id = token_row
+                    cursor.execute(
+                        """
+                        update public.clinic_users
+                        set password_hash = %s,
+                          session_version = coalesce(session_version, 1) + 1,
+                          superdashboard_session_version = coalesce(superdashboard_session_version, 1) + 1,
+                          updated_at = %s
+                        where id = %s
+                        returning id, org_id, identifier, email, phone, name, role, doctor_dob, doctor_address,
+                          doctor_signature_name, doctor_signature_content_type,
+                          doctor_signature_data_base64, password_hash, created_at, session_version,
+                          superdashboard_session_version
+                        """,
+                        (new_password_hash, timestamp, str(user_id)),
+                    )
+                    user_row = cursor.fetchone()
+                    if not user_row:
+                        raise IndexError(str(user_id))
+                    user = _row_to_dict(user_row, cursor)
+                    user["name"] = display_name(user)
                     cursor.execute(
                         """
                         update public.password_reset_tokens
@@ -1476,10 +1499,9 @@ class PostgresAuthSettingsRepository:
                         """,
                         (token_id,),
                     )
-                    if cursor.rowcount != 1:
-                        raise IndexError(token_id)
+                    return user
 
-        await asyncio.to_thread(_mark)
+        return await asyncio.to_thread(_consume)
 
     async def revoke_user_sessions(self, user_id: str) -> None:
         def _revoke() -> None:

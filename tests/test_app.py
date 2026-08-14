@@ -1614,6 +1614,10 @@ class FakeRepo:
         requester_realm: str,
         expires_at,
     ) -> dict:
+        now = _now()
+        for token in self.password_reset_tokens.values():
+            if token.get("user_id") == user_id and token.get("used_at") is None:
+                token["used_at"] = now
         token_id = str(uuid4())
         row = {
             "id": token_id,
@@ -1624,30 +1628,23 @@ class FakeRepo:
             "requester_realm": requester_realm,
             "expires_at": expires_at,
             "used_at": None,
-            "created_at": _now(),
+            "created_at": now,
         }
         self.password_reset_tokens[token_id] = row
         return dict(row)
 
-    async def get_active_password_reset_token(self, token_hash: str) -> dict | None:
+    async def consume_password_reset_token(self, token_hash: str, new_password_hash: str) -> dict | None:
         now = _now()
         for token in self.password_reset_tokens.values():
             if token["token_hash"] != token_hash or token.get("used_at") is not None or token["expires_at"] <= now:
                 continue
             user = self.users[token["user_id"]]
-            return {
-                **token,
-                "org_id": user["org_id"],
-                "identifier": user["identifier"],
-                "email": user.get("email", ""),
-                "phone": user.get("phone", ""),
-                "name": user["name"],
-                "role": user["role"],
-            }
+            user["password_hash"] = new_password_hash
+            user["session_version"] = int(user.get("session_version", 1)) + 1
+            user["superdashboard_session_version"] = int(user.get("superdashboard_session_version", 1)) + 1
+            token["used_at"] = now
+            return dict(user)
         return None
-
-    async def mark_password_reset_token_used(self, token_id: str) -> None:
-        self.password_reset_tokens[token_id]["used_at"] = _now()
 
     async def revoke_user_sessions(self, user_id: str) -> None:
         user = self.users[user_id]

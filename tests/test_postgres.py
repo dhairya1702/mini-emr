@@ -1450,6 +1450,97 @@ def test_postgres_delete_user_blocks_last_admin_removal():
         asyncio.run(repo.delete_user("org-1", "user-1"))
 
 
+def test_postgres_consume_password_reset_token_claims_token_and_updates_password():
+    cursor = ScriptedCursor(
+        descriptions=[
+            ["id", "user_id"],
+            [*USER_COLUMNS[:12], "password_hash", "created_at", "session_version", "superdashboard_session_version"],
+        ],
+        fetchone_rows=[
+            ("token-1", "user-1"),
+            (
+                "user-1",
+                "org-1",
+                "admin@example.com",
+                "admin@example.com",
+                "",
+                "User",
+                "admin",
+                None,
+                "",
+                None,
+                None,
+                None,
+                "newhash",
+                "2026-06-11T15:01:00+00:00",
+                2,
+                2,
+            ),
+        ],
+    )
+    repo = PostgresAuthSettingsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    row = asyncio.run(repo.consume_password_reset_token("hashed", "newhash"))
+
+    assert "for update" in cursor.executed[0][0]
+    assert cursor.executed[1][1][0] == "newhash"
+    assert "set used_at = now()" in cursor.executed[2][0]
+    assert row["password_hash"] == "newhash"
+    assert row["role"] == "admin"
+
+
+def test_postgres_consume_password_reset_token_returns_none_when_inactive():
+    cursor = ScriptedCursor(
+        descriptions=[["id", "user_id"]],
+        fetchone_rows=[None],
+    )
+    repo = PostgresAuthSettingsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    row = asyncio.run(repo.consume_password_reset_token("hashed", "newhash"))
+
+    assert row is None
+    assert len(cursor.executed) == 1
+
+
+def test_postgres_create_password_reset_token_invalidates_older_tokens():
+    cursor = ScriptedCursor(
+        descriptions=[
+            ["user_id"],
+            [
+                "id",
+                "user_id",
+                "token_hash",
+                "requested_by_user_id",
+                "requested_by_name",
+                "requester_realm",
+                "expires_at",
+                "used_at",
+                "created_at",
+            ],
+        ],
+        fetchone_rows=[
+            ("token-1", "user-1", "hash-1", None, "Admin", "clinic", "2026-06-11T16:01:00+00:00", None, "2026-06-11T15:01:00+00:00"),
+        ],
+    )
+    repo = PostgresAuthSettingsRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    row = asyncio.run(
+        repo.create_password_reset_token(
+            user_id="user-1",
+            token_hash="hash-1",
+            requested_by_user_id=None,
+            requested_by_name="  Admin  ",
+            requester_realm="clinic",
+            expires_at=datetime(2026, 6, 11, 16, 1, 0, tzinfo=UTC),
+        )
+    )
+
+    assert "set used_at = now()" in cursor.executed[0][0]
+    assert "and used_at is null" in cursor.executed[0][0]
+    assert cursor.executed[1][1][:2] == ("user-1", "hash-1")
+    assert row["token_hash"] == "hash-1"
+
+
 def _patient_row(patient_id: str = "patient-1", *, phone: str = "1234567890", current_visit_id: str | None = None) -> tuple:
     return (
         patient_id,

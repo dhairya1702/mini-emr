@@ -389,6 +389,68 @@ def test_clinic_admin_can_send_and_confirm_user_password_reset(client, monkeypat
     ).status_code == 200
 
 
+def test_password_reset_issue_invalidates_previous_token(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client,
+        identifier="reset-invalidate@clinic.com",
+        clinic_name="Reset Invalidate Clinic",
+    )
+    headers = auth_headers_for_token(session["token"])
+
+    token_values = iter(["old-reset-token-value-long-0000000000", "new-reset-token-value-long-0000000000"])
+    monkeypatch.setattr(password_reset_service.secrets, "token_urlsafe", lambda _length: next(token_values))
+    sent_messages: list[dict] = []
+
+    async def fake_send_clinic_email_message(**kwargs):
+        sent_messages.append(kwargs)
+        return {"message_id": "reset-invalidate-email"}
+
+    monkeypatch.setattr(password_reset_service, "send_clinic_email_message", fake_send_clinic_email_message)
+
+    created = test_client.post(
+        "/users",
+        headers=headers,
+        json={
+            "identifier": "reset-invalidate-staff",
+            "email": "reset-invalidate-staff@clinic.com",
+            "phone": "5550103340",
+            "password": "password123!",
+            "role": "staff",
+        },
+    )
+    assert created.status_code == 201, created.json()
+
+    first = test_client.post(f"/users/{created.json()['id']}/password-reset", headers=headers)
+    second = test_client.post(f"/users/{created.json()['id']}/password-reset", headers=headers)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert len(sent_messages) == 2
+
+    stale = test_client.post(
+        "/auth/password-reset/confirm",
+        json={"token": "old-reset-token-value-long-0000000000", "new_password": "stale-password123!"},
+    )
+    assert stale.status_code == 400
+    assert stale.json()["detail"] == "Password reset link is invalid or expired."
+
+    fresh = test_client.post(
+        "/auth/password-reset/confirm",
+        json={"token": "new-reset-token-value-long-0000000000", "new_password": "fresh-password123!"},
+    )
+    assert fresh.status_code == 200
+    assert fresh.json() == {"message": "Password updated. You can sign in with the new password."}
+
+    assert test_client.post(
+        "/auth/login",
+        json={"identifier": "reset-invalidate-staff", "password": "fresh-password123!"},
+    ).status_code == 200
+    assert test_client.post(
+        "/auth/login",
+        json={"identifier": "reset-invalidate-staff", "password": "password123!"},
+    ).status_code == 401
+
+
 def test_superdashboard_can_send_user_password_reset_without_clinic_audit(
     client,
     monkeypatch: pytest.MonkeyPatch,
