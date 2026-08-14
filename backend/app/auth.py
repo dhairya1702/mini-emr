@@ -300,9 +300,9 @@ async def _get_authenticated_user(
     current_session_version = int(user.get(session_version_field) or 1)
     if not isinstance(token_session_version, int) or token_session_version != current_session_version:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired.")
-    current_user = UserOut(
-        **user,
-    )
+    user["session_version"] = int(user.get("session_version") or 1)
+    user["superdashboard_session_version"] = int(user.get("superdashboard_session_version") or 1)
+    current_user = UserOut(**user)
     request.state.current_user = current_user
     request.state.auth_realm = expected_realm
     return current_user

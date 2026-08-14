@@ -1311,8 +1311,8 @@ class PostgresAuthSettingsRepository:
                         """
                         update public.clinic_users
                         set password_hash = %s,
-                          session_version = session_version + 1,
-                          superdashboard_session_version = superdashboard_session_version + 1,
+                          session_version = coalesce(session_version, 1) + 1,
+                          superdashboard_session_version = coalesce(superdashboard_session_version, 1) + 1,
                           updated_at = %s
                         where id = %s
                         returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
@@ -1338,7 +1338,7 @@ class PostgresAuthSettingsRepository:
                     cursor.execute(
                         """
                         update public.clinic_users
-                        set session_version = session_version + 1,
+                        set session_version = coalesce(session_version, 1) + 1,
                           updated_at = now()
                         where id = %s
                         """,
@@ -1356,7 +1356,7 @@ class PostgresAuthSettingsRepository:
                     cursor.execute(
                         """
                         update public.clinic_users
-                        set superdashboard_session_version = superdashboard_session_version + 1,
+                        set superdashboard_session_version = coalesce(superdashboard_session_version, 1) + 1,
                           updated_at = now()
                         where id = %s
                         """,

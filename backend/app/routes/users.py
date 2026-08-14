@@ -8,7 +8,7 @@ from app.auth import get_current_user, require_admin
 from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import StaffUserCreate, UserOut, UserRoleUpdate
 from app.services.signature_service import MAX_SIGNATURE_UPLOAD_BYTES, normalize_signature_image
-from app.services.user_workflow import create_staff_user_workflow
+from app.services.user_workflow import build_user_out, create_staff_user_workflow
 
 
 router = APIRouter()
@@ -42,7 +42,7 @@ async def list_users(
     repo: AppRepository = Depends(get_repository),
 ) -> list[UserOut]:
     users = await repo.list_users(str(current_user.org_id))
-    return [UserOut(**row) for row in users]
+    return [build_user_out(row) for row in users]
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)
@@ -61,7 +61,7 @@ async def update_user_role(
         ):
             raise HTTPException(status_code=400, detail="Every clinic must retain at least one admin.")
         updated = await repo.update_user_role(user_id, payload)
-        return UserOut(**updated)
+        return build_user_out(updated)
     except HTTPException:
         raise
     except (IndexError, KeyError) as exc:
@@ -119,7 +119,7 @@ async def upload_user_signature(
             data_base64=b64encode(raw_bytes).decode("ascii"),
         )
         saved["doctor_signature_url"] = f"/users/{user_id}/signature/file"
-        return UserOut(**saved)
+        return build_user_out(saved)
     except (IndexError, KeyError) as exc:
         raise HTTPException(status_code=404, detail="User not found.") from exc
 
@@ -134,7 +134,7 @@ async def delete_user_signature(
         await repo.get_user_for_org(str(current_user.org_id), user_id)
         removed = await repo.clear_user_signature(user_id)
         removed["doctor_signature_url"] = None
-        return UserOut(**removed)
+        return build_user_out(removed)
     except (IndexError, KeyError) as exc:
         raise HTTPException(status_code=404, detail="User not found.") from exc
 
