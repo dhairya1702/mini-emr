@@ -28,6 +28,7 @@ import {
   MedicineCatalogItem,
   Patient,
   QueueSnapshot,
+  QueueProvider,
   StaffUserCreatePayload,
   UserRole,
 } from "@/lib/types";
@@ -86,6 +87,7 @@ type ClinicShellContextValue = {
   deleteCatalogItem: (itemId: string) => Promise<void>;
   invalidateCatalog: (refresh?: boolean) => void;
   queuePatients: Patient[];
+  queueProviders: QueueProvider[];
   queueRevision: string;
   isQueueLoaded: boolean;
   isQueueRefreshing: boolean;
@@ -152,6 +154,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const [isActiveMedicinesLoading, setIsActiveMedicinesLoading] = useState(false);
   const [activeMedicinesError, setActiveMedicinesError] = useState("");
   const [queuePatients, setQueuePatientsState] = useState<Patient[]>([]);
+  const [queueProviders, setQueueProviders] = useState<QueueProvider[]>([]);
   const [queueRevision, setQueueRevision] = useState("");
   const [isQueueLoaded, setIsQueueLoaded] = useState(false);
   const [isQueueRefreshing, setIsQueueRefreshing] = useState(false);
@@ -171,6 +174,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const resourceOrgIdRef = useRef(currentUser?.org_id ?? "");
   const currentUserRef = useRef(currentUser);
   const queuePatientsRef = useRef<Patient[]>([]);
+  const queueProvidersRef = useRef<QueueProvider[]>([]);
   const queueRevisionRef = useRef("");
   const queueLoadedAtRef = useRef(0);
   const queueGenerationRef = useRef(0);
@@ -193,9 +197,11 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
 
   const applyQueueSnapshot = useCallback((snapshot: QueueSnapshot) => {
     queuePatientsRef.current = snapshot.patients;
+    queueProvidersRef.current = snapshot.providers ?? [];
     queueRevisionRef.current = snapshot.revision;
     queueLoadedAtRef.current = Date.now();
     setQueuePatientsState(snapshot.patients);
+    setQueueProviders(queueProvidersRef.current);
     setQueueRevision(snapshot.revision);
     setIsQueueLoaded(true);
   }, []);
@@ -203,6 +209,8 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
   const clearQueueResource = useCallback(() => {
     queueGenerationRef.current += 1;
     queuePatientsRef.current = [];
+    queueProvidersRef.current = [];
+    setQueueProviders([]);
     queueRevisionRef.current = "";
     queueLoadedAtRef.current = 0;
     queueLoadPromiseRef.current = null;
@@ -397,6 +405,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
       return Promise.resolve({
         revision: queueRevisionRef.current,
         patients: queuePatientsRef.current,
+        providers: queueProvidersRef.current,
       });
     }
     if (queueLoadPromiseRef.current) return queueLoadPromiseRef.current;
@@ -820,6 +829,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
     deleteCatalogItem,
     invalidateCatalog,
     queuePatients,
+    queueProviders,
     queueRevision,
     isQueueLoaded,
     isQueueRefreshing,
@@ -868,6 +878,7 @@ export function ClinicShellProvider({ children }: { children: ReactNode }) {
     refreshShell,
     resetTrainingMode,
     queuePatients,
+    queueProviders,
     queueRevision,
     setQueuePatients,
     trainingScope,

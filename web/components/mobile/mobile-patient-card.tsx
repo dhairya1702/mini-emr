@@ -43,6 +43,11 @@ export function MobilePatientCard({
       </div>
       <div className={`mt-2 flex min-w-0 items-center gap-2 ${onRemoveFromQueue ? "pr-16" : "pr-7"}`}>
         <p className="line-clamp-1 min-w-0 text-[13px] text-slate-700">{formatPatientMetadata(patient)}</p>
+        {patient.assigned_doctor?.name ? (
+          <span className="inline-flex shrink-0 rounded-lg border border-[#dbe7ef] bg-[#f8fbfd] px-2.5 py-1 text-[10px] font-medium text-slate-500">
+            {patient.assigned_doctor.name}
+          </span>
+        ) : null}
         {hasDraft ? (
           <span className="inline-flex shrink-0 rounded-lg border border-[#dbe7ef] bg-[#edf5fa] px-2.5 py-1 text-[10px] font-medium text-slate-500">
             Draft

@@ -370,7 +370,7 @@ export default function SuperdashboardPage() {
           org.org_id === updated.claimed_org_id ? { ...org, workspace_mode: mode } : org
         )));
       }
-      setMessage(`${row.customer_name} now uses the ${mode === "solo" ? "Solo" : "Team"} workspace.`);
+      setMessage(`${row.customer_name} now uses the ${mode === "solo" ? "Solo" : mode === "multi_doctor" ? "Multi-Doctor" : "Team"} workspace.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to update workspace mode.");
     } finally {
@@ -399,7 +399,7 @@ export default function SuperdashboardPage() {
             : customer
         )),
       }));
-      setMessage(`${org.clinic_name} now uses the ${mode === "solo" ? "Solo" : "Team"} workspace.`);
+      setMessage(`${org.clinic_name} now uses the ${mode === "solo" ? "Solo" : mode === "multi_doctor" ? "Multi-Doctor" : "Team"} workspace.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to update workspace mode.");
     } finally {
@@ -534,6 +534,7 @@ export default function SuperdashboardPage() {
                           >
                             <option value="solo">Solo</option>
                             <option value="team">Team</option>
+                            <option value="multi_doctor">Multi-Doctor</option>
                           </select>
                         </td>
                         <td className="px-7 py-5">{org.patient_count}</td>
@@ -576,6 +577,7 @@ export default function SuperdashboardPage() {
                       {([
                         ["solo", "Solo workspace", "One combined Today queue."],
                         ["team", "Team workflow", "Waiting, Consultation, and Billing."],
+                        ["multi_doctor", "Multi-Doctor", "Provider queues with shared billing."],
                       ] as const).map(([value, label, description]) => (
                         <button
                           key={value}
@@ -686,6 +688,7 @@ export default function SuperdashboardPage() {
                           >
                             <option value="solo">Solo</option>
                             <option value="team">Team</option>
+                            <option value="multi_doctor">Multi-Doctor</option>
                           </select>
                         </td>
                         <td className="px-7 py-5">{formatDate(customer.created_at)}</td>

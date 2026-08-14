@@ -14,6 +14,7 @@ from app.schema_domains.patients import (
 )
 from app.services.audit_service import get_actor_name
 from app.services.clinic_settings_service import get_clinic_runtime_settings
+from app.services.patient_workflow import _validate_assigned_doctor
 from app.services.followup_workflow import (
     _appointments_per_hour,
     _as_utc_minute,
@@ -64,11 +65,17 @@ async def check_in_appointment_workflow(
 ) -> PatientOut:
     await expire_stale_schedule_workflow(repo, str(current_user.org_id))
     org_id = str(current_user.org_id)
+    check_in_payload = payload or AppointmentCheckInRequest()
+    await _validate_assigned_doctor(
+        repo,
+        current_user,
+        str(check_in_payload.assigned_doctor_id) if check_in_payload.assigned_doctor_id else None,
+    )
     try:
         _appointment, patient = await repo.check_in_appointment(
             org_id,
             appointment_id,
-            payload or AppointmentCheckInRequest(),
+            check_in_payload,
             audit_event_factory=lambda result: [{
                 "org_id": org_id,
                 "actor_user_id": str(current_user.id),

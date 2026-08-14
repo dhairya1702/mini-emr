@@ -29,6 +29,7 @@ class PatientCreate(BaseModel):
     weight: float | None = Field(default=None, gt=0, le=500)
     temperature: float | None = Field(default=None, ge=90, le=110)
     height: float | None = Field(default=None, gt=0, le=300)
+    assigned_doctor_id: UUID | None = None
 
 
 class PatientUpdate(BaseModel):
@@ -47,6 +48,14 @@ class PatientUpdate(BaseModel):
     weight: float | None = Field(default=None, gt=0, le=500)
     temperature: float | None = Field(default=None, ge=90, le=110)
     height: float | None = Field(default=None, gt=0, le=300)
+    assigned_doctor_id: UUID | None = None
+
+
+class QueueProviderOut(BaseModel):
+    id: UUID
+    name: str
+    role: str
+    active: bool = True
 
 
 class PatientSummaryOut(BaseModel):
@@ -73,6 +82,8 @@ class PatientOut(BaseModel):
     status: PatientStatus
     billed: bool = False
     queue_priority: QueuePriority = "normal"
+    assigned_doctor_id: UUID | None = None
+    assigned_doctor: QueueProviderOut | None = None
     stage_entered_at: datetime
     queue_position: int = 0
     profile_photo_url: str | None = None
@@ -229,6 +240,7 @@ class AppointmentUpdate(BaseModel):
 class AppointmentCheckInRequest(BaseModel):
     existing_patient_id: UUID | None = None
     force_new: bool = False
+    assigned_doctor_id: UUID | None = None
 
 
 class PatientMatchOut(BaseModel):
@@ -267,6 +279,7 @@ class PatientVisitCreate(BaseModel):
     weight: float | None = Field(default=None, gt=0, le=500)
     temperature: float | None = Field(default=None, ge=90, le=110)
     height: float | None = Field(default=None, gt=0, le=300)
+    assigned_doctor_id: UUID | None = None
 
 
 class NoteCreate(BaseModel):
@@ -416,3 +429,4 @@ class FollowUpBookingCancelRequest(BaseModel):
 class QueueSnapshotOut(BaseModel):
     revision: str
     patients: list[PatientOut] = Field(default_factory=list)
+    providers: list[QueueProviderOut] = Field(default_factory=list)

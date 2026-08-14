@@ -50,6 +50,7 @@ create table if not exists public.patients (
   profile_photo_updated_at timestamptz,
   status text not null default 'waiting' check (status in ('waiting', 'consultation', 'done')),
   billed boolean not null default false,
+  assigned_doctor_id uuid,
   queue_priority text not null default 'normal' check (queue_priority in ('normal', 'urgent')),
   stage_entered_at timestamptz not null default now(),
   queue_position bigint not null default 0,
@@ -250,7 +251,7 @@ create table if not exists public.clinic_settings (
   onboarding_required boolean not null default false,
   onboarding_completed_at timestamptz,
   users_allowed integer not null default 2 check (users_allowed > 0),
-  workspace_mode text not null default 'solo' check (workspace_mode in ('solo', 'team')),
+  workspace_mode text not null default 'solo' check (workspace_mode in ('solo', 'team', 'multi_doctor')),
   public_check_in_enabled boolean not null default false,
   public_check_in_token uuid not null default gen_random_uuid(),
   updated_at timestamptz not null default now()
@@ -278,7 +279,7 @@ create table if not exists public.customer_onboarding (
   customer_name text not null,
   phone text not null,
   users_allowed integer not null default 2 check (users_allowed > 0),
-  workspace_mode text not null default 'solo' check (workspace_mode in ('solo', 'team')),
+  workspace_mode text not null default 'solo' check (workspace_mode in ('solo', 'team', 'multi_doctor')),
   status text not null default 'pending' check (status in ('pending', 'claimed', 'disabled')),
   claimed_org_id uuid references public.organizations(id) on delete set null,
   claimed_at timestamptz,
@@ -959,6 +960,9 @@ create unique index if not exists care_program_events_org_id_id_uidx
 
 do $$
 begin
+  if not exists (select 1 from pg_constraint where conname = 'patients_assigned_doctor_org_fk') then
+    alter table public.patients add constraint patients_assigned_doctor_org_fk foreign key (org_id, assigned_doctor_id) references public.clinic_users(org_id, id) on delete set null (assigned_doctor_id);
+  end if;
   if not exists (select 1 from pg_constraint where conname = 'notes_org_patient_fk') then
     alter table public.notes add constraint notes_org_patient_fk foreign key (org_id, patient_id) references public.patients(org_id, id) on delete cascade;
   end if;
@@ -1132,6 +1136,9 @@ alter table public.patients
 add column if not exists queue_position bigint not null default 0;
 
 alter table public.patients
+add column if not exists assigned_doctor_id uuid references public.clinic_users(id) on delete set null;
+
+alter table public.patients
 drop constraint if exists patients_queue_priority_check;
 
 alter table public.patients
@@ -1158,6 +1165,9 @@ where ranked.id = p.id
 
 create index if not exists patients_org_queue_order_idx
 on public.patients (org_id, status, queue_priority, queue_position);
+
+create index if not exists patients_org_assigned_doctor_queue_idx
+on public.patients (org_id, assigned_doctor_id, status, queue_priority, queue_position);
 
 create or replace function public.set_patient_queue_metadata()
 returns trigger
@@ -1410,7 +1420,7 @@ drop constraint if exists clinic_settings_workspace_mode_check;
 
 alter table public.clinic_settings
 add constraint clinic_settings_workspace_mode_check
-check (workspace_mode in ('solo', 'team'));
+check (workspace_mode in ('solo', 'team', 'multi_doctor'));
 
 alter table public.customer_onboarding
 add column if not exists workspace_mode text not null default 'solo';
@@ -1425,7 +1435,7 @@ drop constraint if exists customer_onboarding_workspace_mode_check;
 
 alter table public.customer_onboarding
 add constraint customer_onboarding_workspace_mode_check
-check (workspace_mode in ('solo', 'team'));
+check (workspace_mode in ('solo', 'team', 'multi_doctor'));
 
 alter table public.catalog_items
 add column if not exists track_inventory boolean not null default false;

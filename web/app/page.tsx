@@ -26,6 +26,7 @@ import { PatientDetailsDrawer } from "@/components/patient-details-drawer";
 import { PendingCheckIns } from "@/components/pending-check-ins";
 import { PatientCard } from "@/components/patient-card";
 import { PatientColumn } from "@/components/patient-column";
+import { MultiDoctorQueueBoard } from "@/components/multi-doctor-queue-board";
 import { DraftInvoiceItem, SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
 import { api } from "@/lib/api";
 import { canUseBilling, canUseClinicalTools } from "@/lib/permissions";
@@ -230,6 +231,7 @@ export default function HomePage() {
   const router = useRouter();
   const {
     queuePatients: patients,
+    queueProviders,
     queueRevision,
     setQueuePatients: setPatients,
     applyQueueSnapshot,
@@ -335,7 +337,7 @@ export default function HomePage() {
     trainingScope: string | null;
   }) => {
     if (context.isTrainingMode) {
-      return Promise.resolve({ revision: "training", patients: readTrainingPatients(context.trainingScope) });
+      return Promise.resolve({ revision: "training", patients: readTrainingPatients(context.trainingScope), providers: [] });
     }
     return loadQueueSnapshot();
   }, [loadQueueSnapshot]);
@@ -413,6 +415,7 @@ export default function HomePage() {
   const clinicName = clinicSettings?.clinic_name || "ClinicOS";
   const workspaceMode = clinicSettings?.workspace_mode ?? "team";
   const isSoloWorkspace = workspaceMode === "solo";
+  const isMultiDoctorWorkspace = workspaceMode === "multi_doctor";
   isQueueMutationPendingRef.current = isQueueMutationPending;
   isDraggingPatientRef.current = Boolean(draggedPatient);
   isSoloWorkspaceRef.current = isSoloWorkspace;
@@ -1036,6 +1039,7 @@ export default function HomePage() {
     height: number | null;
     temperature: number | null;
     scheduled_for?: string;
+    assigned_doctor_id?: string | null;
     photo?: File | null;
   }) {
     if (isTrainingMode) {
@@ -1058,6 +1062,7 @@ export default function HomePage() {
         weight: payload.weight,
         height: payload.height,
         temperature: payload.temperature,
+        assigned_doctor_id: payload.assigned_doctor_id ?? null,
       });
 
       commitTrainingPatients((current) => [
@@ -1108,6 +1113,7 @@ export default function HomePage() {
           weight: payload.weight,
           height: payload.height,
           temperature: payload.temperature,
+          assigned_doctor_id: payload.assigned_doctor_id ?? null,
         });
         if (payload.photo) {
           try {
@@ -1134,6 +1140,8 @@ export default function HomePage() {
       queue_priority: "normal",
       stage_entered_at: new Date().toISOString(),
       queue_position: groupedPatients.waiting.length + 1,
+      assigned_doctor_id: payload.assigned_doctor_id ?? null,
+      assigned_doctor: queueProviders.find((provider) => provider.id === payload.assigned_doctor_id) ?? null,
       name: payload.name,
       phone: payload.phone,
       email: payload.email,
@@ -1163,6 +1171,7 @@ export default function HomePage() {
         weight: payload.weight,
         height: payload.height,
         temperature: payload.temperature,
+        assigned_doctor_id: payload.assigned_doctor_id ?? null,
       });
       if (payload.photo) {
         try {
@@ -1208,7 +1217,21 @@ export default function HomePage() {
 
     setPatients((current) =>
       current.map((entry) =>
-        entry.id === patient.id ? { ...entry, status: nextStatus } : entry,
+        entry.id === patient.id ? {
+          ...entry,
+          status: nextStatus,
+          ...(isMultiDoctorWorkspace && nextStatus === "consultation" && !entry.assigned_doctor_id && currentUser && canUseClinicalTools(currentUser.role)
+            ? {
+              assigned_doctor_id: currentUser.id,
+              assigned_doctor: queueProviders.find((provider) => provider.id === currentUser.id) ?? {
+                id: currentUser.id,
+                name: currentUser.name || currentUser.identifier,
+                role: currentUser.role,
+                active: true,
+              },
+            }
+            : {}),
+        } : entry,
       ),
     );
     if (selectedPatient?.id === patient.id) {
@@ -1281,6 +1304,15 @@ export default function HomePage() {
     return patients.find((patient) => patient.id === overId)?.status ?? null;
   }
 
+  function providerIdFromDroppableId(overId: string): string | null {
+    if (overId.startsWith("provider:")) {
+      const value = overId.slice("provider:".length);
+      return value === "unassigned" ? "" : value;
+    }
+    const patient = patients.find((entry) => entry.id === overId);
+    return patient ? patient.assigned_doctor_id || "" : null;
+  }
+
   function handleDragStart(event: DragStartEvent) {
     const patientId = String(event.active.id);
     setDraggedPatient(patients.find((patient) => patient.id === patientId) ?? null);
@@ -1296,6 +1328,39 @@ export default function HomePage() {
     }
 
     const patient = patients.find((entry) => entry.id === activeId);
+    if (isMultiDoctorWorkspace) {
+      if (!patient) {
+        return;
+      }
+      const targetProviderId = providerIdFromDroppableId(overId);
+      if (targetProviderId === null || targetProviderId === (patient.assigned_doctor_id || "")) {
+        return;
+      }
+      const previousPatients = patients;
+      const nextProvider = queueProviders.find((provider) => provider.id === targetProviderId) ?? null;
+      const optimisticPatient = {
+        ...patient,
+        assigned_doctor_id: targetProviderId || null,
+        assigned_doctor: nextProvider,
+      };
+      setPatients((current) => current.map((entry) => entry.id === activeId ? optimisticPatient : entry));
+      if (selectedPatient?.id === activeId) setSelectedPatient(optimisticPatient);
+      setIsQueueMutationPending(true);
+      try {
+        const saved = await api.updatePatient(activeId, { assigned_doctor_id: targetProviderId || null });
+        setPatients((current) => current.map((entry) => entry.id === activeId ? saved : entry));
+        if (selectedPatient?.id === activeId) setSelectedPatient(saved);
+        setError("");
+        void refreshDashboardStatus(true);
+      } catch (updateError) {
+        setPatients(previousPatients);
+        if (selectedPatient?.id === activeId) setSelectedPatient(patient);
+        setError(updateError instanceof Error ? updateError.message : "Failed to assign doctor.");
+      } finally {
+        setIsQueueMutationPending(false);
+      }
+      return;
+    }
     const targetStatus = statusFromDroppableId(overId);
     if (!patient || !targetStatus) {
       return;
@@ -1969,6 +2034,26 @@ export default function HomePage() {
               </div>
             </div>
           </section>
+        ) : isMultiDoctorWorkspace ? (
+          <MultiDoctorQueueBoard
+            patients={patients}
+            providers={queueProviders}
+            draggedPatient={draggedPatient}
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={(event) => {
+              void handleDragEnd(event);
+            }}
+            onDragCancel={handleDragCancel}
+            onOpen={handleOpenPatient}
+            onAdvance={handleAdvancePatient}
+            onRemoveFromQueue={handleRemoveFromQueue}
+            onTogglePriority={handleTogglePriority}
+            onOpenBilling={(patient) => openBillingWorkspace(patient.id)}
+            onAddPatient={() => setIsModalOpen(true)}
+            canAdvance={() => canUseClinicalTools(currentUser?.role)}
+            now={queueClock}
+          />
         ) : (
           <DndContext
             sensors={sensors}
@@ -2039,6 +2124,8 @@ export default function HomePage() {
         open={isModalOpen}
         onClose={handleClosePatientModal}
         onSubmit={handleCreatePatient}
+        providers={queueProviders}
+        showProviderSelector={isMultiDoctorWorkspace}
       />
 
       {isSettingsOpen ? (

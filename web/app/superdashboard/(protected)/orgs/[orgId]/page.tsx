@@ -479,6 +479,7 @@ export default function SuperdashboardOrgDetailPage() {
                 <select value={draft.workspace_mode} onChange={(event) => setDraftField("workspace_mode", event.target.value as WorkspaceMode)} className="h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 font-bold capitalize outline-none focus:border-blue-500">
                   <option value="solo">Solo</option>
                   <option value="team">Team</option>
+                  <option value="multi_doctor">Multi-Doctor</option>
                 </select>
               </label>
               <label className="space-y-2">

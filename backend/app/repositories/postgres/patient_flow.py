@@ -47,6 +47,7 @@ PATIENT_COLUMNS = [
     "profile_photo_updated_at",
     "status",
     "billed",
+    "assigned_doctor_id",
     "queue_priority",
     "stage_entered_at",
     "queue_position",
@@ -75,6 +76,7 @@ PATIENT_LIST_COLUMNS = [
 PATIENT_UPDATE_COLUMNS = {
     "status",
     "billed",
+    "assigned_doctor_id",
     "queue_priority",
     "name",
     "phone",
@@ -426,9 +428,34 @@ class PostgresPatientFlowRepository:
                 estimate = _estimate_from_note_and_catalog(note, catalog_by_org.get(str(note.get("org_id")), []))
                 if estimate:
                     estimates[visit_id] = estimate
+        assigned_doctor_ids = [
+            str(patient["assigned_doctor_id"])
+            for patient in patients
+            if patient.get("assigned_doctor_id")
+        ]
+        assigned_doctors: dict[str, dict[str, Any]] = {}
+        if assigned_doctor_ids:
+            cursor.execute(
+                """
+                select id::text, name, identifier, role
+                from public.clinic_users
+                where id = any(%s::uuid[])
+                """,
+                (assigned_doctor_ids,),
+            )
+            assigned_doctors = {
+                str(row[0]): {
+                    "id": str(row[0]),
+                    "name": str(row[1] or row[2] or "Provider"),
+                    "role": str(row[3]),
+                    "active": str(row[3]) in {"admin", "doctor"},
+                }
+                for row in cursor.fetchall()
+            }
         return [
             {
                 **patient,
+                "assigned_doctor": assigned_doctors.get(str(patient.get("assigned_doctor_id") or "")),
                 "current_visit": visits.get(str(patient.get("current_visit_id") or "")),
                 "billing_summary": billing.get(str(patient.get("current_visit_id") or "")),
                 "billing_estimate": estimates.get(str(patient.get("current_visit_id") or "")),
@@ -528,10 +555,10 @@ class PostgresPatientFlowRepository:
                         insert into public.patients (
                           org_id, name, phone, email, address, reason, date_of_birth, sex_at_birth,
                           gender_identity, age, weight,
-                          height, temperature, last_visit_at
+                          height, temperature, assigned_doctor_id, last_visit_at
                         )
                         values (
-                          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                         )
                         returning {_columns_sql(PATIENT_COLUMNS)}
                         """,
@@ -549,6 +576,7 @@ class PostgresPatientFlowRepository:
                             values["weight"],
                             values["height"],
                             values["temperature"],
+                            str(payload.assigned_doctor_id) if payload.assigned_doctor_id else None,
                             now,
                         ),
                     )
@@ -644,6 +672,7 @@ class PostgresPatientFlowRepository:
                           age = %s, weight = %s, height = %s, temperature = %s,
                           status = 'waiting', billed = false, last_visit_at = %s,
                           current_visit_id = %s,
+                          assigned_doctor_id = %s,
                           ai_summary_stale = true,
                           ai_summary_revision = ai_summary_revision + 1
                         where org_id = %s and id = %s
@@ -664,6 +693,7 @@ class PostgresPatientFlowRepository:
                             values["temperature"],
                             now,
                             visit_id,
+                            str(payload.assigned_doctor_id) if payload.assigned_doctor_id else None,
                             org_id,
                             patient_id,
                         ),
@@ -1122,6 +1152,17 @@ class PostgresPatientFlowRepository:
                     if not appointment or not patient:
                         raise ValueError("Failed to check in appointment.")
                     saved = _patient_with_profile_photo_url(patient)
+                    if payload.assigned_doctor_id:
+                        cursor.execute(
+                            f"""
+                            update public.patients
+                            set assigned_doctor_id = %s
+                            where org_id = %s and id = %s
+                            returning {_columns_sql(PATIENT_COLUMNS)}
+                            """,
+                            (str(payload.assigned_doctor_id), org_id, str(saved["id"])),
+                        )
+                        saved = _patient_with_profile_photo_url(_row_to_dict(cursor.fetchone(), cursor))
                     visit_id = str(saved.get("current_visit_id") or "")
                     if visit_id:
                         cursor.execute(

@@ -98,6 +98,7 @@ export function createTrainingPatient(payload: {
   height: number | null;
   temperature: number | null;
   status?: PatientStatus;
+  assigned_doctor_id?: string | null;
 }) {
   const now = new Date().toISOString();
   return {
@@ -107,6 +108,8 @@ export function createTrainingPatient(payload: {
     status: payload.status ?? "waiting",
     billed: false,
     queue_priority: "normal",
+    assigned_doctor_id: payload.assigned_doctor_id ?? null,
+    assigned_doctor: null,
     stage_entered_at: now,
     queue_position: 1,
     name: payload.name,

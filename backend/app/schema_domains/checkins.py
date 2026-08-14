@@ -117,6 +117,7 @@ class CheckInRequestsStatusOut(BaseModel):
 class CheckInApproveRequest(BaseModel):
     existing_patient_id: UUID | None = None
     force_new: bool = False
+    assigned_doctor_id: UUID | None = None
 
     @model_validator(mode="after")
     def validate_choice(self) -> "CheckInApproveRequest":

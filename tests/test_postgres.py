@@ -849,7 +849,7 @@ def test_postgres_platform_errors_repository_records_request_metric_batch():
 
 def test_postgres_auth_settings_repository_creates_organization_and_user():
     cursor = ScriptedCursor(
-        descriptions=[["id", "name", "created_at"], USER_COLUMNS],
+        descriptions=[["id", "name", "created_at"], [*USER_COLUMNS, "session_version", "superdashboard_session_version"]],
         fetchone_rows=[
             ("org-1", "Fika Clinic", "2026-06-11T15:00:00+00:00"),
             (
@@ -864,6 +864,8 @@ def test_postgres_auth_settings_repository_creates_organization_and_user():
                 None,
                 None,
                 "2026-06-11T15:01:00+00:00",
+                1,
+                1,
             ),
         ],
     )
@@ -1291,6 +1293,7 @@ def _patient_row(patient_id: str = "patient-1", *, phone: str = "1234567890", cu
         None,
         "waiting",
         False,
+        None,
         "normal",
         "2026-06-11T17:00:00+00:00",
         1,

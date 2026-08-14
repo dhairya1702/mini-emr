@@ -589,7 +589,8 @@ class PostgresAuthSettingsRepository:
                         values (%s, %s, %s, %s, 'admin', null, '', 1)
                         returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
-                          doctor_signature_data_base64, created_at, session_version
+                          doctor_signature_data_base64, created_at, session_version,
+                          superdashboard_session_version
                         """,
                         (org_id, identifier, name.strip(), password_hash),
                     )
@@ -671,7 +672,8 @@ class PostgresAuthSettingsRepository:
                         values (%s, %s, %s, %s, 'admin', null, '', 1)
                         returning id, org_id, identifier, name, role, doctor_dob, doctor_address,
                           doctor_signature_name, doctor_signature_content_type,
-                          doctor_signature_data_base64, created_at, session_version
+                          doctor_signature_data_base64, created_at, session_version,
+                          superdashboard_session_version
                         """,
                         (org_id, identifier, name.strip(), password_hash),
                     )

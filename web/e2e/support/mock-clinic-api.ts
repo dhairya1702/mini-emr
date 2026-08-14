@@ -379,7 +379,7 @@ export async function mockClinicBootstrap(
     });
   });
   await page.route(`${API_ORIGIN}/patients/queue`, async (route) => {
-    await fulfillJson(route, { revision: "queue-1", patients });
+    await fulfillJson(route, { revision: "queue-1", patients, providers: [] });
   });
   await page.route(`${API_ORIGIN}/patients/queue/order`, async (route) => {
     const payload = JSON.parse(route.request().postData() || "{}");

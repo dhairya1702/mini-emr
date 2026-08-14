@@ -5,7 +5,7 @@ import { Camera, X } from "lucide-react";
 import Image from "next/image";
 
 import { api } from "@/lib/api";
-import { PatientMatch, SexAtBirth } from "@/lib/types";
+import { PatientMatch, QueueProvider, SexAtBirth } from "@/lib/types";
 
 interface AddPatientModalProps {
   open: boolean;
@@ -27,8 +27,11 @@ interface AddPatientModalProps {
     height: number | null;
     temperature: number | null;
     scheduled_for?: string;
+    assigned_doctor_id?: string | null;
     photo?: File | null;
   }) => Promise<void>;
+  providers?: QueueProvider[];
+  showProviderSelector?: boolean;
 }
 
 export function AddPatientModal({
@@ -36,6 +39,8 @@ export function AddPatientModal({
   onClose,
   onSubmitted,
   onSubmit,
+  providers = [],
+  showProviderSelector = false,
 }: AddPatientModalProps) {
   const [form, setForm] = useState({
     name: "",
@@ -55,6 +60,7 @@ export function AddPatientModal({
     entryType: "queue" as "queue" | "appointment",
     appointmentDate: "",
     appointmentTime: "",
+    assignedDoctorId: "",
   });
   const [isSaving, setIsSaving] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -97,6 +103,7 @@ export function AddPatientModal({
       entryType: "queue",
       appointmentDate: "",
       appointmentTime: "",
+      assignedDoctorId: "",
     });
     setSelectedExistingMatchId("");
     setSearchPhone("");
@@ -295,6 +302,7 @@ export function AddPatientModal({
         scheduled_for: isAppointment
           ? new Date(`${form.appointmentDate}T${form.appointmentTime}:00`).toISOString()
           : undefined,
+        assigned_doctor_id: showProviderSelector && form.entryType === "queue" ? form.assignedDoctorId || null : null,
         photo: isAppointment ? null : photoFile,
       });
       resetForm();
@@ -450,6 +458,22 @@ export function AddPatientModal({
               })}
             </div>
           </div>
+
+          {showProviderSelector && form.entryType === "queue" ? (
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-800">Doctor</span>
+              <select
+                value={form.assignedDoctorId}
+                onChange={(event) => setForm((current) => ({ ...current, assignedDoctorId: event.target.value }))}
+                className="h-[46px] w-full rounded-xl border border-[#bfd7e8] bg-white px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-[#2f8fd3] focus:ring-2 focus:ring-[#d8ebf7]"
+              >
+                <option value="">Unassigned</option>
+                {providers.filter((provider) => provider.active).map((provider) => (
+                  <option key={provider.id} value={provider.id}>{provider.name}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
 
           <div className="grid gap-3 sm:grid-cols-[92px_minmax(0,1fr)_minmax(0,1fr)] sm:items-end">
             {form.entryType === "queue" ? (

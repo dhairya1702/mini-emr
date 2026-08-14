@@ -37,6 +37,7 @@ from app.schema_domains.patients import (
     PatientPageOut,
     QueueOrderUpdate,
     QueueSnapshotOut,
+    QueueProviderOut,
     PatientSummaryOut,
     PatientTimelineEvent,
     PatientUpdate,
@@ -264,9 +265,25 @@ async def get_patient_queue(
             limit=500,
             include_queue_context=True,
         )
+        provider_rows = await repo.list_users(org_id)
+        providers_by_id = {
+            str(user["id"]): {
+                "id": user["id"],
+                "name": str(user.get("name") or user.get("identifier") or "Provider"),
+                "role": str(user.get("role") or ""),
+                "active": str(user.get("role") or "") in {"admin", "doctor"},
+            }
+            for user in provider_rows
+            if str(user.get("role") or "") in {"admin", "doctor"}
+        }
+        for row in rows:
+            assigned = row.get("assigned_doctor")
+            if assigned and str(assigned.get("id") or "") not in providers_by_id:
+                providers_by_id[str(assigned["id"])] = assigned
         return QueueSnapshotOut(
             revision=revision,
             patients=[PatientOut(**row) for row in rows],
+            providers=[QueueProviderOut(**provider) for provider in providers_by_id.values()],
         )
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="get_patient_queue") from exc
@@ -307,6 +324,8 @@ async def create_patient(
 ) -> PatientOut:
     try:
         return await create_patient_workflow(repo, current_user, payload)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="create_patient") from exc
 
@@ -419,7 +438,7 @@ async def update_patient(
     repo: AppRepository = Depends(get_repository),
     current_user: UserOut = Depends(get_current_user),
 ) -> PatientOut:
-    updates = payload.model_dump(exclude_none=True)
+    updates = payload.model_dump(exclude_unset=True, mode="json")
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided.")
     if current_user.role not in {"admin", "doctor"} and updates.get("status") == "consultation":
@@ -427,6 +446,8 @@ async def update_patient(
 
     try:
         return await update_patient_workflow(repo, current_user, patient_id, payload)
+    except ValueError as exc:
+        raise bad_request_error(exc) from exc
     except Exception as exc:  # pragma: no cover
         raise internal_server_error(exc, context="update_patient") from exc
 

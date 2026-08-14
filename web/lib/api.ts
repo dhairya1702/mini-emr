@@ -101,6 +101,7 @@ import {
   RegisterPayload,
   RegistrationConfig,
   UserRoleUpdatePayload,
+  WorkspaceMode,
   UpdateNoteDraftPayload,
   SendInvoicePayload,
   SendInvoiceWhatsAppPayload,
@@ -642,8 +643,8 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  updateSuperdashboardOrgWorkspaceMode: (orgId: string, workspaceMode: "solo" | "team") =>
-    request<{ org_id: string; workspace_mode: "solo" | "team" }>(`/superdashboard/orgs/${orgId}/workspace-mode`, {
+  updateSuperdashboardOrgWorkspaceMode: (orgId: string, workspaceMode: WorkspaceMode) =>
+    request<{ org_id: string; workspace_mode: WorkspaceMode }>(`/superdashboard/orgs/${orgId}/workspace-mode`, {
       method: "PATCH",
       body: JSON.stringify({ workspace_mode: workspaceMode }),
     }),
@@ -786,17 +787,23 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  checkInAppointment: (appointmentId: string, options?: { force_new?: boolean }) =>
+  checkInAppointment: (appointmentId: string, options?: { force_new?: boolean; assigned_doctor_id?: string | null }) =>
     request<Patient>(`/appointments/${appointmentId}/check-in`, {
       method: "POST",
-      body: JSON.stringify({ force_new: options?.force_new ?? false }),
+      body: JSON.stringify({
+        force_new: options?.force_new ?? false,
+        assigned_doctor_id: options?.assigned_doctor_id ?? null,
+      } satisfies AppointmentCheckInPayload),
     }),
   previewAppointmentCheckIn: (appointmentId: string) =>
     request<PatientMatch[]>(`/appointments/${appointmentId}/check-in-preview`),
-  checkInAppointmentWithPatient: (appointmentId: string, existingPatientId: string) =>
+  checkInAppointmentWithPatient: (appointmentId: string, existingPatientId: string, assignedDoctorId?: string | null) =>
     request<Patient>(`/appointments/${appointmentId}/check-in`, {
       method: "POST",
-      body: JSON.stringify({ existing_patient_id: existingPatientId } satisfies AppointmentCheckInPayload),
+      body: JSON.stringify({
+        existing_patient_id: existingPatientId,
+        assigned_doctor_id: assignedDoctorId ?? null,
+      } satisfies AppointmentCheckInPayload),
     }),
   createFollowUp: (patientId: string, payload: FollowUpCreatePayload) =>
     request<FollowUp>(`/patients/${patientId}/follow-ups`, {
@@ -1106,7 +1113,7 @@ export const api = {
     request<CheckInRequestsStatus>("/check-in/requests/status"),
   approveCheckInRequest: (
     requestId: string,
-    payload: { existing_patient_id?: string | null; force_new: boolean },
+    payload: { existing_patient_id?: string | null; force_new: boolean; assigned_doctor_id?: string | null },
   ) =>
     request<Patient>(`/check-in/requests/${requestId}/approve`, {
       method: "POST",

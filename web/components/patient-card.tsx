@@ -123,6 +123,10 @@ function visitContext(patient: Patient) {
   return "Walk-in";
 }
 
+function providerContext(patient: Patient) {
+  return patient.assigned_doctor?.name ? `Dr: ${patient.assigned_doctor.name}` : "";
+}
+
 interface PatientCardProps {
   patient: Patient;
   onOpen: (patient: Patient) => void;
@@ -247,6 +251,11 @@ export function PatientCard({
       </div>
 
       <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {providerContext(patient) ? (
+          <span className="rounded-lg border border-[#c7d9e8] bg-[#f8fbfd] px-2 py-1 text-[11px] font-semibold text-[#45627c]">
+            {providerContext(patient)}
+          </span>
+        ) : null}
         {patientChips(patient).map((chip, index) => (
           <span key={`${chip}-${index}`} className={`rounded-lg border px-2 py-1 text-[11px] font-semibold ${
             patient.status === "done" && !patient.billing_summary && index === 0

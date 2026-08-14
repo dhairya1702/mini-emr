@@ -348,6 +348,7 @@ class PostgresCheckInsRepository:
         request_id: str,
         reviewed_by: str,
         existing_patient_id: str | None,
+        assigned_doctor_id: str | None = None,
     ) -> dict[str, Any]:
         def _approve() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:
@@ -392,9 +393,9 @@ class PostgresCheckInsRepository:
                             f"""
                             insert into public.patients (
                               org_id, name, phone, email, reason, date_of_birth,
-                              sex_at_birth
+                              sex_at_birth, assigned_doctor_id
                             )
-                            values (%s, %s, %s, %s, %s, %s, %s)
+                            values (%s, %s, %s, %s, %s, %s, %s, %s)
                             returning {_columns_sql(PATIENT_COLUMNS)}
                             """,
                             (
@@ -405,6 +406,7 @@ class PostgresCheckInsRepository:
                                 request["submitted_reason"],
                                 request["submitted_date_of_birth"],
                                 request["submitted_sex_at_birth"],
+                                assigned_doctor_id,
                             ),
                         )
                         patient = _row_to_dict(cursor.fetchone(), cursor)
@@ -456,12 +458,13 @@ class PostgresCheckInsRepository:
                         set reason = %s, status = 'waiting', billed = false,
                           current_visit_id = %s, last_visit_at = now(),
                           stage_entered_at = now(), queue_position = %s,
+                          assigned_doctor_id = %s,
                           ai_summary_stale = true,
                           ai_summary_revision = ai_summary_revision + 1
                         where id = %s and org_id = %s
                         returning {_columns_sql(PATIENT_COLUMNS)}
                         """,
-                        (request["submitted_reason"], visit_id, queue_position, patient["id"], org_id),
+                        (request["submitted_reason"], visit_id, queue_position, assigned_doctor_id, patient["id"], org_id),
                     )
                     saved = _patient_with_profile_photo_url(_row_to_dict(cursor.fetchone(), cursor))
                     saved["current_visit"] = {

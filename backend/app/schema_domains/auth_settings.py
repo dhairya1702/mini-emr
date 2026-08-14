@@ -19,7 +19,7 @@ DEFAULT_DOCUMENT_TEMPLATE_NOTE_LAYOUT: dict[str, dict[str, float]] = {
     "height": {"x": 0.1, "y": 0.25, "width": 0.22, "height": 0.035},
     "noteBody": {"x": 0.1, "y": 0.305, "width": 0.76, "height": 0.41},
 }
-WorkspaceMode = Literal["solo", "team"]
+WorkspaceMode = Literal["solo", "team", "multi_doctor"]
 EmailSenderMode = Literal["clinicos", "clinic"]
 
 

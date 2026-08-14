@@ -4,7 +4,7 @@ export type PatientStatus = "waiting" | "consultation" | "done";
 export type QueuePriority = "normal" | "urgent";
 export type SexAtBirth = "female" | "male" | "other";
 export type VisitKind = "new" | "follow_up";
-export type WorkspaceMode = "solo" | "team";
+export type WorkspaceMode = "solo" | "team" | "multi_doctor";
 export type EmailSenderMode = "clinicos" | "clinic";
 
 export interface CurrentVisitSummary {
@@ -31,6 +31,13 @@ export interface QueueBillingEstimate {
   medicine_count: number;
 }
 
+export interface QueueProvider {
+  id: string;
+  name: string;
+  role: UserRole;
+  active: boolean;
+}
+
 export interface Patient {
   id: string;
   name: string;
@@ -48,6 +55,8 @@ export interface Patient {
   status: PatientStatus;
   billed: boolean;
   queue_priority: QueuePriority;
+  assigned_doctor_id?: string | null;
+  assigned_doctor?: QueueProvider | null;
   stage_entered_at: string;
   queue_position: number;
   current_visit?: CurrentVisitSummary | null;
@@ -1284,6 +1293,7 @@ export interface DashboardStatus {
 export interface QueueSnapshot {
   revision: string;
   patients: Patient[];
+  providers: QueueProvider[];
 }
 
 export interface PatientPage {
@@ -1817,6 +1827,7 @@ export interface AppointmentUpdatePayload {
 export interface AppointmentCheckInPayload {
   existing_patient_id?: string;
   force_new?: boolean;
+  assigned_doctor_id?: string | null;
 }
 
 export interface FollowUpCreatePayload {
@@ -1843,12 +1854,14 @@ export interface PatientInput {
   weight: number | null;
   height: number | null;
   temperature: number | null;
+  assigned_doctor_id?: string | null;
 }
 
 export interface PatientUpdatePayload {
   status?: PatientStatus;
   billed?: boolean;
   queue_priority?: QueuePriority;
+  assigned_doctor_id?: string | null;
   sex_at_birth?: SexAtBirth | null;
   gender_identity?: string;
   name?: string;

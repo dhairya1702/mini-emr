@@ -15,6 +15,7 @@ from app.schema_domains.checkins import (
 )
 from app.schema_domains.patients import PatientOut
 from app.services.audit_service import write_audit_event_best_effort
+from app.services.patient_workflow import _validate_assigned_doctor
 
 
 router = APIRouter()
@@ -123,11 +124,17 @@ async def approve_check_in_request(
     current_user: UserOut = Depends(get_current_user),
 ) -> PatientOut:
     try:
+        await _validate_assigned_doctor(
+            repo,
+            current_user,
+            str(payload.assigned_doctor_id) if payload.assigned_doctor_id else None,
+        )
         patient = await repo.approve_public_check_in_request(
             org_id=str(current_user.org_id),
             request_id=request_id,
             reviewed_by=str(current_user.id),
             existing_patient_id=str(payload.existing_patient_id) if payload.existing_patient_id else None,
+            assigned_doctor_id=str(payload.assigned_doctor_id) if payload.assigned_doctor_id else None,
         )
         await write_audit_event_best_effort(
             repo,
