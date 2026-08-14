@@ -345,15 +345,17 @@ function SignatureSetup({
   onComplete,
 }: Pick<SetupStepModalProps, "currentUser" | "onCurrentUserChange"> & { onComplete: () => void }) {
   const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   async function handleUpload(file: File) {
     setIsSaving(true);
     setError("");
+    setStatus("");
     try {
       const updated = await api.uploadMySignature(file);
       onCurrentUserChange(updated);
-      onComplete();
+      setStatus("Signature uploaded. Review it, then continue.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to upload signature.");
     } finally {
@@ -364,6 +366,7 @@ function SignatureSetup({
   async function handleRemove() {
     setIsSaving(true);
     setError("");
+    setStatus("");
     try {
       const updated = await api.removeMySignature();
       onCurrentUserChange(updated);
@@ -391,7 +394,7 @@ function SignatureSetup({
       <div className="flex flex-wrap gap-3">
         <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0]">
           <Upload className="h-4 w-4" />
-          {isSaving ? "Uploading..." : "Upload signature"}
+          {isSaving ? "Uploading..." : currentUser?.doctor_signature_url ? "Replace signature" : "Upload signature"}
           <input
             type="file"
             accept="image/png,image/jpeg"
@@ -416,6 +419,17 @@ function SignatureSetup({
         </button>
       </div>
       {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
+      {status ? <p className="text-sm font-medium text-emerald-700">{status}</p> : null}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          disabled={isSaving}
+          onClick={onComplete}
+          className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+        >
+          Save and continue
+        </button>
+      </div>
     </div>
   );
 }

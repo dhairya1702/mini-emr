@@ -6,7 +6,7 @@ import { Check, ChevronLeft, ChevronRight, Clock, FileText, Mail, PenLine, Steth
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
 import { PasswordInput } from "@/components/password-input";
-import { api } from "@/lib/api";
+import { api, resolveApiAssetUrl } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { openNativeTimePicker } from "@/lib/time-input";
 import { DEFAULT_CLINIC_TIMEZONE, getDefaultClinicTimeZone, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
@@ -267,16 +267,22 @@ export default function OnboardingSetupPage() {
   async function uploadSignature(file: File) {
     setIsSaving(true);
     setError("");
+    setStatus("");
     try {
       const updated = await api.uploadMySignature(file);
       applyCurrentUser(updated);
       markComplete("signature");
-      goToNext();
+      setStatus("Signature uploaded. Review it, then continue.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to upload signature.");
     } finally {
       setIsSaving(false);
     }
+  }
+
+  function continueSignature() {
+    markComplete("signature");
+    goToNext();
   }
 
   async function saveEmail(event: FormEvent<HTMLFormElement>) {
@@ -559,16 +565,64 @@ export default function OnboardingSetupPage() {
           {activeStep.key === "signature" ? (
             <div className="space-y-4">
               <p className="text-sm leading-6 text-slate-600">Upload the doctor signature used on notes, letters, and PDFs.</p>
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#2f8fd3] px-5 py-3 text-sm font-medium text-white">
-                <Upload className="h-4 w-4" />
-                {isSaving ? "Uploading..." : "Upload signature"}
-                <input type="file" accept="image/png,image/jpeg" className="sr-only" disabled={isSaving} onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void uploadSignature(file);
-                  event.target.value = "";
-                }} />
-              </label>
-              <OptionalActions isSaving={isSaving} onBack={() => setActiveIndex((current) => current - 1)} onSkip={skipOptional} showSubmit={false} />
+              <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 p-4">
+                {currentUser?.doctor_signature_url ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={resolveApiAssetUrl(currentUser.doctor_signature_url)}
+                      alt="User signature"
+                      className="max-h-12 w-auto max-w-[220px] object-contain"
+                    />
+                    <span className="text-sm text-slate-600">Uploaded</span>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">No signature uploaded yet.</p>
+                )}
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={() => setActiveIndex((current) => current - 1)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-5 py-3 text-sm font-medium text-slate-700 disabled:opacity-60"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Back
+                </button>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  {!currentUser?.doctor_signature_url ? (
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      onClick={skipOptional}
+                      className="rounded-xl border border-[#bfd7e8] bg-white px-5 py-3 text-sm font-medium text-slate-700 disabled:opacity-60"
+                    >
+                      Skip for now
+                    </button>
+                  ) : null}
+                  <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#bfd7e8] bg-white px-5 py-3 text-sm font-medium text-[#2a6fa8] transition hover:bg-[#f3f8fb]">
+                    <Upload className="h-4 w-4" />
+                    {isSaving ? "Uploading..." : currentUser?.doctor_signature_url ? "Replace signature" : "Upload signature"}
+                    <input type="file" accept="image/png,image/jpeg" className="sr-only" disabled={isSaving} onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void uploadSignature(file);
+                      event.target.value = "";
+                    }} />
+                  </label>
+                  {currentUser?.doctor_signature_url ? (
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      onClick={continueSignature}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#2f8fd3] px-5 py-3 text-sm font-medium text-white disabled:opacity-60"
+                    >
+                      Save and continue
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
             </div>
           ) : null}
 
