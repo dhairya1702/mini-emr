@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { KeyRound, UserPlus, X } from "lucide-react";
+import { KeyRound, Trash2, UserPlus, X } from "lucide-react";
 
 import { PasswordInput } from "@/components/password-input";
 import { AuthUser, UserRole } from "@/lib/types";
@@ -223,12 +223,28 @@ export function SettingsDrawerUsersPanel({
             onClick={() => setSelectedUser(null)}
             className="absolute inset-0"
           />
-          <div className="relative z-10 w-full max-w-md rounded-[18px] border border-[#bfd7e8] bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
+          <div className="relative z-10 w-full max-w-2xl rounded-[18px] border border-[#bfd7e8] bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <h4 className="text-lg font-semibold text-slate-900">{selectedUser.name}</h4>
-                <p className="mt-1 text-sm text-slate-500">{selectedUser.identifier}</p>
-                <p className="mt-1 text-sm text-slate-500">{selectedUser.email || "No recovery email"}</p>
+              <div className="min-w-0">
+                <h4 className="text-2xl font-semibold text-slate-900">{selectedUser.name || selectedUser.identifier}</h4>
+                <div className="mt-5 grid gap-3 text-sm md:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Name</p>
+                    <p className="mt-1 break-words text-slate-900">{selectedUser.name || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Phone</p>
+                    <p className="mt-1 break-words text-slate-900">{selectedUser.phone || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Email</p>
+                    <p className="mt-1 break-words text-slate-900">{selectedUser.email || "No recovery email"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Login ID</p>
+                    <p className="mt-1 break-words text-slate-900">{selectedUser.identifier}</p>
+                  </div>
+                </div>
               </div>
               <button
                 type="button"
@@ -239,7 +255,7 @@ export function SettingsDrawerUsersPanel({
               </button>
             </div>
 
-            <label className="mt-4 block">
+            <label className="mt-5 block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Role</span>
               <select
                 value={selectedRole}
@@ -256,39 +272,36 @@ export function SettingsDrawerUsersPanel({
             {resetMessage ? <p className="mt-3 text-sm font-medium text-emerald-700">{resetMessage}</p> : null}
             {deleteError ? <p className="mt-2 text-sm font-medium text-rose-600">{deleteError}</p> : null}
 
-            <div className="mt-5 flex justify-end gap-3">
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <button
                 type="button"
                 onClick={() => void handleSendPasswordReset()}
                 disabled={isSendingReset || !selectedUser.email}
-                className="inline-flex items-center gap-2 rounded-xl border border-[#bfd7e8] px-4 py-2 text-sm font-medium text-[#2a6fa8] transition hover:bg-[#f3f8fb] disabled:opacity-60"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#bfd7e8] px-4 py-3 text-sm font-medium text-[#2a6fa8] transition hover:bg-[#f3f8fb] disabled:opacity-60"
               >
                 <KeyRound className="h-4 w-4" />
                 {isSendingReset ? "Sending..." : "Reset Password"}
               </button>
-              <button
-                type="button"
-                onClick={() => void handleDeleteSelectedUser()}
-                disabled={isDeletingUser || currentUser?.id === selectedUser.id}
-                className="rounded-xl border border-rose-200 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
-              >
-                {isDeletingUser ? "Removing..." : currentUser?.id === selectedUser.id ? "Current User" : "Remove User"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedUser(null)}
-                className="rounded-xl border border-[#bfd7e8] px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f3f8fb]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleSaveRole()}
-                disabled={isUpdatingRole || selectedRole === selectedUser.role}
-                className="rounded-xl bg-[#2f8fd3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
-              >
-                {isUpdatingRole ? "Saving..." : "Save Role"}
-              </button>
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  aria-label={currentUser?.id === selectedUser.id ? "Cannot delete current user" : "Delete user"}
+                  title={currentUser?.id === selectedUser.id ? "Cannot delete current user" : "Delete user"}
+                  onClick={() => void handleDeleteSelectedUser()}
+                  disabled={isDeletingUser || currentUser?.id === selectedUser.id}
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-rose-200 text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                >
+                  <Trash2 className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveRole()}
+                  disabled={isUpdatingRole || selectedRole === selectedUser.role}
+                  className="rounded-xl bg-[#2f8fd3] px-6 py-3 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
+                >
+                  {isUpdatingRole ? "Saving..." : "Save"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
