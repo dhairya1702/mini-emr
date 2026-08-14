@@ -3,6 +3,7 @@
 import { ArrowRight, Check, Clock3, Flag, GripVertical, ReceiptIndianRupee, Stethoscope, Trash2 } from "lucide-react";
 import type { HTMLAttributes } from "react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { api } from "@/lib/api";
 import { Patient, PatientStatus } from "@/lib/types";
@@ -222,52 +223,58 @@ export function PatientCard({
     };
   }, [contextMenu]);
 
-  return (
-    <article
-      ref={dragHandleProps?.setActivatorNodeRef}
-      {...dragHandleProps?.attributes}
-      {...dragHandleProps?.listeners}
-      aria-label={`Drag ${patient.name}; open chart`}
-      onClick={() => onOpen(patient)}
-      onContextMenu={(event) => {
-        if (!canAssignDoctor || !onAssignDoctor) {
-          return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        setContextMenu({ x: event.clientX, y: event.clientY });
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onOpen(patient);
-        }
-      }}
-      className={`group relative w-full rounded-[16px] border border-l-4 border-[#dbe7ef] ${style.rail} bg-white px-3.5 py-3 text-left shadow-[0_6px_16px_rgba(64,131,181,0.07)] transition duration-200 hover:-translate-y-0.5 hover:border-[#9fc7e1] hover:shadow-[0_18px_36px_rgba(64,131,181,0.14)] ${
-        patient.queue_priority === "urgent" ? "border-l-rose-600" : ""
-      } ${dragHandleProps && !dragHandleProps.disabled ? "cursor-grab active:cursor-grabbing" : ""}`}
-      tabIndex={0}
-    >
-      {contextMenu && canAssignDoctor && onAssignDoctor ? (
-        <div
-          className="fixed z-[120] w-52 rounded-xl border border-[#bfd7e8] bg-white p-1.5 shadow-[0_18px_44px_rgba(31,43,61,0.18)]"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(event) => event.stopPropagation()}
+  const assignDoctorContextMenu = contextMenu && canAssignDoctor && onAssignDoctor && typeof document !== "undefined"
+    ? createPortal(
+      <div
+        className="fixed z-[1000] w-52 rounded-xl border border-[#bfd7e8] bg-white p-1.5 shadow-[0_18px_44px_rgba(31,43,61,0.18)]"
+        style={{ left: contextMenu.x, top: contextMenu.y }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setContextMenu(null);
+            onAssignDoctor(patient);
+          }}
+          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-[#1f2b3d] transition hover:bg-[#edf5fa] hover:text-[#2a6fa8]"
         >
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              setContextMenu(null);
-              onAssignDoctor(patient);
-            }}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-[#1f2b3d] transition hover:bg-[#edf5fa] hover:text-[#2a6fa8]"
-          >
-            <Stethoscope className="h-4 w-4" />
-            Assign Doctor
-          </button>
-        </div>
-      ) : null}
+          <Stethoscope className="h-4 w-4" />
+          Assign Doctor
+        </button>
+      </div>,
+      document.body,
+    )
+    : null;
+
+  return (
+    <>
+      {assignDoctorContextMenu}
+      <article
+        ref={dragHandleProps?.setActivatorNodeRef}
+        {...dragHandleProps?.attributes}
+        {...dragHandleProps?.listeners}
+        aria-label={`Drag ${patient.name}; open chart`}
+        onClick={() => onOpen(patient)}
+        onContextMenu={(event) => {
+          if (!canAssignDoctor || !onAssignDoctor) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          setContextMenu({ x: event.clientX, y: event.clientY });
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpen(patient);
+          }
+        }}
+        className={`group relative w-full rounded-[16px] border border-l-4 border-[#dbe7ef] ${style.rail} bg-white px-3.5 py-3 text-left shadow-[0_6px_16px_rgba(64,131,181,0.07)] transition duration-200 hover:-translate-y-0.5 hover:border-[#9fc7e1] hover:shadow-[0_18px_36px_rgba(64,131,181,0.14)] ${
+          patient.queue_priority === "urgent" ? "border-l-rose-600" : ""
+        } ${dragHandleProps && !dragHandleProps.disabled ? "cursor-grab active:cursor-grabbing" : ""}`}
+        tabIndex={0}
+      >
       <div className="flex items-center gap-2.5">
         {dragHandleProps ? (
           <span className={`inline-flex h-8 w-6 shrink-0 items-center justify-center rounded-lg text-slate-400 transition ${
@@ -395,6 +402,7 @@ export function PatientCard({
           )}
         </div>
       </footer>
-    </article>
+      </article>
+    </>
   );
 }
