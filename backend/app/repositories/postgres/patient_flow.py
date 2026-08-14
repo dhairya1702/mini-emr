@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -1086,6 +1087,131 @@ class PostgresPatientFlowRepository:
                     return [_row_to_dict(row, cursor) for row in cursor.fetchall()]
 
         return await asyncio.to_thread(_list)
+
+    async def iter_patients_for_export(
+        self,
+        org_id: str,
+        *,
+        page_size: int = 500,
+    ) -> AsyncIterator[dict[str, Any]]:
+        cursor_last_visit_at: datetime | None = None
+        cursor_id: str | None = None
+        while True:
+            page = await self.list_patients(
+                org_id,
+                include_queue_context=False,
+                limit=page_size,
+                cursor_last_visit_at=cursor_last_visit_at,
+                cursor_id=cursor_id,
+            )
+            if not page:
+                return
+            for patient in page:
+                yield patient
+            if len(page) < page_size:
+                return
+            last = page[-1]
+            cursor_last_visit_at = last["last_visit_at"]
+            cursor_id = str(last["id"])
+
+    async def iter_visits_for_export(
+        self,
+        org_id: str,
+        *,
+        page_size: int = 500,
+    ) -> AsyncIterator[dict[str, Any]]:
+        cursor_created_at: datetime | None = None
+        cursor_id: str | None = None
+
+        def _fetch(created_at: datetime | None, visit_id: str | None) -> list[dict[str, Any]]:
+            cursor_clause = ""
+            params: list[Any] = [org_id]
+            if created_at is not None and visit_id is not None:
+                cursor_clause = "and (v.created_at, v.id) < (%s, %s::uuid)"
+                params.extend([created_at, visit_id])
+            params.append(page_size)
+            visit_columns = ", ".join(f"v.{column}" for column in PATIENT_VISIT_COLUMNS)
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        select {visit_columns},
+                               p.status as status,
+                               p.billed as billed,
+                               p.last_visit_at as last_visit_at
+                        from public.patient_visits v
+                        join public.patients p
+                          on p.org_id = v.org_id and p.id = v.patient_id
+                        where v.org_id = %s
+                        {cursor_clause}
+                        order by v.created_at desc, v.id desc
+                        limit %s
+                        """,
+                        tuple(params),
+                    )
+                    return [_row_to_dict(row, cursor) for row in cursor.fetchall()]
+
+        while True:
+            page = await asyncio.to_thread(_fetch, cursor_created_at, cursor_id)
+            if not page:
+                return
+            for visit in page:
+                yield visit
+            if len(page) < page_size:
+                return
+            last = page[-1]
+            cursor_created_at = last["created_at"]
+            cursor_id = str(last["id"])
+
+    async def iter_patients_without_visits_for_export(
+        self,
+        org_id: str,
+        *,
+        page_size: int = 500,
+    ) -> AsyncIterator[dict[str, Any]]:
+        cursor_last_visit_at: datetime | None = None
+        cursor_id: str | None = None
+
+        def _fetch(last_visit_at: datetime | None, patient_id: str | None) -> list[dict[str, Any]]:
+            cursor_clause = ""
+            params: list[Any] = [org_id]
+            if last_visit_at is not None and patient_id is not None:
+                cursor_clause = "and (p.last_visit_at, p.id) < (%s, %s::uuid)"
+                params.extend([last_visit_at, patient_id])
+            params.append(page_size)
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        select {_columns_sql(PATIENT_LIST_COLUMNS)}
+                        from public.patients p
+                        where p.org_id = %s
+                          and not exists (
+                            select 1
+                            from public.patient_visits v
+                            where v.org_id = p.org_id and v.patient_id = p.id
+                          )
+                        {cursor_clause}
+                        order by p.last_visit_at desc, p.id desc
+                        limit %s
+                        """,
+                        tuple(params),
+                    )
+                    return [
+                        _patient_with_profile_photo_url(_row_to_dict(row, cursor))
+                        for row in cursor.fetchall()
+                    ]
+
+        while True:
+            page = await asyncio.to_thread(_fetch, cursor_last_visit_at, cursor_id)
+            if not page:
+                return
+            for patient in page:
+                yield patient
+            if len(page) < page_size:
+                return
+            cursor_last_visit_at = page[-1]["last_visit_at"]
+            cursor_id = str(page[-1]["id"])
 
     async def list_potential_check_in_matches(self, org_id: str, appointment_id: str) -> list[dict[str, Any]]:
         return await asyncio.to_thread(lambda: self._list_potential_check_in_matches_sync(org_id, appointment_id))

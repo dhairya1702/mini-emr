@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -859,13 +861,19 @@ class PostgresBillingRepository:
         org_id: str,
         limit: int | None = None,
         offset: int = 0,
+        cursor_created_at: datetime | None = None,
+        cursor_id: str | None = None,
     ) -> list[dict[str, Any]]:
         def _list() -> list[dict[str, Any]]:
             with self.connection_manager.pool.connection() as connection:
                 with connection.cursor() as cursor:
                     clauses = ["org_id = %s"]
                     params: list[Any] = [org_id]
+                    cursor_clause = ""
                     pagination_sql = ""
+                    if cursor_created_at is not None and cursor_id is not None:
+                        cursor_clause = "and (created_at, id) < (%s, %s::uuid)"
+                        params.extend([cursor_created_at, cursor_id])
                     if limit is not None:
                         pagination_sql = " limit %s offset %s"
                         params.extend([limit, offset])
@@ -874,7 +882,8 @@ class PostgresBillingRepository:
                         select {_columns_sql(INVOICE_COLUMNS)}
                         from public.invoices
                         where {' and '.join(clauses)}
-                        order by created_at desc
+                        {cursor_clause}
+                        order by created_at desc, id desc
                         {pagination_sql}
                         """,
                         tuple(params),
@@ -924,6 +933,31 @@ class PostgresBillingRepository:
                     return [attach_invoice_balances(invoice) for invoice in invoices]
 
         return await asyncio.to_thread(_list)
+
+    async def iter_invoices_for_export(
+        self,
+        org_id: str,
+        *,
+        page_size: int = 500,
+    ) -> AsyncIterator[dict[str, Any]]:
+        cursor_created_at: datetime | None = None
+        cursor_id: str | None = None
+        while True:
+            page = await self.list_invoices(
+                org_id,
+                limit=page_size,
+                cursor_created_at=cursor_created_at,
+                cursor_id=cursor_id,
+            )
+            if not page:
+                return
+            for invoice in page:
+                yield invoice
+            if len(page) < page_size:
+                return
+            last = page[-1]
+            cursor_created_at = last["created_at"]
+            cursor_id = str(last["id"])
 
     async def get_billing_status(self, org_id: str) -> dict[str, Any]:
         def _get() -> dict[str, Any]:

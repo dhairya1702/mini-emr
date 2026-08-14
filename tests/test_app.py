@@ -2885,6 +2885,8 @@ class FakeRepo:
         org_id: str,
         limit: int | None = None,
         offset: int = 0,
+        cursor_created_at: datetime | None = None,
+        cursor_id: str | None = None,
     ) -> list[dict]:
         rows = []
         for invoice in self.invoices.values():
@@ -2901,8 +2903,82 @@ class FakeRepo:
                     "items": invoice.get("items", []),
                 }
             )
-        rows.sort(key=lambda row: row["created_at"], reverse=True)
+        rows.sort(key=lambda row: (row["created_at"], row["id"]), reverse=True)
+        if cursor_created_at is not None and cursor_id is not None:
+            rows = [
+                row for row in rows
+                if (row["created_at"], row["id"]) < (cursor_created_at, cursor_id)
+            ]
         return rows[offset:offset + limit] if limit is not None else rows[offset:]
+
+    async def iter_patients_for_export(self, org_id: str, *, page_size: int = 500):
+        cursor_last_visit_at = None
+        cursor_id = None
+        while True:
+            page = await self.list_patients(
+                org_id,
+                include_queue_context=False,
+                limit=page_size,
+                cursor_last_visit_at=cursor_last_visit_at,
+                cursor_id=cursor_id,
+            )
+            if not page:
+                return
+            for patient in page:
+                yield patient
+            if len(page) < page_size:
+                return
+            last = page[-1]
+            cursor_last_visit_at = last["last_visit_at"]
+            cursor_id = str(last["id"])
+
+    async def iter_visits_for_export(self, org_id: str, *, page_size: int = 500):
+        visits = [
+            visit for visit in self.patient_visits.values()
+            if visit["org_id"] == org_id and self.patients.get(visit["patient_id"])
+        ]
+        visits.sort(key=lambda visit: (visit["created_at"], visit["id"]), reverse=True)
+        for visit in visits:
+            patient = self.patients[visit["patient_id"]]
+            yield {
+                **visit,
+                "status": patient["status"],
+                "billed": patient.get("billed", False),
+                "last_visit_at": patient["last_visit_at"],
+            }
+
+    async def iter_patients_without_visits_for_export(self, org_id: str, *, page_size: int = 500):
+        with_visits = {
+            str(visit["patient_id"]) for visit in self.patient_visits.values()
+            if visit["org_id"] == org_id
+        }
+        patients = [
+            patient for patient in self.patients.values()
+            if patient["org_id"] == org_id and str(patient["id"]) not in with_visits
+        ]
+        patients.sort(key=lambda patient: (patient["last_visit_at"], patient["id"]), reverse=True)
+        for patient in patients:
+            yield patient
+
+    async def iter_invoices_for_export(self, org_id: str, *, page_size: int = 500):
+        cursor_created_at = None
+        cursor_id = None
+        while True:
+            page = await self.list_invoices(
+                org_id,
+                limit=page_size,
+                cursor_created_at=cursor_created_at,
+                cursor_id=cursor_id,
+            )
+            if not page:
+                return
+            for invoice in page:
+                yield invoice
+            if len(page) < page_size:
+                return
+            last = page[-1]
+            cursor_created_at = last["created_at"]
+            cursor_id = str(last["id"])
 
     async def get_patient_timeline_source(self, org_id: str, patient_id: str) -> dict:
         patient = await self.get_patient(org_id, patient_id)

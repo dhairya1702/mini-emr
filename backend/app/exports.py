@@ -1,4 +1,5 @@
 import csv
+from collections.abc import AsyncIterator, Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 
@@ -7,43 +8,183 @@ from fastapi.responses import StreamingResponse
 from app.formatting import format_export_datetime
 from app.schema_domains.patients import PatientVisitOut
 
+DATETIME_FIELDS = {
+    "created_at",
+    "updated_at",
+    "last_visit_at",
+    "scheduled_for",
+    "checked_in_at",
+    "completed_at",
+    "paid_at",
+    "sent_at",
+}
 
-def build_csv_response(filename: str, rows: list[dict], fieldnames: list[str]) -> StreamingResponse:
-    datetime_fields = {
-        "created_at",
-        "updated_at",
-        "last_visit_at",
-        "scheduled_for",
-        "checked_in_at",
-        "completed_at",
-        "paid_at",
-        "sent_at",
-    }
-    buffer = StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
-    writer.writeheader()
-    for row in rows:
-        writer.writerow(
-            {
-                key: (
-                    format_export_datetime(row.get(key))
-                    if key in datetime_fields
-                    else _csv_safe_value(row.get(key))
-                )
-                for key in fieldnames
-            }
-        )
+EXPORT_PAGE_SIZE = 500
+
+_MIN_DATETIME = datetime.min.replace(tzinfo=UTC)
+
+
+def build_csv_response(filename: str, rows: Iterable[dict], fieldnames: list[str]) -> StreamingResponse:
     return StreamingResponse(
-        iter([buffer.getvalue()]),
+        iter_csv_chunks(rows, fieldnames),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def iter_csv_chunks(rows: Iterable[dict], fieldnames: list[str], chunk_size: int = EXPORT_PAGE_SIZE) -> Iterator[str]:
+    yield _csv_header(fieldnames)
+    buffer = StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
+    written = 0
+    for row in rows:
+        writer.writerow(_serialize_row(row, fieldnames))
+        written += 1
+        if written % chunk_size == 0:
+            yield buffer.getvalue()
+            buffer = StringIO()
+            writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
+    tail = buffer.getvalue()
+    if tail:
+        yield tail
+
+
+async def stream_csv_chunks(
+    async_rows: AsyncIterator[dict],
+    fieldnames: list[str],
+    *,
+    chunk_size: int = EXPORT_PAGE_SIZE,
+    on_complete=None,
+) -> AsyncIterator[str]:
+    yield _csv_header(fieldnames)
+    buffer = StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
+    written = 0
+    async for row in async_rows:
+        writer.writerow(_serialize_row(row, fieldnames))
+        written += 1
+        if written % chunk_size == 0:
+            yield buffer.getvalue()
+            buffer = StringIO()
+            writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
+    tail = buffer.getvalue()
+    if tail:
+        yield tail
+    if on_complete is not None:
+        await on_complete(written)
+
+
+def _csv_header(fieldnames: list[str]) -> str:
+    buffer = StringIO()
+    csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore").writeheader()
+    return buffer.getvalue()
+
+
+def _serialize_row(row: dict, fieldnames: list[str]) -> dict:
+    return {
+        key: (
+            format_export_datetime(row.get(key))
+            if key in DATETIME_FIELDS
+            else _csv_safe_value(row.get(key))
+        )
+        for key in fieldnames
+    }
 
 
 def _csv_safe_value(value):
     if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
         return f"'{value}"
     return value
+
+
+def invoice_export_row(invoice: dict) -> dict:
+    return {
+        "patient_name": invoice.get("patient_name") or "",
+        "payment_status": invoice.get("payment_status"),
+        "amount_paid": invoice.get("amount_paid"),
+        "balance_due": invoice.get("balance_due"),
+        "total": invoice.get("total"),
+        "paid_at": invoice.get("paid_at"),
+        "sent_at": invoice.get("sent_at"),
+        "created_at": invoice.get("created_at"),
+        "item_count": len(invoice.get("items") or []),
+    }
+
+
+def queue_patient_export_row(patient: dict) -> dict:
+    return {
+        **patient,
+        "source": "queue",
+        "created_at": patient.get("last_visit_at"),
+    }
+
+
+def coerce_created_at(value) -> datetime | None:
+    if isinstance(value, datetime):
+        created_at = value
+    else:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        try:
+            created_at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    return created_at
+
+
+def created_at_key(value) -> datetime:
+    return coerce_created_at(value) or _MIN_DATETIME
+
+
+async def merge_sorted_descending(
+    left: AsyncIterator[dict],
+    right: AsyncIterator[dict],
+    *,
+    key,
+) -> AsyncIterator[dict]:
+    left_iter = left.__aiter__()
+    right_iter = right.__aiter__()
+
+    left_peek: dict | None = None
+    right_peek: dict | None = None
+    left_done = False
+    right_done = False
+
+    async def _advance_left() -> None:
+        nonlocal left_peek, left_done
+        if left_done:
+            left_peek = None
+            return
+        try:
+            left_peek = await left_iter.__anext__()
+        except StopAsyncIteration:
+            left_done = True
+            left_peek = None
+
+    async def _advance_right() -> None:
+        nonlocal right_peek, right_done
+        if right_done:
+            right_peek = None
+            return
+        try:
+            right_peek = await right_iter.__anext__()
+        except StopAsyncIteration:
+            right_done = True
+            right_peek = None
+
+    await _advance_left()
+    await _advance_right()
+    while left_peek is not None or right_peek is not None:
+        if right_peek is None or (left_peek is not None and key(left_peek) >= key(right_peek)):
+            row = left_peek
+            await _advance_left()
+        else:
+            row = right_peek
+            await _advance_right()
+        yield row
 
 
 def build_history_visit_rows(visits: list[dict], patients: list[dict]) -> list[PatientVisitOut]:
