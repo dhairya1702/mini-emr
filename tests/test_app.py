@@ -2911,6 +2911,63 @@ class FakeRepo:
             ]
         return rows[offset:offset + limit] if limit is not None else rows[offset:]
 
+    async def sum_revenue(self, org_id: str, start: str | None = None, end: str | None = None) -> dict:
+        start_dt = datetime.fromisoformat(start.replace("Z", "+00:00")) if start else None
+        end_dt = datetime.fromisoformat(end.replace("Z", "+00:00")) if end else None
+        total = 0.0
+        count = 0
+        for invoice in self.invoices.values():
+            if invoice["org_id"] != org_id:
+                continue
+            if start_dt and invoice["created_at"] < start_dt:
+                continue
+            if end_dt and invoice["created_at"] >= end_dt:
+                continue
+            total += float(invoice.get("amount_paid") or 0)
+            count += 1
+        return {"total_paid": round(total, 2), "invoice_count": count}
+
+    async def sum_pending(self, org_id: str) -> dict:
+        total = 0.0
+        count = 0
+        for invoice in self.invoices.values():
+            if invoice["org_id"] != org_id or str(invoice.get("payment_status") or "") not in {"unpaid", "partial"}:
+                continue
+            total += max(float(invoice.get("total") or 0) - float(invoice.get("amount_paid") or 0), 0)
+            count += 1
+        return {"pending_total": round(total, 2), "pending_count": count}
+
+    async def count_patients(self, org_id: str) -> int:
+        return sum(1 for patient in self.patients.values() if patient["org_id"] == org_id)
+
+    async def count_visits_in_range(self, org_id: str, start: str, end: str) -> int:
+        start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+        return sum(
+            1 for visit in self.patient_visits.values()
+            if visit["org_id"] == org_id and start_dt <= visit["created_at"] < end_dt
+        )
+
+    async def count_appointments_in_range(self, org_id: str, start: str, end: str, *, status: str = "scheduled") -> int:
+        start_dt = _as_utc_minute(start)
+        end_dt = _as_utc_minute(end)
+        return sum(
+            1 for appointment in self.appointments.values()
+            if appointment["org_id"] == org_id
+            and appointment["status"] == status
+            and start_dt <= _as_utc_minute(appointment["scheduled_for"]) < end_dt
+        )
+
+    async def count_follow_ups_in_range(self, org_id: str, start: str, end: str, *, status: str = "scheduled") -> int:
+        start_dt = _as_utc_minute(start)
+        end_dt = _as_utc_minute(end)
+        return sum(
+            1 for follow_up in self.follow_ups.values()
+            if follow_up["org_id"] == org_id
+            and follow_up["status"] == status
+            and start_dt <= _as_utc_minute(follow_up["scheduled_for"]) < end_dt
+        )
+
     async def iter_patients_for_export(self, org_id: str, *, page_size: int = 500):
         cursor_last_visit_at = None
         cursor_id = None

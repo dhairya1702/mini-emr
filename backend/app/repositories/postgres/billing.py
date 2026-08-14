@@ -959,6 +959,66 @@ class PostgresBillingRepository:
             cursor_created_at = last["created_at"]
             cursor_id = str(last["id"])
 
+    async def sum_revenue(
+        self,
+        org_id: str,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> dict[str, Any]:
+        def _sum() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    clauses = ["org_id = %s"]
+                    params: list[Any] = [org_id]
+                    if start is not None:
+                        clauses.append("created_at >= %s")
+                        params.append(start)
+                    if end is not None:
+                        clauses.append("created_at < %s")
+                        params.append(end)
+                    cursor.execute(
+                        f"""
+                        select coalesce(sum(amount_paid), 0)::numeric as total_paid,
+                               count(*)::bigint as invoice_count
+                        from public.invoices
+                        where {" and ".join(clauses)}
+                        """,
+                        tuple(params),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        return {"total_paid": 0.0, "invoice_count": 0}
+                    return {
+                        "total_paid": float(row[0] or 0),
+                        "invoice_count": int(row[1] or 0),
+                    }
+
+        return await asyncio.to_thread(_sum)
+
+    async def sum_pending(self, org_id: str) -> dict[str, Any]:
+        def _sum() -> dict[str, Any]:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select coalesce(sum(greatest(total - amount_paid, 0)), 0)::numeric as pending_total,
+                               count(*)::bigint as pending_count
+                        from public.invoices
+                        where org_id = %s
+                          and payment_status in ('unpaid', 'partial')
+                        """,
+                        (org_id,),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        return {"pending_total": 0.0, "pending_count": 0}
+                    return {
+                        "pending_total": float(row[0] or 0),
+                        "pending_count": int(row[1] or 0),
+                    }
+
+        return await asyncio.to_thread(_sum)
+
     async def get_billing_status(self, org_id: str) -> dict[str, Any]:
         def _get() -> dict[str, Any]:
             with self.connection_manager.pool.connection() as connection:

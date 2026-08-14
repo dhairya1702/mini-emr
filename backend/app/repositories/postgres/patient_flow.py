@@ -931,6 +931,65 @@ class PostgresPatientFlowRepository:
 
         return await asyncio.to_thread(_cancel)
 
+    async def count_patients(self, org_id: str) -> int:
+        def _count() -> int:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "select count(*)::bigint from public.patients where org_id = %s",
+                        (org_id,),
+                    )
+                    row = cursor.fetchone()
+                    return int(row[0] or 0) if row else 0
+
+        return await asyncio.to_thread(_count)
+
+    async def count_visits_in_range(self, org_id: str, start: str, end: str) -> int:
+        def _count() -> int:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select count(*)::bigint
+                        from public.patient_visits
+                        where org_id = %s
+                          and created_at >= %s
+                          and created_at < %s
+                        """,
+                        (org_id, start, end),
+                    )
+                    row = cursor.fetchone()
+                    return int(row[0] or 0) if row else 0
+
+        return await asyncio.to_thread(_count)
+
+    async def count_appointments_in_range(
+        self,
+        org_id: str,
+        start: str,
+        end: str,
+        *,
+        status: str = "scheduled",
+    ) -> int:
+        def _count() -> int:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select count(*)::bigint
+                        from public.appointments
+                        where org_id = %s
+                          and status = %s
+                          and scheduled_for >= %s
+                          and scheduled_for < %s
+                        """,
+                        (org_id, status, start, end),
+                    )
+                    row = cursor.fetchone()
+                    return int(row[0] or 0) if row else 0
+
+        return await asyncio.to_thread(_count)
+
     async def list_appointments(
         self,
         org_id: str,

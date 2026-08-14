@@ -174,13 +174,6 @@ def _as_datetime(value: Any) -> datetime:
     return parsed.astimezone(UTC)
 
 
-def _in_range(value: Any, start_iso: str, end_iso: str) -> bool:
-    parsed = _as_datetime(value)
-    start = _as_datetime(start_iso)
-    end = _as_datetime(end_iso)
-    return start <= parsed < end
-
-
 async def _day_bounds(repo: AppRepository, org_id: str, offset_days: int = 0) -> tuple[dict, date, str, str]:
     clinic_settings = await repo.get_clinic_settings(org_id)
     effective_day = clinic_today(clinic_settings) + timedelta(days=offset_days)
@@ -209,34 +202,6 @@ def _month_bounds(effective_day: date, clinic_settings: dict) -> tuple[str, str]
 
 def _format_time(value: Any, clinic_settings: dict) -> str:
     return as_clinic_time(_as_datetime(value), clinic_settings).strftime("%I:%M %p").lstrip("0")
-
-
-def _revenue_for_invoices(invoices: list[dict[str, Any]], start: str | None = None, end: str | None = None) -> tuple[float, int]:
-    filtered = [
-        invoice for invoice in invoices
-        if start is None or end is None or _in_range(invoice.get("created_at"), start, end)
-    ]
-    return sum(float(invoice.get("amount_paid") or 0) for invoice in filtered), len(filtered)
-
-
-def _pending_total(invoices: list[dict[str, Any]]) -> tuple[float, int]:
-    pending_invoices = [
-        invoice for invoice in invoices
-        if str(invoice.get("payment_status") or "") in {"unpaid", "partial"}
-    ]
-    total = sum(
-        float(
-            invoice.get("balance_due")
-            if invoice.get("balance_due") is not None
-            else float(invoice.get("total") or 0) - float(invoice.get("amount_paid") or 0)
-        )
-        for invoice in pending_invoices
-    )
-    return total, len(pending_invoices)
-
-
-def _visits_in_range(visits: list[dict[str, Any]], start: str, end: str) -> list[dict[str, Any]]:
-    return [visit for visit in visits if _in_range(visit.get("created_at"), start, end)]
 
 
 async def build_assistant_reply(repo: AppRepository, org_id: str, intent: str) -> str:
@@ -289,65 +254,55 @@ async def build_assistant_reply(repo: AppRepository, org_id: str, intent: str) -
             lines.append(f"{_format_time(followup['scheduled_for'], clinic_settings)} - {followup.get('patient_name') or 'Patient'}{suffix}")
         return "\n".join(lines)
 
-    invoices = await repo.list_invoices(org_id, limit=None)
-    revenue_today, today_invoice_count = _revenue_for_invoices(invoices, start, end)
-    pending_total, pending_count = _pending_total(invoices)
     if intent == "revenue_today":
-        return f"Revenue recorded today: {_money(revenue_today)} from {today_invoice_count} invoice(s)."
+        revenue_agg = await repo.sum_revenue(org_id, start, end)
+        return f"Revenue recorded today: {_money(revenue_agg['total_paid'])} from {revenue_agg['invoice_count']} invoice(s)."
     if intent == "revenue_yesterday":
         _settings, yesterday, yesterday_start, yesterday_end = await _day_bounds(repo, org_id, offset_days=-1)
-        revenue, invoice_count = _revenue_for_invoices(invoices, yesterday_start, yesterday_end)
-        return f"Revenue recorded yesterday ({yesterday.isoformat()}): {_money(revenue)} from {invoice_count} invoice(s)."
+        revenue_agg = await repo.sum_revenue(org_id, yesterday_start, yesterday_end)
+        return f"Revenue recorded yesterday ({yesterday.isoformat()}): {_money(revenue_agg['total_paid'])} from {revenue_agg['invoice_count']} invoice(s)."
     if intent == "revenue_this_week":
         week_start, week_end = _week_bounds(effective_day, clinic_settings)
-        revenue, invoice_count = _revenue_for_invoices(invoices, week_start, week_end)
-        return f"Revenue recorded this week: {_money(revenue)} from {invoice_count} invoice(s)."
+        revenue_agg = await repo.sum_revenue(org_id, week_start, week_end)
+        return f"Revenue recorded this week: {_money(revenue_agg['total_paid'])} from {revenue_agg['invoice_count']} invoice(s)."
     if intent == "revenue_this_month":
         month_start, month_end = _month_bounds(effective_day, clinic_settings)
-        revenue, invoice_count = _revenue_for_invoices(invoices, month_start, month_end)
-        return f"Revenue recorded this month: {_money(revenue)} from {invoice_count} invoice(s)."
+        revenue_agg = await repo.sum_revenue(org_id, month_start, month_end)
+        return f"Revenue recorded this month: {_money(revenue_agg['total_paid'])} from {revenue_agg['invoice_count']} invoice(s)."
     if intent == "total_revenue":
-        revenue, invoice_count = _revenue_for_invoices(invoices)
-        return f"Total recorded revenue: {_money(revenue)} from {invoice_count} invoice(s)."
+        revenue_agg = await repo.sum_revenue(org_id)
+        return f"Total recorded revenue: {_money(revenue_agg['total_paid'])} from {revenue_agg['invoice_count']} invoice(s)."
     if intent == "pending_payments":
-        return f"Pending payments: {_money(pending_total)} across {pending_count} invoice(s)."
+        pending_agg = await repo.sum_pending(org_id)
+        return f"Pending payments: {_money(pending_agg['pending_total'])} across {pending_agg['pending_count']} invoice(s)."
 
-    visits = await repo.list_patient_visits(org_id)
-    visits_today = _visits_in_range(visits, start, end)
     if intent == "patients_today":
-        return f"Patients seen today: {len(visits_today)}."
+        visits_today_count = await repo.count_visits_in_range(org_id, start, end)
+        return f"Patients seen today: {visits_today_count}."
     if intent == "patients_this_week":
         week_start, week_end = _week_bounds(effective_day, clinic_settings)
-        return f"Patients seen this week: {len(_visits_in_range(visits, week_start, week_end))} visit(s)."
+        visit_count = await repo.count_visits_in_range(org_id, week_start, week_end)
+        return f"Patients seen this week: {visit_count} visit(s)."
     if intent == "patients_this_month":
         month_start, month_end = _month_bounds(effective_day, clinic_settings)
-        return f"Patients seen this month: {len(_visits_in_range(visits, month_start, month_end))} visit(s)."
+        visit_count = await repo.count_visits_in_range(org_id, month_start, month_end)
+        return f"Patients seen this month: {visit_count} visit(s)."
     if intent == "total_patients":
-        patients = await repo.list_patients(org_id, limit=10000, include_queue_context=False)
-        return f"Total patient records: {len(patients)}."
+        return f"Total patient records: {await repo.count_patients(org_id)}."
     if intent == "today_summary":
-        appointments_left = await repo.list_appointments(
-            org_id,
-            status="scheduled",
-            limit=200,
-            scheduled_from=start,
-            scheduled_to=end,
-        )
-        followups_due = await repo.list_follow_ups(
-            org_id,
-            status="scheduled",
-            limit=200,
-            scheduled_from=start,
-            scheduled_to=end,
-        )
+        patients_seen = await repo.count_visits_in_range(org_id, start, end)
+        revenue_agg = await repo.sum_revenue(org_id, start, end)
+        pending_agg = await repo.sum_pending(org_id)
+        appointments_left = await repo.count_appointments_in_range(org_id, start, end)
+        followups_due = await repo.count_follow_ups_in_range(org_id, start, end)
         return "\n".join(
             [
                 f"Today summary ({effective_day.isoformat()}):",
-                f"Patients seen: {len(visits_today)}",
-                f"Revenue recorded: {_money(revenue_today)}",
-                f"Pending payments: {_money(pending_total)}",
-                f"Appointments left: {len(appointments_left)}",
-                f"Follow-ups due: {len(followups_due)}",
+                f"Patients seen: {patients_seen}",
+                f"Revenue recorded: {_money(revenue_agg['total_paid'])}",
+                f"Pending payments: {_money(pending_agg['pending_total'])}",
+                f"Appointments left: {appointments_left}",
+                f"Follow-ups due: {followups_due}",
             ]
         )
     return HELP_TEXT

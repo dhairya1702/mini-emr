@@ -729,6 +729,76 @@ def test_postgres_billing_status_is_lightweight_and_invoice_summaries_skip_item_
     assert "select count(*)" in statement
 
 
+def test_postgres_whatsapp_sum_revenue_filters_by_clinic_and_range():
+    cursor = ScriptedCursor(
+        descriptions=[["total_paid", "invoice_count"]],
+        fetchone_rows=[(2500.0, 2)],
+    )
+    repo = PostgresBillingRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    result = asyncio.run(repo.sum_revenue("org-1", "2026-08-14T00:00:00+00:00", "2026-08-15T00:00:00+00:00"))
+
+    assert result == {"total_paid": 2500.0, "invoice_count": 2}
+    assert len(cursor.executed) == 1
+    statement = cursor.executed[0][0].lower()
+    params = cursor.executed[0][1]
+    assert statement.lstrip().startswith("select")
+    assert "sum(amount_paid)" in statement
+    assert "count(*)" in statement
+    assert params == ("org-1", "2026-08-14T00:00:00+00:00", "2026-08-15T00:00:00+00:00")
+
+
+def test_postgres_whatsapp_sum_pending_only_considers_unpaid_and_partial():
+    cursor = ScriptedCursor(
+        descriptions=[["pending_total", "pending_count"]],
+        fetchone_rows=[(300.0, 1)],
+    )
+    repo = PostgresBillingRepository(ScriptedManager(cursor))  # type: ignore[arg-type]
+
+    result = asyncio.run(repo.sum_pending("org-1"))
+
+    assert result == {"pending_total": 300.0, "pending_count": 1}
+    statement = cursor.executed[0][0].lower()
+    assert "payment_status in ('unpaid', 'partial')" in statement
+    assert cursor.executed[0][1] == ("org-1",)
+
+
+def test_postgres_whatsapp_patient_count_has_no_cap_and_visits_use_range_filters():
+    patients_cursor = ScriptedCursor(descriptions=[["count"]], fetchone_rows=[(12345,)])
+    patients_repo = PostgresPatientFlowRepository(ScriptedManager(patients_cursor))  # type: ignore[arg-type]
+
+    assert asyncio.run(patients_repo.count_patients("org-1")) == 12345
+    statement = patients_cursor.executed[0][0].lower()
+    assert "count(*)" in statement
+    assert "limit" not in statement
+
+    visits_cursor = ScriptedCursor(descriptions=[["count"]], fetchone_rows=[(7,)])
+    visits_repo = PostgresPatientFlowRepository(ScriptedManager(visits_cursor))  # type: ignore[arg-type]
+
+    assert asyncio.run(visits_repo.count_visits_in_range("org-1", "start-iso", "end-iso")) == 7
+    statement = visits_cursor.executed[0][0].lower()
+    assert "patient_visits" in statement
+    assert visits_cursor.executed[0][1] == ("org-1", "start-iso", "end-iso")
+
+
+def test_postgres_whatsapp_appointment_and_followup_counts_use_status_and_range():
+    appointments_cursor = ScriptedCursor(descriptions=[["count"]], fetchone_rows=[(3,)])
+    appointments_repo = PostgresPatientFlowRepository(ScriptedManager(appointments_cursor))  # type: ignore[arg-type]
+
+    assert asyncio.run(appointments_repo.count_appointments_in_range("org-1", "s", "e")) == 3
+    statement = appointments_cursor.executed[0][0].lower()
+    assert "appointments" in statement
+    assert appointments_cursor.executed[0][1] == ("org-1", "scheduled", "s", "e")
+
+    followups_cursor = ScriptedCursor(descriptions=[["count"]], fetchone_rows=[(2,)])
+    followups_repo = PostgresRecordsRepository(ScriptedManager(followups_cursor))  # type: ignore[arg-type]
+
+    assert asyncio.run(followups_repo.count_follow_ups_in_range("org-1", "s", "e")) == 2
+    statement = followups_cursor.executed[0][0].lower()
+    assert "follow_ups" in statement
+    assert followups_cursor.executed[0][1] == ("org-1", "scheduled", "s", "e")
+
+
 def test_postgres_platform_errors_repository_creates_trimmed_error():
     cursor = ScriptedCursor(
         descriptions=[PLATFORM_ERROR_COLUMNS],

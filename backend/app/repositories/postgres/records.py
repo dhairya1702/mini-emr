@@ -385,6 +385,33 @@ class PostgresRecordsRepository:
 
         return await asyncio.to_thread(_create)
 
+    async def count_follow_ups_in_range(
+        self,
+        org_id: str,
+        start: str,
+        end: str,
+        *,
+        status: str = "scheduled",
+    ) -> int:
+        def _count() -> int:
+            with self.connection_manager.pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        select count(*)::bigint
+                        from public.follow_ups
+                        where org_id = %s
+                          and status = %s
+                          and scheduled_for >= %s
+                          and scheduled_for < %s
+                        """,
+                        (org_id, status, start, end),
+                    )
+                    row = cursor.fetchone()
+                    return int(row[0] or 0) if row else 0
+
+        return await asyncio.to_thread(_count)
+
     async def list_follow_ups(
         self,
         org_id: str,

@@ -446,6 +446,55 @@ def test_whatsapp_doctor_binding_can_chat(client, monkeypatch: pytest.MonkeyPatc
     assert statuses == ["received", "sent"]
 
 
+def test_whatsapp_revenue_and_counts_use_aggregates(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client, identifier="whatsapp-aggregates@clinic.com", clinic_name="WhatsApp Aggregates Clinic"
+    )
+    org_id = session["user"]["org_id"]
+    monkeypatch.setattr(config_module, "get_settings", lambda: _settings())
+    monkeypatch.setattr(whatsapp_route, "WhatsAppClient", FakeWhatsAppClient)
+    FakeWhatsAppClient.sent = []
+    repo.clinic_settings[org_id]["timezone"] = "UTC"
+
+    async def _fail_full_load(*_args, **_kwargs):
+        raise AssertionError("full-table load must not happen for aggregate intents")
+
+    monkeypatch.setattr(repo, "list_invoices", _fail_full_load)
+    monkeypatch.setattr(repo, "list_patient_visits", _fail_full_load)
+    monkeypatch.setattr(repo, "list_patients", _fail_full_load)
+    _bind_owner(repo, org_id)
+
+    for text in ("revenue today", "total revenue", "pending payments", "patients today", "total patients", "today summary"):
+        response = _post_whatsapp_text(test_client, text)
+        assert response.status_code == 200
+        assert FakeWhatsAppClient.sent, text
+
+
+def test_whatsapp_total_patients_reports_full_count_above_ten_thousand(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client, identifier="whatsapp-huge@clinic.com", clinic_name="WhatsApp Huge Clinic"
+    )
+    org_id = session["user"]["org_id"]
+    monkeypatch.setattr(config_module, "get_settings", lambda: _settings())
+    monkeypatch.setattr(whatsapp_route, "WhatsAppClient", FakeWhatsAppClient)
+    FakeWhatsAppClient.sent = []
+    repo.clinic_settings[org_id]["timezone"] = "UTC"
+
+    async def _count_patients(_org_id: str) -> int:
+        return 12345
+
+    monkeypatch.setattr(repo, "count_patients", _count_patients)
+    _bind_owner(repo, org_id)
+
+    response = _post_whatsapp_text(test_client, "total patients")
+
+    assert response.status_code == 200
+    assert FakeWhatsAppClient.sent
+    assert "Total patient records: 12345." in FakeWhatsAppClient.sent[-1]["body"]
+
+
 def test_internal_whatsapp_binding_seed_endpoint_allows_doctor_role(client, monkeypatch: pytest.MonkeyPatch):
     test_client, repo = client
     session = register_test_clinic(
