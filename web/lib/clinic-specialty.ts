@@ -7,22 +7,22 @@ export const CLINIC_SPECIALTY_OPTIONS: Array<{
 }> = [
   {
     value: "optometry",
-    label: "Optometrist",
-    description: "Enable eye exam and optometry-specific workflows as they are added.",
+    label: "Optometry",
+    description: "For eye exams, refraction, prescriptions, lenses, and optical clinic workflows.",
   },
   {
     value: "general_physician",
     label: "General Physician",
-    description: "Keep the shared clinic workflow without optometry-specific modules.",
+    description: "For everyday outpatient care, diagnosis, prescriptions, certificates, and billing.",
   },
   {
     value: "pediatrics",
     label: "Pediatrics",
-    description: "Enable growth tracking, well-child structured visits, pediatric handouts, and pediatric follow-ups.",
+    description: "For child visits, growth tracking, vaccination context, parent guidance, and pediatric notes.",
   },
   {
     value: "dentistry",
     label: "Dentistry",
-    description: "Enable dental workflows for oral health, tooth pain, gum issues, procedures, and orthodontic context.",
+    description: "For dental complaints, procedures, tooth-specific notes, treatment plans, and billing.",
   },
 ];
