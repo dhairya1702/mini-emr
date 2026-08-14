@@ -763,38 +763,39 @@ export default function SuperdashboardPage() {
               <h2 className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">Platform errors</h2>
               <span className="rounded-full bg-amber-50 px-4 py-2 text-sm font-black text-amber-700">{errors.length} rows</span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1080px] text-left">
+            <div>
+              <table className="w-full table-fixed text-left">
                 <thead className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
                   <tr>
-                    <th className="px-7 py-4">Time</th>
-                    <th className="px-7 py-4">Method</th>
-                    <th className="px-7 py-4">Path</th>
-                    <th className="px-7 py-4">Status</th>
-                    <th className="px-7 py-4">Type</th>
-                    <th className="px-7 py-4">Identifier</th>
-                    <th className="px-7 py-4">Message</th>
+                    <th className="w-[12%] px-5 py-4">Time</th>
+                    <th className="w-[7%] px-4 py-4">Method</th>
+                    <th className="w-[12%] px-4 py-4">Path</th>
+                    <th className="w-[7%] px-4 py-4">Status</th>
+                    <th className="w-[13%] px-4 py-4">Type</th>
+                    <th className="w-[13%] px-4 py-4">Identifier</th>
+                    <th className="w-[36%] px-5 py-4">Message</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(errors.length ? errors : []).map((error) => {
                     const contextText = formatErrorContext(error.context);
                     return (
-                      <tr key={error.id} className="border-t border-slate-100 align-top text-base">
-                        <td className="px-7 py-5 font-bold text-slate-600">{new Date(error.created_at).toLocaleString()}</td>
-                        <td className="px-7 py-5 font-black">{error.method}</td>
-                        <td className="max-w-sm px-7 py-5">
-                          <span className="inline-flex items-start gap-2 whitespace-normal break-all font-bold text-blue-700">
-                            {error.path} <ExternalLink className="mt-1 h-4 w-4 shrink-0" />
+                      <tr key={error.id} className="border-t border-slate-100 align-top text-sm">
+                        <td className="px-5 py-5 font-bold text-slate-600">{new Date(error.created_at).toLocaleString()}</td>
+                        <td className="px-4 py-5 font-black">{error.method}</td>
+                        <td className="px-4 py-5">
+                          <span title={error.path} className="inline-flex max-w-full items-center gap-1 font-bold text-blue-700">
+                            <span className="truncate">{error.path}</span>
+                            <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                           </span>
                         </td>
-                        <td className="px-7 py-5">
+                        <td className="px-4 py-5">
                           <span className="rounded-full bg-rose-50 px-3 py-1 font-black text-rose-700">{error.status_code || "—"}</span>
                         </td>
-                        <td className="px-7 py-5 font-bold">{error.error_type}</td>
-                        <td className="max-w-xs break-all px-7 py-5 text-slate-600">{error.identifier || "—"}</td>
-                        <td className="min-w-[520px] px-7 py-5 text-slate-600">
-                          <p className="whitespace-normal break-words font-semibold">{error.message}</p>
+                        <td className="truncate px-4 py-5 font-bold" title={error.error_type}>{error.error_type}</td>
+                        <td className="truncate px-4 py-5 text-slate-600" title={error.identifier || "—"}>{error.identifier || "—"}</td>
+                        <td className="px-5 py-5 text-slate-600">
+                          <p className="line-clamp-3 whitespace-normal break-words font-semibold" title={error.message}>{error.message}</p>
                           <details className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                             <summary className="cursor-pointer text-sm font-black text-slate-700">Trace</summary>
                             <div className="mt-3 space-y-3">
