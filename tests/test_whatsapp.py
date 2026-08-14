@@ -115,8 +115,8 @@ def _bind_owner(repo, org_id: str) -> None:
     )
 
 
-def _post_whatsapp_text(test_client, text: str):
-    body = json.dumps(_payload(text)).encode("utf-8")
+def _post_whatsapp_text(test_client, text: str, *, from_wa_id: str = "919999999999"):
+    body = json.dumps(_payload(text, from_wa_id=from_wa_id)).encode("utf-8")
     return test_client.post(
         "/webhooks/whatsapp",
         content=body,
@@ -382,6 +382,91 @@ def test_whatsapp_appointments_this_week_command(client, monkeypatch: pytest.Mon
     assert response.status_code == 200
     assert "This week's appointments" in FakeWhatsAppClient.sent[-1]["body"]
     assert "Week Appointment" in FakeWhatsAppClient.sent[-1]["body"]
+
+
+def test_whatsapp_staff_binding_is_ignored(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="whatsapp-staff@clinic.com", clinic_name="WhatsApp Staff Clinic")
+    org_id = session["user"]["org_id"]
+    monkeypatch.setattr(config_module, "get_settings", lambda: _settings())
+    monkeypatch.setattr(whatsapp_route, "WhatsAppClient", FakeWhatsAppClient)
+    FakeWhatsAppClient.sent = []
+    asyncio.run(
+        repo.upsert_whatsapp_owner_binding(
+            org_id=org_id,
+            wa_id="918888888888",
+            phone="+918888888888",
+            display_name="Staff",
+            role="staff",
+        )
+    )
+
+    for text in ("revenue today", "total revenue", "today summary", "patients this week"):
+        response = _post_whatsapp_text(test_client, text, from_wa_id="918888888888")
+        assert response.status_code == 200
+    assert FakeWhatsAppClient.sent == []
+    events = list(repo.whatsapp_message_events.values())
+    assert len(events) == 4
+    assert all(event["status"] == "ignored" for event in events)
+    assert all(event["intent"] for event in events)
+
+
+def test_whatsapp_doctor_binding_can_chat(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, repo = client
+    session = register_test_clinic(test_client, identifier="whatsapp-doctor@clinic.com", clinic_name="WhatsApp Doctor Clinic")
+    org_id = session["user"]["org_id"]
+    headers = auth_headers_for_token(session["token"])
+    monkeypatch.setattr(config_module, "get_settings", lambda: _settings())
+    monkeypatch.setattr(whatsapp_route, "WhatsAppClient", FakeWhatsAppClient)
+    FakeWhatsAppClient.sent = []
+    repo.clinic_settings[org_id]["timezone"] = "UTC"
+    asyncio.run(
+        repo.upsert_whatsapp_owner_binding(
+            org_id=org_id,
+            wa_id="917777777777",
+            phone="+917777777777",
+            display_name="Doctor",
+            role="doctor",
+        )
+    )
+
+    test_client.post(
+        "/patients",
+        json={"name": "Doctor Patient", "phone": "5550109999", "reason": "Consultation"},
+        headers=headers,
+    )
+
+    response = _post_whatsapp_text(test_client, "total patients", from_wa_id="917777777777")
+
+    assert response.status_code == 200
+    assert response.json()["processed"] == 1
+    assert FakeWhatsAppClient.sent
+    assert "Total patient records: 1." in FakeWhatsAppClient.sent[-1]["body"]
+    statuses = [event["status"] for event in repo.whatsapp_message_events.values()]
+    assert statuses == ["received", "sent"]
+
+
+def test_internal_whatsapp_binding_seed_endpoint_allows_doctor_role(client, monkeypatch: pytest.MonkeyPatch):
+    test_client, repo = client
+    session = register_test_clinic(
+        test_client, identifier="whatsapp-doctor-seed@clinic.com", clinic_name="WhatsApp Doctor Seed Clinic"
+    )
+    monkeypatch.setattr(config_module, "get_settings", lambda: _settings())
+
+    response = test_client.post(
+        "/internal/whatsapp/owner-bindings",
+        headers={"X-Internal-Scheduler-Token": "internal-test-token"},
+        json={
+            "org_id": session["user"]["org_id"],
+            "wa_id": "916666666666",
+            "phone": "+916666666666",
+            "display_name": "Doctor",
+            "role": "doctor",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["role"] == "doctor"
 
 
 def test_internal_whatsapp_binding_seed_endpoint(client, monkeypatch: pytest.MonkeyPatch):

@@ -12,6 +12,7 @@ from app.db import AppRepository, get_repository
 from app.schema_domains.auth_settings import UserOut
 from app.schema_domains.documents import WhatsAppDeliveryOut
 from app.services.whatsapp_assistant import (
+    BINDING_ROLES,
     handle_inbound_message,
     parse_whatsapp_messages,
     parse_whatsapp_statuses,
@@ -136,7 +137,7 @@ async def upsert_whatsapp_owner_binding(
     settings = config_module.get_settings()
     if not settings.internal_scheduler_token or x_internal_scheduler_token != settings.internal_scheduler_token:
         raise HTTPException(status_code=403, detail="Invalid internal token.")
-    if payload.role not in {"admin", "owner", "staff"}:
+    if payload.role not in BINDING_ROLES:
         raise HTTPException(status_code=400, detail="Invalid WhatsApp owner binding role.")
     return await repo.upsert_whatsapp_owner_binding(
         org_id=payload.org_id,

@@ -696,7 +696,7 @@ create table if not exists public.whatsapp_owner_bindings (
   wa_id text not null,
   phone text not null default '',
   display_name text not null default '',
-  role text not null default 'owner' check (role in ('admin', 'owner', 'staff')),
+  role text not null default 'owner' check (role in ('admin', 'owner', 'doctor', 'staff')),
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

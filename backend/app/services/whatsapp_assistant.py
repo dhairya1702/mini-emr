@@ -14,6 +14,10 @@ from app.db import AppRepository
 from app.services.whatsapp_client import WhatsAppClient, WhatsAppClientError
 
 
+BINDING_ROLES = frozenset({"admin", "owner", "doctor", "staff"})
+CHAT_ALLOWED_ROLES = frozenset({"admin", "owner", "doctor"})
+
+
 HELP_TEXT = (
     "Try: today summary, revenue today, revenue this week, revenue this month, "
     "total revenue, patients today, patients this week, patients this month, "
@@ -365,6 +369,21 @@ async def handle_inbound_message(
             wa_message_id=message.message_id,
             sender_wa_id=message.from_wa_id,
             message_text=message.text,
+            status="ignored",
+            raw_payload=message.raw_payload,
+        )
+        return "ignored"
+
+    role = str(binding.get("role") or "owner")
+    if role not in CHAT_ALLOWED_ROLES:
+        await repo.record_whatsapp_message_event(
+            org_id=str(binding["org_id"]),
+            binding_id=str(binding["id"]),
+            direction="inbound",
+            wa_message_id=message.message_id,
+            sender_wa_id=message.from_wa_id,
+            message_text=message.text,
+            intent=classify_intent(message.text),
             status="ignored",
             raw_payload=message.raw_payload,
         )

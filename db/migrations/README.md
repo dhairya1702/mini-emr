@@ -53,3 +53,4 @@ psql "$DATABASE_URL" -f db/migrations/<file>.sql
 | 2026-08-12 | `2026-08-12_follow_up_tracking_index.sql` | Speeds paginated follow-up views by indexing their latest reminder and invitation events. |
 | 2026-08-12 | `2026-08-12_patient_directory_pagination.sql` | Adds the stable organization/visit/id index used by cursor-paginated patient directories. |
 | 2026-08-13 | `2026-08-13_dashboard_revision_notifications.sql` | Publishes Postgres dashboard revision invalidations for SSE clients. |
+| 2026-08-14 | `2026-08-14_whatsapp_binding_doctor_role.sql` | Allows `doctor` WhatsApp owner bindings so doctors can use the owner assistant. |
