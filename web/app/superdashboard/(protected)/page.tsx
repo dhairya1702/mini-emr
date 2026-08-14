@@ -524,8 +524,8 @@ export default function SuperdashboardPage() {
                 <div key={String(title)} className="rounded-[24px] border border-slate-200 bg-white p-7 shadow-sm">
                   <h2 className="text-xl font-black tracking-[-0.04em]">{title}</h2>
                   <div className="mt-6 space-y-4">
-                    {(rows as string[][]).slice(0, 6).map(([name, value]) => (
-                      <div key={name} className="flex items-center justify-between border-b border-slate-100 pb-4 last:border-0">
+                    {(rows as string[][]).slice(0, 6).map(([name, value], index) => (
+                      <div key={`${name}-${index}`} className="flex items-center justify-between border-b border-slate-100 pb-4 last:border-0">
                         <span className="font-bold text-slate-700">{name}</span>
                         <span className="font-black text-slate-950">{value}</span>
                       </div>
