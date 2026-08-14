@@ -9,7 +9,7 @@ import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-spe
 import { DEFAULT_CLINIC_TIMEZONE, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
 import type { ClinicSetupStepKey } from "@/lib/setup-checklist";
 import { openNativeTimePicker } from "@/lib/time-input";
-import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload, StaffUserCreatePayload } from "@/lib/types";
+import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload, StaffUserCreatePayload, UserRole } from "@/lib/types";
 
 type SetupStepModalProps = {
   stepKey: ClinicSetupStepKey | null;
@@ -78,13 +78,18 @@ function stepTitle(stepKey: ClinicSetupStepKey) {
     case "sender_email":
       return "Configure sender email";
     case "first_staff_user":
-      return "Add first staff user";
+      return "Add first user";
     case "document_template":
       return "Upload document template";
     default:
       return "Create first patient";
   }
 }
+
+const selectableUserRoles: Array<{ value: Extract<UserRole, "staff" | "doctor">; label: string }> = [
+  { value: "staff", label: "Staff" },
+  { value: "doctor", label: "Doctor" },
+];
 
 function stepIcon(stepKey: ClinicSetupStepKey) {
   switch (stepKey) {
@@ -582,7 +587,13 @@ function StaffUserSetup({
   onLoadUsers,
   onComplete,
 }: Pick<SetupStepModalProps, "onAddUser" | "onLoadUsers"> & { onComplete: () => void }) {
-  const [form, setForm] = useState({ email: "", phone: "", identifier: "", password: "" });
+  const [form, setForm] = useState<{
+    email: string;
+    phone: string;
+    identifier: string;
+    password: string;
+    role: Extract<UserRole, "staff" | "doctor">;
+  }>({ email: "", phone: "", identifier: "", password: "", role: "staff" });
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -605,11 +616,12 @@ function StaffUserSetup({
         phone: form.phone.trim(),
         identifier: form.identifier.trim(),
         password: form.password,
+        role: form.role,
       });
       await onLoadUsers();
       onComplete();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to create staff user.");
+      setError(saveError instanceof Error ? saveError.message : "Failed to create user.");
     } finally {
       setIsSaving(false);
     }
@@ -648,15 +660,27 @@ function StaffUserSetup({
         </p>
       </label>
       <PasswordInput
-        label="Password"
+        label="Temporary password"
         value={form.password}
         onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
         placeholder="Minimum 12 characters"
       />
+      <label className="block">
+        <span className="mb-2 block text-sm font-medium text-slate-700">Role</span>
+        <select
+          value={form.role}
+          onChange={(event) => setForm((current) => ({ ...current, role: event.target.value as Extract<UserRole, "staff" | "doctor"> }))}
+          className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-slate-800 outline-none focus:border-[#6daed8]"
+        >
+          {selectableUserRoles.map((role) => (
+            <option key={role.value} value={role.value}>{role.label}</option>
+          ))}
+        </select>
+      </label>
       {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
       <div className="flex justify-end">
         <button type="submit" disabled={isSaving} className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60">
-          {isSaving ? "Creating..." : "Create staff user"}
+          {isSaving ? "Creating..." : "Create user"}
         </button>
       </div>
     </form>

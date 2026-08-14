@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { CLINIC_SPECIALTY_OPTIONS, type ClinicSpecialty } from "@/lib/clinic-specialty";
 import { openNativeTimePicker } from "@/lib/time-input";
 import { DEFAULT_CLINIC_TIMEZONE, getDefaultClinicTimeZone, listSupportedTimeZones, normalizeTimeZoneValue } from "@/lib/timezone";
-import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload } from "@/lib/types";
+import type { AuthUser, ClinicSettings, ClinicSettingsUpdatePayload, UserRole } from "@/lib/types";
 
 type StepKey = "specialty" | "hours" | "signature" | "email" | "staff" | "template" | "patient" | "done";
 
@@ -19,7 +19,7 @@ const steps: Array<{ key: StepKey; title: string; optional: boolean }> = [
   { key: "hours", title: "Clinic Hours", optional: false },
   { key: "signature", title: "Signature", optional: true },
   { key: "email", title: "Gmail Sender", optional: true },
-  { key: "staff", title: "Staff User", optional: true },
+  { key: "staff", title: "Users", optional: true },
   { key: "template", title: "Letterhead", optional: true },
   { key: "patient", title: "First Patient", optional: true },
   { key: "done", title: "Done", optional: false },
@@ -35,6 +35,13 @@ const iconByStep: Record<StepKey, typeof Stethoscope> = {
   patient: Users,
   done: Check,
 };
+
+const selectableUserRoles: Array<{ value: Extract<UserRole, "staff" | "doctor">; label: string }> = [
+  { value: "staff", label: "Staff" },
+  { value: "doctor", label: "Doctor" },
+];
+
+type CreatedSetupUser = AuthUser & { temporary_password?: string };
 
 function settingsPayload(settings: ClinicSettings, patch: Partial<ClinicSettingsUpdatePayload>): ClinicSettingsUpdatePayload {
   return {
@@ -118,8 +125,14 @@ export default function OnboardingSetupPage() {
     sender_email: "",
     app_password: "",
   });
-  const [staff, setStaff] = useState({ email: "", phone: "", identifier: "", password: "" });
-  const [createdStaffUsers, setCreatedStaffUsers] = useState<AuthUser[]>([]);
+  const [staff, setStaff] = useState<{
+    email: string;
+    phone: string;
+    identifier: string;
+    password: string;
+    role: Extract<UserRole, "staff" | "doctor">;
+  }>({ email: "", phone: "", identifier: "", password: "", role: "staff" });
+  const [createdStaffUsers, setCreatedStaffUsers] = useState<CreatedSetupUser[]>([]);
   const [patient, setPatient] = useState({ name: "", phone: "", reason: "" });
   const [templateSettings, setTemplateSettings] = useState<ClinicSettings | null>(null);
   const [signaturePreviewUrl, setSignaturePreviewUrl] = useState("");
@@ -358,7 +371,7 @@ export default function OnboardingSetupPage() {
   async function saveStaff(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!staff.email.trim() || !staff.phone.trim() || !staff.identifier.trim()) {
-      setError("Enter the staff user's email, phone number, and login ID, or continue without adding another user.");
+      setError("Enter the user's email, phone number, and login ID, or continue without adding another user.");
       return;
     }
     if (staff.password.length < 12) {
@@ -373,13 +386,14 @@ export default function OnboardingSetupPage() {
         phone: staff.phone.trim(),
         identifier: staff.identifier.trim(),
         password: staff.password,
+        role: staff.role,
       });
-      setCreatedStaffUsers((current) => [...current, created]);
-      setStaff({ email: "", phone: "", identifier: "", password: "" });
+      setCreatedStaffUsers((current) => [...current, { ...created, temporary_password: staff.password }]);
+      setStaff({ email: "", phone: "", identifier: "", password: "", role: "staff" });
       markComplete("staff");
-      setStatus("Staff user added. Add another user or continue.");
+      setStatus("User added. Add another user or continue.");
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to create staff user.");
+      setError(saveError instanceof Error ? saveError.message : "Failed to create user.");
     } finally {
       setIsSaving(false);
     }
@@ -707,41 +721,66 @@ export default function OnboardingSetupPage() {
 
           {activeStep.key === "staff" ? (
             <form className="space-y-4" onSubmit={saveStaff}>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">
-                  Email <span className="text-rose-500">*</span>
-                </span>
-                <input
-                  type="email"
-                  value={staff.email}
-                  onChange={(event) => setStaff((current) => ({ ...current, email: event.target.value }))}
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">
+                    Email <span className="text-rose-500">*</span>
+                  </span>
+                  <input
+                    type="email"
+                    value={staff.email}
+                    onChange={(event) => setStaff((current) => ({ ...current, email: event.target.value }))}
+                    className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Phone number</span>
+                  <input
+                    value={staff.phone}
+                    onChange={(event) => setStaff((current) => ({ ...current, phone: event.target.value }))}
+                    className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Login ID</span>
+                  <input value={staff.identifier} onChange={(event) => setStaff((current) => ({ ...current, identifier: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none" />
+                </label>
+                <PasswordInput label="Temporary password" value={staff.password} onChange={(event) => setStaff((current) => ({ ...current, password: event.target.value }))} placeholder="Minimum 12 characters" />
+              </div>
+              <p className="-mt-2 text-sm text-slate-500">
+                Login ID is the login credential. It can match the phone number or be a separate username.
+              </p>
+              <label className="block md:max-w-sm">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Role</span>
+                <select
+                  value={staff.role}
+                  onChange={(event) => setStaff((current) => ({ ...current, role: event.target.value as Extract<UserRole, "staff" | "doctor"> }))}
                   className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none"
-                />
+                >
+                  {selectableUserRoles.map((role) => (
+                    <option key={role.value} value={role.value}>{role.label}</option>
+                  ))}
+                </select>
               </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Phone number</span>
-                <input
-                  value={staff.phone}
-                  onChange={(event) => setStaff((current) => ({ ...current, phone: event.target.value }))}
-                  className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Login ID</span>
-                <input value={staff.identifier} onChange={(event) => setStaff((current) => ({ ...current, identifier: event.target.value }))} className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 outline-none" />
-                <p className="mt-2 text-sm text-slate-500">
-                  This is the login credential. It can match the phone number or be a separate username.
-                </p>
-              </label>
-              <PasswordInput label="Temporary password" value={staff.password} onChange={(event) => setStaff((current) => ({ ...current, password: event.target.value }))} placeholder="Minimum 12 characters" />
               {createdStaffUsers.length ? (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-emerald-900">Added in this setup</p>
-                  <div className="mt-2 grid gap-2">
+                <div className="rounded-xl border border-[#dbe7ef] bg-[#f3f8fb]/40 px-4 py-3">
+                  <p className="text-sm font-semibold text-slate-900">Users</p>
+                  <div className="mt-3 grid gap-2">
                     {createdStaffUsers.map((user) => (
-                      <div key={user.id} className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 text-sm text-emerald-900">
-                        <span>{user.identifier}</span>
-                        <span className="text-xs uppercase tracking-[0.16em] text-emerald-700">{user.role}</span>
+                      <div key={user.id} className="rounded-lg border border-[#e3edf4] bg-white px-4 py-3 text-sm text-slate-700">
+                        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                          <span className="font-medium text-slate-900">{user.email}</span>
+                          <span>{user.phone}</span>
+                          <span className="rounded-full bg-[#eef6fb] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#2a6fa8]">
+                            {user.role}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500">
+                          <span>Login ID: {user.identifier}</span>
+                          {user.temporary_password ? <span>Temporary password: {user.temporary_password}</span> : null}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -753,12 +792,12 @@ export default function OnboardingSetupPage() {
                   Back
                 </button>
                 <div className="flex flex-col gap-3 sm:flex-row">
+                  <button type="submit" disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#2f8fd3] px-5 py-3 text-sm font-medium text-white disabled:opacity-60">
+                    {isSaving ? "Creating..." : "Add user"}
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
                   <button type="button" disabled={isSaving} onClick={skipOptional} className="rounded-xl border border-[#bfd7e8] bg-white px-5 py-3 text-sm font-medium text-slate-700">
                     {createdStaffUsers.length ? "Continue" : "Skip for now"}
-                  </button>
-                  <button type="submit" disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#2f8fd3] px-5 py-3 text-sm font-medium text-white disabled:opacity-60">
-                    {isSaving ? "Creating..." : "Add staff user"}
-                    <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
               </div>
