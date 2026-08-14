@@ -54,16 +54,15 @@ async def send_password_reset_for_user(
     link = _reset_link(token)
     clinic_name = str(clinic_settings.get("clinic_name") or "ClinicOS").strip() or "ClinicOS"
     target_name = str(target_user.get("name") or target_user.get("identifier") or "there").strip()
-    requested_by_name = (requested_by.name or requested_by.identifier) if requested_by else "you"
     text = (
         f"Hi {target_name},\n\n"
-        f"A password reset was requested for your {clinic_name} account by {requested_by_name}.\n\n"
+        f"A password reset was requested for your {clinic_name} account.\n\n"
         f"Reset your password within 1 hour:\n{link}\n\n"
         "If you did not expect this, contact your clinic admin."
     )
     html = (
         f"<p>Hi {escape(target_name)},</p>"
-        f"<p>A password reset was requested for your {escape(clinic_name)} account by {escape(requested_by_name)}.</p>"
+        f"<p>A password reset was requested for your {escape(clinic_name)} account.</p>"
         f"<p><a href=\"{escape(link)}\">Reset your password</a></p>"
         "<p>This link expires in 1 hour.</p>"
         "<p>If you did not expect this, contact your clinic admin.</p>"
