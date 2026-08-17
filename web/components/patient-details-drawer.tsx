@@ -54,6 +54,8 @@ import {
 import {
   buildEyeExamSummary,
   createEmptyEyeExam,
+  formatModuleSummary as formatSharedModuleSummary,
+  moduleEntriesFor,
   normalizeEyeExamPayload,
 } from "@/lib/structured-modules";
 
@@ -132,21 +134,10 @@ function moduleLabel(moduleKey: SpecialtyModuleKey) {
 }
 
 function formatModuleSummary(entry: LongitudinalTrackRecord) {
-  const summary = entry.summary_fields?.summary;
-  if (typeof summary === "string" && summary.trim()) {
-    return summary.trim();
-  }
-  const result = entry.summary_fields?.result;
-  if (typeof result === "string" && result.trim()) {
-    return result.trim();
-  }
-  return `${moduleLabel(entry.track_type as SpecialtyModuleKey)} saved.`;
-}
-
-function moduleEntriesFor(moduleEntries: LongitudinalTrackRecord[], moduleKey: SpecialtyModuleKey) {
-  return moduleEntries
-    .filter((entry) => entry.track_type === moduleKey)
-    .sort((left, right) => new Date(right.measured_at).getTime() - new Date(left.measured_at).getTime());
+  return formatSharedModuleSummary(
+    entry,
+    `${moduleLabel(entry.track_type as SpecialtyModuleKey)} saved.`,
+  );
 }
 
 const PROFILE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;

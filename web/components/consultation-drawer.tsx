@@ -6,6 +6,17 @@ import NextImage from "next/image";
 import type { ReactNode } from "react";
 
 import { useClinicShell } from "@/components/clinic-shell-provider";
+import {
+  createConsultationId as createId,
+  createEmptyConsultationForm as createEmptyForm,
+  type PrescriptionDraft,
+} from "@/features/consultation/model/consultation-form";
+import {
+  normalizePrescriptionNotes,
+  syncDraftMedicationTable,
+  togglePrescriptionNoteValue,
+} from "@/features/consultation/model/medication-table";
+import { buildConsultationNotePayload } from "@/features/consultation/model/note-payload";
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { getSpecialtyModules, specialtyHasModule, type SpecialtyModuleKey } from "@/lib/specialty";
 import { clearConsultationWorkspace, readConsultationWorkspace, writeConsultationWorkspace } from "@/lib/consultation-workspace";
@@ -30,7 +41,6 @@ import {
   MyopiaMeasurementPayload,
   NoteAsset,
   OperationResult,
-  OptometryChiefComplaintEntry,
   Patient,
   PediatricGrowthMeasurementPayload,
   TbiEvaluationCreatePayload,
@@ -56,8 +66,9 @@ import {
 import {
   buildEyeExamSummary,
   createEmptyEyeExam,
-  flattenEyeExamForNote,
+  formatModuleSummary as formatSharedModuleSummary,
   hasEyeExamData,
+  moduleEntriesFor,
   normalizeEyeExamPayload,
 } from "@/lib/structured-modules";
 import {
@@ -68,7 +79,6 @@ import {
   createEmptyBinocularVision,
   createEmptyContactLens,
   createEmptyLowVision,
-  createEmptyMyopiaManagement,
   formatLocalDateTimeInput,
   hasContactLensData,
   hasContactLensEyeData,
@@ -77,18 +87,9 @@ import {
   type MyopiaMeasurementDraft,
 } from "@/lib/optometry/consultation";
 
-function createId() {
-  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
-  }
-  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
 const MAX_ATTACHMENT_SIZE_BYTES = 6 * 1024 * 1024;
 const MAX_ATTACHMENT_COUNT = 6;
 const SUPPORTED_ATTACHMENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
-const MEDICATION_TABLE_HEADER = "Medicine | Strength | Dose | Route | Schedule | Duration | Quantity | Instructions";
-const MEDICATION_TABLE_SEPARATOR = "--- | --- | --- | --- | --- | --- | --- | ---";
 const PEDIATRIC_FOLLOW_UP_DEFAULTS: Record<string, { days: number; interval: string; notePrefix: string }> = {
   routine_review: { days: 90, interval: "3 months", notePrefix: "Routine pediatric review" },
   growth_recheck: { days: 60, interval: "2 months", notePrefix: "Growth recheck" },
@@ -96,84 +97,11 @@ const PEDIATRIC_FOLLOW_UP_DEFAULTS: Record<string, { days: number; interval: str
   counseling_review: { days: 30, interval: "1 month", notePrefix: "Counseling review" },
 };
 
-type PrescriptionDraft = {
-  itemId: string;
-  name: string;
-  unit: string;
-  quantity: string;
-  duration: string;
-  notes: string;
-  morning: boolean;
-  afternoon: boolean;
-  night: boolean;
-};
-
-function noteTableCell(value: string | number | null | undefined) {
-  const cleaned = String(value ?? "").replace(/\|/g, "/").replace(/\s+/g, " ").trim();
-  return cleaned || "—";
-}
-
-function syncDraftMedicationTable(content: string, extractions: ClinicalExtractions) {
-  const medicines = extractions.medications_prescribed || [];
-  const contentWithoutMedicationTable = content
-    .replace(/\n\nMedications Prescribed:\n[\s\S]*?(?=\n\nFollow-up Advice:\n|$)/, "")
-    .trim();
-
-  if (!medicines.length) {
-    return contentWithoutMedicationTable;
-  }
-
-  const medicineRows = medicines.map((medicine) => (
-    [
-      medicine.name,
-      medicine.strength,
-      medicine.dose,
-      medicine.route,
-      medicine.schedule,
-      medicine.duration,
-      medicine.quantity,
-      medicine.instructions,
-    ].map(noteTableCell).join(" | ")
-  ));
-  const medicationSection = [
-    "Medications Prescribed:",
-    MEDICATION_TABLE_HEADER,
-    MEDICATION_TABLE_SEPARATOR,
-    ...medicineRows,
-  ].join("\n");
-
-  const followUpMatch = contentWithoutMedicationTable.match(/\n\nFollow-up Advice:\n/);
-  if (!followUpMatch || followUpMatch.index === undefined) {
-    return `${contentWithoutMedicationTable}\n\n${medicationSection}`.trim();
-  }
-
-  return [
-    contentWithoutMedicationTable.slice(0, followUpMatch.index).trim(),
-    medicationSection,
-    contentWithoutMedicationTable.slice(followUpMatch.index + 2).trim(),
-  ].filter(Boolean).join("\n\n");
-}
-
 const PRESCRIPTION_NOTE_OPTIONS = [
   "Before food",
   "After food",
   "PRN",
 ];
-
-function normalizePrescriptionNotes(value: string) {
-  return value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
-function togglePrescriptionNoteValue(currentValue: string, option: string) {
-  const current = normalizePrescriptionNotes(currentValue);
-  if (current.includes(option)) {
-    return current.filter((entry) => entry !== option).join(", ");
-  }
-  return [...current, option].join(", ");
-}
 
 interface ConsultationDrawerProps {
   patient: Patient | null;
@@ -235,77 +163,6 @@ function fileToBase64(file: File) {
   });
 }
 
-function createEmptyForm() {
-  return {
-    symptoms: "",
-    chiefComplaints: [] as OptometryChiefComplaintEntry[],
-    lastAppliedChiefComplaintText: "",
-    diagnosis: "",
-    medications: "",
-    treatment: "",
-    notes: "",
-    bloodPressureSystolic: "",
-    bloodPressureDiastolic: "",
-    pulse: "",
-    spo2: "",
-    bloodSugar: "",
-    testScores: [{ id: createId(), label: "", value: "" }],
-    eyeExam: createEmptyEyeExam(),
-    contactLens: createEmptyContactLens(),
-    binocularVision: createEmptyBinocularVision(),
-    lowVision: createEmptyLowVision(),
-    myopiaManagement: createEmptyMyopiaManagement(),
-    growthMeasurement: {
-      measured_at: formatLocalDateTimeInput(new Date()),
-      height_cm: "",
-      weight_kg: "",
-      head_circumference_cm: "",
-      visit_notes: "",
-      savedRecord: null as null | { bmi: number; track_id: string },
-    },
-    wellChildVisit: {
-      visit_band: "school_age",
-      nutrition_summary: "",
-      sleep_summary: "",
-      elimination_summary: "",
-      school_behavior_summary: "",
-      parent_concerns: "",
-      assessment_summary: "",
-    },
-    parentHandoutRequest: {
-      template_key: "well_visit_summary",
-      instructions: "",
-      generated_title: "",
-      generated_content: "",
-    },
-    pediatricFollowUpPlan: {
-      preset_key: "routine_review",
-      suggested_interval: "",
-      notes: "",
-    },
-    followUpDate: "",
-    followUpNotes: "",
-    generatedNote: "",
-    prescriptions: [] as PrescriptionDraft[],
-    assets: [] as NoteAsset[],
-  };
-}
-
-function buildMedicationTreatmentPayload(medications: string, treatment: string) {
-  const medicationText = medications.trim();
-  const treatmentText = treatment.trim();
-  if (medicationText && treatmentText) {
-    return `Medications:\n${medicationText}\n\nTreatment:\n${treatmentText}`;
-  }
-  if (medicationText) {
-    return `Medications:\n${medicationText}`;
-  }
-  if (treatmentText) {
-    return `Treatment:\n${treatmentText}`;
-  }
-  return "";
-}
-
 type ConsultationWorkspaceSnapshot = {
   form: ReturnType<typeof createEmptyForm>;
   openSections: {
@@ -358,21 +215,7 @@ const TEST_MODULE_COPY: Record<SpecialtyModuleKey, { label: string }> = {
 };
 
 function formatModuleSummary(entry: LongitudinalTrackRecord) {
-  const summary = entry.summary_fields?.summary;
-  if (typeof summary === "string" && summary.trim()) {
-    return summary.trim();
-  }
-  const result = entry.summary_fields?.result;
-  if (typeof result === "string" && result.trim()) {
-    return result.trim();
-  }
-  return "Evaluation saved.";
-}
-
-function moduleEntriesFor(moduleEntries: LongitudinalTrackRecord[], moduleKey: SpecialtyModuleKey) {
-  return moduleEntries
-    .filter((entry) => entry.track_type === moduleKey)
-    .sort((left, right) => new Date(right.measured_at).getTime() - new Date(left.measured_at).getTime());
+  return formatSharedModuleSummary(entry, "Evaluation saved.");
 }
 
 function createClosedConsultationSections() {
@@ -388,15 +231,6 @@ function createClosedConsultationSections() {
     lowVision: false,
     myopiaManagement: false,
   };
-}
-
-function prescriptionScheduleLabel(prescription: PrescriptionDraft) {
-  const parts = [
-    prescription.morning ? "Morning" : "",
-    prescription.afternoon ? "Afternoon" : "",
-    prescription.night ? "Night" : "",
-  ].filter(Boolean);
-  return parts.join(", ") || "As directed";
 }
 
 function addDaysToDateInput(days: number) {
@@ -998,9 +832,6 @@ export function ConsultationDrawer({
     () => form.assets.find((asset) => asset.kind === "drawing") ?? null,
     [form.assets],
   );
-  const medicationPlan = useMemo(() => {
-    return buildMedicationTreatmentPayload(form.medications, form.treatment);
-  }, [form.medications, form.treatment]);
   useEffect(() => {
     if (!patientId || !isOptometryClinic || !isBinocularVisionOpen) {
       return;
@@ -1086,92 +917,17 @@ export function ConsultationDrawer({
 
   const currentPatient = patient;
 
-  function buildStructuredModules() {
-    const structuredModules: Array<{ module_type: string; payload: Record<string, unknown> }> = [...currentConsultationModules];
-    if (isPediatricsClinic && form.growthMeasurement.height_cm && form.growthMeasurement.weight_kg) {
-      structuredModules.push({
-        module_type: "pediatric_growth_measurement",
-        payload: {
-          measured_at: new Date(form.growthMeasurement.measured_at).toISOString(),
-          height_cm: Number(form.growthMeasurement.height_cm),
-          weight_kg: Number(form.growthMeasurement.weight_kg),
-          head_circumference_cm: form.growthMeasurement.head_circumference_cm ? Number(form.growthMeasurement.head_circumference_cm) : null,
-          visit_notes: form.growthMeasurement.visit_notes.trim(),
-        },
-      });
-    }
-    if (isPediatricsClinic && (
-      form.wellChildVisit.nutrition_summary.trim() ||
-      form.wellChildVisit.sleep_summary.trim() ||
-      form.wellChildVisit.elimination_summary.trim() ||
-      form.wellChildVisit.school_behavior_summary.trim() ||
-      form.wellChildVisit.parent_concerns.trim() ||
-      form.wellChildVisit.assessment_summary.trim()
-    )) {
-      structuredModules.push({
-        module_type: "well_child_visit",
-        payload: form.wellChildVisit,
-      });
-    }
-    if (isPediatricsClinic && form.parentHandoutRequest.template_key.trim()) {
-      structuredModules.push({
-        module_type: "parent_handout_request",
-        payload: {
-          template_key: form.parentHandoutRequest.template_key,
-          instructions: form.parentHandoutRequest.instructions,
-        },
-      });
-    }
-    if (isPediatricsClinic && (
-      form.pediatricFollowUpPlan.preset_key.trim() ||
-      form.pediatricFollowUpPlan.suggested_interval.trim() ||
-      form.pediatricFollowUpPlan.notes.trim()
-    )) {
-      structuredModules.push({
-        module_type: "pediatric_follow_up_plan",
-        payload: form.pediatricFollowUpPlan,
-      });
-    }
-    return structuredModules;
-  }
-
   function buildConsultationPayload(options?: { includeNoteId?: boolean }): GenerateNotePayload {
-    const refreshingDraft = Boolean(options?.includeNoteId && currentNoteId && noteStatus === "draft");
-    return {
-      note_id: refreshingDraft ? currentNoteId : undefined,
-      patient_id: currentPatient.id,
-      visit_id: currentPatient.current_visit?.id ?? null,
-      symptoms: form.symptoms,
-      diagnosis: form.diagnosis,
-      medications: medicationPlan,
-      notes: form.notes,
-      blood_pressure_systolic: form.bloodPressureSystolic ? Number(form.bloodPressureSystolic) : null,
-      blood_pressure_diastolic: form.bloodPressureDiastolic ? Number(form.bloodPressureDiastolic) : null,
-      pulse: form.pulse ? Number(form.pulse) : null,
-      spo2: form.spo2 ? Number(form.spo2) : null,
-      blood_sugar: form.bloodSugar ? Number(form.bloodSugar) : null,
-      test_scores: form.testScores
-        .filter((entry) => entry.label.trim() && entry.value.trim())
-        .map((entry) => ({ label: entry.label.trim(), value: entry.value.trim() })),
-      eye_exam: flattenEyeExamForNote(form.eyeExam),
-      contact_lens: null,
-      binocular_vision: null,
-      low_vision: null,
-      myopia_measurement: null,
-      structured_modules: buildStructuredModules(),
-      assets: form.assets,
-      prescriptions: form.prescriptions.map((entry) => ({
-        catalog_item_id: entry.itemId,
-        name: entry.name,
-        strength: "",
-        dose: "",
-        route: "",
-        schedule: prescriptionScheduleLabel(entry),
-        duration: entry.duration.trim(),
-        quantity: entry.quantity.trim(),
-        instructions: entry.notes.trim(),
-      })),
-    };
+    return buildConsultationNotePayload({
+      patientId: currentPatient.id,
+      visitId: currentPatient.current_visit?.id,
+      form,
+      currentModules: currentConsultationModules,
+      isPediatricsClinic,
+      currentNoteId,
+      noteStatus,
+      includeNoteId: options?.includeNoteId,
+    });
   }
 
   async function handleGenerate(event?: FormEvent) {

@@ -3,16 +3,10 @@
 import { MessageCircle, Printer, ReceiptIndianRupee, Sparkles, Trash2, X } from "lucide-react";
 import type { ReactNode } from "react";
 
+import type { DraftInvoiceItem } from "@/features/dashboard/billing/billing-draft";
 import { CatalogItem, Invoice, Patient, PaymentStatus } from "@/lib/types";
 
-export type DraftInvoiceItem = {
-  id: string;
-  catalog_item_id?: string | null;
-  item_type: "service" | "medicine" | "program";
-  label: string;
-  quantity: number;
-  unit_price: number;
-};
+export type { DraftInvoiceItem } from "@/features/dashboard/billing/billing-draft";
 
 interface SettingsDrawerBillingPanelProps {
   patients: Patient[];

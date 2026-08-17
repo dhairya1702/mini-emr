@@ -175,7 +175,7 @@ function flattenValues(value: unknown): unknown[] {
   return [value];
 }
 
-export function formatModuleSummary(entry: LongitudinalTrackRecord) {
+export function formatModuleSummary(entry: LongitudinalTrackRecord, fallback?: string) {
   const summary = entry.summary_fields?.summary;
   if (typeof summary === "string" && summary.trim()) {
     return summary.trim();
@@ -184,7 +184,7 @@ export function formatModuleSummary(entry: LongitudinalTrackRecord) {
   if (typeof result === "string" && result.trim()) {
     return result.trim();
   }
-  return `${moduleLabel(entry.track_type as SpecialtyModuleKey)} saved.`;
+  return fallback ?? `${moduleLabel(entry.track_type as SpecialtyModuleKey)} saved.`;
 }
 
 export function moduleEntriesFor(moduleEntries: LongitudinalTrackRecord[], moduleKey: SpecialtyModuleKey) {
