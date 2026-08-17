@@ -1,8 +1,8 @@
 "use client";
 
-import { type ChangeEvent, type ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowLeft, CalendarClock, ChevronDown, ChevronRight, ClipboardList, Clock3, Eye, FileText, Image as ImageIcon, LineChart, Mail, Pencil, Sparkles, Upload, UserRound, X } from "lucide-react";
+import { type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Activity, ArrowLeft, CalendarClock, ChevronDown, ChevronRight, ClipboardList, Clock3, Eye, FileText, Image as ImageIcon, LineChart, Mail, Pencil, Sparkles, UserRound, X } from "lucide-react";
 
 import type { ClinicSpecialty } from "@/lib/clinic-specialty";
 import { BinocularVisionModal } from "@/components/optometry/binocular-vision-modal";
@@ -14,6 +14,18 @@ import { TbiEvaluationModal } from "@/components/optometry/tbi-evaluation-modal"
 import { EyeExamModal } from "@/components/optometry/eye-exam-modal";
 import { OptometryHistoryReadOnly } from "@/components/optometry/history-panel";
 import { ReferralPackageModal } from "@/components/referral-package-modal";
+import {
+  PatientAttachmentsPanel,
+  PatientChartResourceOverlays,
+} from "@/features/patient-chart/resources/patient-chart-resource-panels";
+import { usePatientChartData } from "@/features/patient-chart/data/use-patient-chart-data";
+import {
+  PatientEditorFooter,
+  PatientEditorForm,
+} from "@/features/patient-chart/editor/patient-editor-form";
+import type { PatientEditSavePayload } from "@/features/patient-chart/editor/patient-editor-model";
+import { usePatientEditor } from "@/features/patient-chart/editor/use-patient-editor";
+import { usePatientChartResources } from "@/features/patient-chart/resources/use-patient-chart-resources";
 import { api } from "@/lib/api";
 import {
   buildBinocularVisionSummary,
@@ -30,7 +42,6 @@ import { createTrainingId } from "@/lib/training-mode";
 import {
   BinocularVisionEvaluationCreatePayload,
   BinocularVisionEvaluationRecord,
-  ConsultationNote,
   ContactLensEyeEntry,
   ContactLensPayload,
   EyeExamPayload,
@@ -38,16 +49,12 @@ import {
   LowVisionPayload,
   MyopiaHistory,
   MyopiaMeasurementPayload,
-  NoteAsset,
   Patient,
-  PatientAttachment,
   PatientChartVisit,
-  PatientSummary,
   PatientVisitAttachmentRow,
   PatientVisitDetail,
   PatientTimelineEvent,
   PediatricGrowthSummary,
-  SexAtBirth,
   TbiEvaluationCreatePayload,
   TbiEvaluationRecord,
 } from "@/lib/types";
@@ -60,14 +67,6 @@ import {
 } from "@/lib/structured-modules";
 
 type ChartTab = "visits" | "attachments" | "tests" | "timeline";
-
-type PhotoPreview = {
-  src: string;
-  alt: string;
-  title: string;
-  isLoading?: boolean;
-  revokeOnClose?: boolean;
-};
 
 interface PatientDetailsDrawerProps {
   patient: Patient | null;
@@ -91,20 +90,7 @@ interface PatientDetailsDrawerProps {
   /** Breadcrumb label shown next to the back button in full-screen mode (e.g. "Patients"). */
   fullScreenBackLabel?: string;
   onPatientUpdated?: (patient: Patient) => void;
-  onSave: (payloadPatientId: string, payload: {
-    name: string;
-    phone: string;
-    email: string;
-    address: string;
-    reason: string;
-    date_of_birth?: string | null;
-    sex_at_birth?: SexAtBirth | null;
-    gender_identity?: string;
-    age: number | null;
-    weight: number | null;
-    height: number | null;
-    temperature: number | null;
-  }) => Promise<void>;
+  onSave: (payloadPatientId: string, payload: PatientEditSavePayload) => Promise<void>;
 }
 
 function formatDateTime(value: string) {
@@ -140,189 +126,10 @@ function formatModuleSummary(entry: LongitudinalTrackRecord) {
   );
 }
 
-const PROFILE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
-const PROFILE_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-
 function patientInitials(patient: Patient) {
   const parts = patient.name.trim().split(/\s+/).filter(Boolean);
   const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
   return initials || "P";
-}
-
-function noteAttachmentKey(asset: NoteAsset) {
-  if (asset.attachment_id?.trim()) {
-    return `attachment:${asset.attachment_id.trim()}`;
-  }
-  return asset.id?.trim()
-    ? `id:${asset.id.trim()}`
-    : `fallback:${asset.name.trim()}:${asset.content_type.trim()}:${(asset.data_base64 || "").trim()}`;
-}
-
-function formatFileSize(bytes: number) {
-  if (!Number.isFinite(bytes) || bytes <= 0) {
-    return "0 B";
-  }
-  const units = ["B", "KB", "MB", "GB"];
-  let value = bytes;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
-}
-
-function openPatientAttachmentViewer(attachmentId: string) {
-  window.open(`/attachment-view/${attachmentId}`, "_blank");
-}
-
-function openNoteAttachmentViewer(asset: NoteAsset) {
-  const key = `clinic_note_attachment:${globalThis.crypto?.randomUUID?.() || `${Date.now()}`}`;
-  window.sessionStorage.setItem(key, JSON.stringify(asset));
-  window.open(`/attachment-view/note?key=${encodeURIComponent(key)}`, "_blank");
-}
-
-function isImageContentType(contentType: string) {
-  return contentType.startsWith("image/");
-}
-
-function noteAssetImageSrc(asset: NoteAsset) {
-  return asset.data_base64 ? `data:${asset.content_type || "image/jpeg"};base64,${asset.data_base64}` : "";
-}
-
-function PhotoPreviewModal({
-  preview,
-  onClose,
-}: {
-  preview: PhotoPreview | null;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    if (!preview) {
-      return;
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, preview]);
-
-  if (!preview) {
-    return null;
-  }
-
-  return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/85 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label={preview.title}>
-      <button type="button" className="absolute inset-0 cursor-zoom-out" onClick={onClose} aria-label="Close photo preview" />
-      <div className="relative z-10 flex max-h-full w-full max-w-6xl flex-col items-center gap-3">
-        <div className="flex w-full items-center justify-between gap-4 text-white">
-          <p className="truncate text-sm font-semibold sm:text-base">{preview.title}</p>
-          <button type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/20 bg-white/10 text-white transition hover:bg-white/20" aria-label="Close photo preview">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="relative flex min-h-[240px] w-full items-center justify-center overflow-hidden rounded-[18px] bg-slate-950/60">
-          {preview.isLoading ? (
-            <p className="px-6 py-16 text-sm text-slate-200">Opening photo...</p>
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={preview.src} alt={preview.alt} className="max-h-[82dvh] max-w-full object-contain" />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ProfilePhotoManagerModal({
-  open,
-  patientName,
-  photoSrc,
-  isBusy,
-  onChange,
-  onRemove,
-  onClose,
-}: {
-  open: boolean;
-  patientName: string;
-  photoSrc: string;
-  isBusy: boolean;
-  onChange: () => void;
-  onRemove: () => void;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !isBusy) {
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isBusy, onClose, open]);
-
-  if (!open) {
-    return null;
-  }
-
-  return (
-    <div className="fixed inset-0 z-[96] flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-label={`Manage ${patientName} profile photo`}>
-      <button type="button" className="absolute inset-0" onClick={isBusy ? undefined : onClose} aria-label="Close profile photo manager" />
-      <div className="relative z-10 w-full max-w-md rounded-[22px] border border-[#bfd7e8] bg-white p-5 shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
-        <div className="flex items-center justify-between gap-4">
-          <h3 className="text-lg font-semibold text-slate-900">Profile photo</h3>
-          <button type="button" disabled={isBusy} onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl border border-[#bfd7e8] text-slate-600 transition hover:bg-[#f3f8fb] disabled:opacity-50" aria-label="Close profile photo manager">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="mt-4 flex min-h-72 items-center justify-center overflow-hidden rounded-[18px] border border-[#dbe7ef] bg-[#f3f8fb]">
-          {photoSrc ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={photoSrc} alt={`${patientName} profile photo`} className="max-h-[55vh] w-full object-contain" />
-          ) : (
-            <p className="text-sm text-slate-500">Loading photo...</p>
-          )}
-        </div>
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          <button type="button" disabled={isBusy} onClick={onChange} className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60">
-            {isBusy ? "Uploading..." : "Change photo"}
-          </button>
-          <button type="button" disabled={isBusy} onClick={onRemove} className="rounded-xl border border-rose-200 bg-white px-4 py-3 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-60">
-            Remove photo
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type AttachmentPanelNoteRow = {
-  id: string;
-  label: string;
-  timestamp: string;
-  attachmentId?: string;
-  contentType: string;
-  open: () => void;
-};
-
-type AttachmentPanelPatientRow = {
-  id: string;
-  label: string;
-  timestamp: string;
-  fileSize: number;
-  kind: "patient_attachment";
-  attachment: PatientAttachment;
-  open: () => void;
-};
-
-function isAttachmentPanelPatientRow(row: AttachmentPanelNoteRow | AttachmentPanelPatientRow): row is AttachmentPanelPatientRow {
-  return (row as AttachmentPanelPatientRow).kind === "patient_attachment";
 }
 
 function getEventTitle(event: PatientTimelineEvent) {
@@ -389,10 +196,6 @@ function timelineDescription(event: PatientTimelineEvent) {
   return summary.trim() || "Consultation note recorded.";
 }
 
-function getPhoneDigits(value: string) {
-  return value.replace(/\D/g, "");
-}
-
 function patientMetadataLine(patient: Patient) {
   const sexLabel = patient.sex_at_birth
     ? patient.sex_at_birth.split("_").map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ")
@@ -435,39 +238,6 @@ function ChartTabButton({
         </span>
       ) : null}
     </button>
-  );
-}
-
-function SummaryField({
-  label,
-  value,
-  readOnly,
-  onChange,
-  inputMode,
-  type = "text",
-}: {
-  label: string;
-  value: string;
-  readOnly: boolean;
-  onChange: (value: string) => void;
-  inputMode?: "numeric" | "decimal" | "tel";
-  type?: string;
-}) {
-  return (
-    <label className="block min-w-0">
-      <span className="text-sm font-semibold text-black">{label}</span>
-      {readOnly ? (
-        <p className="mt-1 truncate text-sm font-medium text-black">{value || "—"}</p>
-      ) : (
-        <input
-          value={value}
-          type={type}
-          inputMode={inputMode}
-          onChange={(event) => onChange(event.target.value)}
-          className="mt-1 h-9 w-full rounded-lg border border-[#bfd7e8] bg-[#f7fbfd] px-3 text-sm font-medium text-black outline-none transition focus:border-[#6daed8] focus:bg-white"
-        />
-      )}
-    </label>
   );
 }
 
@@ -1081,151 +851,6 @@ function TestsPanel({
   );
 }
 
-function AttachmentsPanel({
-  attachmentError,
-  isLoading,
-  isDeletingAttachmentId,
-  isSendingAttachmentId,
-  isUploadingAttachment,
-  noteAssets,
-  onDeletePatientAttachment,
-  onPatientAttachmentFileChange,
-  onOpenPatientAttachment,
-  onOpenLinkedAttachment,
-  onOpenNoteImage,
-  onStartSendAttachment,
-  patientAttachments,
-}: {
-  attachmentError: string;
-  isLoading: boolean;
-  isDeletingAttachmentId: string;
-  isSendingAttachmentId: string;
-  isUploadingAttachment: boolean;
-  noteAssets: Array<NoteAsset & { note_id: string; note_created_at: string }>;
-  onDeletePatientAttachment: (attachment: PatientAttachment) => Promise<void>;
-  onPatientAttachmentFileChange: (file: File | null) => Promise<void>;
-  onOpenPatientAttachment: (attachment: PatientAttachment) => void;
-  onOpenLinkedAttachment: (attachmentId: string, label: string, contentType: string, timestamp: string) => void;
-  onOpenNoteImage: (asset: NoteAsset) => void;
-  onStartSendAttachment: (attachment: Pick<PatientAttachment, "id" | "file_name" | "content_type">) => void;
-  patientAttachments: PatientAttachment[];
-}) {
-  const noteRows: AttachmentPanelNoteRow[] = [
-    ...noteAssets.map((asset) => ({
-      id: `note-${asset.note_id}-${asset.id}`,
-      label: asset.name,
-      timestamp: asset.note_created_at,
-      attachmentId: asset.attachment_id,
-      contentType: asset.content_type,
-      open: () => {
-        if (asset.attachment_id) {
-          onOpenLinkedAttachment(asset.attachment_id, asset.name, asset.content_type, asset.note_created_at);
-          return;
-        }
-        if (isImageContentType(asset.content_type) && asset.data_base64) {
-          onOpenNoteImage(asset);
-          return;
-        }
-        openNoteAttachmentViewer(asset);
-      },
-    })),
-  ];
-  const noteAttachmentIds = new Set(noteAssets.map((asset) => asset.attachment_id).filter(Boolean));
-  const patientRows: AttachmentPanelPatientRow[] = patientAttachments
-    .filter((attachment) => !noteAttachmentIds.has(attachment.id))
-    .map((attachment) => ({
-      id: `patient-${attachment.id}`,
-      label: attachment.file_name,
-      timestamp: attachment.created_at,
-      fileSize: attachment.file_size,
-      kind: "patient_attachment" as const,
-      attachment,
-      open: () => onOpenPatientAttachment(attachment),
-    }));
-  const rows: Array<AttachmentPanelNoteRow | AttachmentPanelPatientRow> = [...noteRows, ...patientRows]
-    .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
-
-  return (
-    <section className="rounded-[18px] border border-[#dbe7ef] bg-white p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-black">Attachments</p>
-        </div>
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#9fc7e1] bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f8fb]">
-          <Upload className="h-4 w-4" />
-          {isUploadingAttachment ? "Uploading..." : "Upload"}
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/quicktime,video/webm,.jpg,.jpeg,.png,.webp,.pdf,.mp4,.mov,.webm"
-            className="hidden"
-            disabled={isUploadingAttachment}
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null;
-              void onPatientAttachmentFileChange(file).finally(() => {
-                event.target.value = "";
-              });
-            }}
-          />
-        </label>
-      </div>
-      {isLoading ? <div className="flex justify-end"><span className="text-xs text-black">Loading...</span></div> : null}
-      {attachmentError ? <p className="mt-3 text-sm text-rose-600">{attachmentError}</p> : null}
-      <div className={`${attachmentError || isLoading ? "mt-4" : ""} divide-y divide-[#edf3f8]`}>
-        {rows.length ? (
-          rows.map((row) => (
-            <div key={row.id} className="flex items-center justify-between gap-4 py-3">
-              <button
-                type="button"
-                onClick={row.open}
-                className="min-w-0 flex-1 text-left transition hover:text-[#2f8fd3]"
-              >
-                <p className="truncate text-sm font-medium text-black">{row.label}</p>
-                <p className="mt-1 text-xs text-black">
-                  {formatDateTime(row.timestamp)}
-                  {isAttachmentPanelPatientRow(row) ? ` · ${formatFileSize(row.fileSize)}` : ""}
-                </p>
-              </button>
-              <div className="flex shrink-0 items-center gap-2">
-                {isAttachmentPanelPatientRow(row) || row.attachmentId ? (
-                  <button
-                    type="button"
-                    disabled={isSendingAttachmentId === (isAttachmentPanelPatientRow(row) ? row.attachment.id : row.attachmentId)}
-                    onClick={() => {
-                      const attachmentId = isAttachmentPanelPatientRow(row) ? row.attachment.id : row.attachmentId;
-                      if (!attachmentId) return;
-                      onStartSendAttachment({
-                        id: attachmentId,
-                        file_name: row.label,
-                        content_type: isAttachmentPanelPatientRow(row) ? row.attachment.content_type : "",
-                      });
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-[#9fc7e1] bg-white px-3 py-1.5 text-xs font-medium text-[#235f8e] transition hover:bg-[#f3f8fb] disabled:opacity-60"
-                  >
-                    <Mail className="h-3.5 w-3.5" />
-                    {isSendingAttachmentId === (isAttachmentPanelPatientRow(row) ? row.attachment.id : row.attachmentId) ? "Sending..." : "Send"}
-                  </button>
-                ) : null}
-                {isAttachmentPanelPatientRow(row) ? (
-                  <button
-                    type="button"
-                    disabled={isDeletingAttachmentId === row.attachment.id}
-                    onClick={() => void onDeletePatientAttachment(row.attachment)}
-                    className="rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
-                  >
-                    {isDeletingAttachmentId === row.attachment.id ? "Deleting..." : "Delete"}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="py-8 text-center text-sm text-black">No attachments yet.</div>
-        )}
-      </div>
-    </section>
-  );
-}
-
 export function PatientDetailsDrawer({
   patient,
   clinicSpecialty = null,
@@ -1255,47 +880,6 @@ export function PatientDetailsDrawer({
   const specialtyModules = getSpecialtyModules(clinicSpecialty);
   const [activeTab, setActiveTab] = useState<ChartTab>("visits");
   const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(false);
-  const [isEditingPatient, setIsEditingPatient] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    phone: "",
-    email: "",
-    address: "",
-    reason: "",
-    dateOfBirth: "",
-    sexAtBirth: "" as "" | SexAtBirth,
-    genderIdentity: "",
-    weight: "",
-    height: "",
-    temperature: "",
-  });
-  const [error, setError] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [visits, setVisits] = useState<PatientChartVisit[]>([]);
-  const [isVisitsLoading, setIsVisitsLoading] = useState(false);
-  const [visitsError, setVisitsError] = useState("");
-  const [visitDetailsById, setVisitDetailsById] = useState<Record<string, PatientVisitDetail>>({});
-  const [visitDetailError, setVisitDetailError] = useState("");
-  const [loadingVisitDetailId, setLoadingVisitDetailId] = useState("");
-  const [notes, setNotes] = useState<ConsultationNote[]>([]);
-  const [patientAttachments, setPatientAttachments] = useState<PatientAttachment[]>([]);
-  const [isAttachmentsLoading, setIsAttachmentsLoading] = useState(false);
-  const [isDeletingAttachmentId, setIsDeletingAttachmentId] = useState("");
-  const [isSendingAttachmentId, setIsSendingAttachmentId] = useState("");
-  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
-  const [isUploadingProfilePhoto, setIsUploadingProfilePhoto] = useState(false);
-  const [profilePhotoVersion, setProfilePhotoVersion] = useState(0);
-  const [profilePhotoObjectUrl, setProfilePhotoObjectUrl] = useState("");
-  const [isProfilePhotoManagerOpen, setIsProfilePhotoManagerOpen] = useState(false);
-  const [photoPreview, setPhotoPreview] = useState<PhotoPreview | null>(null);
-  const [attachmentSendDraft, setAttachmentSendDraft] = useState<{
-    attachmentId: string;
-    fileName: string;
-    recipientEmail: string;
-    subject: string;
-    message: string;
-  } | null>(null);
-  const [attachmentError, setAttachmentError] = useState("");
   const [myopiaHistory, setMyopiaHistory] = useState<MyopiaHistory | null>(null);
   const [growthHistory, setGrowthHistory] = useState<PediatricGrowthSummary | null>(null);
   const [moduleEntries, setModuleEntries] = useState<LongitudinalTrackRecord[]>([]);
@@ -1305,7 +889,6 @@ export function PatientDetailsDrawer({
   const [eyeExam, setEyeExam] = useState<EyeExamPayload>(createEmptyEyeExam);
   const [contactLens, setContactLens] = useState<ContactLensPayload>(createEmptyContactLens);
   const [lowVision, setLowVision] = useState<LowVisionPayload>(createEmptyLowVision);
-  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
   const [isMyopiaLoading, setIsMyopiaLoading] = useState(false);
   const [myopiaError, setMyopiaError] = useState("");
   const [isTbiLoading, setIsTbiLoading] = useState(false);
@@ -1313,12 +896,7 @@ export function PatientDetailsDrawer({
   const [isBinocularVisionLoading, setIsBinocularVisionLoading] = useState(false);
   const [binocularVisionError, setBinocularVisionError] = useState("");
   const [moduleEntryError, setModuleEntryError] = useState("");
-  const [patientTimeline, setPatientTimeline] = useState<PatientTimelineEvent[]>([]);
-  const [isTimelineLoading, setIsTimelineLoading] = useState(false);
-  const [timelineError, setTimelineError] = useState("");
-  const [hasLoadedAttachmentsTab, setHasLoadedAttachmentsTab] = useState(false);
   const [hasLoadedTestsTab, setHasLoadedTestsTab] = useState(false);
-  const [hasLoadedTimelineTab, setHasLoadedTimelineTab] = useState(false);
   const [isHistoricalMyopiaOpen, setIsHistoricalMyopiaOpen] = useState(false);
   const [isMyopiaManagementOpen, setIsMyopiaManagementOpen] = useState(false);
   const [isTbiEvaluationOpen, setIsTbiEvaluationOpen] = useState(false);
@@ -1336,59 +914,37 @@ export function PatientDetailsDrawer({
     history: false,
     attachments: false,
   });
-  const [selectedVisitId, setSelectedVisitId] = useState("");
   const [currentPatient, setCurrentPatient] = useState<Patient | null>(patient);
-  const [aiSummary, setAiSummary] = useState<PatientSummary | null>(null);
-  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
-  const [summaryError, setSummaryError] = useState("");
-  const onLoadVisitsRef = useRef(onLoadVisits);
-  const onLoadVisitDetailRef = useRef(onLoadVisitDetail);
-  const onLoadTimelineRef = useRef(onLoadTimeline);
+  const editor = usePatientEditor({
+    patient: currentPatient,
+    readOnly,
+    onSave,
+    onSaved: onClose,
+  });
+  const chartData = usePatientChartData({
+    patientId: currentPatient?.id ?? "",
+    isTrainingMode,
+    timelineActive: activeTab === "timeline",
+    loadVisits: onLoadVisits,
+    loadVisitDetail: onLoadVisitDetail,
+    loadTimeline: onLoadTimeline,
+  });
+  const resources = usePatientChartResources({
+    patient: currentPatient,
+    attachmentsActive: activeTab === "attachments",
+    isTrainingMode,
+    readOnly,
+    onPatientUpdated: (updated) => {
+      setCurrentPatient(updated);
+      onPatientUpdated?.(updated);
+    },
+    onAttachmentDeleted: chartData.removeAttachmentFromCachedVisits,
+  });
   const initializedPatientIdRef = useRef("");
-  const visitsPatientId = patient?.id ?? "";
-  onLoadVisitsRef.current = onLoadVisits;
-  onLoadVisitDetailRef.current = onLoadVisitDetail;
-  onLoadTimelineRef.current = onLoadTimeline;
 
   useEffect(() => {
     setOpenVisitSections({ history: false, attachments: false });
-  }, [selectedVisitId]);
-
-  useEffect(() => {
-    if (!currentPatient?.profile_photo_url) {
-      setProfilePhotoObjectUrl("");
-      return;
-    }
-
-    let active = true;
-    let objectUrl = "";
-
-    api.getPatientProfilePhoto(currentPatient.id)
-      .then((blob) => {
-        if (!active) {
-          return;
-        }
-        objectUrl = URL.createObjectURL(blob);
-        setProfilePhotoObjectUrl(objectUrl);
-      })
-      .catch(() => {
-        if (active) {
-          setProfilePhotoObjectUrl("");
-        }
-      });
-
-    return () => {
-      active = false;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [
-    currentPatient?.id,
-    currentPatient?.profile_photo_url,
-    currentPatient?.profile_photo_updated_at,
-    profilePhotoVersion,
-  ]);
+  }, [chartData.selectedVisitId]);
 
   useEffect(() => {
     if (!patient) {
@@ -1402,43 +958,7 @@ export function PatientDetailsDrawer({
       return;
     }
     initializedPatientIdRef.current = patient.id;
-    setProfilePhotoVersion(0);
-    setForm({
-      name: patient.name,
-      phone: patient.phone,
-      email: patient.email ?? "",
-      address: patient.address ?? "",
-      reason: patient.reason,
-      dateOfBirth: patient.date_of_birth ?? "",
-      sexAtBirth: patient.sex_at_birth ?? "",
-      genderIdentity: patient.gender_identity ?? "",
-      weight: patient.weight?.toString() ?? "",
-      height: patient.height?.toString() ?? "",
-      temperature: patient.temperature?.toString() ?? "",
-    });
     setActiveTab("visits");
-    setIsEditingPatient(false);
-    setError("");
-    setVisits([]);
-    setIsVisitsLoading(false);
-    setVisitsError("");
-    setVisitDetailsById({});
-    setVisitDetailError("");
-    setLoadingVisitDetailId("");
-    setNotes([]);
-    setPatientAttachments([]);
-    setAttachmentError("");
-    setAttachmentSendDraft(null);
-    setIsProfilePhotoManagerOpen(false);
-    setPhotoPreview((current) => {
-      if (current?.revokeOnClose && current.src.startsWith("blob:")) {
-        URL.revokeObjectURL(current.src);
-      }
-      return null;
-    });
-    setIsSendingAttachmentId("");
-    setIsAttachmentsLoading(false);
-    setHasLoadedAttachmentsTab(false);
     setMyopiaHistory(null);
     setGrowthHistory(null);
     setTbiEvaluations([]);
@@ -1450,173 +970,9 @@ export function PatientDetailsDrawer({
     setIsTbiLoading(false);
     setIsBinocularVisionLoading(false);
     setHasLoadedTestsTab(false);
-    setPatientTimeline([]);
-    setTimelineError("");
-    setIsTimelineLoading(false);
-    setHasLoadedTimelineTab(false);
-    setSelectedVisitId("");
-    setAiSummary(null);
-    setSummaryError("");
-    setIsSummaryLoading(false);
     setIsTbiEvaluationOpen(false);
     setIsBinocularVisionOpen(false);
   }, [patient]);
-
-  useEffect(() => {
-    if (!visitsPatientId || isTrainingMode) {
-      return;
-    }
-    const patientId = visitsPatientId;
-    let active = true;
-    async function loadSummary() {
-      setIsSummaryLoading(true);
-      setSummaryError("");
-      try {
-        const result = await api.getPatientSummary(patientId);
-        if (active) {
-          setAiSummary(result);
-        }
-      } catch (loadError) {
-        if (active) {
-          const message =
-            loadError instanceof Error ? loadError.message : "Failed to load summary.";
-          setSummaryError(message);
-        }
-      } finally {
-        if (active) {
-          setIsSummaryLoading(false);
-        }
-      }
-    }
-    void loadSummary();
-    return () => {
-      active = false;
-    };
-  }, [visitsPatientId, isTrainingMode]);
-
-  useEffect(() => {
-    if (!visitsPatientId) {
-      setVisits([]);
-      setIsVisitsLoading(false);
-      setVisitsError("");
-      setVisitDetailsById({});
-      setVisitDetailError("");
-      setLoadingVisitDetailId("");
-      setSelectedVisitId("");
-      return;
-    }
-
-    let active = true;
-
-    async function loadVisits() {
-      setIsVisitsLoading(true);
-      setVisitsError("");
-      try {
-        const rows = await onLoadVisitsRef.current(visitsPatientId);
-        if (!active) {
-          return;
-        }
-        setVisits(rows);
-        setSelectedVisitId(rows[0]?.id ?? "");
-      } catch (loadError) {
-        if (!active) {
-          return;
-        }
-        setVisits([]);
-        const message = loadError instanceof Error ? loadError.message : "Failed to load visits.";
-        setVisitsError(message);
-        setSelectedVisitId("");
-      } finally {
-        if (active) {
-          setIsVisitsLoading(false);
-        }
-      }
-    }
-
-    void loadVisits();
-    return () => {
-      active = false;
-    };
-  }, [visitsPatientId]);
-
-  useEffect(() => {
-    if (!patient || !selectedVisitId || visitDetailsById[selectedVisitId]) {
-      return;
-    }
-
-    const patientId = patient.id;
-    let active = true;
-
-    async function loadVisitDetail() {
-      setLoadingVisitDetailId(selectedVisitId);
-      setVisitDetailError("");
-      try {
-        const detail = await onLoadVisitDetailRef.current(patientId, selectedVisitId);
-        if (!active) {
-          return;
-        }
-        setVisitDetailsById((current) => ({ ...current, [selectedVisitId]: detail }));
-      } catch (loadError) {
-        if (!active) {
-          return;
-        }
-        setVisitDetailError(loadError instanceof Error ? loadError.message : "Failed to load visit detail.");
-      } finally {
-        if (active) {
-          setLoadingVisitDetailId((current) => (current === selectedVisitId ? "" : current));
-        }
-      }
-    }
-
-    void loadVisitDetail();
-    return () => {
-      active = false;
-    };
-  }, [patient, selectedVisitId, visitDetailsById]);
-
-  useEffect(() => {
-    if (!patient || activeTab !== "attachments" || hasLoadedAttachmentsTab) {
-      return;
-    }
-
-    const patientId = patient.id;
-    let active = true;
-
-    async function loadAttachments() {
-      setIsAttachmentsLoading(true);
-      setAttachmentError("");
-      try {
-        const [noteRows, attachmentRows] = isTrainingMode
-          ? [[], []] as [ConsultationNote[], PatientAttachment[]]
-          : await Promise.all([
-              api.listPatientNotes(patientId),
-              api.listPatientAttachments(patientId),
-            ]);
-        if (!active) {
-          return;
-        }
-        setNotes(noteRows);
-        setPatientAttachments(attachmentRows);
-        setHasLoadedAttachmentsTab(true);
-      } catch (loadError) {
-        if (!active) {
-          return;
-        }
-        setNotes([]);
-        setPatientAttachments([]);
-        setAttachmentError(loadError instanceof Error ? loadError.message : "Failed to load attachments.");
-      } finally {
-        if (active) {
-          setIsAttachmentsLoading(false);
-        }
-      }
-    }
-
-    void loadAttachments();
-    return () => {
-      active = false;
-    };
-  }, [activeTab, hasLoadedAttachmentsTab, isTrainingMode, patient]);
 
   useEffect(() => {
     if (!patient || activeTab !== "tests" || hasLoadedTestsTab) {
@@ -1730,68 +1086,10 @@ export function PatientDetailsDrawer({
     };
   }, [activeTab, hasBinocularVision, hasGrowthMeasurement, hasLoadedTestsTab, hasMyopiaManagement, hasTbiEvaluation, isTrainingMode, onLoadGrowthHistory, onLoadMyopiaHistory, patient]);
 
-  useEffect(() => {
-    if (!patient || activeTab !== "timeline" || hasLoadedTimelineTab) {
-      return;
-    }
-
-    const patientId = patient.id;
-    let active = true;
-
-    async function loadTimeline() {
-      setIsTimelineLoading(true);
-      setTimelineError("");
-      try {
-        const rows = await onLoadTimelineRef.current(patientId);
-        if (!active) {
-          return;
-        }
-        setPatientTimeline(rows);
-        setHasLoadedTimelineTab(true);
-      } catch (loadError) {
-        if (!active) {
-          return;
-        }
-        setPatientTimeline([]);
-        setTimelineError(loadError instanceof Error ? loadError.message : "Failed to load timeline.");
-      } finally {
-        if (active) {
-          setIsTimelineLoading(false);
-        }
-      }
-    }
-
-    void loadTimeline();
-    return () => {
-      active = false;
-    };
-  }, [activeTab, hasLoadedTimelineTab, patient]);
-
-  const noteAssets = useMemo(() => {
-    const seen = new Set<string>();
-    const rows: Array<NoteAsset & { note_id: string; note_created_at: string }> = [];
-    for (const note of notes) {
-      const assets = note.snapshot_asset_payload?.length ? note.snapshot_asset_payload : note.asset_payload || [];
-      for (const asset of assets) {
-        if (asset.kind === "attachment") {
-          const key = noteAttachmentKey(asset);
-          if (seen.has(key)) {
-            continue;
-          }
-          seen.add(key);
-          rows.push({ ...asset, note_id: note.id, note_created_at: note.finalized_at || note.created_at });
-        }
-      }
-    }
-    return rows;
-  }, [notes]);
-
   if (!currentPatient) {
     return null;
   }
 
-  const selectedVisit = visits.find((visit) => visit.id === selectedVisitId) ?? visits[0] ?? null;
-  const selectedVisitDetail = selectedVisit ? visitDetailsById[selectedVisit.id] ?? null : null;
   const myopiaRecords = myopiaHistory?.records ?? [];
   const growthRecords = growthHistory?.records ?? [];
   const latestGrowthRecord = growthRecords[growthRecords.length - 1] ?? null;
@@ -1871,8 +1169,7 @@ export function PatientDetailsDrawer({
       }
       const saved = await api.createPatientTbiEvaluation(patientId, payload);
       setTbiEvaluations((current) => [...current.filter((record) => record.id !== saved.id), saved]);
-      setHasLoadedTimelineTab(false);
-      setPatientTimeline([]);
+      chartData.invalidateTimeline();
       setHasLoadedTestsTab(true);
       setActiveTab("tests");
     } catch (saveError) {
@@ -1961,8 +1258,7 @@ export function PatientDetailsDrawer({
         setModuleEntries((current) => [...current.filter((entry) => entry.id !== saved.id), saved]);
       }
       setModuleEntryError("");
-      setHasLoadedTimelineTab(false);
-      setPatientTimeline([]);
+      chartData.invalidateTimeline();
       setHasLoadedTestsTab(true);
       setActiveTab("tests");
       return saved;
@@ -2009,8 +1305,7 @@ export function PatientDetailsDrawer({
         const saved = await api.createPatientBinocularVisionEvaluation(patientId, payload);
         setBinocularVisionEvaluations((current) => [...current.filter((record) => record.id !== saved.id), saved]);
       }
-      setHasLoadedTimelineTab(false);
-      setPatientTimeline([]);
+      chartData.invalidateTimeline();
       setHasLoadedTestsTab(true);
       setActiveTab("tests");
     } catch (saveError) {
@@ -2030,345 +1325,6 @@ export function PatientDetailsDrawer({
     }
   }
 
-  async function handleOpenPatientAttachment(attachment: PatientAttachment) {
-    try {
-      if (isImageContentType(attachment.content_type)) {
-        setPhotoPreview({
-          src: "",
-          alt: attachment.file_name || "Patient attachment",
-          title: attachment.file_name || "Patient attachment",
-          isLoading: true,
-        });
-        const blob = await api.downloadPatientAttachment(attachment.id);
-        const objectUrl = URL.createObjectURL(blob);
-        setPhotoPreview((current) => {
-          if (!current?.isLoading) {
-            URL.revokeObjectURL(objectUrl);
-            return current;
-          }
-          if (current.revokeOnClose && current.src.startsWith("blob:")) {
-            URL.revokeObjectURL(current.src);
-          }
-          return {
-            src: objectUrl,
-            alt: attachment.file_name || "Patient attachment",
-            title: attachment.file_name || "Patient attachment",
-            revokeOnClose: true,
-          };
-        });
-        return;
-      }
-      openPatientAttachmentViewer(attachment.id);
-    } catch (downloadError) {
-      setPhotoPreview(null);
-      setAttachmentError(downloadError instanceof Error ? downloadError.message : "Failed to open attachment.");
-    }
-  }
-
-  async function handleOpenVisitAttachment(attachment: PatientVisitAttachmentRow) {
-    if (attachment.attachment_id) {
-      await handleOpenLinkedAttachment(attachment.attachment_id, attachment.label, attachment.content_type, attachment.timestamp);
-      return;
-    }
-    if (attachment.source_type === "note_attachment" && attachment.data_base64) {
-      if (isImageContentType(attachment.content_type)) {
-        handleOpenNoteImage({
-          id: attachment.id,
-          kind: "attachment",
-          name: attachment.label,
-          content_type: attachment.content_type,
-          data_base64: attachment.data_base64,
-        });
-        return;
-      }
-      openNoteAttachmentViewer({
-        id: attachment.id,
-        kind: "attachment",
-        name: attachment.label,
-        content_type: attachment.content_type,
-        data_base64: attachment.data_base64,
-      });
-      return;
-    }
-  }
-
-  async function handleOpenLinkedAttachment(attachmentId: string, label: string, contentType: string, timestamp: string) {
-    if (!currentPatient) {
-      return;
-    }
-    await handleOpenPatientAttachment({
-      id: attachmentId,
-      org_id: "",
-      patient_id: currentPatient.id,
-      uploaded_by: null,
-      file_name: label,
-      content_type: contentType,
-      file_size: 0,
-      storage_path: "",
-      created_at: timestamp,
-    });
-  }
-
-  function closePhotoPreview() {
-    setPhotoPreview((current) => {
-      if (current?.revokeOnClose && current.src.startsWith("blob:")) {
-        URL.revokeObjectURL(current.src);
-      }
-      return null;
-    });
-  }
-
-  function handleOpenProfilePhotoPreview() {
-    if (!profilePhotoObjectUrl || !currentPatient) {
-      return;
-    }
-    setPhotoPreview({
-      src: profilePhotoObjectUrl,
-      alt: `${currentPatient.name} profile photo`,
-      title: `${currentPatient.name} profile photo`,
-    });
-  }
-
-  function handleProfilePhotoClick() {
-    if (!currentPatient) {
-      return;
-    }
-    if (!readOnly && !isTrainingMode) {
-      if (currentPatient.profile_photo_url) {
-        setIsProfilePhotoManagerOpen(true);
-      } else {
-        profilePhotoInputRef.current?.click();
-      }
-      return;
-    }
-    handleOpenProfilePhotoPreview();
-  }
-
-  function handleOpenNoteImage(asset: NoteAsset) {
-    const src = noteAssetImageSrc(asset);
-    if (!src) {
-      openNoteAttachmentViewer(asset);
-      return;
-    }
-    setPhotoPreview({
-      src,
-      alt: asset.name || "Patient attachment",
-      title: asset.name || "Patient attachment",
-    });
-  }
-
-  async function handleDeletePatientAttachment(attachment: PatientAttachment) {
-    if (!currentPatient) {
-      return;
-    }
-    if (!window.confirm(`Delete ${attachment.file_name}? This will remove the stored media file.`)) {
-      return;
-    }
-    setIsDeletingAttachmentId(attachment.id);
-    setAttachmentError("");
-    try {
-      await api.deletePatientAttachment(currentPatient.id, attachment.id);
-      setPatientAttachments((current) => current.filter((row) => row.id !== attachment.id));
-      setVisitDetailsById((current) => Object.fromEntries(
-        Object.entries(current).map(([visitId, detail]) => [
-          visitId,
-          {
-            ...detail,
-            attachments: detail.attachments.filter((row) => row.attachment_id !== attachment.id),
-          },
-        ]),
-      ));
-    } catch (deleteError) {
-      setAttachmentError(deleteError instanceof Error ? deleteError.message : "Failed to delete attachment.");
-    } finally {
-      setIsDeletingAttachmentId("");
-    }
-  }
-
-  async function handlePatientAttachmentFileChange(file: File | null) {
-    if (!currentPatient || !file) {
-      return;
-    }
-    setIsUploadingAttachment(true);
-    setAttachmentError("");
-    try {
-      const uploaded = await api.uploadPatientAttachment(currentPatient.id, file);
-      setPatientAttachments((current) => [uploaded, ...current.filter((row) => row.id !== uploaded.id)]);
-    } catch (uploadError) {
-      setAttachmentError(uploadError instanceof Error ? uploadError.message : "Failed to upload attachment.");
-    } finally {
-      setIsUploadingAttachment(false);
-    }
-  }
-
-  function handleStartSendAttachment(attachment: Pick<PatientAttachment, "id" | "file_name" | "content_type">) {
-    if (!currentPatient) {
-      return;
-    }
-    const patientName = currentPatient.name.trim() || "Patient";
-    const patientEmail = (currentPatient.email || "").trim();
-    setAttachmentError("");
-    setAttachmentSendDraft({
-      attachmentId: attachment.id,
-      fileName: attachment.file_name,
-      recipientEmail: patientEmail,
-      subject: `${patientName} attachment: ${attachment.file_name}`,
-      message: `Please find attached ${attachment.file_name} for ${patientName}.`,
-    });
-  }
-
-  async function handleSendAttachment() {
-    if (!currentPatient || !attachmentSendDraft) {
-      return;
-    }
-    const recipientEmail = attachmentSendDraft.recipientEmail.trim();
-    const subject = attachmentSendDraft.subject.trim();
-    if (!recipientEmail) {
-      setAttachmentError("Confirm the recipient email before sending.");
-      return;
-    }
-    if (!recipientEmail.includes("@")) {
-      setAttachmentError("Enter a valid recipient email.");
-      return;
-    }
-    if (!subject) {
-      setAttachmentError("Enter an email subject before sending.");
-      return;
-    }
-
-    setIsSendingAttachmentId(attachmentSendDraft.attachmentId);
-    setAttachmentError("");
-    try {
-      const response = await api.sendPatientAttachment(currentPatient.id, attachmentSendDraft.attachmentId, {
-        recipient_email: recipientEmail,
-        subject,
-        message: attachmentSendDraft.message.trim(),
-      });
-      setAttachmentError(response.message);
-      setAttachmentSendDraft(null);
-    } catch (sendError) {
-      setAttachmentError(sendError instanceof Error ? sendError.message : "Failed to send attachment.");
-    } finally {
-      setIsSendingAttachmentId("");
-    }
-  }
-
-  async function handleProfilePhotoFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] ?? null;
-    event.target.value = "";
-    if (!currentPatient || !file) {
-      return;
-    }
-    if (!PROFILE_PHOTO_TYPES.has(file.type)) {
-      setError("Only JPG, PNG, and WEBP patient photos are supported.");
-      return;
-    }
-    if (file.size > PROFILE_PHOTO_MAX_BYTES) {
-      setError("Patient photo must be 5 MB or smaller.");
-      return;
-    }
-    setIsUploadingProfilePhoto(true);
-    setError("");
-    try {
-      const updated = await api.uploadPatientProfilePhoto(currentPatient.id, file);
-      setCurrentPatient(updated);
-      setProfilePhotoVersion((current) => current + 1);
-      onPatientUpdated?.(updated);
-      setIsProfilePhotoManagerOpen(false);
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Failed to upload patient photo.");
-    } finally {
-      setIsUploadingProfilePhoto(false);
-    }
-  }
-
-  async function handleRemoveProfilePhoto() {
-    if (!currentPatient?.profile_photo_url) {
-      return;
-    }
-    if (!window.confirm("Remove this patient photo?")) {
-      return;
-    }
-    setIsUploadingProfilePhoto(true);
-    setError("");
-    try {
-      const updated = await api.removePatientProfilePhoto(currentPatient.id);
-      setCurrentPatient(updated);
-      setProfilePhotoVersion((current) => current + 1);
-      onPatientUpdated?.(updated);
-      setIsProfilePhotoManagerOpen(false);
-    } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Failed to remove patient photo.");
-    } finally {
-      setIsUploadingProfilePhoto(false);
-    }
-  }
-
-  async function handleSave() {
-    if (readOnly || !currentPatient) {
-      return;
-    }
-
-    const digits = getPhoneDigits(form.phone);
-    const weight = form.weight.trim() ? Number(form.weight) : null;
-    const temperature = form.temperature.trim() ? Number(form.temperature) : null;
-    const height = form.height.trim() ? Number(form.height) : null;
-    const normalizedEmail = form.email.trim().toLowerCase();
-
-    if (!form.name.trim()) {
-      setError("Name is required.");
-      return;
-    }
-    if (digits.length !== 10) {
-      setError("Phone number must be exactly 10 digits.");
-      return;
-    }
-    if (!form.reason.trim()) {
-      setError("Reason for visit is required.");
-      return;
-    }
-    if (normalizedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-      setError("Enter a valid email address.");
-      return;
-    }
-    if (weight !== null && (!Number.isFinite(weight) || weight <= 0)) {
-      setError("Enter a valid weight.");
-      return;
-    }
-    if (temperature !== null && (!Number.isFinite(temperature) || temperature < 90 || temperature > 110)) {
-      setError("Enter a valid temperature in F.");
-      return;
-    }
-    if (height !== null && (!Number.isFinite(height) || height <= 0)) {
-      setError("Enter a valid height.");
-      return;
-    }
-
-    setIsSaving(true);
-    setError("");
-    try {
-      await onSave(currentPatient.id, {
-        name: form.name.trim(),
-        phone: form.phone.trim(),
-        email: normalizedEmail,
-        address: form.address.trim(),
-        reason: form.reason.trim(),
-        date_of_birth: form.dateOfBirth || null,
-        sex_at_birth: form.sexAtBirth || null,
-        gender_identity: form.genderIdentity.trim(),
-        age: null,
-        weight,
-        height,
-        temperature,
-      });
-      onClose();
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to update patient.");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
   return (
     <div className={fullScreen ? "flex h-[100dvh] flex-col" : "fixed inset-0 z-30 flex h-[100dvh] flex-col bg-white"}>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
@@ -2378,7 +1334,7 @@ export function PatientDetailsDrawer({
             <div className="flex items-center gap-3 border-b border-[#dbe7ef] bg-white/90 px-6 py-2.5 backdrop-blur">
               <button
                 type="button"
-                onClick={() => { setError(""); onClose(); }}
+                onClick={() => { editor.clearError(); onClose(); }}
                 className="inline-flex h-9 items-center gap-2 rounded-[10px] border border-[#bfd7e8] bg-white px-3 text-sm font-semibold text-black transition hover:bg-[#edf5fa]"
               >
                 <ArrowLeft className="h-4 w-4" /> Back
@@ -2395,15 +1351,15 @@ export function PatientDetailsDrawer({
                   <div className="shrink-0">
                     <button
                       type="button"
-                      onClick={handleProfilePhotoClick}
-                      disabled={!profilePhotoObjectUrl && (readOnly || isTrainingMode)}
+                      onClick={resources.openProfilePhoto}
+                      disabled={!resources.profilePhotoObjectUrl && (readOnly || isTrainingMode)}
                       className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[18px] bg-gradient-to-br from-[#2f8fd3] to-[#245f92] text-xl font-bold text-white shadow-[0_10px_22px_rgba(37,111,168,0.28)] transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#6daed8] disabled:cursor-default disabled:hover:opacity-100"
                       aria-label={currentPatient.profile_photo_url && !readOnly && !isTrainingMode ? "Manage patient photo" : currentPatient.profile_photo_url ? "Open patient photo" : "Add patient photo"}
                     >
-                      {profilePhotoObjectUrl ? (
+                      {resources.profilePhotoObjectUrl ? (
                         <>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={profilePhotoObjectUrl} alt={`${currentPatient.name} profile photo`} className="h-full w-full object-cover" />
+                        <img src={resources.profilePhotoObjectUrl} alt={`${currentPatient.name} profile photo`} className="h-full w-full object-cover" />
                         </>
                       ) : (
                         <span aria-hidden="true">{patientInitials(currentPatient)}</span>
@@ -2461,9 +1417,9 @@ export function PatientDetailsDrawer({
                   {!readOnly ? (
                     <button
                       type="button"
-                      onClick={() => setIsEditingPatient((current) => !current)}
+                      onClick={editor.toggleEditing}
                       className={`inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition ${
-                        isEditingPatient ? "border-[#9fc7e1] bg-[#edf5fa] text-[#2a6fa8]" : "border-[#bfd7e8] bg-white text-black hover:bg-[#edf5fa]"
+                        editor.isEditing ? "border-[#9fc7e1] bg-[#edf5fa] text-[#2a6fa8]" : "border-[#bfd7e8] bg-white text-black hover:bg-[#edf5fa]"
                       }`}
                     >
                       <Pencil className="h-4 w-4" /> Edit
@@ -2472,7 +1428,7 @@ export function PatientDetailsDrawer({
                   {workflowActionLabel && onWorkflowAction ? (
                     <button
                       type="button"
-                      onClick={() => { setError(""); void onWorkflowAction(); }}
+                      onClick={() => { editor.clearError(); void onWorkflowAction(); }}
                       disabled={workflowActionDisabled}
                       className="inline-flex h-10 items-center justify-center rounded-xl bg-[#14a38b] px-5 text-sm font-semibold text-white shadow-sm shadow-teal-900/10 transition hover:bg-[#108873] disabled:opacity-60"
                     >
@@ -2481,38 +1437,7 @@ export function PatientDetailsDrawer({
                   ) : null}
                 </div>
               </div>
-              {isEditingPatient ? (
-                <div className="mt-4 rounded-xl border border-[#dbe7ef] bg-[#f7fbfd] p-4">
-                  <div className="grid gap-3 lg:grid-cols-[minmax(180px,1.35fr)_repeat(4,minmax(110px,0.8fr))]">
-                    <SummaryField label="Name" value={form.name} readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, name: value })); }} />
-                    <SummaryField label="Phone" value={form.phone} readOnly={false} inputMode="tel" onChange={(value) => { setError(""); setForm((current) => ({ ...current, phone: value })); }} />
-                    <SummaryField label="DOB" value={form.dateOfBirth} type="date" readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, dateOfBirth: value })); }} />
-                    <SummaryField label="Reason" value={form.reason} readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, reason: value })); }} />
-                    <SummaryField label="Email" value={form.email} type="email" readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, email: value })); }} />
-                  </div>
-                  <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(180px,1.35fr)_repeat(4,minmax(110px,0.8fr))]">
-                    <SummaryField label="Address" value={form.address} readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, address: value })); }} />
-                    <SummaryField label="Weight" value={form.weight} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, weight: value })); }} />
-                    <SummaryField label="Height" value={form.height} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, height: value })); }} />
-                    <SummaryField label="Temp" value={form.temperature} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, temperature: value })); }} />
-                  </div>
-                  <div className="mt-3 max-w-xs">
-                    <label className="block text-xs font-medium text-black">
-                      Sex
-                      <select
-                        value={form.sexAtBirth}
-                        onChange={(event) => { setError(""); setForm((current) => ({ ...current, sexAtBirth: event.target.value as "" | SexAtBirth })); }}
-                        className="mt-1 w-full rounded-lg border border-[#dbe7ef] bg-white px-3 py-2 text-sm text-black outline-none focus:border-[#6daed8]"
-                      >
-                        <option value="">Not recorded</option>
-                        <option value="female">Female</option>
-                        <option value="male">Male</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </label>
-                  </div>
-                </div>
-              ) : null}
+              <PatientEditorForm workflow={editor} />
             </div>
 
             {/* AI summary band */}
@@ -2527,17 +1452,17 @@ export function PatientDetailsDrawer({
                 </button>
                 {!isSummaryCollapsed ? (
                   <div className="mt-2 w-full">
-                    {isSummaryLoading && !aiSummary ? (
+                    {chartData.isSummaryLoading && !chartData.summary ? (
                       <div className="space-y-2">
                         <div className="h-3 w-11/12 animate-pulse rounded bg-[#d7e9f7]" />
                         <div className="h-3 w-9/12 animate-pulse rounded bg-[#d7e9f7]" />
                       </div>
-                    ) : summaryError ? (
-                      <p className="text-sm text-rose-600">{summaryError}</p>
-                    ) : aiSummary?.summary ? (
+                    ) : chartData.summaryError ? (
+                      <p className="text-sm text-rose-600">{chartData.summaryError}</p>
+                    ) : chartData.summary?.summary ? (
                       <div className="space-y-1.5">
-                        <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-black">{aiSummary.summary}</p>
-                        {aiSummary.stale ? (
+                        <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-black">{chartData.summary.summary}</p>
+                        {chartData.summary.stale ? (
                           <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6d8191]">Summary needs refresh</p>
                         ) : null}
                       </div>
@@ -2579,16 +1504,16 @@ export function PatientDetailsDrawer({
               <div className="shrink-0">
                 <button
                   type="button"
-                  onClick={handleProfilePhotoClick}
-                  disabled={!profilePhotoObjectUrl && (readOnly || isTrainingMode)}
+                  onClick={resources.openProfilePhoto}
+                  disabled={!resources.profilePhotoObjectUrl && (readOnly || isTrainingMode)}
                   className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-[#dbe7ef] bg-[#f3f8fb] text-2xl font-semibold text-[#2a6fa8] shadow-[0_10px_26px_rgba(64,131,181,0.08)] transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#6daed8] disabled:cursor-default disabled:hover:opacity-100"
                   aria-label={currentPatient.profile_photo_url && !readOnly && !isTrainingMode ? "Manage patient photo" : currentPatient.profile_photo_url ? "Open patient photo" : "Add patient photo"}
                 >
-                  {profilePhotoObjectUrl ? (
+                  {resources.profilePhotoObjectUrl ? (
                     <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={profilePhotoObjectUrl}
+                      src={resources.profilePhotoObjectUrl}
                       alt={`${currentPatient.name} profile photo`}
                       className="h-full w-full object-cover"
                     />
@@ -2607,7 +1532,7 @@ export function PatientDetailsDrawer({
               <button
                 type="button"
                 onClick={() => {
-                  setError("");
+                  editor.clearError();
                   onClose();
                 }}
                 className="rounded-xl border border-[#dbe7ef] p-2 text-black transition hover:text-[#287fc0]"
@@ -2618,9 +1543,9 @@ export function PatientDetailsDrawer({
               {!readOnly ? (
                 <button
                   type="button"
-                  onClick={() => setIsEditingPatient((current) => !current)}
+                  onClick={editor.toggleEditing}
                   className={`rounded-xl border p-2 transition ${
-                    isEditingPatient
+                    editor.isEditing
                       ? "border-[#9fc7e1] bg-[#edf5fa] text-[#2a6fa8]"
                       : "border-[#dbe7ef] text-black hover:text-[#287fc0]"
                   }`}
@@ -2632,38 +1557,7 @@ export function PatientDetailsDrawer({
               ) : null}
             </div>
           </div>
-          {isEditingPatient ? (
-            <div className="mt-4 rounded-xl border border-[#dbe7ef] bg-[#f7fbfd] p-4">
-              <div className="grid gap-3 lg:grid-cols-[minmax(180px,1.35fr)_repeat(4,minmax(110px,0.8fr))]">
-                <SummaryField label="Name" value={form.name} readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, name: value })); }} />
-                <SummaryField label="Phone" value={form.phone} readOnly={false} inputMode="tel" onChange={(value) => { setError(""); setForm((current) => ({ ...current, phone: value })); }} />
-                <SummaryField label="DOB" value={form.dateOfBirth} type="date" readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, dateOfBirth: value })); }} />
-                <SummaryField label="Reason" value={form.reason} readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, reason: value })); }} />
-                <SummaryField label="Email" value={form.email} type="email" readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, email: value })); }} />
-              </div>
-              <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(180px,1.35fr)_repeat(4,minmax(110px,0.8fr))]">
-                <SummaryField label="Address" value={form.address} readOnly={false} onChange={(value) => { setError(""); setForm((current) => ({ ...current, address: value })); }} />
-                <SummaryField label="Weight" value={form.weight} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, weight: value })); }} />
-                <SummaryField label="Height" value={form.height} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, height: value })); }} />
-                <SummaryField label="Temp" value={form.temperature} readOnly={false} inputMode="decimal" onChange={(value) => { setError(""); setForm((current) => ({ ...current, temperature: value })); }} />
-              </div>
-              <div className="mt-3 max-w-xs">
-                <label className="block text-xs font-medium text-black">
-                  Sex
-                  <select
-                    value={form.sexAtBirth}
-                    onChange={(event) => { setError(""); setForm((current) => ({ ...current, sexAtBirth: event.target.value as "" | SexAtBirth })); }}
-                    className="mt-1 w-full rounded-lg border border-[#dbe7ef] bg-white px-3 py-2 text-sm text-black outline-none focus:border-[#6daed8]"
-                  >
-                    <option value="">Not recorded</option>
-                    <option value="female">Female</option>
-                    <option value="male">Male</option>
-                    <option value="other">Other</option>
-                  </select>
-                </label>
-              </div>
-            </div>
-          ) : null}
+          <PatientEditorForm workflow={editor} />
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <div className="flex flex-wrap gap-2">
               <ChartTabButton active={activeTab === "visits"} label="Visits" onClick={() => setActiveTab("visits")} />
@@ -2705,7 +1599,7 @@ export function PatientDetailsDrawer({
               <button
                 type="button"
                 onClick={() => {
-                  setError("");
+                  editor.clearError();
                   void onWorkflowAction();
                 }}
                 disabled={workflowActionDisabled}
@@ -2732,20 +1626,20 @@ export function PatientDetailsDrawer({
                 </div>
 
                 <div className="mt-3">
-                  {isSummaryLoading && !aiSummary ? (
+                  {chartData.isSummaryLoading && !chartData.summary ? (
                     <div className="space-y-2">
                       <div className="h-3 w-11/12 animate-pulse rounded bg-[#d7e9f7]" />
                       <div className="h-3 w-9/12 animate-pulse rounded bg-[#d7e9f7]" />
                       <div className="h-3 w-10/12 animate-pulse rounded bg-[#d7e9f7]" />
                     </div>
-                  ) : summaryError ? (
-                    <p className="text-sm text-rose-600">{summaryError}</p>
-                  ) : aiSummary?.summary ? (
+                  ) : chartData.summaryError ? (
+                    <p className="text-sm text-rose-600">{chartData.summaryError}</p>
+                  ) : chartData.summary?.summary ? (
                     <div className="space-y-1.5">
                       <p className="whitespace-pre-wrap text-sm leading-relaxed text-black">
-                        {aiSummary.summary}
+                        {chartData.summary.summary}
                       </p>
-                      {aiSummary.stale ? (
+                      {chartData.summary.stale ? (
                         <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6d8191]">Summary needs refresh</p>
                       ) : null}
                     </div>
@@ -2758,16 +1652,16 @@ export function PatientDetailsDrawer({
             {activeTab === "visits" ? (
               <div className="grid min-h-0 gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
                 <aside className="self-start rounded-xl border border-[#dbe7ef] bg-white p-3">
-                  {visitsError ? <p className="mt-2 text-sm text-rose-600">{visitsError}</p> : null}
+                  {chartData.visitsError ? <p className="mt-2 text-sm text-rose-600">{chartData.visitsError}</p> : null}
                   <div className="max-h-[58vh] space-y-1.5 overflow-y-auto pr-1">
-                    {visits.length ? (
-                      visits.map((visit) => (
+                    {chartData.visits.length ? (
+                      chartData.visits.map((visit) => (
                         <button
                           key={visit.id}
                           type="button"
-                          onClick={() => setSelectedVisitId(visit.id)}
+                          onClick={() => chartData.selectVisit(visit.id)}
                           className={`block w-full rounded-lg border px-3 py-3 text-left transition ${
-                            visit.id === selectedVisit?.id
+                            visit.id === chartData.selectedVisit?.id
                               ? "border-[#9fc7e1] bg-[#f3f8fb] shadow-[inset_3px_0_0_#2f8fd3]"
                               : "border-transparent bg-white hover:border-[#dbe7ef] hover:bg-[#f7fbfd]"
                           }`}
@@ -2783,7 +1677,7 @@ export function PatientDetailsDrawer({
                           </div>
                         </button>
                       ))
-                    ) : !isVisitsLoading ? (
+                    ) : !chartData.isVisitsLoading ? (
                       <div className="rounded-xl border border-dashed border-[#bfd7e8] bg-white px-4 py-8 text-center text-sm text-black">
                         No visits recorded yet.
                       </div>
@@ -2792,12 +1686,12 @@ export function PatientDetailsDrawer({
                 </aside>
                 <div className="space-y-4">
                   <VisitDetailPanel
-                    detail={selectedVisitDetail}
-                    detailError={visitDetailError}
-                    isLoadingDetail={loadingVisitDetailId === selectedVisit?.id}
-                    onOpenVisitAttachment={handleOpenVisitAttachment}
+                    detail={chartData.selectedVisitDetail}
+                    detailError={chartData.visitDetailError}
+                    isLoadingDetail={chartData.loadingVisitDetailId === chartData.selectedVisit?.id}
+                    onOpenVisitAttachment={resources.openVisitAttachment}
                     openSections={openVisitSections}
-                    selectedVisit={selectedVisit}
+                    selectedVisit={chartData.selectedVisit}
                     toggleSection={toggleVisitSection}
                   />
                 </div>
@@ -2828,140 +1722,27 @@ export function PatientDetailsDrawer({
             ) : null}
 
             {activeTab === "attachments" ? (
-              <AttachmentsPanel
-                attachmentError={attachmentError}
-                isLoading={isAttachmentsLoading}
-                noteAssets={noteAssets}
-                onOpenPatientAttachment={handleOpenPatientAttachment}
-                onOpenLinkedAttachment={handleOpenLinkedAttachment}
-                onOpenNoteImage={handleOpenNoteImage}
-                onDeletePatientAttachment={handleDeletePatientAttachment}
-                onPatientAttachmentFileChange={handlePatientAttachmentFileChange}
-                onStartSendAttachment={handleStartSendAttachment}
-                patientAttachments={patientAttachments}
-                isDeletingAttachmentId={isDeletingAttachmentId}
-                isSendingAttachmentId={isSendingAttachmentId}
-                isUploadingAttachment={isUploadingAttachment}
-              />
+              <PatientAttachmentsPanel workflow={resources} />
             ) : null}
 
             {activeTab === "timeline" ? (
               <TimelinePanel
-                error={timelineError}
-                isLoading={isTimelineLoading}
-                timeline={patientTimeline}
+                error={chartData.timelineError}
+                isLoading={chartData.isTimelineLoading}
+                timeline={chartData.timeline}
                 fullScreen={fullScreen}
               />
             ) : null}
           </div>
         </section>
 
-        {attachmentSendDraft ? (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/35 px-4">
-            <div className="w-full max-w-lg rounded-[20px] border border-[#bfd7e8] bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.25)]">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-base font-semibold text-slate-900">Send attachment</h3>
-                  <p className="mt-1 text-sm text-slate-500">{attachmentSendDraft.fileName}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAttachmentSendDraft(null)}
-                  className="rounded-xl border border-[#dbe7ef] p-2 text-slate-500 transition hover:text-slate-800"
-                  aria-label="Close send attachment"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="mt-4 space-y-4">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Confirm patient email</span>
-                  <input
-                    type="email"
-                    value={attachmentSendDraft.recipientEmail}
-                    onChange={(event) => setAttachmentSendDraft((current) => current ? { ...current, recipientEmail: event.target.value } : current)}
-                    placeholder="patient@example.com"
-                    className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
-                  />
-                  {!attachmentSendDraft.recipientEmail.trim() ? (
-                    <span className="mt-2 block text-xs text-amber-700">This patient has no email saved. Enter one to send this attachment.</span>
-                  ) : null}
-                </label>
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Subject</span>
-                  <input
-                    value={attachmentSendDraft.subject}
-                    onChange={(event) => setAttachmentSendDraft((current) => current ? { ...current, subject: event.target.value } : current)}
-                    className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Message</span>
-                  <textarea
-                    rows={4}
-                    value={attachmentSendDraft.message}
-                    onChange={(event) => setAttachmentSendDraft((current) => current ? { ...current, message: event.target.value } : current)}
-                    className="w-full rounded-xl border border-[#bfd7e8] bg-[#f3f8fb]/40 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#6daed8]"
-                  />
-                </label>
-              </div>
-              <div className="mt-5 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setAttachmentSendDraft(null)}
-                  className="rounded-xl border border-[#9fc7e1] bg-white px-5 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-[#f3f8fb]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={isSendingAttachmentId === attachmentSendDraft.attachmentId}
-                  onClick={() => void handleSendAttachment()}
-                  className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
-                >
-                  {isSendingAttachmentId === attachmentSendDraft.attachmentId ? "Sending..." : "Send attachment"}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {error || (!readOnly && isEditingPatient) ? (
-          <div className="border-t border-[#dbe7ef] px-5 py-4 sm:px-7">
-            {error ? <p className="mb-3 text-sm font-medium text-rose-600">{error}</p> : null}
-            <div className="flex justify-end gap-3">
-              {!readOnly && isEditingPatient ? (
-                <button
-                  type="button"
-                  disabled={isSaving}
-                  onClick={handleSave}
-                  className="rounded-xl bg-[#2f8fd3] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#287fc0] disabled:opacity-60"
-                >
-                  {isSaving ? "Saving..." : "Save Changes"}
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+        <PatientEditorFooter
+          workflow={editor}
+          profilePhotoError={resources.profilePhotoError}
+          readOnly={readOnly}
+        />
       </div>
-      <input
-        ref={profilePhotoInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
-        className="sr-only"
-        disabled={isUploadingProfilePhoto}
-        onChange={handleProfilePhotoFileChange}
-      />
-      <ProfilePhotoManagerModal
-        open={isProfilePhotoManagerOpen}
-        patientName={currentPatient.name}
-        photoSrc={profilePhotoObjectUrl}
-        isBusy={isUploadingProfilePhoto}
-        onChange={() => profilePhotoInputRef.current?.click()}
-        onRemove={() => void handleRemoveProfilePhoto()}
-        onClose={() => setIsProfilePhotoManagerOpen(false)}
-      />
-      <PhotoPreviewModal preview={photoPreview} onClose={closePhotoPreview} />
+      <PatientChartResourceOverlays workflow={resources} />
       {canRefer && !readOnly && !isTrainingMode ? (
         <ReferralPackageModal
           open={isReferralPackageOpen}

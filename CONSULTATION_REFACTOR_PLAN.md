@@ -60,9 +60,17 @@ Acceptance coverage includes lazy catalog loading, dirty-draft preservation, pat
 
 ### Slice 3: Patient chart resources
 
+Status: in progress. Slice 3A (profile photos and attachments), Slice 3B (chart data loading), and Slice 3C (patient editing) are implemented on `consul-refactor`.
+
 - Extract profile photo and attachment workflows first.
 - Then extract summary, timeline, visits, structured tests, and patient editing.
 - Replace mutually exclusive modal booleans with a discriminated modal state.
+
+Slice 3A owns lazy attachment/note loading, note-asset deduplication, attachment upload/delete/send/open behavior, cached-visit cleanup, profile-photo validation/mutations, image preview state, and blob URL cleanup. Characterization coverage protects lazy loading, mutations, failure reset, patient switching, and profile-photo validation.
+
+Slice 3B owns eager visit/summary loading, visit selection and detail caching, lazy timeline loading/retry, patient reset, timeline invalidation after clinical mutations, and the attachment-deletion bridge into cached visit details. Characterization coverage protects cache reuse, independent failures, retry behavior, refresh preservation, and patient switching.
+
+Slice 3C owns patient edit-form initialization, draft transitions, validation, payload normalization, save/retry state, and patient reset. One shared form now serves both chart layouts, with characterization coverage for validation, unsaved-draft preservation, normalized saves, failure retry, and patient switching.
 
 ### Slice 4: Consultation leaf workflows
 

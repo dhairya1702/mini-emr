@@ -77,6 +77,7 @@ test("patient chart keeps newest visits first while numbering oldest as visit on
 });
 
 test("patient chart preserves visits and summary when the queue refreshes", async ({ page }) => {
+  await page.clock.install();
   const user = buildUser();
   const patient = buildPatient({ id: "patient-chart-refresh", name: "Robin Shah", reason: "Review" });
   let visitRequests = 0;
@@ -123,12 +124,7 @@ test("patient chart preserves visits and summary when the queue refreshes", asyn
     const url = new URL(response.url());
     return url.pathname === "/dashboard/status" && response.request().method() === "GET";
   });
-  await page.evaluate(() => {
-    const actualNow = Date.now;
-    Date.now = () => actualNow() + 16_000;
-    window.dispatchEvent(new Event("focus"));
-    Date.now = actualNow;
-  });
+  await page.clock.fastForward(61_000);
   await queueRefresh;
 
   await expect(page.getByRole("button", { name: /^Visit [1-4]/ })).toHaveCount(4);
