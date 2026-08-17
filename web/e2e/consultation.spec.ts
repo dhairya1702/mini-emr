@@ -332,7 +332,7 @@ test("optometry consultation separates History, Examination, and Consultation", 
   const queueRefresh = page.waitForRequest((request) => (
     new URL(request.url()).pathname === "/dashboard/status" && request.method() === "GET"
   ));
-  await page.clock.fastForward(16_000);
+  await page.clock.fastForward(61_000);
   await queueRefresh;
   await expect(steps.getByRole("button", { name: /Examination/ })).toHaveAttribute("aria-current", "step");
   await expect(page.getByRole("heading", { name: "Ocular Examination" })).toBeVisible();

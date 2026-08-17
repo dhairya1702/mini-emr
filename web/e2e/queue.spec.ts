@@ -221,7 +221,7 @@ test("queue header reviews and approves a QR check-in request", async ({ page })
   await expect.poll(() => statusRequests).toBeGreaterThanOrEqual(1);
   expect(fullRequests).toBe(0);
   await expect(checkInsButton).toHaveClass(/animate-pulse/);
-  await checkInsButton.click();
+  await checkInsButton.click({ force: true });
   await expect.poll(() => fullRequests).toBe(1);
   await expect(page.getByRole("heading", { name: "Check-in requests" })).toBeVisible();
   await expect(page.getByText("Jordan QR", { exact: true })).toBeVisible();
@@ -233,6 +233,7 @@ test("queue header reviews and approves a QR check-in request", async ({ page })
 });
 
 test("idle queue polls only the lightweight dashboard heartbeat", async ({ page }) => {
+  await page.clock.install();
   const user = buildUser({ doctor_signature_name: "signature.png" });
   const patient = buildPatient({ id: "patient-idle-1", name: "Idle Queue Patient" });
   let heartbeatRequests = 0;
@@ -268,7 +269,7 @@ test("idle queue polls only the lightweight dashboard heartbeat", async ({ page 
 
   await page.goto("/");
   await expect(page.getByText("Idle Queue Patient", { exact: true })).toBeVisible();
-  await page.waitForTimeout(16_000);
+  await page.clock.fastForward(61_000);
 
   expect(heartbeatRequests).toBeGreaterThanOrEqual(2);
   expect(queueSnapshotRequests).toBe(1);

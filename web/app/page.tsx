@@ -27,15 +27,10 @@ import { PendingCheckIns } from "@/components/pending-check-ins";
 import { PatientCard } from "@/components/patient-card";
 import { PatientColumn } from "@/components/patient-column";
 import { MultiDoctorQueueBoard } from "@/components/multi-doctor-queue-board";
-import { SettingsDrawerBillingPanel } from "@/components/settings-drawer-billing-panel";
-import {
-  buildAutoDraftInvoiceItems,
-  type DraftInvoiceItem,
-} from "@/features/dashboard/billing/billing-draft";
+import { BillingWorkspace } from "@/features/dashboard/billing/billing-workspace";
+import type { BillingWorkflowGateway } from "@/features/dashboard/billing/use-billing-workflow";
 import { api } from "@/lib/api";
 import { canUseBilling, canUseClinicalTools } from "@/lib/permissions";
-import { calculateDraftInvoiceTaxTotals } from "@/lib/billing-tax";
-import { trackWhatsAppDelivery } from "@/lib/whatsapp-delivery";
 import {
   canMovePatientStatus,
   createEmptyQueueOrder,
@@ -45,7 +40,6 @@ import {
 } from "@/lib/queue-dnd";
 import { connectDashboardEvents, type DashboardRealtimeEvent } from "@/lib/realtime";
 import { hasClinicDocumentTemplate, hasUserSignature } from "@/lib/setup-checklist";
-import { printBlob } from "@/lib/print";
 import {
   createTrainingNote,
   createTrainingPatient,
@@ -54,7 +48,7 @@ import {
   writeTrainingPatients,
 } from "@/lib/training-mode";
 import { useClinicShellPage } from "@/lib/use-clinic-shell-page";
-import { BillingSuggestionsResponse, CatalogItem, CheckInRequest, ConsultationNote, Invoice, Patient, PatientChartVisit, PatientStatus, PatientTimelineEvent, PatientVisitDetail, PaymentStatus, QueueProvider, QueueSnapshot, SexAtBirth } from "@/lib/types";
+import { CheckInRequest, Patient, PatientChartVisit, PatientStatus, PatientTimelineEvent, PatientVisitDetail, QueueProvider, QueueSnapshot, SexAtBirth } from "@/lib/types";
 
 const statusOrder: PatientStatus[] = ["waiting", "consultation", "done"];
 const QUEUE_REFRESH_INTERVAL_MS = 60000;
@@ -120,27 +114,6 @@ export default function HomePage() {
   const [draggedPatient, setDraggedPatient] = useState<Patient | null>(null);
   const [isQueueMutationPending, setIsQueueMutationPending] = useState(false);
   const [queueClock, setQueueClock] = useState(() => Date.now());
-  const [invoiceItems, setInvoiceItems] = useState<DraftInvoiceItem[]>([]);
-  const [billingError, setBillingError] = useState("");
-  const [billingStatus, setBillingStatus] = useState("");
-  const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null);
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("paid");
-  const [amountPaidInput, setAmountPaidInput] = useState("");
-  const [isSavingInvoice, setIsSavingInvoice] = useState(false);
-  const [isFinalizingInvoice, setIsFinalizingInvoice] = useState(false);
-  const [isPreparingInvoicePdf, setIsPreparingInvoicePdf] = useState(false);
-  const [isSendingInvoice, setIsSendingInvoice] = useState(false);
-  const [isSendingInvoiceWhatsApp, setIsSendingInvoiceWhatsApp] = useState(false);
-  const [isInvoiceDirty, setIsInvoiceDirty] = useState(false);
-  const [selectedPatientNotes, setSelectedPatientNotes] = useState<ConsultationNote[]>([]);
-  const [isBillingNotesLoading, setIsBillingNotesLoading] = useState(false);
-  const [billingSuggestions, setBillingSuggestions] = useState<BillingSuggestionsResponse | null>(null);
-  const [isBillingSuggestionsLoading, setIsBillingSuggestionsLoading] = useState(false);
-  const [hasSeededBillingDraft, setHasSeededBillingDraft] = useState(false);
-  const [customItemLabel, setCustomItemLabel] = useState("");
-  const [customItemQuantity, setCustomItemQuantity] = useState("1");
-  const [customItemUnitPrice, setCustomItemUnitPrice] = useState("");
-  const [billingRecipientEmail, setBillingRecipientEmail] = useState("");
   const queueRefreshInFlightRef = useRef(false);
   const queueRefreshFailureCountRef = useRef(0);
   const nextQueueRefreshAllowedAtRef = useRef(0);
@@ -169,7 +142,6 @@ export default function HomePage() {
   const selectedPatientRef = useRef<Patient | null>(null);
   const drawerModeRef = useRef<"details" | "consultation" | null>(null);
   const finishConsultationWorkspaceRef = useRef<() => void>(() => undefined);
-  const billingCatalogLoadRequestedRef = useRef(false);
   selectedPatientRef.current = selectedPatient;
   drawerModeRef.current = drawerMode;
   finishConsultationWorkspaceRef.current = finishConsultationWorkspace;
@@ -711,160 +683,29 @@ export default function HomePage() {
     () => billingPatients.find((patient) => patient.id === billingPatientId) ?? null,
     [billingPatientId, billingPatients],
   );
-  const serviceItems = useMemo(() => catalogItems.filter((item) => item.item_type === "service" || (item.item_type === "program" && item.is_active !== false)), [catalogItems]);
-  const medicineItems = useMemo(() => catalogItems.filter((item) => item.item_type === "medicine"), [catalogItems]);
-  const latestConsultationNote = useMemo(() => selectedPatientNotes[0] ?? null, [selectedPatientNotes]);
-  const autoDraftInvoiceItems = useMemo(
-    () => buildAutoDraftInvoiceItems(selectedBillingPatient, latestConsultationNote, serviceItems, medicineItems, billingSuggestions),
-    [billingSuggestions, latestConsultationNote, medicineItems, selectedBillingPatient, serviceItems],
-  );
-
-  useEffect(() => {
-    if (!latestConsultationNote) {
-      setBillingSuggestions(null);
-      setIsBillingSuggestionsLoading(false);
-      return;
-    }
-    let active = true;
-    setIsBillingSuggestionsLoading(true);
-    void api.getNoteBillingSuggestions(latestConsultationNote.id)
-      .then((response) => {
-        if (active) setBillingSuggestions(response);
-      })
-      .catch((error) => {
-        if (active) {
-          setBillingSuggestions(null);
-          setBillingError(error instanceof Error ? error.message : "Failed to load billing suggestions.");
-        }
-      })
-      .finally(() => {
-        if (active) setIsBillingSuggestionsLoading(false);
-      });
-    return () => { active = false; };
-  }, [latestConsultationNote]);
-  const invoiceTaxTotals = useMemo(
-    () => calculateDraftInvoiceTaxTotals(invoiceItems, catalogItems),
-    [catalogItems, invoiceItems],
-  );
-  const invoiceSubtotal = invoiceTaxTotals.subtotal;
-  const invoiceTotal = invoiceTaxTotals.total;
-  const normalizedAmountPaid = useMemo(
-    () => (paymentStatus === "paid" ? invoiceTotal : paymentStatus === "unpaid" ? 0 : Number(amountPaidInput || "0")),
-    [amountPaidInput, invoiceTotal, paymentStatus],
-  );
-  const balanceDue = useMemo(() => Math.max(invoiceTotal - normalizedAmountPaid, 0), [invoiceTotal, normalizedAmountPaid]);
+  const billingGateway = useMemo<BillingWorkflowGateway>(() => ({
+    loadPatientNotes: (patientId) => api.listPatientNotes(patientId),
+    loadBillingSuggestions: (noteId) => api.getNoteBillingSuggestions(noteId),
+    createInvoice: handleCreateInvoice,
+    generateInvoicePdf: (invoiceId) => api.generateInvoicePdf(invoiceId),
+    finalizeInvoice: handleFinalizeInvoice,
+    sendInvoice: handleSendInvoice,
+    sendInvoiceWhatsApp: handleSendInvoiceWhatsApp,
+  }), [handleCreateInvoice, handleFinalizeInvoice, handleSendInvoice, handleSendInvoiceWhatsApp]);
 
   function handleCloseSettingsDrawer() {
     setIsSettingsOpen(false);
   }
 
-  useEffect(() => {
-    if (!billingPatientId) {
-      billingCatalogLoadRequestedRef.current = false;
-      return;
-    }
-    if (isCatalogLoaded || isCatalogLoading || billingCatalogLoadRequestedRef.current) {
-      return;
-    }
-
-    billingCatalogLoadRequestedRef.current = true;
-    void loadCatalogItems().catch((loadError) => {
-      setBillingStatus("");
-      setBillingError(loadError instanceof Error ? loadError.message : "Failed to load services and medicines.");
-    });
-  }, [billingPatientId, isCatalogLoaded, isCatalogLoading, loadCatalogItems]);
-
-  useEffect(() => {
-    if (!billingPatientId) {
-      setSelectedPatientNotes([]);
-      setIsBillingNotesLoading(false);
-      return;
-    }
-
-    let active = true;
-    setIsBillingNotesLoading(true);
-    void api.listPatientNotes(billingPatientId)
-      .then((notes) => {
-        if (active) {
-          setSelectedPatientNotes(notes);
-          setIsBillingNotesLoading(false);
-        }
-      })
-      .catch((loadError) => {
-        if (!active) {
-          return;
-        }
-        setSelectedPatientNotes([]);
-        setIsBillingNotesLoading(false);
-        setBillingStatus("");
-        setBillingError(loadError instanceof Error ? loadError.message : "Failed to load consultation notes.");
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [billingPatientId]);
-
-  useEffect(() => {
-    if (
-      !billingPatientId
-      || !isCatalogLoaded
-      || isCatalogLoading
-      || isBillingNotesLoading
-      || isBillingSuggestionsLoading
-      || hasSeededBillingDraft
-      || isInvoiceDirty
-    ) {
-      return;
-    }
-    setInvoiceItems(autoDraftInvoiceItems);
-    setSavedInvoice(null);
-    setIsInvoiceDirty(false);
-    setBillingError("");
-    setBillingStatus("");
-    setAmountPaidInput("");
-    setHasSeededBillingDraft(true);
-  }, [
-    autoDraftInvoiceItems,
-    billingPatientId,
-    hasSeededBillingDraft,
-    isBillingNotesLoading,
-    isBillingSuggestionsLoading,
-    isCatalogLoaded,
-    isCatalogLoading,
-    isInvoiceDirty,
-  ]);
-
   function handleClosePatientModal() {
     setIsModalOpen(false);
-  }
-
-  function resetBillingWorkspaceState() {
-    setInvoiceItems([]);
-    setSavedInvoice(null);
-    setPaymentStatus("paid");
-    setAmountPaidInput("");
-    setBillingError("");
-    setBillingStatus("");
-    setIsInvoiceDirty(false);
-    setSelectedPatientNotes([]);
-    setIsBillingNotesLoading(false);
-    setHasSeededBillingDraft(false);
-    setCustomItemLabel("");
-    setCustomItemQuantity("1");
-    setCustomItemUnitPrice("");
-    setBillingRecipientEmail("");
   }
 
   function openBillingWorkspace(patientId: string) {
     if (workspaceKind === "consultation") {
       workspaceTransitionRef.current = true;
     }
-    const patient = patients.find((entry) => entry.id === patientId);
-    billingCatalogLoadRequestedRef.current = false;
     setBillingPatientId(patientId);
-    resetBillingWorkspaceState();
-    setBillingRecipientEmail(patient?.email ?? "");
     setSelectedPatient(null);
     setDrawerMode(null);
     pushWorkspace("billing", patientId, Boolean(workspaceKind));
@@ -1477,253 +1318,23 @@ export default function HomePage() {
     setSelectedPatient((current) => (current?.id === updated.id ? updated : current));
   }
 
-  function addCustomInvoiceItem() {
-    const label = customItemLabel.trim();
-    const quantity = Number(customItemQuantity);
-    const amount = Number(customItemUnitPrice);
-
-    if (!label) {
-      setBillingError("Enter a label for the custom item.");
-      return;
-    }
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      setBillingError("Custom item quantity must be greater than zero.");
-      return;
-    }
-    if (!Number.isFinite(amount) || amount < 0) {
-      setBillingError("Custom item amount must be zero or more.");
-      return;
-    }
-    const unitPrice = quantity > 0 ? amount / quantity : 0;
-
-    setInvoiceItems((current) => [
-      ...current,
-      {
-        id: createId(),
-        catalog_item_id: null,
-        item_type: "service",
-        label,
-        quantity,
-        unit_price: unitPrice,
-      },
-    ]);
-    setCustomItemLabel("");
-    setCustomItemQuantity("1");
-    setCustomItemUnitPrice("");
-    setBillingStatus("");
-    setBillingError("");
-    setIsInvoiceDirty(true);
-  }
-
-  function addCatalogItemToInvoice(item: CatalogItem) {
-    if (item.track_inventory && item.stock_quantity <= 0) {
-      setBillingError(`No stock left for ${item.name}.`);
-      return;
-    }
-    setInvoiceItems((current) => [
-      ...current,
-      {
-        id: createId(),
-        catalog_item_id: item.id,
-        item_type: item.item_type,
-        label: item.name,
-        quantity: 1,
-        unit_price: item.default_price,
-      },
-    ]);
-    setBillingStatus("");
-    setBillingError("");
-    setIsInvoiceDirty(true);
-  }
-
-  function updateInvoiceItem(itemId: string, patch: Partial<DraftInvoiceItem>) {
-    setInvoiceItems((current) => current.map((item) => (item.id === itemId ? { ...item, ...patch } : item)));
-    setBillingStatus("");
-    setBillingError("");
-    setIsInvoiceDirty(true);
-  }
-
-  function removeInvoiceItem(itemId: string) {
-    setInvoiceItems((current) => current.filter((item) => item.id !== itemId));
-    setBillingStatus("");
-    setBillingError("");
-    setIsInvoiceDirty(true);
-  }
-
-  function buildInvoicePayload() {
-    if (!selectedBillingPatient) {
-      throw new Error("Select a done patient to bill.");
-    }
-    if (!invoiceItems.length) {
-      throw new Error("Add at least one service or medicine.");
-    }
-    return {
-      invoice_id: savedInvoice?.id ?? null,
-      patient_id: selectedBillingPatient.id,
-      items: invoiceItems.map((item) => ({
-        catalog_item_id: item.catalog_item_id ?? null,
-        item_type: item.item_type,
-        label: item.label,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-      })),
-      payment_status: paymentStatus,
-      amount_paid: paymentStatus === "partial" ? normalizedAmountPaid : undefined,
-    } as const;
-  }
-
-  async function saveInvoiceDraft() {
-    const saved = await handleCreateInvoice(buildInvoicePayload());
-    setSavedInvoice(saved);
-    setIsInvoiceDirty(false);
-    return saved;
-  }
-
-  async function ensureSavedInvoice() {
-    if (!savedInvoice || isInvoiceDirty) {
-      return saveInvoiceDraft();
-    }
-    return savedInvoice;
-  }
-
-  async function handleCreateBill() {
-    setIsSavingInvoice(true);
-    setBillingError("");
-    setBillingStatus("");
-    try {
-      await saveInvoiceDraft();
-      setBillingStatus(savedInvoice ? "Invoice Updated" : "Invoice Created");
-    } catch (createError) {
-      setBillingError(createError instanceof Error ? createError.message : "Failed to create bill.");
-    } finally {
-      setIsSavingInvoice(false);
-    }
-  }
-
-  async function handleInvoicePdf(action: "preview" | "print" = "preview") {
-    setIsPreparingInvoicePdf(true);
-    setBillingError("");
-    setBillingStatus("");
-    try {
-      const invoice = await ensureSavedInvoice();
-      const blob = await api.generateInvoicePdf(invoice.id);
-      if (action === "print") {
-        const patientLabel = selectedBillingPatient?.name.replace(/\s+/g, "_") || "patient";
-        printBlob(blob, `${patientLabel}_invoice.pdf`);
-        setBillingStatus("Print dialog opened.");
-      } else {
-        const url = URL.createObjectURL(blob);
-        window.open(url, "_blank", "noopener,noreferrer");
-        setBillingStatus("Invoice PDF ready.");
-        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      }
-    } catch (pdfError) {
-      setBillingError(pdfError instanceof Error ? pdfError.message : "Failed to prepare invoice PDF.");
-    } finally {
-      setIsPreparingInvoicePdf(false);
-    }
-  }
-
   function closeBillingWorkspace() {
     setBillingPatientId("");
     setSelectedPatient(null);
     setDrawerMode(null);
-    resetBillingWorkspaceState();
     closeWorkspace();
   }
 
-  async function completeBillingWorkflow(markBilled: boolean) {
-    if (!selectedBillingPatient) {
-      setBillingError("Select a done patient to bill.");
-      return;
-    }
-
-    if (markBilled) {
-      setPatients((current) => current.map((patient) => (
-        patient.id === selectedBillingPatient.id ? { ...patient, billed: true } : patient
-      )));
-    }
-
+  async function handleBillingCompleted(
+    patientId: string,
+    options?: { refreshDashboard?: boolean },
+  ) {
+    setPatients((current) => current.map((patient) => (
+      patient.id === patientId ? { ...patient, billed: true } : patient
+    )));
     closeBillingWorkspace();
-  }
-
-  async function handleShareInvoice() {
-    if (!selectedBillingPatient) {
-      setBillingError("Select a done patient to bill.");
-      return;
-    }
-    const recipientEmail = billingRecipientEmail.trim();
-    if (!recipientEmail) {
-      setBillingError("This patient does not have an email address saved.");
-      return;
-    }
-    setIsSendingInvoice(true);
-    setBillingError("");
-    setBillingStatus("");
-    try {
-      const invoice = await ensureSavedInvoice();
-      const result = await handleSendInvoice({ invoice_id: invoice.id, recipient_email: recipientEmail });
-      setBillingStatus(result.message);
-      setSavedInvoice(result.invoice);
-      await completeBillingWorkflow(true);
-    } catch (sendError) {
-      setBillingError(sendError instanceof Error ? sendError.message : "Failed to mark invoice as shared.");
-    } finally {
-      setIsSendingInvoice(false);
-    }
-  }
-
-  async function handleShareInvoiceWhatsApp() {
-    if (!selectedBillingPatient) {
-      setBillingError("Select a done patient to bill.");
-      return;
-    }
-    if (!selectedBillingPatient.phone.trim()) {
-      setBillingError("This patient does not have a phone number saved.");
-      return;
-    }
-    setIsSendingInvoiceWhatsApp(true);
-    setBillingError("");
-    setBillingStatus("");
-    try {
-      const invoice = await ensureSavedInvoice();
-      const result = await handleSendInvoiceWhatsApp({ invoice_id: invoice.id, recipient_phone: selectedBillingPatient.phone });
-      setBillingStatus(result.message);
-      trackWhatsAppDelivery(result.delivery, "Invoice", (message, delivery) => {
-        if (delivery.status === "failed") {
-          setBillingError(message);
-          return;
-        }
-        setBillingStatus(message);
-      });
-      setSavedInvoice(result.invoice);
-      await completeBillingWorkflow(true);
-    } catch (sendError) {
-      setBillingError(sendError instanceof Error ? sendError.message : "Failed to send invoice on WhatsApp.");
-    } finally {
-      setIsSendingInvoiceWhatsApp(false);
-    }
-  }
-
-  async function handleCompleteInvoice() {
-    if (!selectedBillingPatient) {
-      setBillingError("Select a done patient to bill.");
-      return;
-    }
-    setIsFinalizingInvoice(true);
-    setBillingError("");
-    setBillingStatus("");
-    try {
-      const invoice = await ensureSavedInvoice();
-      const result = await handleFinalizeInvoice({ invoice_id: invoice.id });
-      setSavedInvoice(result.invoice);
-      setBillingStatus(result.message);
-      await completeBillingWorkflow(true);
+    if (options?.refreshDashboard) {
       void refreshDashboardStatus(true);
-    } catch (finalizeError) {
-      setBillingError(finalizeError instanceof Error ? finalizeError.message : "Failed to complete invoice.");
-    } finally {
-      setIsFinalizingInvoice(false);
     }
   }
 
@@ -2245,75 +1856,17 @@ export default function HomePage() {
       />
 
       {billingPatientId && selectedBillingPatient ? (
-        <div className="fixed inset-0 z-30 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5">
-          <div className="mx-auto flex h-full max-h-[96vh] w-full max-w-[min(96vw,1560px)] flex-col overflow-hidden rounded-[20px] border border-[#dbe7ef] bg-white shadow-[0_35px_90px_rgba(15,23,42,0.18)]">
-            <div className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-3">
-              <SettingsDrawerBillingPanel
-                patients={[selectedBillingPatient]}
-                selectedBillingPatientId={billingPatientId}
-                selectedBillingPatient={selectedBillingPatient}
-                showPatientSelector={false}
-                serviceItems={serviceItems}
-                medicineItems={medicineItems}
-                invoiceItems={invoiceItems}
-                invoiceSubtotal={invoiceSubtotal}
-                invoiceTaxTotal={invoiceTaxTotals.taxTotal}
-                invoiceCgstTotal={invoiceTaxTotals.cgstTotal}
-                invoiceSgstTotal={invoiceTaxTotals.sgstTotal}
-                invoiceTotal={invoiceTotal}
-                amountPaid={normalizedAmountPaid}
-                amountPaidInput={amountPaidInput}
-                balanceDue={balanceDue}
-                paymentStatus={paymentStatus}
-                billingError={billingError}
-                billingStatus={billingStatus}
-                isSavingInvoice={isSavingInvoice}
-                isFinalizingInvoice={isFinalizingInvoice}
-                isPreparingInvoicePdf={isPreparingInvoicePdf}
-                isSendingInvoice={isSendingInvoice}
-                isSendingInvoiceWhatsApp={isSendingInvoiceWhatsApp}
-                savedInvoice={savedInvoice}
-                customItemLabel={customItemLabel}
-                customItemQuantity={customItemQuantity}
-                customItemUnitPrice={customItemUnitPrice}
-                recipientEmail={billingRecipientEmail}
-                onSelectPatient={() => undefined}
-                onAddCatalogItem={addCatalogItemToInvoice}
-                onCustomItemLabelChange={setCustomItemLabel}
-                onCustomItemQuantityChange={setCustomItemQuantity}
-                onCustomItemUnitPriceChange={setCustomItemUnitPrice}
-                onRecipientEmailChange={(value) => {
-                  setBillingRecipientEmail(value);
-                  setBillingStatus("");
-                  setBillingError("");
-                }}
-                onAddCustomItem={addCustomInvoiceItem}
-                onUpdateInvoiceItem={updateInvoiceItem}
-                onRemoveInvoiceItem={removeInvoiceItem}
-                onCreateBill={handleCreateBill}
-                onPaymentStatusChange={(status) => {
-                  setPaymentStatus(status);
-                  setAmountPaidInput(status === "partial" ? invoiceTotal.toFixed(2) : "");
-                  setIsInvoiceDirty(true);
-                  setBillingStatus("");
-                  setBillingError("");
-                }}
-                onAmountPaidChange={(value) => {
-                  setAmountPaidInput(value);
-                  setIsInvoiceDirty(true);
-                  setBillingStatus("");
-                  setBillingError("");
-                }}
-                onPreviewPdf={handleInvoicePdf}
-                onPrintInvoice={() => handleInvoicePdf("print")}
-                onFinalizeInvoice={handleCompleteInvoice}
-                onSendInvoice={handleShareInvoice}
-                onSendInvoiceWhatsApp={handleShareInvoiceWhatsApp}
-                onClose={closeBillingWorkspace}
-              />
-            </div>
-          </div>
-        </div>
+        <BillingWorkspace
+          key={selectedBillingPatient.id}
+          patient={selectedBillingPatient}
+          catalogItems={catalogItems}
+          isCatalogLoaded={isCatalogLoaded}
+          isCatalogLoading={isCatalogLoading}
+          loadCatalogItems={loadCatalogItems}
+          gateway={billingGateway}
+          onCompleted={handleBillingCompleted}
+          onClose={closeBillingWorkspace}
+        />
       ) : null}
     </main>
   );

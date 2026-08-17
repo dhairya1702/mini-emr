@@ -48,9 +48,9 @@ test("solo consultation billing keeps custom items after the old polling interva
   await expect(page.getByText("Plan: Hydration and observation.")).toBeVisible();
   await page.getByRole("button", { name: "Done" }).click();
 
-  await expect(page.getByRole("heading", { level: 3, name: "Reset Check Invoice", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close billing" })).toBeVisible();
 
-  await page.getByPlaceholder("Manual item").fill("Custom fee");
+  await page.getByPlaceholder("Enter item").fill("Custom fee");
   const decimalInputs = page.locator('input[inputmode="decimal"]');
   await decimalInputs.last().fill("250");
   await page.getByRole("button", { name: "Add", exact: true }).click();

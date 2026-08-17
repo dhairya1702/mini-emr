@@ -50,9 +50,13 @@ Status: implemented on `consul-refactor`.
 
 ### Slice 2: Billing workspace
 
+Status: implemented on `consul-refactor` after the Slice 1 checkpoint.
+
 - Move billing state, catalog/note loading, draft seeding, save/finalize, PDF, and delivery into a billing workflow controller.
 - Extract the billing overlay from the dashboard page.
 - Keep queue synchronization untouched.
+
+Acceptance coverage includes lazy catalog loading, dirty-draft preservation, patient-to-patient reset, save-before-finalize ordering, retry after finalization failure without duplicate invoice creation, and successful completion.
 
 ### Slice 3: Patient chart resources
 
