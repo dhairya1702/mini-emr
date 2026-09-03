@@ -45,8 +45,8 @@ export default function Finale() {
           </span>
         </h2>
         <p className="finale__sub">
-          The intelligence layer for the modern clinic. Built around the work
-          that actually matters.
+          <span>The intelligence layer for the modern clinic.</span>
+          <span>Built around the work that actually matters.</span>
         </p>
         <div className="finale__cta">
           <button

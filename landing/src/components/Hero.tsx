@@ -58,10 +58,6 @@ export default function Hero() {
             <span className="hero__word">by AI.</span>
           </span>
         </h1>
-        <p className="hero__sub">
-          A scribe that finishes your notes, a context engine that knows every
-          patient, and an assistant for every workflow.
-        </p>
         <p className="hero__sub hero__sub--accent">
           One intelligence running your entire clinic
         </p>

@@ -13,56 +13,56 @@ type Primary = { id: string; label: string; a: number; frags: Frag[] };
 
 const PRIMARIES: Primary[] = [
   {
-    id: "vaccines",
-    label: "Vaccines",
+    id: "rx",
+    label: "Rx history",
     a: -90,
-    frags: [{ label: "MMR ✓", mobilePriority: true }, { label: "Tdap" }],
+    frags: [{ label: "-2.25 OU", mobilePriority: true }, { label: "changed 6mo" }],
   },
   {
     id: "visits",
     label: "Visits",
     a: -45,
-    frags: [{ label: "12d ago", mobilePriority: true }, { label: "Mar 3" }],
+    frags: [{ label: "14d ago", mobilePriority: true }, { label: "annual due" }],
   },
   {
-    id: "labs",
-    label: "Labs",
+    id: "scans",
+    label: "Scans",
     a: 0,
     frags: [
-      { label: "HbA1c 7.2", mobilePriority: true },
-      { label: "Lipids" },
-      { label: "CBC" },
+      { label: "OCT stable", mobilePriority: true },
+      { label: "fundus" },
+      { label: "topography" },
     ],
   },
   {
-    id: "vitals",
-    label: "Vitals",
+    id: "iop",
+    label: "IOP",
     a: 45,
-    frags: [{ label: "BP 148/92", mobilePriority: true }, { label: "BMI 28" }],
+    frags: [{ label: "18/19", mobilePriority: true }, { label: "watch trend" }],
   },
   {
-    id: "imaging",
-    label: "Imaging",
+    id: "lenses",
+    label: "Lenses",
     a: 90,
-    frags: [{ label: "CXR clear", mobilePriority: true }],
+    frags: [{ label: "CL irritation", mobilePriority: true }],
   },
   {
-    id: "meds",
-    label: "Meds",
+    id: "drops",
+    label: "Drops",
     a: 135,
-    frags: [{ label: "Metformin", mobilePriority: true }, { label: "Amlodipine" }],
+    frags: [{ label: "lubricant", mobilePriority: true }, { label: "night use" }],
   },
   {
     id: "allergies",
-    label: "Allergies",
+    label: "Alerts",
     a: 180,
-    frags: [{ label: "Penicillin", warn: true, mobilePriority: true }],
+    frags: [{ label: "redness", warn: true, mobilePriority: true }],
   },
   {
     id: "notes",
     label: "Notes",
     a: -135,
-    frags: [{ label: "Smoker", mobilePriority: true }, { label: "F/H cardiac" }],
+    frags: [{ label: "screen time", mobilePriority: true }, { label: "dry eyes" }],
   },
 ];
 
@@ -83,14 +83,10 @@ const PARTICLES = Array.from({ length: 30 }).map((_, i) => ({
   dur: 6 + ((i * 3) % 7),
 })).map((p) => ({ ...p, x: Math.abs(p.x) * 100, y: Math.abs(p.y) * 100 }));
 
-/* AI synthesis lines (streamed word-by-word) */
-const SUMMARY: { words: string[]; warn?: boolean }[] = [
-  { words: ["42M", "·", "Type", "2", "diabetes,", "hypertension"] },
-  { words: ["Last", "visit", "12", "days", "ago", "·", "BP", "148/92"] },
-  { words: ["HbA1c", "↑", "0.6", "since", "March"] },
-  { words: ["Penicillin", "allergy", "on", "file"], warn: true },
-  { words: ["Statin", "due", "·", "review", "flagged"] },
-];
+const SUMMARY =
+  "Priya is a 42-year-old contact lens wearer. Her prescription changed six months ago, and her myopia has been gradually progressing. OCT and fundus records look stable, but she reported redness after switching lens brands. Check lens fit, comfort and wearing time today.";
+
+const SUMMARY_ALERT_WORDS = new Set(["redness", "brands."]);
 
 export default function ContextCard() {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -140,7 +136,7 @@ export default function ContextCard() {
   const ringOrder = [-90, -45, 0, 45, 90, 135, 180, -135].map((a) => primaryPos(a));
 
   let edgeIndex = 0;
-  let wordCursor = 0;
+  const summaryWords = SUMMARY.split(" ");
 
   return (
     <div className="viz viz--ctx">
@@ -269,23 +265,19 @@ export default function ContextCard() {
         <div className="ctx-summary__head">
           <span className="ctx-summary__spark" />
           AI summary
-          <span className="ctx-summary__tag">reading chart</span>
         </div>
         <div className="ctx-summary__body">
-          {SUMMARY.map((line, li) => (
-            <p className={`ctx-line${line.warn ? " is-warn" : ""}`} key={li}>
-              {line.warn && <span className="ctx-line__ic">!</span>}
-              {line.words.map((w, wi) => (
-                <span
-                  key={wi}
-                  className="ctx-word"
-                  style={{ ["--w" as string]: wordCursor++ }}
-                >
-                  {w}
-                </span>
-              ))}
-            </p>
-          ))}
+          <p className="ctx-line ctx-line--paragraph">
+            {summaryWords.map((word, index) => (
+              <span
+                key={`${word}-${index}`}
+                className={`ctx-word${SUMMARY_ALERT_WORDS.has(word) ? " is-warn" : ""}`}
+                style={{ ["--w" as string]: index }}
+              >
+                {word}
+              </span>
+            ))}
+          </p>
         </div>
       </div>
     </div>

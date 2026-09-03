@@ -1,7 +1,6 @@
 import type { Scene } from "../scenes";
 import PracticeCard from "./PracticeCard";
 import EarningsCard from "./EarningsCard";
-import PhoneCard from "./PhoneCard";
 import ContextCard from "./ContextCard";
 
 /** Streams a line of note text in word-by-word. `start` is the running
@@ -26,19 +25,20 @@ function streamLine(text: string, start: number) {
 export default function SceneVisual({ scene }: { scene: Scene }) {
   switch (scene.visual) {
     case "ai": {
+      const typedInput = "redness, irritation, blurry vision, give drops, take rest, review next week";
       const note = [
         {
-          h: "History",
-          text: "3-day history of fever with sore throat. No cough or breathlessness.",
+          h: "Complaint",
+          text: "Patient reports redness, irritation and blurry vision.",
         },
         {
           h: "Examination",
-          text: "Temp 38.4°C. Pharynx congested, tonsils enlarged. Chest clear.",
+          text: "No urgent red flags noted. Vision and ocular surface reviewed.",
         },
-        { h: "Diagnosis", text: "Acute bacterial pharyngitis." },
+        { h: "Assessment", text: "Likely mild ocular irritation with temporary visual discomfort." },
         {
-          h: "Plan",
-          text: "Amoxicillin 500 mg TDS × 5 days. Paracetamol PRN. Review in 3 days.",
+          h: "Treatment",
+          text: "Start lubricating eye drops, advise rest from contact lenses and review next week.",
         },
       ];
       let idx = 0;
@@ -51,19 +51,13 @@ export default function SceneVisual({ scene }: { scene: Scene }) {
               <span className="viz-badge">draft</span>
             </div>
             <div className="viz-input">
-              <span className="viz-input__label">You type</span>
-              <div className="viz-tokens">
-                {["fever 3d", "sore throat", "T 38.4", "rx amox"].map((t, i) => (
-                  <span key={t} className="viz-token" style={{ ["--i" as string]: i }}>
-                    {t}
-                  </span>
-                ))}
+              <div className="viz-typed">
+                {typedInput}
                 <span className="viz-caret" />
               </div>
             </div>
             <div className="viz-expand">
-              <span className="viz-expand__icon" />
-              <span>AI expands</span>
+              <span className="viz-enter">Enter</span>
             </div>
             <div className="viz-note">
               {note.map((sec, si) => {
@@ -86,7 +80,7 @@ export default function SceneVisual({ scene }: { scene: Scene }) {
                 );
               })}
             </div>
-            <div className="viz-tag">Structured note · ready to sign</div>
+            <div className="viz-tag">Structured note, ready to sign</div>
           </div>
         </div>
       );
@@ -97,8 +91,6 @@ export default function SceneVisual({ scene }: { scene: Scene }) {
       return <PracticeCard />;
     case "ops":
       return <EarningsCard />;
-    case "continuity":
-      return <PhoneCard />;
     default:
       return null;
   }

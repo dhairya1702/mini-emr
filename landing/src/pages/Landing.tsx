@@ -6,6 +6,7 @@ import "../App.css";
 import { SCENES } from "../scenes";
 import Backdrop from "../components/Backdrop";
 import Hero from "../components/Hero";
+import PhoneHero from "../components/PhoneHero";
 import Scene from "../components/Scene";
 import Finale from "../components/Finale";
 import Footer from "../components/Footer";
@@ -87,6 +88,7 @@ export default function Landing() {
 
       <main>
         <Hero />
+        <PhoneHero />
         {SCENES.slice(1, SCENES.length).map((scene, idx) => (
           <Scene key={scene.id} scene={scene} index={idx + 1} />
         ))}

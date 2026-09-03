@@ -85,7 +85,13 @@ export default function Scene({ scene, index }: Props) {
     >
       <div className="scene__text">
         {scene.kicker && <div className="scene__kicker">{scene.kicker}</div>}
-        <h2 className="scene__title">{scene.title}</h2>
+        <h2 className="scene__title">
+          {scene.title.split("\n").map((line) => (
+            <span className="scene__title-line" key={line}>
+              {line}
+            </span>
+          ))}
+        </h2>
         <p className="scene__copy">{scene.copy}</p>
         {scene.chips && (
           <div className="scene__chips">

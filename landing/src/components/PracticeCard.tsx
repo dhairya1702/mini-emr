@@ -129,7 +129,7 @@ export default function PracticeCard() {
           </span>
         </div>
 
-        <div className="viz-tag">Staff, rooms &amp; reminders — handled</div>
+        <div className="viz-tag">Staff, rooms &amp; reminders handled</div>
       </div>
     </div>
   );
